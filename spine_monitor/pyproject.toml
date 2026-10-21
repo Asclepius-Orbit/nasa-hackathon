@@ -1,0 +1,2 @@
+[tool.uv.workspace]
+members = ["contracts", "physiology", "engine", "mcp_server", "agent"]

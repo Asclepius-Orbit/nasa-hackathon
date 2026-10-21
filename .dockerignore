@@ -1,0 +1,48 @@
+# Control de versiones y metadatos
+.git
+.gitignore
+.gitattributes
+.github
+
+# Entornos y cachés (se reconstruyen dentro de la imagen)
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.pyright
+**/.hypothesis
+**/.coverage
+**/htmlcov
+**/.ipynb_checkpoints
+**/node_modules
+**/.pnpm-store
+**/.next
+**/.turbo
+**/.vite
+**/*.tsbuildinfo
+
+# Secretos y entorno local
+**/.env
+**/.env.*
+!**/.env.example
+
+# Lo que ninguna imagen necesita
+.vscode
+.idea
+docs
+firmware
+app
+**/.pio
+ml/datasets
+logs
+traces
+**/*.log
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+infra/mosquitto/data
+infra/mosquitto/log
+**/.DS_Store
+**/Thumbs.db

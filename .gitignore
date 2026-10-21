@@ -1,0 +1,73 @@
+# ── Python / uv ───────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# ── Node / TypeScript / Electron / Vite / pnpm ─
+node_modules/
+.pnpm-store/
+.next/
+.turbo/
+.vite/
+dist-electron/
+out/
+release/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+*.exe
+*.dmg
+*.AppImage
+*.blockmap
+*.node
+
+# ── Firmware (PlatformIO / ESP32) ─────────────
+.pio/
+.platformio/
+*.elf
+*.map
+
+# ── Secretos y entorno ────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+docker-compose.override.yml
+
+# ── ML / datos generados ──────────────────────
+/ml/datasets/*
+!/ml/datasets/.gitkeep
+
+# ── Runtime local ─────────────────────────────
+logs/
+*.log
+traces/
+*.sqlite
+*.sqlite3
+*.db
+/infra/mosquitto/data/
+/infra/mosquitto/log/
+
+# ── Editor / SO ───────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

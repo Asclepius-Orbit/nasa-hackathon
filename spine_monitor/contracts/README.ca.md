@@ -6,7 +6,7 @@ Models Pydantic i topics MQTT compartits. Sense mètriques ni llindars concrets:
 
 ## Tancat (per ara)
 - `SensorReading`: una lectura = un valor escalar d'un canal (`sensor_id` + `channel`). La IMU publica 6 lectures per mostra. `quality` és un float 0..1.
-- `Assessment`: sortida del motor, basada en l'exemple d'`arquitectura.md`. `trend` és opcional fins que existeixi la projecció.
+- `Assessment`: sortida del motor: `level` (green/amber/red), `risk_score` (0..1), `drivers`, `recommendations` (codis `REC_*`) i `escalate_to_ground`. `trend` és opcional fins que existeixi la projecció.
 - Topics: `crew/{id}/spine/raw` (IMU i estirament), `crew/{id}/emg/raw`, `crew/{id}/device/status`.
 
 ## Maquinari previst

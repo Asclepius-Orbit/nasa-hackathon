@@ -6,7 +6,7 @@ Shared Pydantic models and MQTT topics. No concrete metrics or thresholds: Aguad
 
 ## Settled (for now)
 - `SensorReading`: one reading = one scalar value of one sensor channel (`sensor_id` + `channel`). The IMU publishes 6 readings per sample. `quality` is a float 0..1.
-- `Assessment`: engine output, based on the example in `arquitectura.md`. `trend` is optional until the projection exists.
+- `Assessment`: engine output: `level` (green/amber/red), `risk_score` (0..1), `drivers`, `recommendations` (`REC_*` codes) and `escalate_to_ground`. `trend` is optional until the projection exists.
 - Topics: `crew/{id}/spine/raw` (IMU and stretch sensor), `crew/{id}/emg/raw`, `crew/{id}/device/status`.
 
 ## Planned hardware

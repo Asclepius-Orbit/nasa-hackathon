@@ -6,7 +6,7 @@ Modelos Pydantic y topics MQTT compartidos. Sin métricas ni umbrales concretos:
 
 ## Cerrado (por ahora)
 - `SensorReading`: una lectura = un valor escalar de un canal (`sensor_id` + `channel`). La IMU publica 6 lecturas por muestra. `quality` es un float 0..1.
-- `Assessment`: salida del motor, basada en el ejemplo de `arquitectura.md`. `trend` es opcional hasta que exista la proyección.
+- `Assessment`: salida del motor: `level` (green/amber/red), `risk_score` (0..1), `drivers`, `recommendations` (códigos `REC_*`) y `escalate_to_ground`. `trend` es opcional hasta que exista la proyección.
 - Topics: `crew/{id}/spine/raw` (IMU y estiramiento), `crew/{id}/emg/raw`, `crew/{id}/device/status`.
 
 ## Hardware previsto

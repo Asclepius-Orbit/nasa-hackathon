@@ -1,21 +1,23 @@
-# spine-contracts (v0, borrador)
+**English** · [Español](README.es.md) · [Català](README.ca.md)
 
-Modelos Pydantic y topics MQTT compartidos. Sin métricas ni umbrales concretos: los define Aguado.
+# spine-contracts (v0, draft)
 
-## Cerrado (por ahora)
-- `SensorReading`: una lectura = un valor escalar de un canal (`sensor_id` + `channel`). La IMU publica 6 lecturas por muestra. `quality` es un float 0..1.
-- `Assessment`: salida del motor, basada en el ejemplo de `arquitectura.md`. `trend` es opcional hasta que exista la proyección.
-- Topics: `crew/{id}/spine/raw` (IMU y estiramiento), `crew/{id}/emg/raw`, `crew/{id}/device/status`.
+Shared Pydantic models and MQTT topics. No concrete metrics or thresholds: Aguado defines those.
 
-## Hardware previsto
-- IMU MPU-6050: accel xyz (g) y gyro xyz (deg/s), I2C, 16 bit.
-- EMG analógico con electrodos.
-- Cordón de estiramiento resistivo (~150 ohm/cm, no lineal, tarda 1-2 min en recuperarse).
+## Settled (for now)
+- `SensorReading`: one reading = one scalar value of one sensor channel (`sensor_id` + `channel`). The IMU publishes 6 readings per sample. `quality` is a float 0..1.
+- `Assessment`: engine output, based on the example in `arquitectura.md`. `trend` is optional until the projection exists.
+- Topics: `crew/{id}/spine/raw` (IMU and stretch sensor), `crew/{id}/emg/raw`, `crew/{id}/device/status`.
 
-## Abierto
-- Payload real de cada sensor: EMG crudo o envolvente; estiramiento en ohm, cuentas ADC o % calibrado.
-- Frecuencia y batching: la IMU a ~100 Hz son muchos mensajes MQTT.
-- Semántica exacta de `quality`.
-- Forma de la baseline si se usa Kalman.
-- Métricas derivadas y umbrales (Aguado).
-- Revisión: Andreea. Validación semántica: Aguado.
+## Planned hardware
+- MPU-6050 IMU: accel xyz (g) and gyro xyz (deg/s), I2C, 16 bit.
+- Analog EMG with electrodes.
+- Resistive stretch cord (~150 ohm/cm, non-linear, takes 1-2 min to recover).
+
+## Open
+- Actual payload of each sensor: raw or enveloped EMG; stretch in ohm, ADC counts or calibrated %.
+- Frequency and batching: the IMU at ~100 Hz means a lot of MQTT messages.
+- Exact semantics of `quality`.
+- Baseline shape if Kalman is used.
+- Derived metrics and thresholds (Aguado).
+- Review: Andreea. Semantic validation: Aguado.

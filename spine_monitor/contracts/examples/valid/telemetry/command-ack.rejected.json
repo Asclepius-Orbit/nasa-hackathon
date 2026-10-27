@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "command_id": "c0ffee00-0000-4000-8000-000000000005",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "timestamp": "2026-11-13T10:02:31.000Z",
+  "status": "rejected",
+  "error": { "code": "busy", "message": "A session is already running on this device." }
+}

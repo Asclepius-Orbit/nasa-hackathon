@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/feature-set.schema.json",
+  "title": "FeatureSet",
+  "description": "Derived metrics computed by the engine (POST /features) from the raw chunks of one session, or aggregated over a rolling window for symptom metrics that do not belong to a session. Each feature_id must exist in the feature catalog. The app stores feature sets next to the raw data and sends them back in /baseline and /assess, so the engine stays stateless.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "session_id": {
+      "description": "Null for rolling-window features (e.g. 7-day mean pain).",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/uuid" }, { "type": "null" }]
+    },
+    "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+    "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" },
+    "source": { "$ref": "../common.schema.json#/$defs/source" },
+    "computed_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "engine_version": { "type": "string", "maxLength": 32 },
+    "window": {
+      "description": "Time span of the data the features were computed from.",
+      "type": "object",
+      "properties": {
+        "start": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "end": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+          "value": { "type": "number" },
+          "unit": { "type": "string", "maxLength": 16 },
+          "n": {
+            "description": "How many repetitions, samples or days the value summarises.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "quality": { "$ref": "../common.schema.json#/$defs/quality" }
+        },
+        "required": ["feature_id", "value", "unit", "quality"],
+        "additionalProperties": false
+      }
+    },
+    "skipped": {
+      "description": "Features that could not be computed and why. Feeds the completeness of the assessment, so missing data is never read as 'all good'.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no_data",
+              "low_quality",
+              "no_calibration",
+              "signal_not_raw",
+              "too_few_repetitions",
+              "stream_missing"
+            ]
+          }
+        },
+        "required": ["feature_id", "reason"],
+        "additionalProperties": false
+      },
+      "default": []
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "session_id", "computed_at", "features"],
+  "additionalProperties": false
+}

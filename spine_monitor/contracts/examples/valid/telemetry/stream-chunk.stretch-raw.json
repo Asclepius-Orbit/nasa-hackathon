@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "stream_id": "stretch_lumbar",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02",
+  "source": "device",
+  "boot_id": 2893746120,
+  "seq": 3,
+  "t0_device_ms": 3000,
+  "received_at": "2026-11-13T07:00:03.050Z",
+  "sample_rate_hz": 20,
+  "n_samples": 3,
+  "stream_kind": "stretch",
+  "units": { "adc_counts": "count" },
+  "data": { "adc_counts": [1850, 1851, 1850] },
+  "quality": { "adc_counts": { "score": 1.0, "flags": [], "assessed_by": "device" } }
+}

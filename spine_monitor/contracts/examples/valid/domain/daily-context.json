@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "date": "2027-02-09",
+  "mission_day": 87,
+  "phase": "inflight",
+  "gravity_environment": "microgravity",
+  "medication": [
+    { "name": "ibuprofen", "category": "anti_inflammatory", "dose_mg": 400, "taken_at": "2027-02-09T07:50:00Z" }
+  ],
+  "exercise": [
+    { "modality": "ared", "duration_min": 45, "load_kg": 60, "rpe": 7 }
+  ],
+  "countermeasures": [
+    { "type": "axial_loading_suit", "duration_min": 120 }
+  ]
+}

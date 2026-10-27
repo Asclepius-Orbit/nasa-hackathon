@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/calibration.schema.json",
+  "title": "Calibration",
+  "description": "A calibration is an entity with its own id and date; sessions and chunks reference it by calibration_id. Three kinds: stretch (cord rest resistance and resistance->length curve), emg_mvc (maximum voluntary contraction, to express EMG as %MVC and compare days/sessions despite electrode re-placement and skin changes) and imu (bias, configured ranges and mounting on the body).",
+  "oneOf": [
+    { "$ref": "#/$defs/stretch_calibration" },
+    { "$ref": "#/$defs/emg_mvc_calibration" },
+    { "$ref": "#/$defs/imu_calibration" }
+  ],
+  "$defs": {
+    "calibration_base": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "calibration_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+        "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+        "stream_id": { "$ref": "../common.schema.json#/$defs/stream_id" },
+        "session_id": {
+          "description": "Session in which the calibration was recorded.",
+          "$ref": "../common.schema.json#/$defs/uuid"
+        },
+        "created_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "valid_until": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "source": { "$ref": "../common.schema.json#/$defs/source" },
+        "quality": { "$ref": "../common.schema.json#/$defs/quality" }
+      },
+      "required": ["schema_version", "calibration_id", "astronaut_id", "device_id", "stream_id", "created_at", "source"]
+    },
+    "stretch_calibration": {
+      "title": "StretchCalibration",
+      "description": "Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait.",
+      "allOf": [
+        { "$ref": "#/$defs/calibration_base" },
+        {
+          "type": "object",
+          "properties": {
+            "calibration_type": { "const": "stretch" },
+            "rest_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+            "rest_length_mm": {
+              "description": "Length of cord between the two clamps at rest (the reference for elongation).",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "recovery_wait_s": { "type": "number", "minimum": 0 },
+            "temperature_c": { "type": "number" },
+            "curve": {
+              "description": "Piecewise-linear resistance -> length. Points sorted by resistance. Elongation = length_mm - rest_length_mm.",
+              "type": "object",
+              "properties": {
+                "model": { "const": "piecewise_linear" },
+                "points": {
+                  "type": "array",
+                  "minItems": 2,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+                      "length_mm": { "type": "number", "exclusiveMinimum": 0 }
+                    },
+                    "required": ["resistance_ohm", "length_mm"],
+                    "additionalProperties": false
+                  }
+                },
+                "fit_rmse_mm": { "type": "number", "minimum": 0 }
+              },
+              "required": ["model", "points"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["calibration_type", "rest_resistance_ohm", "rest_length_mm", "curve"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "emg_mvc_calibration": {
+      "title": "EmgMvcCalibration",
+      "description": "Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed.",
+      "allOf": [
+        { "$ref": "#/$defs/calibration_base" },
+        {
+          "type": "object",
+          "properties": {
+            "calibration_type": { "const": "emg_mvc" },
+            "muscle": { "$ref": "../common.schema.json#/$defs/muscle" },
+            "side": { "$ref": "../common.schema.json#/$defs/side" },
+            "mvc_rms_mv": { "type": "number", "exclusiveMinimum": 0 },
+            "window_ms": { "type": "integer", "minimum": 1, "description": "RMS window used." },
+            "n_trials": { "type": "integer", "minimum": 1 },
+            "signal_kind": { "type": "string", "enum": ["raw", "rectified", "envelope"] },
+            "resting_baseline_mv": {
+              "description": "RMS with the muscle relaxed, for noise-floor subtraction.",
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": ["calibration_type", "muscle", "side", "mvc_rms_mv", "window_ms", "signal_kind"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "imu_calibration": {
+      "title": "ImuCalibration",
+      "description": "Static bias, configured ranges and mounting of one IMU. mounting maps each SENSOR axis to the BODY axis it points along when the astronaut stands in the reference posture (in microgravity: the posture defined by the protocol).",
+      "allOf": [
+        { "$ref": "#/$defs/calibration_base" },
+        {
+          "type": "object",
+          "properties": {
+            "calibration_type": { "const": "imu" },
+            "spine_level": { "$ref": "../common.schema.json#/$defs/spine_level" },
+            "accel_range_g": { "type": "integer", "enum": [2, 4, 8, 16] },
+            "gyro_range_dps": { "type": "integer", "enum": [250, 500, 1000, 2000] },
+            "gyro_bias_dps": { "$ref": "../common.schema.json#/$defs/xyz" },
+            "accel_bias_g": { "$ref": "../common.schema.json#/$defs/xyz" },
+            "mounting": {
+              "type": "object",
+              "properties": {
+                "sensor_x": { "$ref": "#/$defs/body_axis" },
+                "sensor_y": { "$ref": "#/$defs/body_axis" },
+                "sensor_z": { "$ref": "#/$defs/body_axis" }
+              },
+              "required": ["sensor_x", "sensor_y", "sensor_z"],
+              "additionalProperties": false
+            },
+            "static_duration_s": { "type": "number", "exclusiveMinimum": 0, "description": "How long the sensor was held still to estimate the bias." }
+          },
+          "required": ["calibration_type", "spine_level", "accel_range_g", "gyro_range_dps", "gyro_bias_dps", "mounting"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "body_axis": {
+      "description": "Anatomical direction a sensor axis points to: cranial/caudal (head/feet), anterior/posterior (front/back), left/right.",
+      "type": "string",
+      "enum": ["cranial", "caudal", "anterior", "posterior", "left", "right"]
+    }
+  }
+}

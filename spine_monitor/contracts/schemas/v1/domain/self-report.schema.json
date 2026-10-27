@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/self-report.schema.json",
+  "title": "SelfReport",
+  "description": "What the astronaut tells the app. Three kinds, by effort: 'daily' (quick, under 30 s, usable with gloves), 'weekly_odi' (reduced Oswestry Disability Index, once a week) and 'red_flag' (neurological or emergency symptoms, available at any time, escalates immediately). The daily report also asks the red flags, so a red_flag report is only needed outside the daily routine.",
+  "oneOf": [
+    { "$ref": "#/$defs/daily_report" },
+    { "$ref": "#/$defs/weekly_odi_report" },
+    { "$ref": "#/$defs/red_flag_report" }
+  ],
+  "$defs": {
+    "report_base": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "report_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+        "timestamp": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "mission_day": { "type": "integer" },
+        "source": { "$ref": "../common.schema.json#/$defs/source" }
+      },
+      "required": ["schema_version", "report_id", "astronaut_id", "timestamp", "source"]
+    },
+    "red_flag": {
+      "description": "Symptoms that suggest nerve involvement or an emergency. Any one of them escalates, regardless of the model.",
+      "type": "string",
+      "enum": [
+        "radiating_leg_pain",
+        "numbness_or_tingling",
+        "leg_weakness",
+        "bladder_or_bowel_dysfunction",
+        "saddle_numbness",
+        "severe_night_pain",
+        "fever_with_back_pain",
+        "trauma_event"
+      ]
+    },
+    "pain_location": {
+      "type": "object",
+      "properties": {
+        "region": { "$ref": "../common.schema.json#/$defs/spine_region" },
+        "side": { "type": "string", "enum": ["left", "right", "midline", "bilateral"] }
+      },
+      "required": ["region"],
+      "additionalProperties": false
+    },
+    "daily_report": {
+      "title": "DailySelfReport",
+      "allOf": [
+        { "$ref": "#/$defs/report_base" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "daily" },
+            "pain_nrs": {
+              "description": "Pain right now, 0-10.",
+              "$ref": "../common.schema.json#/$defs/nrs"
+            },
+            "pain_nrs_worst_24h": { "$ref": "../common.schema.json#/$defs/nrs" },
+            "pain_locations": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/pain_location" }
+            },
+            "stiffness_nrs": { "$ref": "../common.schema.json#/$defs/nrs" },
+            "sleep": {
+              "type": "object",
+              "properties": {
+                "hours": { "type": "number", "minimum": 0, "maximum": 24 },
+                "quality_nrs": {
+                  "description": "0 terrible, 10 perfect.",
+                  "$ref": "../common.schema.json#/$defs/nrs"
+                }
+              },
+              "required": ["hours"],
+              "additionalProperties": false
+            },
+            "red_flags": {
+              "description": "Red flags present today. Empty array = the question was asked and the answer was none; absent = not asked.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/red_flag" },
+              "uniqueItems": true
+            }
+          },
+          "required": ["kind", "pain_nrs", "stiffness_nrs"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "weekly_odi_report": {
+      "title": "WeeklyOdiReport",
+      "description": "Oswestry Disability Index items, each scored 0 (no limitation) to 5 (maximum). The set of items asked (the 'reduced' version) is chosen by the clinical model; the ids follow the standard ODI sections: pain_intensity, personal_care, lifting, walking, sitting, standing, sleeping, sex_life, social_life, travelling.",
+      "allOf": [
+        { "$ref": "#/$defs/report_base" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "weekly_odi" },
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "item_id": { "type": "string", "pattern": "^[a-z_]+$" },
+                  "score": { "type": "integer", "minimum": 0, "maximum": 5 }
+                },
+                "required": ["item_id", "score"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["kind", "items"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "red_flag_report": {
+      "title": "RedFlagReport",
+      "allOf": [
+        { "$ref": "#/$defs/report_base" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "red_flag" },
+            "red_flags": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/red_flag" },
+              "uniqueItems": true
+            },
+            "onset": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+            "note": { "type": "string", "maxLength": 300 }
+          },
+          "required": ["kind", "red_flags"]
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

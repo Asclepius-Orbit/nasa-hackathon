@@ -1,2 +1,9 @@
 [tool.uv.workspace]
-members = ["contracts", "physiology", "engine", "mcp_server", "agent", "backend"]
+members = ["contracts", "physiology", "engine", "mcp_server", "agent"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["contracts/tests", "engine/tests"]
+addopts = "--import-mode=importlib"

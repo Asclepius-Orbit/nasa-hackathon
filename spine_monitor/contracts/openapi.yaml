@@ -1,0 +1,128 @@
+openapi: 3.1.0
+info:
+  title: Spine engine API
+  version: 1.0.0
+  license:
+    name: GNU General Public License v3.0
+  description: |
+    Local HTTP API of the stateless prediction engine. The app (and the MCP server for what-if
+    questions) send everything a computation needs and receive the result; the engine stores nothing.
+
+    Request and response bodies are the JSON Schemas in `schemas/v1/`, which are the source of truth.
+    The port is a proposal; the engine only listens on localhost.
+security: []
+servers:
+  - url: http://127.0.0.1:8001
+    description: Local engine process
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Liveness probe
+      responses:
+        '200':
+          description: The engine is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: ok
+                required: [status]
+  /features:
+    post:
+      operationId: extractFeatures
+      summary: Derive features from the raw data of one session
+      description: Raw chunks, session, calibrations and clock anchors in; a FeatureSet out. Features that cannot be computed are listed in `skipped` with the reason.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/engine/features-request.schema.json'
+      responses:
+        '200':
+          description: Features of the session.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/feature-set.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /baseline:
+    post:
+      operationId: buildBaseline
+      summary: Build the personal baseline from reference sessions
+      description: Feature sets of the reference sessions in (normally pre-flight, 1 g); a versioned Baseline out. The caller stores it and sends it back with every /assess.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/engine/baseline-request.schema.json'
+      responses:
+        '200':
+          description: The new baseline.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/baseline.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /assess:
+    post:
+      operationId: assess
+      summary: Assess the current state against the baseline
+      description: Profile, baseline, recent feature sets, self-reports and context in; an Assessment out. The level comes from the deterministic clinical rules, which may override the model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/engine/assess-request.schema.json'
+      responses:
+        '200':
+          description: The assessment.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/assessment.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /simulate:
+    post:
+      operationId: simulate
+      summary: What-if on top of an assess request
+      description: Read-only. Returns the reference assessment next to the scenario assessment, both hypothetical. Backs the MCP tool `simulate_scenario`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/engine/simulate-request.schema.json'
+      responses:
+        '200':
+          description: Reference and scenario assessments.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/engine/simulate-response.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  responses:
+    Error:
+      description: Problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/engine/error.schema.json'

@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "stream_id": "stretch_lumbar",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+  "source": "device",
+  "boot_id": 2893746120,
+  "seq": 92,
+  "t0_device_ms": 184000,
+  "received_at": "2026-11-13T10:03:05.020Z",
+  "sample_rate_hz": 20,
+  "n_samples": 4,
+  "stream_kind": "stretch",
+  "units": { "adc_counts": "count", "resistance_ohm": "ohm", "length_mm": "mm" },
+  "data": {
+    "adc_counts": [1850, 1852, 1861, 1870],
+    "resistance_ohm": [6012.0, 6020.5, 6055.3, 6101.8],
+    "length_mm": [400.0, 400.5, 403.7, 406.8]
+  },
+  "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f11",
+  "quality": {
+    "adc_counts": { "score": 1.0, "flags": [], "assessed_by": "gateway" },
+    "length_mm": { "score": 0.8, "flags": ["band_recovering"], "assessed_by": "gateway" }
+  },
+  "circuit": { "adc_bits": 12, "vref_v": 3.3, "series_resistor_ohm": 10000, "input_pin": "GPIO35" }
+}

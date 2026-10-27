@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/assess-request.schema.json",
+  "title": "AssessRequest",
+  "description": "POST /assess. Everything the engine needs to judge the current state, in one stateless call. Assessment out. feature_sets holds the recent history too (not just today) because trend projection and rolling-window metrics need it; the app decides how many days to send.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "as_of": {
+      "description": "The instant being assessed. Usually now; set explicitly to replay history.",
+      "$ref": "../common.schema.json#/$defs/utc_timestamp"
+    },
+    "mission_day": { "type": "integer" },
+    "profile": { "$ref": "../domain/astronaut-profile.schema.json" },
+    "baseline": { "$ref": "../domain/baseline.schema.json" },
+    "feature_sets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "../domain/feature-set.schema.json" }
+    },
+    "self_reports": {
+      "type": "array",
+      "items": { "$ref": "../domain/self-report.schema.json" },
+      "default": []
+    },
+    "daily_context": {
+      "type": "array",
+      "items": { "$ref": "../domain/daily-context.schema.json" },
+      "default": []
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "as_of", "profile", "baseline", "feature_sets"],
+  "additionalProperties": false
+}

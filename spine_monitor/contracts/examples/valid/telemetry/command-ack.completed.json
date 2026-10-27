@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "command_id": "c0ffee00-0000-4000-8000-000000000004",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "timestamp": "2026-11-13T10:00:06.400Z",
+  "status": "completed",
+  "result": { "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f12" }
+}

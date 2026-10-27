@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/baseline.schema.json",
+  "title": "Baseline",
+  "description": "Personal reference of an astronaut, built by the engine (POST /baseline) from reference sessions, normally pre-flight in 1 g. The app persists it and sends it with every /assess. An entry is keyed by feature + protocol + gravity environment: the same exercise in 1 g and in microgravity are different populations and are never mixed in one entry. A session is compared against the entry of its own gravity environment when there is one (drift during the mission) and against the earth_1g entry to measure the effect of the environment itself (the Earth vs microgravity experiment). Robust statistics (median, MAD) sit next to mean and std because sessions have outliers.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "baseline_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "version": {
+      "description": "Increments every time the baseline is rebuilt.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "built_from_session_ids": {
+      "type": "array",
+      "items": { "$ref": "../common.schema.json#/$defs/uuid" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "required": ["schema_version", "baseline_id", "astronaut_id", "version", "created_at", "built_from_session_ids", "entries"],
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "properties": {
+        "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+        "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+        "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" },
+        "n": { "type": "integer", "minimum": 1, "description": "Number of sessions that contributed." },
+        "mean": { "type": "number" },
+        "std": { "type": "number", "minimum": 0 },
+        "median": { "type": "number" },
+        "mad": { "type": "number", "minimum": 0, "description": "Median absolute deviation." },
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      },
+      "required": ["feature_id", "gravity_environment", "n", "mean", "std", "median", "mad"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+  "astronaut_id": "AST-01",
+  "version": 1,
+  "created_at": "2026-11-13T12:00:00Z",
+  "built_from_session_ids": [
+    "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+    "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a04"
+  ],
+  "entries": [
+    {
+      "feature_id": "emg.latissimus_dorsi.left.rms_pct_mvc",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "earth_1g",
+      "n": 2, "mean": 41.0, "std": 0.7, "median": 41.0, "mad": 0.5, "min": 40.5, "max": 41.5
+    },
+    {
+      "feature_id": "emg.latissimus_dorsi.left.median_freq_hz",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "earth_1g",
+      "n": 2, "mean": 86.9, "std": 0.6, "median": 86.9, "mad": 0.4
+    },
+    {
+      "feature_id": "imu.l3.sagittal.rom_deg",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "earth_1g",
+      "n": 2, "mean": 28.1, "std": 0.4, "median": 28.1, "mad": 0.3
+    },
+    {
+      "feature_id": "stretch.lumbar.peak_elongation_mm",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "earth_1g",
+      "n": 2, "mean": 6.5, "std": 0.4, "median": 6.5, "mad": 0.3
+    }
+  ]
+}

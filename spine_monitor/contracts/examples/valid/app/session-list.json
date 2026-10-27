@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "from": "2027-02-02T00:00:00Z",
+  "to": "2027-02-09T23:59:59Z",
+  "limit": 100,
+  "truncated": false,
+  "items": [
+    {
+      "schema_version": "1.0.0",
+      "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+      "astronaut_id": "AST-01",
+      "device_id": "wb-01",
+      "session_type": "exercise",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "source": "device",
+      "started_at": "2026-11-13T10:02:31Z",
+      "ended_at": "2026-11-13T10:07:31Z",
+      "end_reason": "completed",
+      "mission_context": {
+        "phase": "preflight",
+        "gravity_environment": "earth_1g"
+      },
+      "load_declared": {
+        "type": "elastic_band",
+        "nominal_kg": 15,
+        "band_id": "blue",
+        "band_stretch_cm": 40,
+        "description": "Anchored overhead, grip at shoulder width plus a hand."
+      },
+      "planned_reps": 10,
+      "streams": [
+        {
+          "stream_id": "emg_lat_left",
+          "stream_kind": "emg",
+          "placement": {
+            "muscle": "latissimus_dorsi",
+            "side": "left"
+          },
+          "sample_rate_hz": 1000,
+          "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f12"
+        },
+        {
+          "stream_id": "imu_l3",
+          "stream_kind": "imu",
+          "placement": {
+            "spine_level": "l3"
+          },
+          "sample_rate_hz": 100,
+          "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f13"
+        },
+        {
+          "stream_id": "stretch_lumbar",
+          "stream_kind": "stretch",
+          "placement": {
+            "spine_region": "lumbar",
+            "span": {
+              "from_level": "l1",
+              "to_level": "l5"
+            }
+          },
+          "sample_rate_hz": 20,
+          "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f11"
+        }
+      ],
+      "events": [
+        {
+          "event_type": "rep_start",
+          "timestamp": "2026-11-13T10:03:10.500Z",
+          "device_ms": 190500,
+          "boot_id": 2893746120,
+          "rep_index": 1
+        },
+        {
+          "event_type": "rep_end",
+          "timestamp": "2026-11-13T10:03:14.100Z",
+          "device_ms": 194100,
+          "boot_id": 2893746120,
+          "rep_index": 1
+        }
+      ]
+    }
+  ]
+}

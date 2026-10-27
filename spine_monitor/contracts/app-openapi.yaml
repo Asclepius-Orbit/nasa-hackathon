@@ -1,0 +1,329 @@
+openapi: 3.1.0
+info:
+  title: Spine app read-only API
+  version: 1.0.0
+  license:
+    name: GNU General Public License v3.0
+  description: |
+    Local, read-only HTTP API of the on-board app. The MCP server uses it to answer the agent's questions
+    (get_current_status, get_history, compare_periods, explain_assessment) without ever touching the
+    app's database. Only GET: no endpoint modifies data.
+
+    Two kinds of endpoints. Per-tool endpoints (`/status`, `/history`, `/explanation`) return the work
+    already chewed for one MCP tool. Resource endpoints return one entity or a list of them.
+    compare_periods has no endpoint of its own: the MCP server calls `/history` twice and computes the
+    comparison.
+
+    Response bodies are the JSON Schemas in `schemas/v1/`, which are the source of truth. Windows are
+    `from`/`to` (RFC 3339, `to` not before `from`); lists are ordered oldest first and capped by `limit`,
+    keeping the most recent items and setting `truncated`. The port is a proposal; the API only listens
+    on localhost.
+security: []
+servers:
+  - url: http://127.0.0.1:8002
+    description: Local app process
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Liveness probe
+      responses:
+        '200':
+          description: The app is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: ok
+                required: [status]
+  /crew/{astronaut_id}/status:
+    get:
+      operationId: getStatus
+      summary: Current state of the astronaut
+      description: Latest assessment, session and self-report, device status, active baseline and how fresh each piece of data is. Backs the MCP tool `get_current_status`.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: Current status.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/status.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+  /crew/{astronaut_id}/history:
+    get:
+      operationId: getHistory
+      summary: Feature sets and assessments of a time window
+      description: Backs the MCP tool `get_history`; two calls back `compare_periods`.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: History of the window.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/history.schema.json'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /assessments/{assessment_id}/explanation:
+    get:
+      operationId: getAssessmentExplanation
+      summary: A stored assessment with the inputs it was based on
+      description: The assessment (drivers, fired rules) plus its baseline entries, feature sets and self-reports already resolved. Backs the MCP tool `explain_assessment`.
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      responses:
+        '200':
+          description: The explanation.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/explanation.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+  /crew/{astronaut_id}/assessments:
+    get:
+      operationId: listAssessments
+      summary: Assessments of a time window, by as_of
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Assessments.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/assessment-list.schema.json'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /assessments/{assessment_id}:
+    get:
+      operationId: getAssessment
+      summary: One assessment
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      responses:
+        '200':
+          description: The assessment.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/assessment.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+  /crew/{astronaut_id}/sessions:
+    get:
+      operationId: listSessions
+      summary: Sessions of a time window, by started_at
+      description: Session metadata only; raw chunks are never served.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Sessions.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/session-list.schema.json'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /sessions/{session_id}:
+    get:
+      operationId: getSession
+      summary: One session
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/session.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+  /sessions/{session_id}/feature-set:
+    get:
+      operationId: getSessionFeatureSet
+      summary: Features derived from one session
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: The feature set of the session.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/feature-set.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+  /crew/{astronaut_id}/self-reports:
+    get:
+      operationId: listSelfReports
+      summary: Self-reports of a time window, by timestamp
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Self-reports.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/self-report-list.schema.json'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /self-reports/{report_id}:
+    get:
+      operationId: getSelfReport
+      summary: One self-report
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: The self-report.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/self-report.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+  /crew/{astronaut_id}/baselines/{baseline_id}:
+    get:
+      operationId: getBaseline
+      summary: One baseline version
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/BaselineId'
+      responses:
+        '200':
+          description: The baseline.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/baseline.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  parameters:
+    AstronautId:
+      name: astronaut_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/astronaut_id'
+    AssessmentId:
+      name: assessment_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+    ReportId:
+      name: report_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+    BaselineId:
+      name: baseline_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+    From:
+      name: from
+      in: query
+      required: true
+      description: Start of the window, inclusive (RFC 3339 with offset).
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/utc_timestamp'
+    To:
+      name: to
+      in: query
+      required: true
+      description: End of the window, inclusive (RFC 3339 with offset). Not before `from`, otherwise `invalid_range`.
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/utc_timestamp'
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum items per collection; the most recent are kept and `truncated` is set when there were more.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+  responses:
+    NotFound:
+      description: The astronaut or the entity does not exist (problem details, type `not_found`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Error:
+      description: Problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'

@@ -174,6 +174,28 @@ MUTATIONS = [
     ("engine/simulate-request", "unknown override mode", lambda d: d["overrides"][0].update(mode="multiply")),
     ("engine/simulate-response", "scenario not flagged hypothetical", lambda d: d.update(hypothetical=False)),
     ("engine/error", "error status below 400", lambda d: d.update(status=200)),
+    ("app/status", "no freshness", lambda d: d.pop("freshness")),
+    ("app/status", "stale is not a boolean", lambda d: d["freshness"][0].update(stale="no")),
+    ("app/status", "negative age", lambda d: d["freshness"][0].update(age_hours=-1)),
+    ("app/status", "device freshness without device id", lambda d: d["freshness"][3].pop("device_id")),
+    ("app/status", "unknown freshness kind", lambda d: d["freshness"][0].update(what="mood")),
+    ("app/status", "latest assessment omitted instead of null", lambda d: d.pop("latest_assessment")),
+    ("app/status", "embedded assessment without confidence", lambda d: d["latest_assessment"].pop("confidence")),
+    ("app/status", "baseline without version", lambda d: d["active_baseline"].pop("version")),
+    ("app/history", "no truncated flag", lambda d: d.pop("truncated")),
+    ("app/history", "limit above 500", lambda d: d.update(limit=501)),
+    ("app/history", "limit zero", lambda d: d.update(limit=0)),
+    ("app/history", "naive window start", lambda d: d.update({"from": "2027-02-02T00:00:00"})),
+    ("app/history", "no assessments collection", lambda d: d.pop("assessments")),
+    ("app/explanation", "no assessment", lambda d: d.pop("assessment")),
+    ("app/explanation", "unresolved item of unknown kind", lambda d: d.update(unresolved=[{"kind": "mood", "id": d["baseline"]["baseline_id"]}])),
+    ("app/explanation", "baseline entry without MAD", lambda d: d["baseline_entries"][0].pop("mad")),
+    ("app/assessment-list", "item that is not an assessment", lambda d: d.update(items=[{"level": "green"}])),
+    ("app/assessment-list", "unknown property", lambda d: d.update(page=2)),
+    ("app/session-list", "no items", lambda d: d.pop("items")),
+    ("app/self-report-list", "limit not an integer", lambda d: d.update(limit=10.5)),
+    ("app/error.not-found", "unknown problem type", lambda d: d.update(type="teapot")),
+    ("app/error.not-found", "error status below 400", lambda d: d.update(status=200)),
 ]
 
 
@@ -219,6 +241,56 @@ def test_engine_examples_embed_the_standalone_examples():
 
     assert valid_example("engine/simulate-request")["base"] == assess
     assert valid_example("engine/simulate-response")["reference"] == valid_example("domain/assessment.amber")
+
+
+def test_app_examples_embed_the_standalone_examples():
+    assessment = valid_example("domain/assessment.amber")
+    session = valid_example("domain/session.exercise")
+    report = valid_example("domain/self-report.daily")
+    featureset = valid_example("domain/feature-set.inflight")
+    baseline = valid_example("domain/baseline")
+
+    status = valid_example("app/status")
+    assert status["latest_assessment"] == assessment
+    assert status["latest_session"] == session
+    assert status["latest_self_report"] == report
+    assert status["devices"] == [valid_example("telemetry/device-status.degraded")]
+    assert status["active_baseline"]["baseline_id"] == baseline["baseline_id"]
+    assert status["today"]["date"] == valid_example("domain/daily-context")["date"]
+
+    history = valid_example("app/history")
+    assert history["feature_sets"] == [featureset]
+    assert history["assessments"] == [assessment]
+
+    explanation = valid_example("app/explanation")
+    assert explanation["assessment"] == assessment
+    assert explanation["feature_sets"] == [featureset]
+    assert explanation["self_reports"] == [report]
+    assert explanation["baseline_entries"] == [
+        e for e in baseline["entries"] if e["feature_id"] in {d["feature_id"] for d in assessment["drivers"]}
+    ]
+
+    assert valid_example("app/assessment-list")["items"] == [assessment]
+    assert valid_example("app/session-list")["items"] == [session]
+    assert valid_example("app/self-report-list")["items"] == [report]
+
+
+def test_explanation_resolves_everything_the_assessment_is_based_on():
+    explanation = valid_example("app/explanation")
+    based_on = explanation["assessment"]["based_on"]
+
+    assert explanation["baseline"] == {"baseline_id": based_on["baseline_id"], "version": based_on["baseline_version"]}
+    assert [f["session_id"] for f in explanation["feature_sets"]] == based_on["session_ids"]
+    assert [r["report_id"] for r in explanation["self_reports"]] == based_on["self_report_ids"]
+    assert explanation["unresolved"] == []
+
+
+def test_status_freshness_is_consistent():
+    status = valid_example("app/status")
+    for item in status["freshness"]:
+        assert (item["last_at"] is None) == (item["age_hours"] is None), item
+        if item["last_at"] is None:
+            assert item["stale"], "missing data must be reported as stale, never as fresh"
 
 
 def test_session_streams_and_calibrations_are_consistent():

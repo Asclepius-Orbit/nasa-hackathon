@@ -12,11 +12,13 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 | `schemas/v1/telemetry/` | MQTT messages: stream chunk, device status, command, command ack, clock sync |
 | `schemas/v1/domain/` | Entities: session, calibration, astronaut profile, self-report, daily context, feature set, baseline, assessment |
 | `schemas/v1/engine/` | HTTP bodies of the engine: `/features`, `/baseline`, `/assess`, `/simulate`, errors |
+| `schemas/v1/app/` | HTTP bodies of the read-only API of the app: status, history, explanation, lists of assessments, sessions and self-reports, errors |
 | `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements; ranges owned by Aguado |
 | `asyncapi.yaml` | MQTT topics, direction, QoS and retain (the gateway's point of view) |
 | `openapi.yaml` | Engine HTTP API |
+| `app-openapi.yaml` | Read-only HTTP API of the app (GET only), used by the MCP server |
 | `examples/valid/` | One valid example per message; they are the mocks for everyone |
-| `src/spine_contracts/` | Python package: generated `models/`, `messages` (unions), `topics`, `validation` |
+| `src/spine_contracts/` | Python package: generated `models/`, `messages` (unions), `topics`, `validation`, `openapi_drift` |
 
 ## What the system measures
 - **EMG** (1 differential channel, mV, 1000 Hz): muscle activity, to compare Earth vs microgravity for the same standardised exercise.
@@ -51,6 +53,16 @@ validation.validate("telemetry/stream-chunk", dump(chunk))  # full rules, see be
 - Regenerate the models after any schema change: `uv run python contracts/scripts/generate_models.py` (run from `spine_monitor`). A test fails if they are stale. Never edit `models/` by hand.
 - Run the checks: `uv run pytest` (schemas, examples, mutations that must be rejected, generated code, topics, AsyncAPI/OpenAPI references).
 
+## Read-only API of the app
+`app-openapi.yaml` is what the MCP server talks to; it never touches the app's database. Only `GET`: no endpoint modifies data.
+- **Per-tool endpoints** return the work already done for one MCP tool: `/crew/{astronaut_id}/status` (`get_current_status`), `/crew/{astronaut_id}/history?from&to` (`get_history`), `/assessments/{assessment_id}/explanation` (`explain_assessment`). `compare_periods` has no endpoint: the MCP server calls `/history` twice and compares.
+- **Resource endpoints** return one entity or a list: assessments, sessions (metadata only, never raw chunks), the feature set of a session, self-reports and baselines.
+- Lists need `from` and `to` (RFC 3339 with offset) and accept `limit` (1-500, default 100). They are ordered oldest first; when there are more items the most recent ones are kept and `truncated` is `true`.
+- Missing data is `null`, and `status.freshness` marks it `stale: true`: absence is never presented as good news. The app decides the stale thresholds.
+- Errors are RFC 9457 problem details (`app/error`), as in the engine.
+- The app builds this API with FastAPI. The contract is the reference: compare its generated document with `openapi_drift.diff(contract, app.openapi())`, which lists routes and `operationId`s that were added, removed or renamed.
+- `from` is a Python keyword: the generated models call it `from_` and keep `from` as alias. `dump` emits aliases.
+
 ## Changing a contract
 Edit the schema, add or update its example, regenerate, run the tests, and tell the owners of the other layers. Backwards-compatible additions bump the minor version; anything else the major.
 
@@ -58,7 +70,7 @@ Edit the schema, add or update its example, regenerate, run the tests, and tell 
 - **Aguado:** validate the feature catalog (ids, units, `risk_direction`, ranges and their sources); the reduced ODI item set; the exact exercise protocol (repetitions, load, MVC procedure) and electrode/IMU placement; the model of the stretch cord (it is non-linear and recovers slowly, so the length comes from a measured curve).
 - **Polfer:** does the EMG module output the raw signal or an envelope (spectral features need raw)? Use ADC1 pins on the ESP32 (ADC2 does not work with Bluetooth/WiFi). The wearable-to-gateway format is free; the contract starts at MQTT.
 - **IMU rate:** 100 Hz by default; 10 Hz is too low for smoothness and peak velocity of a ~2 s repetition.
-- Not covered yet: MCP tools and the read-only API of the app, the report to Houston (FHIR/DTN), TypeScript types for the UI (can be generated from the same schemas).
+- Not covered yet: the output schemas of the MCP tools (defined with the server; `compare_periods` is computed there from two `/history` calls), the report to Houston (FHIR/DTN), TypeScript types for the UI (can be generated from the same schemas).
 - Review: Andreea. Semantic validation: Aguado.
 
 ## Known limitations

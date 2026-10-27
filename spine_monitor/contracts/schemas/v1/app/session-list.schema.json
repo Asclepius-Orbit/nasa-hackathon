@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/session-list.schema.json",
+  "title": "SessionList",
+  "description": "Response of GET /crew/{astronaut_id}/sessions: session metadata (never raw chunks) with started_at inside the window, oldest first. limit caps items; truncated says there were more, and the most recent items are kept.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "from": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "to": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 500 },
+    "truncated": { "type": "boolean" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "../domain/session.schema.json" }
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "from", "to", "limit", "truncated", "items"],
+  "additionalProperties": false
+}

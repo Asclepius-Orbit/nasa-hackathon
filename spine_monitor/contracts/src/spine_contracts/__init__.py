@@ -5,7 +5,7 @@ generated from them (`contracts/scripts/generate_models.py`); this module re-exp
 components use. See `validation` for the schema rules Pydantic cannot express.
 """
 
-from spine_contracts import topics, validation
+from spine_contracts import openapi_drift, topics, validation
 from spine_contracts.messages import (
     SCHEMA_VERSION,
     Calibration,
@@ -18,6 +18,13 @@ from spine_contracts.messages import (
     self_report_adapter,
     stream_chunk_adapter,
 )
+from spine_contracts.models.app.assessment_list_schema import AssessmentList
+from spine_contracts.models.app.error_schema import AppErrorResponse
+from spine_contracts.models.app.explanation_schema import Explanation
+from spine_contracts.models.app.history_schema import History
+from spine_contracts.models.app.self_report_list_schema import SelfReportList
+from spine_contracts.models.app.session_list_schema import SessionList
+from spine_contracts.models.app.status_schema import Status
 from spine_contracts.models.common_schema import (
     AnatomicalPlane,
     GravityEnvironment,
@@ -75,9 +82,11 @@ from spine_contracts.models.telemetry.stream_chunk_schema import EmgChunk, ImuCh
 __all__ = [
     "SCHEMA_VERSION",
     "AnatomicalPlane",
+    "AppErrorResponse",
     "AssessRequest",
     "Assessment",
     "AssessmentDomain",
+    "AssessmentList",
     "AstronautProfile",
     "Baseline",
     "BaselineEntry",
@@ -98,11 +107,13 @@ __all__ = [
     "EmgMvcCalibration",
     "ErrorResponse",
     "Escalation",
+    "Explanation",
     "FeaturesRequest",
     "FeatureSet",
     "FeatureValue",
     "FiredRule",
     "GravityEnvironment",
+    "History",
     "ImuChunk",
     "ImuCalibration",
     "Level",
@@ -115,7 +126,9 @@ __all__ = [
     "QualityFlag",
     "RedFlagReport",
     "SelfReport",
+    "SelfReportList",
     "Session",
+    "SessionList",
     "Side",
     "SimulateRequest",
     "SimulateResponse",
@@ -123,6 +136,7 @@ __all__ = [
     "SpineLevel",
     "SpineRegion",
     "StartSessionCommand",
+    "Status",
     "StopSessionCommand",
     "StreamChunk",
     "StreamKind",
@@ -134,6 +148,7 @@ __all__ = [
     "calibration_adapter",
     "command_adapter",
     "dump",
+    "openapi_drift",
     "self_report_adapter",
     "stream_chunk_adapter",
     "topics",

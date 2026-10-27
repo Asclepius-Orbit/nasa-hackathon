@@ -1,0 +1,215 @@
+{
+  "schema_version": "1.0.0",
+  "assessment": {
+    "schema_version": "1.0.0",
+    "assessment_id": "a55e55e0-0000-4000-8000-0000000000a1",
+    "astronaut_id": "AST-01",
+    "as_of": "2027-02-09T09:00:00Z",
+    "mission_day": 87,
+    "level": "amber",
+    "risk_score": 0.62,
+    "confidence": 0.74,
+    "completeness": {
+      "score": 0.83,
+      "missing": [
+        {
+          "what": "emg.latissimus_dorsi.right.median_freq_hz",
+          "reason": "sensor_offline"
+        }
+      ]
+    },
+    "domains": [
+      {
+        "domain": "spine_length",
+        "level": "amber",
+        "score": 0.7,
+        "evaluated": true
+      },
+      {
+        "domain": "muscle",
+        "level": "amber",
+        "score": 0.55,
+        "evaluated": true
+      },
+      {
+        "domain": "kinematics",
+        "level": "green",
+        "score": 0.2,
+        "evaluated": true
+      },
+      {
+        "domain": "symptoms",
+        "level": "amber",
+        "score": 0.5,
+        "evaluated": true
+      }
+    ],
+    "drivers": [
+      {
+        "feature_id": "stretch.lumbar.peak_elongation_mm",
+        "value": 9.1,
+        "unit": "mm",
+        "deviation_z": 2.4,
+        "contribution": 0.31
+      },
+      {
+        "feature_id": "symptoms.pain_nrs_7d_mean",
+        "value": 5.1,
+        "unit": "nrs",
+        "deviation_z": 1.8,
+        "contribution": 0.18
+      }
+    ],
+    "trend": {
+      "projected_level": "red",
+      "days_to_threshold": 12
+    },
+    "fired_rules": [
+      {
+        "rule_id": "RULE_SYMPTOM_PAIN_TREND",
+        "domain": "symptoms",
+        "level": "amber",
+        "overrides_model": false,
+        "description": "Example rule: sustained pain above the alert range (thresholds owned by the clinical model)."
+      }
+    ],
+    "recommendations": [
+      "REC_LUMBAR_STAB_01",
+      "REC_INCREASE_ARED"
+    ],
+    "escalation": {
+      "required": false,
+      "reasons": []
+    },
+    "based_on": {
+      "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+      "baseline_version": 1,
+      "session_ids": [
+        "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03"
+      ],
+      "self_report_ids": [
+        "5e1f0e90-0000-4000-8000-000000000001"
+      ],
+      "engine_version": "0.1.0"
+    }
+  },
+  "baseline": {
+    "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+    "version": 1
+  },
+  "baseline_entries": [
+    {
+      "feature_id": "stretch.lumbar.peak_elongation_mm",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "earth_1g",
+      "n": 2,
+      "mean": 6.5,
+      "std": 0.4,
+      "median": 6.5,
+      "mad": 0.3
+    }
+  ],
+  "feature_sets": [
+    {
+      "schema_version": "1.0.0",
+      "astronaut_id": "AST-01",
+      "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "microgravity",
+      "source": "simulator",
+      "computed_at": "2027-02-09T08:55:00Z",
+      "engine_version": "0.1.0",
+      "window": {
+        "start": "2027-02-09T08:40:00Z",
+        "end": "2027-02-09T08:45:00Z"
+      },
+      "features": [
+        {
+          "feature_id": "emg.latissimus_dorsi.left.rms_pct_mvc",
+          "value": 47.0,
+          "unit": "%",
+          "n": 10,
+          "quality": {
+            "score": 0.88,
+            "flags": [],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "emg.latissimus_dorsi.left.median_freq_hz",
+          "value": 79.5,
+          "unit": "Hz",
+          "n": 10,
+          "quality": {
+            "score": 0.85,
+            "flags": [
+              "low_snr"
+            ],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "imu.l3.sagittal.rom_deg",
+          "value": 31.0,
+          "unit": "deg",
+          "n": 10,
+          "quality": {
+            "score": 1.0,
+            "flags": [],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "stretch.lumbar.peak_elongation_mm",
+          "value": 9.1,
+          "unit": "mm",
+          "n": 10,
+          "quality": {
+            "score": 0.8,
+            "flags": [
+              "band_recovering"
+            ],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "exercise.rep_count",
+          "value": 10,
+          "unit": "count",
+          "quality": {
+            "score": 1.0,
+            "flags": [],
+            "assessed_by": "engine"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  ],
+  "self_reports": [
+    {
+      "schema_version": "1.0.0",
+      "report_id": "5e1f0e90-0000-4000-8000-000000000001",
+      "astronaut_id": "AST-01",
+      "timestamp": "2027-02-09T08:30:00Z",
+      "mission_day": 87,
+      "source": "device",
+      "kind": "daily",
+      "pain_nrs": 5,
+      "pain_nrs_worst_24h": 6,
+      "pain_locations": [
+        {
+          "region": "lumbar",
+          "side": "bilateral"
+        }
+      ],
+      "stiffness_nrs": 6,
+      "sleep": {
+        "hours": 5.5,
+        "quality_nrs": 4
+      },
+      "red_flags": []
+    }
+  ],
+  "unresolved": []
+}

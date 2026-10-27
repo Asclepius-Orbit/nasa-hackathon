@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/assessment.schema.json",
+  "title": "Assessment",
+  "description": "Output of the engine (POST /assess). The overall level is decided by the deterministic clinical rules, which can override the statistical model; fired_rules makes that visible. confidence and completeness exist so that missing or poor data can never produce a reassuring green by default. The engine does not diagnose: it flags deviations from the astronaut's own baseline and recommends actions from a fixed catalogue.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "assessment_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "as_of": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "mission_day": { "type": "integer" },
+    "level": { "$ref": "../common.schema.json#/$defs/level" },
+    "risk_score": { "$ref": "../common.schema.json#/$defs/unit_interval" },
+    "confidence": {
+      "description": "How much the engine trusts its own result, 0-1: driven by data quality, amount of data and baseline depth.",
+      "$ref": "../common.schema.json#/$defs/unit_interval"
+    },
+    "completeness": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "description": "Fraction of the expected inputs that were actually available.",
+          "$ref": "../common.schema.json#/$defs/unit_interval"
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "what": {
+                "description": "A feature_id, a domain name, or one of: self_report, daily_context, baseline.",
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["no_data", "low_quality", "no_baseline", "stale", "sensor_offline", "signal_not_raw"]
+              }
+            },
+            "required": ["what", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["score", "missing"],
+      "additionalProperties": false
+    },
+    "domains": {
+      "description": "Traffic light per subdomain. The overall level is at least the worst domain level.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "domain": { "type": "string", "enum": ["spine_length", "muscle", "kinematics", "symptoms"] },
+          "level": { "$ref": "../common.schema.json#/$defs/level" },
+          "score": { "$ref": "../common.schema.json#/$defs/unit_interval" },
+          "evaluated": {
+            "description": "False when there was no data for the domain; level is then not a real green.",
+            "type": "boolean"
+          }
+        },
+        "required": ["domain", "level", "evaluated"],
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    },
+    "drivers": {
+      "description": "Features that pushed the risk, most influential first (explainability).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+          "value": { "type": "number" },
+          "unit": { "type": "string", "maxLength": 16 },
+          "deviation_z": {
+            "description": "Robust z-score against the matching baseline entry.",
+            "type": "number"
+          },
+          "contribution": {
+            "description": "Share of the risk score explained by this feature.",
+            "type": "number"
+          }
+        },
+        "required": ["feature_id", "value", "contribution"],
+        "additionalProperties": false
+      }
+    },
+    "trend": {
+      "type": "object",
+      "properties": {
+        "projected_level": { "$ref": "../common.schema.json#/$defs/level" },
+        "days_to_threshold": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "required": ["projected_level"],
+      "additionalProperties": false
+    },
+    "fired_rules": {
+      "description": "Clinical rules that triggered, for traceability (explain_assessment).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_id": { "$ref": "../common.schema.json#/$defs/rule_id" },
+          "domain": { "type": "string", "enum": ["spine_length", "muscle", "kinematics", "symptoms", "safety"] },
+          "level": { "$ref": "../common.schema.json#/$defs/level" },
+          "overrides_model": {
+            "description": "True when the rule set a level higher than the statistical model alone would have.",
+            "type": "boolean"
+          },
+          "description": { "type": "string", "maxLength": 300 }
+        },
+        "required": ["rule_id", "level", "overrides_model"],
+        "additionalProperties": false
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "$ref": "../common.schema.json#/$defs/recommendation_code" },
+      "uniqueItems": true
+    },
+    "escalation": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "urgency": { "type": "string", "enum": ["routine", "priority", "immediate"] },
+        "reasons": { "type": "array", "items": { "type": "string", "maxLength": 200 } }
+      },
+      "required": ["required", "reasons"],
+      "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+      "then": { "required": ["urgency"] },
+      "additionalProperties": false
+    },
+    "based_on": {
+      "description": "Inputs the assessment used, so it can be audited and reproduced.",
+      "type": "object",
+      "properties": {
+        "baseline_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "baseline_version": { "type": "integer", "minimum": 1 },
+        "session_ids": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/uuid" }, "uniqueItems": true },
+        "self_report_ids": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/uuid" }, "uniqueItems": true },
+        "engine_version": { "type": "string", "maxLength": 32 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version", "assessment_id", "astronaut_id", "as_of", "level", "risk_score",
+    "confidence", "completeness", "domains", "drivers", "fired_rules", "recommendations", "escalation"
+  ],
+  "additionalProperties": false
+}

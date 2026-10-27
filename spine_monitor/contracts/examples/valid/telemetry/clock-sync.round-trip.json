@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "boot_id": 2893746120,
+  "device_ms": 180000,
+  "utc": "2026-11-13T10:03:00.100Z",
+  "uncertainty_ms": 18,
+  "method": "round_trip"
+}

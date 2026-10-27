@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/session.schema.json",
+  "title": "Session",
+  "description": "One capture session. Every chunk, feature set and calibration belongs to a session. Two types: 'exercise' (standardised protocol such as the standing lat pulldown, with repetitions and a declared load) and 'spine_check' (short passive measurement of spine length, e.g. on waking or before sleeping). Comparing Earth and space only makes sense for sessions with the same protocol_id, so the protocol is part of the comparison key.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+    "session_type": { "type": "string", "enum": ["exercise", "spine_check"] },
+    "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+    "source": { "$ref": "../common.schema.json#/$defs/source" },
+    "started_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "ended_at": {
+      "description": "Null while the session is running.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    },
+    "end_reason": { "type": "string", "enum": ["completed", "aborted_by_user", "aborted_pain", "aborted_other"] },
+    "mission_context": {
+      "type": "object",
+      "properties": {
+        "mission_day": { "type": "integer" },
+        "phase": { "$ref": "../common.schema.json#/$defs/mission_phase" },
+        "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" }
+      },
+      "required": ["phase", "gravity_environment"],
+      "additionalProperties": false
+    },
+    "load_declared": {
+      "description": "Resistance used in an exercise session. There is no force sensor, so the load is declared, not measured: that is why the protocol must be very standardised. Required for exercise sessions.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["elastic_band", "cable", "free_weight", "none"] },
+        "nominal_kg": { "type": "number", "minimum": 0 },
+        "band_id": { "type": "string", "maxLength": 32, "description": "Colour or serial of the band." },
+        "band_stretch_cm": { "type": "number", "minimum": 0, "description": "Band stretch at the start position, to standardise tension." },
+        "description": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "planned_reps": { "type": "integer", "minimum": 1 },
+    "streams": {
+      "description": "Streams enabled for this session, with their placement and calibration.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/stream_declaration" }
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" },
+      "default": []
+    },
+    "notes": { "type": "string", "maxLength": 500 }
+  },
+  "required": [
+    "schema_version", "session_id", "astronaut_id", "device_id", "session_type",
+    "protocol_id", "source", "started_at", "mission_context", "streams"
+  ],
+  "if": { "properties": { "session_type": { "const": "exercise" } }, "required": ["session_type"] },
+  "then": { "required": ["load_declared"] },
+  "additionalProperties": false,
+  "$defs": {
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "rep_start", "rep_end",
+        "mvc_start", "mvc_end",
+        "rest_start", "rest_end",
+        "pain_reported", "artifact", "note"
+      ]
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "event_type": { "$ref": "#/$defs/event_type" },
+        "timestamp": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "device_ms": {
+          "description": "Device monotonic clock at the event, if the device stamped it.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "boot_id": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "rep_index": { "type": "integer", "minimum": 1 },
+        "note": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["event_type", "timestamp"],
+      "additionalProperties": false
+    },
+    "stream_declaration": {
+      "type": "object",
+      "properties": {
+        "stream_id": { "$ref": "../common.schema.json#/$defs/stream_id" },
+        "stream_kind": { "$ref": "../common.schema.json#/$defs/stream_kind" },
+        "placement": { "$ref": "../common.schema.json#/$defs/placement" },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "calibration_id": {
+          "description": "Calibration applied to this stream in this session (stretch curve, EMG MVC or IMU).",
+          "$ref": "../common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": ["stream_id", "stream_kind", "placement", "sample_rate_hz"],
+      "allOf": [
+        {
+          "if": { "properties": { "stream_kind": { "const": "emg" } }, "required": ["stream_kind"] },
+          "then": { "properties": { "placement": { "required": ["muscle", "side"] } } }
+        },
+        {
+          "if": { "properties": { "stream_kind": { "const": "imu" } }, "required": ["stream_kind"] },
+          "then": { "properties": { "placement": { "required": ["spine_level"] } } }
+        },
+        {
+          "if": { "properties": { "stream_kind": { "const": "stretch" } }, "required": ["stream_kind"] },
+          "then": { "properties": { "placement": { "required": ["spine_region"] } } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

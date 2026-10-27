@@ -4,12 +4,20 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from spine_contracts import Baseline, Driver, Level, SensorReading
+from spine_contracts import (
+    AssessmentDomain,
+    Baseline,
+    Driver,
+    Escalation,
+    FeatureSet,
+    FiredRule,
+    Level,
+)
 
 
 @dataclass(frozen=True)
 class Deviation:
-    metric: str
+    feature_id: str
     value: float
     score: float
 
@@ -18,17 +26,24 @@ class Deviation:
 class RiskResult:
     score: float
     drivers: list[Driver] = field(default_factory=list)
+    confidence: float = 0.0
+
+
+def no_escalation() -> Escalation:
+    return Escalation(required=False, reasons=[])
 
 
 @dataclass(frozen=True)
 class TriageDecision:
     level: Level
-    escalate_to_ground: bool = False
     recommendations: list[str] = field(default_factory=list)
+    fired_rules: list[FiredRule] = field(default_factory=list)
+    escalation: Escalation = field(default_factory=no_escalation)
+    domain_levels: dict[AssessmentDomain, Level] = field(default_factory=dict)
 
 
 class BaselineStrategy(Protocol):
-    def deviations(self, baseline: Baseline, readings: Sequence[SensorReading]) -> list[Deviation]: ...
+    def deviations(self, baseline: Baseline, feature_sets: Sequence[FeatureSet]) -> list[Deviation]: ...
 
 
 class RiskModel(Protocol):

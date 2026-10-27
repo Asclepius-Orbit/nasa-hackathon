@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "timestamp": "2026-11-13T10:03:00Z",
+  "status": "degraded",
+  "source": "device",
+  "boot_id": 2893746120,
+  "uptime_ms": 183900,
+  "firmware_version": "0.3.1",
+  "battery_pct": 18,
+  "link": { "type": "ble", "rssi_dbm": -67 },
+  "streams": [
+    { "stream_id": "emg_lat_left", "stream_kind": "emg", "state": "active", "sample_rate_hz": 1000, "last_seq": 1840 },
+    { "stream_id": "imu_l3", "stream_kind": "imu", "state": "active", "sample_rate_hz": 100, "last_seq": 367 },
+    { "stream_id": "stretch_lumbar", "stream_kind": "stretch", "state": "stalled", "sample_rate_hz": 20, "last_seq": 88 }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "stream_id": "imu_l3",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+  "source": "device",
+  "boot_id": 2893746120,
+  "seq": 368,
+  "t0_device_ms": 184200,
+  "received_at": "2026-11-13T10:03:04.312Z",
+  "sample_rate_hz": 100,
+  "n_samples": 4,
+  "stream_kind": "imu",
+  "units": {
+    "accel_x": "g", "accel_y": "g", "accel_z": "g",
+    "gyro_x": "deg/s", "gyro_y": "deg/s", "gyro_z": "deg/s"
+  },
+  "data": {
+    "accel_x": [0.02, 0.04, 0.06, 0.03],
+    "accel_y": [-0.01, -0.02, -0.01, 0.02],
+    "accel_z": [0.99, 1.01, 0.97, 0.95],
+    "gyro_x": [0.3, 0.5, 0.8, 1.1],
+    "gyro_y": [0.1, 0.2, 0.1, 0.3],
+    "gyro_z": [-0.2, -0.1, 0.0, 0.2]
+  },
+  "quality": {
+    "accel": { "score": 1.0, "flags": [], "assessed_by": "gateway" },
+    "gyro": { "score": 1.0, "flags": [], "assessed_by": "gateway" }
+  },
+  "config": { "accel_range_g": 2, "gyro_range_dps": 250 }
+}

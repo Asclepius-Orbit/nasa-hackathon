@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/daily-context.schema.json",
+  "title": "DailyContext",
+  "description": "What explains the signals on a given day: where in the mission the astronaut is, the gravity environment, what medication was taken and which exercise or countermeasures were done. Filled from the mission plan or manually. Medication matters because analgesics mask pain and some drugs alter muscle signals.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "date": { "$ref": "../common.schema.json#/$defs/date" },
+    "mission_day": { "type": "integer" },
+    "phase": { "$ref": "../common.schema.json#/$defs/mission_phase" },
+    "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" },
+    "medication": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "category": { "type": "string", "enum": ["analgesic", "anti_inflammatory", "muscle_relaxant", "sleep_aid", "other"] },
+          "dose_mg": { "type": "number", "exclusiveMinimum": 0 },
+          "taken_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
+        },
+        "required": ["name", "category", "taken_at"],
+        "additionalProperties": false
+      }
+    },
+    "exercise": {
+      "description": "General exercise of the day (not the standardised protocol session, which is a session).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "modality": { "type": "string", "enum": ["ared", "cevis", "t2", "other"] },
+          "duration_min": { "type": "number", "exclusiveMinimum": 0 },
+          "load_kg": { "type": "number", "minimum": 0 },
+          "rpe": {
+            "description": "Rating of perceived exertion, 0-10.",
+            "$ref": "../common.schema.json#/$defs/nrs"
+          }
+        },
+        "required": ["modality", "duration_min"],
+        "additionalProperties": false
+      }
+    },
+    "countermeasures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["axial_loading_suit", "stretching", "other"] },
+          "duration_min": { "type": "number", "exclusiveMinimum": 0 }
+        },
+        "required": ["type", "duration_min"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "date", "phase", "gravity_environment"],
+  "additionalProperties": false
+}

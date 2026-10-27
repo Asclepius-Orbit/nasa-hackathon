@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "5e1f0e90-0000-4000-8000-000000000002",
+  "astronaut_id": "AST-01",
+  "timestamp": "2027-02-07T08:30:00Z",
+  "mission_day": 85,
+  "source": "device",
+  "kind": "weekly_odi",
+  "items": [
+    { "item_id": "pain_intensity", "score": 2 },
+    { "item_id": "lifting", "score": 3 },
+    { "item_id": "sitting", "score": 1 },
+    { "item_id": "sleeping", "score": 2 }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "5e1f0e90-0000-4000-8000-000000000003",
+  "astronaut_id": "AST-01",
+  "timestamp": "2027-02-10T14:12:00Z",
+  "mission_day": 88,
+  "source": "device",
+  "kind": "red_flag",
+  "red_flags": ["numbness_or_tingling"],
+  "onset": "2027-02-10T13:50:00Z",
+  "note": "Tingling in the left foot since the last exercise."
+}

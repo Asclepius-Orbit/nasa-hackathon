@@ -1,0 +1,149 @@
+asyncapi: 3.0.0
+info:
+  title: Asclepius Orbit wearable bus
+  version: 1.0.0
+  description: |
+    MQTT contract between the wearable gateway (or the simulator) and the on-board app.
+    The document is written from the point of view of the GATEWAY: it sends streams, status,
+    command acks and clock anchors, and it receives commands. The real device and the
+    simulator publish on the same topics with the same payloads; the `source` field says which.
+
+    Topic layout: `asclepius/v1/crew/{astronaut_id}/device/{device_id}/...`.
+    Ids are pseudonymous (`AST-01`); no personal data travels on the bus.
+
+    Every payload is validated against the JSON Schemas in `schemas/v1/`, which are the source of truth.
+defaultContentType: application/json
+servers:
+  local:
+    host: 127.0.0.1:1883
+    protocol: mqtt
+    description: |
+      Mosquitto on the on-board computer, bound to localhost.
+      The gateway registers a Last Will on `.../status` with `status: offline`, retained, QoS 1.
+channels:
+  stream:
+    address: asclepius/v1/crew/{astronaut_id}/device/{device_id}/stream/{stream_id}
+    description: One topic per sensor stream. Chunks of consecutive samples; sample rates differ per stream.
+    parameters:
+      astronaut_id:
+        description: Pseudonymous crew id.
+        examples: [AST-01]
+      device_id:
+        description: Wearable or simulator id.
+        examples: [wb-01]
+      stream_id:
+        description: Stream declared in the session.
+        examples: [emg_lat_left, imu_l3, stretch_lumbar]
+    messages:
+      streamChunk:
+        $ref: '#/components/messages/streamChunk'
+  status:
+    address: asclepius/v1/crew/{astronaut_id}/device/{device_id}/status
+    description: Device health. Retained, so a late subscriber learns the last known state.
+    parameters:
+      astronaut_id: {}
+      device_id: {}
+    messages:
+      deviceStatus:
+        $ref: '#/components/messages/deviceStatus'
+  cmd:
+    address: asclepius/v1/crew/{astronaut_id}/device/{device_id}/cmd
+    description: Commands from the app to the gateway.
+    parameters:
+      astronaut_id: {}
+      device_id: {}
+    messages:
+      command:
+        $ref: '#/components/messages/command'
+  ack:
+    address: asclepius/v1/crew/{astronaut_id}/device/{device_id}/ack
+    description: Gateway answers to commands, correlated by `command_id`.
+    parameters:
+      astronaut_id: {}
+      device_id: {}
+    messages:
+      commandAck:
+        $ref: '#/components/messages/commandAck'
+  clock:
+    address: asclepius/v1/crew/{astronaut_id}/device/{device_id}/clock
+    description: Anchors between the device monotonic clock and UTC. Retained.
+    parameters:
+      astronaut_id: {}
+      device_id: {}
+    messages:
+      clockSync:
+        $ref: '#/components/messages/clockSync'
+operations:
+  sendStreamChunk:
+    action: send
+    channel:
+      $ref: '#/channels/stream'
+    summary: Gateway publishes sensor chunks (EMG about 10 msg/s, IMU 2 msg/s, stretch 1 msg/s with the default rates).
+    bindings:
+      mqtt:
+        qos: 1
+        retain: false
+        bindingVersion: 0.2.0
+  sendDeviceStatus:
+    action: send
+    channel:
+      $ref: '#/channels/status'
+    bindings:
+      mqtt:
+        qos: 1
+        retain: true
+        bindingVersion: 0.2.0
+  receiveCommand:
+    action: receive
+    channel:
+      $ref: '#/channels/cmd'
+    bindings:
+      mqtt:
+        qos: 1
+        retain: false
+        bindingVersion: 0.2.0
+  sendCommandAck:
+    action: send
+    channel:
+      $ref: '#/channels/ack'
+    bindings:
+      mqtt:
+        qos: 1
+        retain: false
+        bindingVersion: 0.2.0
+  sendClockSync:
+    action: send
+    channel:
+      $ref: '#/channels/clock'
+    bindings:
+      mqtt:
+        qos: 1
+        retain: true
+        bindingVersion: 0.2.0
+components:
+  messages:
+    streamChunk:
+      name: StreamChunk
+      title: Sensor stream chunk
+      payload:
+        $ref: 'schemas/v1/telemetry/stream-chunk.schema.json'
+    deviceStatus:
+      name: DeviceStatus
+      title: Device status
+      payload:
+        $ref: 'schemas/v1/telemetry/device-status.schema.json'
+    command:
+      name: Command
+      title: Command to the gateway
+      payload:
+        $ref: 'schemas/v1/telemetry/command.schema.json'
+    commandAck:
+      name: CommandAck
+      title: Command acknowledgement
+      payload:
+        $ref: 'schemas/v1/telemetry/command-ack.schema.json'
+    clockSync:
+      name: ClockSync
+      title: Clock anchor
+      payload:
+        $ref: 'schemas/v1/telemetry/clock-sync.schema.json'

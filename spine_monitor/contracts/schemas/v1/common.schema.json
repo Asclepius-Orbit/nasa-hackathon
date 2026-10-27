@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/common.schema.json",
+  "title": "Common definitions",
+  "description": "Shared building blocks for every Asclepius Orbit contract. Nothing here is a message by itself: other schemas $ref these definitions. Canonical units are fixed per channel type and never converted on reception: g (standard gravity), deg/s, mV, ohm, mm, cm, kg, Hz, ms, s.",
+  "$defs": {
+    "schema_version": {
+      "description": "Semantic version of the contract the message was produced against. Major must be 1 for this schema set.",
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "examples": ["1.0.0"]
+    },
+    "astronaut_id": {
+      "description": "Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.",
+      "type": "string",
+      "pattern": "^AST-[0-9]{2,3}$",
+      "examples": ["AST-01"]
+    },
+    "device_id": {
+      "description": "Wearable or simulator identifier, unique per physical device.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{1,31}$",
+      "examples": ["wb-01", "sim-01"]
+    },
+    "stream_id": {
+      "description": "Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_]{1,31}$",
+      "examples": ["emg_lat_left", "imu_l3", "stretch_lumbar"]
+    },
+    "uuid": {
+      "description": "RFC 4122 UUID, lowercase.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "utc_timestamp": {
+      "description": "RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.",
+      "type": "string",
+      "format": "date-time",
+      "examples": ["2026-11-13T10:00:00.250Z"]
+    },
+    "date": {
+      "description": "Calendar date, ISO 8601.",
+      "type": "string",
+      "format": "date"
+    },
+    "unit_interval": {
+      "description": "Number in [0, 1].",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "nrs": {
+      "description": "Numeric Rating Scale, integer 0 (none) to 10 (worst imaginable).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "level": {
+      "description": "Traffic-light level. Final level is decided by the deterministic clinical rules, not by the model alone.",
+      "type": "string",
+      "enum": ["green", "amber", "red"]
+    },
+    "source": {
+      "description": "Where the data really comes from. device: real hardware, or real input typed by the astronaut. simulator: synthetic. replay: a recording played back. A demo mixing real and simulated data must say so; consumers must never hide it.",
+      "type": "string",
+      "enum": ["device", "simulator", "replay"]
+    },
+    "gravity_environment": {
+      "description": "Gravity the astronaut is exposed to while the data is recorded. Mandatory context: in microgravity an accelerometer does not see gravity, so Earth and space IMU data are not directly comparable.",
+      "type": "string",
+      "enum": ["earth_1g", "microgravity", "moon_0_16g", "mars_0_38g"]
+    },
+    "mission_phase": {
+      "type": "string",
+      "enum": ["preflight", "inflight", "postflight"]
+    },
+    "side": {
+      "type": "string",
+      "enum": ["left", "right", "midline"]
+    },
+    "muscle": {
+      "description": "Muscle under an EMG electrode pair.",
+      "type": "string",
+      "enum": [
+        "latissimus_dorsi",
+        "trapezius",
+        "rhomboids",
+        "erector_spinae",
+        "multifidus",
+        "biceps_brachii",
+        "rectus_abdominis"
+      ]
+    },
+    "spine_level": {
+      "description": "Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).",
+      "type": "string",
+      "enum": [
+        "c7",
+        "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "t10", "t11", "t12",
+        "l1", "l2", "l3", "l4", "l5",
+        "s1"
+      ]
+    },
+    "spine_region": {
+      "type": "string",
+      "enum": ["cervical", "thoracic", "thoracolumbar", "lumbar", "sacral"]
+    },
+    "anatomical_plane": {
+      "type": "string",
+      "enum": ["sagittal", "frontal", "transverse"]
+    },
+    "stream_kind": {
+      "type": "string",
+      "enum": ["emg", "imu", "stretch"]
+    },
+    "placement": {
+      "description": "Where a sensor sits on the body. EMG needs muscle + side, IMU needs spine_level, stretch cord needs spine_region (and optionally the span it covers). The session schema enforces this per stream kind.",
+      "type": "object",
+      "properties": {
+        "muscle": { "$ref": "#/$defs/muscle" },
+        "side": { "$ref": "#/$defs/side" },
+        "spine_level": { "$ref": "#/$defs/spine_level" },
+        "spine_region": { "$ref": "#/$defs/spine_region" },
+        "span": {
+          "description": "Vertebral span covered by a stretch cord.",
+          "type": "object",
+          "properties": {
+            "from_level": { "$ref": "#/$defs/spine_level" },
+            "to_level": { "$ref": "#/$defs/spine_level" }
+          },
+          "required": ["from_level", "to_level"],
+          "additionalProperties": false
+        },
+        "description": { "type": "string", "maxLength": 200 }
+      },
+      "anyOf": [
+        { "required": ["muscle"] },
+        { "required": ["spine_level"] },
+        { "required": ["spine_region"] }
+      ],
+      "additionalProperties": false
+    },
+    "quality_flag": {
+      "type": "string",
+      "enum": [
+        "clipping",
+        "lead_off",
+        "motion_artifact",
+        "powerline_noise",
+        "packet_gap",
+        "out_of_calibration",
+        "low_snr",
+        "sensor_warmup",
+        "band_recovering",
+        "saturated_adc",
+        "clock_uncertain"
+      ]
+    },
+    "quality": {
+      "description": "Signal quality for one channel of one chunk (or one feature). score: 0 unusable, 1 perfect. flags say why it is not 1. assessed_by tells who computed it; the engine may recompute and return its own.",
+      "type": "object",
+      "properties": {
+        "score": { "$ref": "#/$defs/unit_interval" },
+        "flags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/quality_flag" },
+          "uniqueItems": true,
+          "default": []
+        },
+        "assessed_by": { "type": "string", "enum": ["device", "gateway", "engine"] }
+      },
+      "required": ["score", "assessed_by"],
+      "additionalProperties": false
+    },
+    "xyz": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      },
+      "required": ["x", "y", "z"],
+      "additionalProperties": false
+    },
+    "feature_id": {
+      "description": "Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
+      "examples": ["emg.latissimus_dorsi.left.rms_pct_mvc", "stretch.lumbar.elongation_mm"]
+    },
+    "recommendation_code": {
+      "type": "string",
+      "pattern": "^REC_[A-Z0-9_]+$",
+      "examples": ["REC_LUMBAR_STAB_01"]
+    },
+    "rule_id": {
+      "type": "string",
+      "pattern": "^RULE_[A-Z0-9_]+$",
+      "examples": ["RULE_RED_FLAG_NEURO"]
+    },
+    "protocol_id": {
+      "description": "Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_]{1,63}$",
+      "examples": ["lat_pulldown_standing_v1", "spine_length_rest_v1"]
+    }
+  }
+}

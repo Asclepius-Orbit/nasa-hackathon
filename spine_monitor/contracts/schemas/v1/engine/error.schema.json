@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/error.schema.json",
+  "title": "ErrorResponse",
+  "description": "Error body of every engine endpoint, shaped after RFC 9457 problem details.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "invalid_request",
+        "unknown_feature",
+        "missing_calibration",
+        "insufficient_data",
+        "unsupported_schema_version",
+        "internal"
+      ]
+    },
+    "title": { "type": "string" },
+    "status": { "type": "integer", "minimum": 400, "maximum": 599 },
+    "detail": { "type": "string" },
+    "errors": {
+      "description": "Field-level problems, as JSON Pointer + message.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "required": ["pointer", "message"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["type", "title", "status"],
+  "additionalProperties": false
+}

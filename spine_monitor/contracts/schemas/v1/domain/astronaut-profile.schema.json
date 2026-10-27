@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/astronaut-profile.schema.json",
+  "title": "AstronautProfile",
+  "description": "Slow-changing facts about an astronaut, filled in by the flight surgeon or the app before the mission and updated in flight (weight above all). The engine uses them to select reference ranges and to adjust risk; they are personal data and never travel over the MQTT bus. Age is derived from date_of_birth, never stored.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "updated_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "date_of_birth": { "$ref": "../common.schema.json#/$defs/date" },
+    "sex_at_birth": {
+      "description": "Used for physiology (muscle mass, EMG amplitude and spine reference ranges). The engine reads only this field.",
+      "type": "string",
+      "enum": ["female", "male", "intersex", "undisclosed"]
+    },
+    "gender_identity": {
+      "description": "Optional, free text, only for how the UI addresses the person. Never used by the engine.",
+      "type": "string",
+      "maxLength": 50
+    },
+    "anthropometry": {
+      "type": "object",
+      "properties": {
+        "height_standing_cm": { "type": "number", "minimum": 100, "maximum": 230 },
+        "height_sitting_cm": {
+          "description": "Sitting height: proxy of trunk and spine length.",
+          "type": "number",
+          "minimum": 50,
+          "maximum": 130
+        },
+        "body_mass_kg": { "type": "number", "minimum": 30, "maximum": 200 },
+        "body_mass_measured_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "skinfold_mm": {
+          "description": "Subcutaneous fat thickness over the EMG electrode sites. Thicker fat attenuates the EMG amplitude.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "muscle": { "$ref": "../common.schema.json#/$defs/muscle" },
+              "side": { "$ref": "../common.schema.json#/$defs/side" },
+              "thickness_mm": { "type": "number", "minimum": 0 }
+            },
+            "required": ["muscle", "side", "thickness_mm"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["height_standing_cm", "body_mass_kg"],
+      "additionalProperties": false
+    },
+    "spine_history": {
+      "description": "Pre-flight spine history. Which of these factors weigh in the risk model, and how much, is decided by the clinical model (Aguado), not by this contract.",
+      "type": "object",
+      "properties": {
+        "low_back_pain_history": { "type": "boolean" },
+        "disc_herniation": {
+          "type": "object",
+          "properties": {
+            "has_history": { "type": "boolean" },
+            "levels": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/spine_level" }, "uniqueItems": true },
+            "date": { "$ref": "../common.schema.json#/$defs/date" }
+          },
+          "required": ["has_history"],
+          "additionalProperties": false
+        },
+        "spine_surgery": {
+          "type": "object",
+          "properties": {
+            "has_history": { "type": "boolean" },
+            "description": { "type": "string", "maxLength": 300 },
+            "date": { "$ref": "../common.schema.json#/$defs/date" }
+          },
+          "required": ["has_history"],
+          "additionalProperties": false
+        },
+        "scoliosis": {
+          "type": "object",
+          "properties": {
+            "present": { "type": "boolean" },
+            "cobb_angle_deg": { "type": "number", "minimum": 0, "maximum": 180 }
+          },
+          "required": ["present"],
+          "additionalProperties": false
+        },
+        "degenerative_discs_on_preflight_mri": {
+          "type": "object",
+          "properties": {
+            "present": { "type": "boolean" },
+            "levels": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/spine_level" }, "uniqueItems": true }
+          },
+          "required": ["present"],
+          "additionalProperties": false
+        },
+        "notes": { "type": "string", "maxLength": 500 }
+      },
+      "additionalProperties": false
+    },
+    "space_history": {
+      "type": "object",
+      "properties": {
+        "previous_missions": { "type": "integer", "minimum": 0 },
+        "cumulative_microgravity_days": { "type": "integer", "minimum": 0 },
+        "last_mission_end_date": { "$ref": "../common.schema.json#/$defs/date" }
+      },
+      "required": ["previous_missions"],
+      "additionalProperties": false
+    },
+    "fitness": {
+      "type": "object",
+      "properties": {
+        "dominant_side": { "type": "string", "enum": ["left", "right", "ambidextrous"] },
+        "training_level": { "type": "string", "enum": ["low", "moderate", "high", "elite"] },
+        "lat_pulldown_reference_load_kg": {
+          "description": "Reference Earth load of the standard lat pulldown (e.g. 1RM or working load). Muscle MVC references live in emg_mvc calibrations.",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "updated_at", "date_of_birth", "sex_at_birth", "anthropometry"],
+  "additionalProperties": false
+}

@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "feature_sets": [
+    {
+      "schema_version": "1.0.0",
+      "astronaut_id": "AST-01",
+      "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "earth_1g",
+      "source": "device",
+      "computed_at": "2026-11-13T10:08:00Z",
+      "engine_version": "0.1.0",
+      "window": {
+        "start": "2026-11-13T10:02:31Z",
+        "end": "2026-11-13T10:07:31Z"
+      },
+      "features": [
+        {
+          "feature_id": "emg.latissimus_dorsi.left.rms_pct_mvc",
+          "value": 41.5,
+          "unit": "%",
+          "n": 10,
+          "quality": {
+            "score": 0.92,
+            "flags": [],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "emg.latissimus_dorsi.left.median_freq_hz",
+          "value": 87.3,
+          "unit": "Hz",
+          "n": 10,
+          "quality": {
+            "score": 0.9,
+            "flags": [],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "imu.l3.sagittal.rom_deg",
+          "value": 28.4,
+          "unit": "deg",
+          "n": 10,
+          "quality": {
+            "score": 1.0,
+            "flags": [],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "stretch.lumbar.peak_elongation_mm",
+          "value": 6.8,
+          "unit": "mm",
+          "n": 10,
+          "quality": {
+            "score": 0.8,
+            "flags": [
+              "band_recovering"
+            ],
+            "assessed_by": "engine"
+          }
+        },
+        {
+          "feature_id": "exercise.rep_count",
+          "value": 10,
+          "unit": "count",
+          "quality": {
+            "score": 1.0,
+            "flags": [],
+            "assessed_by": "engine"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "feature_id": "emg.latissimus_dorsi.right.rms_pct_mvc",
+          "reason": "stream_missing"
+        }
+      ]
+    }
+  ]
+}

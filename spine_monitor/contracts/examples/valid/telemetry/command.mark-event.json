@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "command_id": "c0ffee00-0000-4000-8000-000000000003",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "issued_at": "2026-11-13T10:03:10.500Z",
+  "type": "mark_event",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+  "event_type": "rep_start",
+  "rep_index": 1
+}

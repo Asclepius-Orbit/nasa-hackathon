@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/telemetry/clock-sync.schema.json",
+  "title": "ClockSync",
+  "description": "Anchor between the device monotonic clock and UTC, published by the gateway on .../device/{device_id}/clock at session start and then periodically (suggested every 60 s). The ESP32 has no real-time clock, so t0_device_ms of every chunk is mapped to UTC with the latest anchor of the same boot_id. Drift between anchors is the clock error.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+    "boot_id": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "device_ms": {
+      "description": "Device monotonic clock reading (ms since boot) at the anchor.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "utc": {
+      "description": "UTC instant that corresponds to device_ms.",
+      "$ref": "../common.schema.json#/$defs/utc_timestamp"
+    },
+    "uncertainty_ms": {
+      "description": "Estimated error of the anchor (half round-trip time of the exchange). BLE links are usually tens of ms.",
+      "type": "number",
+      "minimum": 0
+    },
+    "method": { "type": "string", "enum": ["round_trip", "gateway_receive_time", "simulated"] }
+  },
+  "required": ["schema_version", "astronaut_id", "device_id", "boot_id", "device_ms", "utc", "uncertainty_ms", "method"],
+  "additionalProperties": false
+}

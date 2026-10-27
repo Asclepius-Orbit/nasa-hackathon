@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "stream_id": "emg_lat_left",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+  "source": "device",
+  "boot_id": 2893746120,
+  "seq": 1842,
+  "t0_device_ms": 184200,
+  "received_at": "2026-11-13T10:03:04.310Z",
+  "sample_rate_hz": 1000,
+  "n_samples": 5,
+  "dropped_samples": 0,
+  "stream_kind": "emg",
+  "signal_kind": "raw",
+  "units": { "emg": "mV" },
+  "data": { "emg": [0.125, 0.143, 0.281, 0.41, 0.337] },
+  "quality": { "emg": { "score": 0.92, "flags": [], "assessed_by": "gateway" } },
+  "acquisition": { "adc_bits": 12, "vref_v": 3.3, "input_pin": "GPIO34" },
+  "filter": { "notch_hz": 50 }
+}

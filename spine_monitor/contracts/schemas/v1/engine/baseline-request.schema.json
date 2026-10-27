@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/baseline-request.schema.json",
+  "title": "BaselineRequest",
+  "description": "POST /baseline. Feature sets of the reference sessions (normally pre-flight, 1 g) in, Baseline out. The engine groups by feature + protocol + gravity environment. The app stores the returned baseline and sends it with every /assess; the engine keeps nothing.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "feature_sets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "../domain/feature-set.schema.json" }
+    },
+    "previous_baseline_version": {
+      "description": "Version of the baseline being replaced; the new one gets version + 1. Absent for the first baseline.",
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "feature_sets"],
+  "additionalProperties": false
+}

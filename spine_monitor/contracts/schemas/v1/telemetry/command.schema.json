@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/telemetry/command.schema.json",
+  "title": "Command",
+  "description": "Control message from the app to the gateway, published QoS 1 on .../device/{device_id}/cmd. The gateway answers with a command-ack on .../ack. The UI drives the standardised protocol step by step with these commands.",
+  "oneOf": [
+    { "$ref": "#/$defs/start_session" },
+    { "$ref": "#/$defs/stop_session" },
+    { "$ref": "#/$defs/mark_event" },
+    { "$ref": "#/$defs/calibrate" }
+  ],
+  "$defs": {
+    "command_base": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "command_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+        "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+        "issued_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
+      },
+      "required": ["schema_version", "command_id", "astronaut_id", "device_id", "issued_at"]
+    },
+    "start_session": {
+      "title": "StartSessionCommand",
+      "description": "Begin recording. Every chunk published until stop_session carries this session_id. The full session record (streams, placement, load) is stored by the app; the gateway only needs what is below.",
+      "allOf": [
+        { "$ref": "#/$defs/command_base" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "start_session" },
+            "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "session_type": { "type": "string", "enum": ["exercise", "spine_check"] },
+            "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+            "stream_ids": {
+              "description": "Streams to enable. Empty = all the device has.",
+              "type": "array",
+              "items": { "$ref": "../common.schema.json#/$defs/stream_id" },
+              "uniqueItems": true
+            },
+            "max_duration_s": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["type", "session_id", "session_type", "protocol_id"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "stop_session": {
+      "title": "StopSessionCommand",
+      "allOf": [
+        { "$ref": "#/$defs/command_base" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "stop_session" },
+            "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "reason": { "type": "string", "enum": ["completed", "aborted_by_user", "aborted_pain", "aborted_other"] }
+          },
+          "required": ["type", "session_id", "reason"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "mark_event": {
+      "title": "MarkEventCommand",
+      "description": "Timestamp an event inside a running session (start/end of a repetition, MVC effort...). The device stamps the event on its monotonic clock when it receives the command.",
+      "allOf": [
+        { "$ref": "#/$defs/command_base" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "mark_event" },
+            "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "event_type": { "$ref": "../domain/session.schema.json#/$defs/event_type" },
+            "rep_index": { "type": "integer", "minimum": 1 },
+            "note": { "type": "string", "maxLength": 200 }
+          },
+          "required": ["type", "session_id", "event_type"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "calibrate": {
+      "title": "CalibrateCommand",
+      "description": "Ask the device to run a calibration routine on some streams. The result is a calibration entity referenced by calibration_id in the ack.",
+      "allOf": [
+        { "$ref": "#/$defs/command_base" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "calibrate" },
+            "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "calibration_type": { "type": "string", "enum": ["stretch", "emg_mvc", "imu"] },
+            "stream_ids": {
+              "type": "array",
+              "items": { "$ref": "../common.schema.json#/$defs/stream_id" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "duration_s": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["type", "session_id", "calibration_type", "stream_ids"]
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

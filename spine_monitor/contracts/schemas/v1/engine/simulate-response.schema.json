@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/simulate-response.schema.json",
+  "title": "SimulateResponse",
+  "description": "Result of POST /simulate: the assessment of the unchanged input next to the assessment of the scenario, so the difference is explicit. Both are hypothetical and must be shown as such.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "reference": { "$ref": "../domain/assessment.schema.json" },
+    "scenario": { "$ref": "../domain/assessment.schema.json" },
+    "hypothetical": { "const": true }
+  },
+  "required": ["schema_version", "reference", "scenario", "hypothetical"],
+  "additionalProperties": false
+}

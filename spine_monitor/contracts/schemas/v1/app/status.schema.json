@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/status.schema.json",
+  "title": "Status",
+  "description": "Response of GET /crew/{astronaut_id}/status; backs the MCP tool get_current_status. Everything needed to answer how the astronaut is now in one call. Missing data is null with stale=true in freshness: absence is never reported as a reassuring state.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "generated_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "today": {
+      "description": "Mission context of the current day, from the daily context; null when none is recorded.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "date": { "$ref": "../common.schema.json#/$defs/date" },
+            "mission_day": { "type": "integer" },
+            "phase": { "$ref": "../common.schema.json#/$defs/mission_phase" },
+            "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" }
+          },
+          "required": ["date", "phase", "gravity_environment"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "latest_assessment": {
+      "oneOf": [{ "$ref": "../domain/assessment.schema.json" }, { "type": "null" }]
+    },
+    "latest_session": {
+      "oneOf": [{ "$ref": "../domain/session.schema.json" }, { "type": "null" }]
+    },
+    "latest_self_report": {
+      "oneOf": [{ "$ref": "../domain/self-report.schema.json" }, { "type": "null" }]
+    },
+    "devices": {
+      "description": "Last known status of each device of the astronaut.",
+      "type": "array",
+      "items": { "$ref": "../telemetry/device-status.schema.json" }
+    },
+    "active_baseline": {
+      "description": "Baseline the latest assessment is compared against; null when none was built yet.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "baseline_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "version": { "type": "integer", "minimum": 1 },
+            "created_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
+          },
+          "required": ["baseline_id", "version", "created_at"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "freshness": {
+      "description": "How old each piece of data is. stale is decided by the app with its configured thresholds; the contract does not fix them.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "what": { "type": "string", "enum": ["assessment", "session", "self_report", "device"] },
+          "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+          "last_at": {
+            "description": "Timestamp of the latest item; null when there is none.",
+            "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+          },
+          "age_hours": { "type": ["number", "null"], "minimum": 0 },
+          "stale": { "type": "boolean" }
+        },
+        "required": ["what", "last_at", "age_hours", "stale"],
+        "if": { "properties": { "what": { "const": "device" } }, "required": ["what"] },
+        "then": { "required": ["device_id"] },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version", "astronaut_id", "generated_at", "today", "latest_assessment", "latest_session",
+    "latest_self_report", "devices", "active_baseline", "freshness"
+  ],
+  "additionalProperties": false
+}

@@ -38,9 +38,10 @@ def dump(model: BaseModel) -> dict[str, Any]:
 
     Only fields that were set are emitted: defaults are left out and an explicit None stays `null`,
     which is what the schemas expect (`exclude_none` would drop required nullable fields such as
-    `session_id` of a feature set). Build models without passing None for optional fields.
+    `session_id` of a feature set). Build models without passing None for optional fields. Aliases are
+    used because the window of the app API is `from`, a Python keyword the models call `from_`.
     """
-    return model.model_dump(mode="json", exclude_unset=True)
+    return model.model_dump(mode="json", exclude_unset=True, by_alias=True)
 
 
 stream_chunk_adapter: TypeAdapter[StreamChunk] = TypeAdapter(StreamChunk)

@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from spine_contracts import topics
+from spine_contracts import openapi_drift, topics
 
 CONTRACTS_DIR = Path(__file__).resolve().parents[1]
-DOCS = ["asyncapi.yaml", "openapi.yaml"]
+DOCS = ["asyncapi.yaml", "openapi.yaml", "app-openapi.yaml"]
 
 
 def load(name: str):
@@ -57,3 +57,73 @@ def test_asyncapi_addresses_match_the_topic_helpers():
 
 def test_openapi_paths_are_the_engine_endpoints():
     assert set(load("openapi.yaml")["paths"]) == {"/health", "/features", "/baseline", "/assess", "/simulate"}
+
+
+APP_PATHS = {
+    "/health",
+    "/crew/{astronaut_id}/status",
+    "/crew/{astronaut_id}/history",
+    "/assessments/{assessment_id}/explanation",
+    "/crew/{astronaut_id}/assessments",
+    "/assessments/{assessment_id}",
+    "/crew/{astronaut_id}/sessions",
+    "/sessions/{session_id}",
+    "/sessions/{session_id}/feature-set",
+    "/crew/{astronaut_id}/self-reports",
+    "/self-reports/{report_id}",
+    "/crew/{astronaut_id}/baselines/{baseline_id}",
+}
+
+
+def test_app_openapi_paths_are_the_read_endpoints():
+    assert set(load("app-openapi.yaml")["paths"]) == APP_PATHS
+
+
+def test_app_openapi_is_read_only():
+    methods = {method for item in load("app-openapi.yaml")["paths"].values() for method in item}
+    assert methods == {"get"}
+
+
+def test_app_openapi_operation_ids_are_unique():
+    ids = [op["operationId"] for item in load("app-openapi.yaml")["paths"].values() for op in item.values()]
+    assert len(ids) == len(set(ids))
+
+
+def test_app_openapi_path_parameters_are_declared():
+    document = load("app-openapi.yaml")
+    for path, item in document["paths"].items():
+        declared = {
+            document["components"]["parameters"][p["$ref"].rsplit("/", 1)[1]]["name"]
+            for p in item["get"].get("parameters", [])
+            if p["$ref"].startswith("#/components/parameters/")
+        }
+        in_path = {part[1:-1] for part in path.split("/") if part.startswith("{")}
+        assert in_path <= declared, f"{path}: undeclared path parameters {in_path - declared}"
+
+
+def test_app_errors_are_problem_details():
+    for name, response in load("app-openapi.yaml")["components"]["responses"].items():
+        assert list(response["content"]) == ["application/problem+json"], name
+
+
+def test_openapi_drift_is_empty_for_the_same_document():
+    contract = load("app-openapi.yaml")
+    assert openapi_drift.diff(contract, contract) == []
+
+
+def test_openapi_drift_reports_missing_unexpected_and_renamed_operations():
+    contract = load("app-openapi.yaml")
+    generated = {
+        "paths": {
+            "/crew/{astronaut_id}/status": {"get": {"operationId": "status"}},
+            "/crew/{astronaut_id}/history": {"get": {"operationId": "getHistory"}},
+            "/crew/{astronaut_id}/reset": {"post": {"operationId": "reset"}},
+        }
+    }
+
+    problems = openapi_drift.diff(contract, generated)
+
+    assert "unexpected: POST /crew/{astronaut_id}/reset" in problems
+    assert "missing: GET /sessions/{session_id}" in problems
+    assert "operationId of GET /crew/{astronaut_id}/status: expected 'getStatus', got 'status'" in problems
+    assert not any("getHistory" in problem for problem in problems)

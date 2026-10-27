@@ -7,7 +7,9 @@ from pydantic import ValidationError
 
 from spine_contracts import (
     SCHEMA_VERSION,
+    AppErrorResponse,
     Assessment,
+    AssessmentList,
     AssessRequest,
     AstronautProfile,
     Baseline,
@@ -17,11 +19,16 @@ from spine_contracts import (
     DailyContext,
     DeviceStatus,
     ErrorResponse,
+    Explanation,
     FeaturesRequest,
     FeatureSet,
+    History,
+    SelfReportList,
     Session,
+    SessionList,
     SimulateRequest,
     SimulateResponse,
+    Status,
     calibration_adapter,
     command_adapter,
     dump,
@@ -55,7 +62,17 @@ PARSERS = {
     "engine/simulate-request": SimulateRequest.model_validate,
     "engine/simulate-response": SimulateResponse.model_validate,
     "engine/error": ErrorResponse.model_validate,
+    "app/status": Status.model_validate,
+    "app/history": History.model_validate,
+    "app/explanation": Explanation.model_validate,
+    "app/assessment-list": AssessmentList.model_validate,
+    "app/session-list": SessionList.model_validate,
+    "app/self-report-list": SelfReportList.model_validate,
+    "app/error": AppErrorResponse.model_validate,
 }
+
+# RFC 9457 problem details carry no schema_version
+PROBLEM_DETAILS = {"engine/error", "app/error"}
 
 
 def example_files():
@@ -110,8 +127,7 @@ def test_examples_use_the_current_schema_version():
                 yield from versions(item)
 
     for path in example_files():
-        # error bodies are RFC 9457 problem details and carry no version
-        expected = set() if schema_name(path) == "engine/error" else {SCHEMA_VERSION}
+        expected = set() if schema_name(path) in PROBLEM_DETAILS else {SCHEMA_VERSION}
         assert set(versions(load(path))) == expected, path.name
 
 

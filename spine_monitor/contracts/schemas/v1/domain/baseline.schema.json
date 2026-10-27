@@ -22,25 +22,28 @@
     },
     "entries": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
-          "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
-          "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" },
-          "n": { "type": "integer", "minimum": 1, "description": "Number of sessions that contributed." },
-          "mean": { "type": "number" },
-          "std": { "type": "number", "minimum": 0 },
-          "median": { "type": "number" },
-          "mad": { "type": "number", "minimum": 0, "description": "Median absolute deviation." },
-          "min": { "type": "number" },
-          "max": { "type": "number" }
-        },
-        "required": ["feature_id", "gravity_environment", "n", "mean", "std", "median", "mad"],
-        "additionalProperties": false
-      }
+      "items": { "$ref": "#/$defs/entry" }
     }
   },
   "required": ["schema_version", "baseline_id", "astronaut_id", "version", "created_at", "built_from_session_ids", "entries"],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "properties": {
+        "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+        "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+        "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" },
+        "n": { "type": "integer", "minimum": 1, "description": "Number of sessions that contributed." },
+        "mean": { "type": "number" },
+        "std": { "type": "number", "minimum": 0 },
+        "median": { "type": "number" },
+        "mad": { "type": "number", "minimum": 0, "description": "Median absolute deviation." },
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      },
+      "required": ["feature_id", "gravity_environment", "n", "mean", "std", "median", "mad"],
+      "additionalProperties": false
+    }
+  }
 }

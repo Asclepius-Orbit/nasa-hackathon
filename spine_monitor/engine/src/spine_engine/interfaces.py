@@ -11,6 +11,7 @@ from spine_contracts import (
     BaselineRequest,
     Driver,
     Escalation,
+    FeaturesRequest,
     FeatureSet,
     FiredRule,
     GravityEnvironment,
@@ -91,6 +92,12 @@ class VotePolicy(Protocol):
 
 class BaselineBuilder(Protocol):
     def build(self, request: BaselineRequest) -> Baseline: ...
+
+
+class FeatureExtractor(Protocol):
+    """Datos crudos de una sesión -> FeatureSet. La extracción real llega con #15."""
+
+    def extract(self, request: FeaturesRequest) -> FeatureSet: ...
 
 
 class RiskModel(Protocol):

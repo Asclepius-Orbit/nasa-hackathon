@@ -1,8 +1,9 @@
 """Implementaciones nulas: no inventan métricas ni umbrales (dependen del modelo de Aguado)."""
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
-from spine_contracts import Baseline, FeatureSet, FeatureValue, Level
+from spine_contracts import SCHEMA_VERSION, Baseline, FeaturesRequest, FeatureSet, FeatureValue, Level
 
 from spine_engine.interfaces import Deviation, RiskResult, TriageDecision
 from spine_engine.pipeline import AssessmentPipeline
@@ -29,6 +30,23 @@ class NullBaselineStrategy:
             if entry is not None:
                 result.append(Deviation(feature_id=feature_id, value=feature.value, score=feature.value - entry.mean))
         return result
+
+
+class NullFeatureExtractor:
+    """FeatureSet vacío con los metadatos de la sesión: no inventa ninguna feature."""
+
+    def extract(self, request: FeaturesRequest) -> FeatureSet:
+        session = request.session
+        return FeatureSet(
+            schema_version=SCHEMA_VERSION,
+            astronaut_id=session.astronaut_id,
+            session_id=session.session_id,
+            protocol_id=session.protocol_id,
+            gravity_environment=session.mission_context.gravity_environment,
+            source=session.source,
+            computed_at=datetime.now(UTC),
+            features=[],
+        )
 
 
 class NullRiskModel:

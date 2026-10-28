@@ -8,6 +8,15 @@ services:
       - ./mosquitto/data:/mosquitto/data
     restart: unless-stopped
 
+  engine:
+    build:
+      context: ..
+      dockerfile: spine_monitor/engine/Dockerfile
+    image: spine-engine:dev
+    ports:
+      - "127.0.0.1:8001:8001"
+    restart: unless-stopped
+
   backend:
     build:
       context: ..

@@ -5,8 +5,8 @@ schemas (an exercise session needs a declared load, a derived cord length needs 
 required escalation needs an urgency...). Use `validate` at the boundaries where data enters the
 system (gateway ingestion, engine API) when those rules matter.
 
-The schemas are read from the repository (`contracts/schemas/v1`), so this works from the uv
-workspace, which is how every component runs. It is not meant for a wheel installed on its own.
+The schemas are read from the repository (`contracts/schemas/v1`) when running from the uv workspace,
+and from the copy bundled in the wheel (`spine_contracts/schemas/v1`) when installed on its own.
 """
 
 import json
@@ -18,13 +18,15 @@ from jsonschema.exceptions import ValidationError
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
-SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas" / "v1"
+_BUNDLED_DIR = Path(__file__).resolve().parent / "schemas" / "v1"
+_REPO_DIR = Path(__file__).resolve().parents[2] / "schemas" / "v1"
+SCHEMAS_DIR = _BUNDLED_DIR if _BUNDLED_DIR.is_dir() else _REPO_DIR
 
 
 @cache
 def _registry() -> Registry:
     if not SCHEMAS_DIR.is_dir():
-        raise FileNotFoundError(f"JSON Schemas not found at {SCHEMAS_DIR}; run from the repository workspace")
+        raise FileNotFoundError(f"JSON Schemas not found at {SCHEMAS_DIR}; run from the repository workspace or install the wheel")
     registry = Registry()
     for path in sorted(SCHEMAS_DIR.rglob("*.schema.json")):
         schema = json.loads(path.read_text(encoding="utf-8"))

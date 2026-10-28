@@ -56,3 +56,8 @@ def test_derived_cord_length_needs_its_calibration():
 def test_unknown_schema_name():
     with pytest.raises(KeyError):
         validation.validator("domain/nope")
+
+
+def test_schemas_dir_is_found_and_has_every_schema():
+    assert (validation.SCHEMAS_DIR / "common.schema.json").is_file()
+    assert (validation.SCHEMAS_DIR / "engine" / "assess-request.schema.json").is_file()

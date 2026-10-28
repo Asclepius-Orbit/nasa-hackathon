@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["contracts", "physiology", "engine", "mcp_server", "agent"]
+members = ["contracts", "physiology", "engine", "mcp_server", "agent", "backend"]
 
 [dependency-groups]
 dev = ["pytest>=8"]

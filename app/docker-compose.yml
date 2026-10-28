@@ -1,0 +1,23 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: spine_monitor/backend/Dockerfile
+    image: spine-backend:dev
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - mosquitto
+    restart: unless-stopped

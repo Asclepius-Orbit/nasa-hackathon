@@ -1,12 +1,15 @@
 """Gateway falso con un cliente MQTT falso y tiempo virtual (sin broker)."""
 
 import asyncio
+import itertools
 import json
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import aiomqtt
 import pytest
 import yaml
 from spine_contracts import topics, validation
@@ -20,7 +23,10 @@ T0 = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)
 AST, DEV = "AST-01", "sim-01"
 SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"
 OTHER = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02"
-SCHEMAS = {"stream": "telemetry/stream-chunk", "status": "telemetry/device-status", "clock": "telemetry/clock-sync", "ack": "telemetry/command-ack"}
+SCHEMAS = {
+    "stream": "telemetry/stream-chunk", "status": "telemetry/device-status", "clock": "telemetry/clock-sync", "ack": "telemetry/command-ack",
+    "calibration": "domain/calibration",
+}  # fmt: skip
 
 
 def make_config(edit=None) -> MissionConfig:
@@ -58,7 +64,7 @@ class Published:
 
     @property
     def channel(self) -> str:
-        return self.topic.split("/")[-2] if "/stream/" in self.topic else self.topic.rsplit("/", 1)[-1]
+        return self.topic.split("/")[-2] if "/stream/" in self.topic or "/calibration/" in self.topic else self.topic.rsplit("/", 1)[-1]
 
 
 @dataclass
@@ -68,12 +74,22 @@ class Message:
 
 
 class FakeClient:
-    def __init__(self) -> None:
+    """`drop_after`: el broker se cae al intentar publicar el chunk número `drop_after` (no llega) y desde
+    entonces todo publish falla. `drop_messages`: la recepción se corta en cuanto se escucha."""
+
+    def __init__(self, *, drop_after: int | None = None, drop_messages: bool = False) -> None:
         self.published: list[Published] = []
         self.subscriptions: list[tuple[str, int]] = []
         self.queue: asyncio.Queue[Message] = asyncio.Queue()
+        self.drop_after = drop_after
+        self.drop_messages = drop_messages
+        self.dropped = False
 
     async def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> None:
+        if self.drop_after is not None and "/stream/" in topic and len(self.on("stream")) + 1 >= self.drop_after:
+            self.dropped = True
+        if self.dropped:
+            raise aiomqtt.MqttError("Disconnected")
         self.published.append(Published(topic, json.loads(payload), qos, retain))
 
     async def subscribe(self, topic: str, qos: int) -> None:
@@ -85,6 +101,8 @@ class FakeClient:
 
     async def _messages(self):
         while True:
+            if self.drop_messages:
+                raise aiomqtt.MqttError("Disconnected during message iteration")
             yield await self.queue.get()
 
     def on(self, channel: str) -> list[Published]:
@@ -141,6 +159,24 @@ def assert_all_valid(client: FakeClient) -> None:
     for p in client.published:
         assert p.qos == 1
         assert validation.errors(SCHEMAS[p.channel], p.payload) == [], (p.topic, p.payload)
+        if p.channel == "calibration":
+            assert p.retain and p.topic == topics.calibration(p.payload["astronaut_id"], p.payload["device_id"], p.payload["stream_id"])
+
+
+def assert_calibrations_resolvable(published: list[Published]) -> int:
+    """Cada chunk con calibration_id llega cuando la retained de `topics.calibration` de su stream es esa
+    calibración (publicada antes por este cliente): un consumidor tardío siempre la resuelve. Devuelve
+    cuántos chunks la citan."""
+    retained: dict[str, str] = {}
+    cited = 0
+    for p in published:
+        if p.channel == "calibration":
+            retained[p.topic] = p.payload["calibration_id"]
+        elif p.channel == "stream" and "calibration_id" in p.payload:
+            c = p.payload
+            assert retained.get(topics.calibration(c["astronaut_id"], c["device_id"], c["stream_id"])) == c["calibration_id"], (c["stream_id"], c["seq"])
+            cited += 1
+    return cited
 
 
 def chunks(client: FakeClient, session_id: str | None = None) -> list[dict]:
@@ -320,6 +356,165 @@ def test_calibrate_completes_with_a_calibration_id_used_by_the_next_session():
         await h.run(3)
         stretch = [c for c in chunks(h.client, SESSION) if c["stream_kind"] == "stretch"]
         assert stretch and {c["calibration_id"] for c in stretch} == {calibration_id}
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_calibrate_publishes_retained_calibrations_right_before_its_completed_ack():
+    async def scenario():
+        h = Harness(make_config(lambda raw: raw["schedule"]["background"].update(enabled=False)))
+        cal = command("calibrate", 1, session_id=SESSION, calibration_type="emg_mvc", stream_ids=["emg_lat_left", "emg_lat_right"], duration_s=2)
+        await h.send(cal)
+        await h.run(1)
+        assert h.client.on("calibration") == []  # aún no ha acabado
+        await h.run(2)
+        published = [(p.channel, p.payload) for p in h.client.published if p.channel in ("calibration", "ack")]
+        accepted, first, second, completed = published
+        assert accepted[1]["status"] == "accepted" and completed[1]["status"] == "completed"
+        assert [first[1]["stream_id"], second[1]["stream_id"]] == ["emg_lat_left", "emg_lat_right"]
+        assert completed[1]["result"]["calibration_id"] == first[1]["calibration_id"]
+        assert all(p[1]["calibration_type"] == "emg_mvc" and p[1]["session_id"] == SESSION for p in (first, second))
+        assert all(p.retain and p.qos == 1 for p in h.client.on("calibration"))
+        await h.send(cal)  # reentrega: mismos acks, sin volver a publicar calibraciones
+        assert len(h.client.on("calibration")) == 2 and len(h.client.acks(cal["command_id"])) == 4
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_every_chunk_citing_a_calibration_comes_after_its_retained_calibration():
+    async def scenario():
+        h = Harness()
+        await h.run(3)
+        # El fondo cita la calibración programada de la misión: ya está retained antes de su primer chunk.
+        scheduled = {c["calibration_id"] for c in chunks(h.client) if "calibration_id" in c}
+        assert len(scheduled) == 1 and h.client.on("calibration")[0].payload["calibration_id"] in scheduled
+        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"])
+        await h.send(cal)
+        live = h.client.acks(cal["command_id"])[-1]["result"]["calibration_id"]
+        await h.run(3)
+        await h.send(start(2, session_type="spine_check", protocol_id="spine_length_rest_v1"))
+        await h.run(4)
+        await h.send(stop(3))
+        await h.run(4)
+        cited = {c["calibration_id"] for c in chunks(h.client) if "calibration_id" in c}
+        assert live in cited and cited <= {p.payload["calibration_id"] for p in h.client.on("calibration")}
+        assert assert_calibrations_resolvable(h.client.published) > 10
+        assert not any(p.channel not in SCHEMAS for p in h.client.published)  # el ground truth nunca va al bus
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+# --- estado: last_seq -----------------------------------------------------------------------------
+
+
+def test_status_last_seq_never_reports_an_unpublished_seq():
+    async def scenario():
+        h = Harness()
+        await h.run(20)
+        await h.send(start(1, stream_ids=["imu_l3", "stretch_lumbar", "emg_lat_left"]))
+        await h.run(25)
+        await h.send(stop(2))
+        await h.run(30)
+        seen: dict[tuple[int, str], int] = {}
+        statuses = 0
+        for p in h.client.published:
+            if p.channel == "stream":
+                key = (p.payload["boot_id"], p.payload["stream_id"])
+                seen[key] = max(seen.get(key, -1), p.payload["seq"])
+            elif p.channel == "status" and p.payload["status"] != "offline":
+                statuses += 1
+                for s in p.payload["streams"]:
+                    published = seen.get((p.payload["boot_id"], s["stream_id"]))
+                    # Exactamente lo último publicado (el dispositivo ya comprometió el chunk siguiente).
+                    assert s.get("last_seq") == published, (p.payload["timestamp"], s)
+        assert statuses >= 3
+        device = h.gateway._units[0].device
+        boot = h.client.on("status")[-1].payload["boot_id"]
+        assert any(device.next_seq(boot, s) - 1 > seen[(boot, s)] for s in ("imu_l3", "stretch_lumbar"))  # hay anticipo
+
+    go(scenario())
+
+
+# --- ritmo y bucle de eventos ---------------------------------------------------------------------
+
+
+def test_each_source_paces_the_loop_with_its_own_chunk():
+    async def scenario():
+        config = make_config()  # sesiones a 500 ms, fondo a 1000 ms
+        assert config.schedule.background.chunk_ms == 1000.0
+        clock = Clock()
+        client = FakeClient()
+        sleeps: list[tuple[float, bool]] = []
+        gateway = FakeGateway(MissionGenerator(config), settings(), clock=clock, sleep=lambda s: virtual(s), astronaut_ids=[AST])
+
+        async def virtual(seconds: float) -> None:
+            sleeps.append((seconds, gateway._units[0].session is not None))
+            clock.advance(seconds)
+            if clock.now >= T0 + timedelta(seconds=6) and not client.acks(start(1)["command_id"]):
+                await client.queue.put(Message(topics.cmd(AST, DEV), json.dumps(start(1)).encode()))
+            if clock.now >= T0 + timedelta(seconds=12):
+                done.set()
+            await asyncio.sleep(0)
+
+        done = asyncio.Event()
+        task = asyncio.create_task(gateway.run(client))
+        await asyncio.wait_for(done.wait(), timeout=60)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        background = [s for s, in_session in sleeps if not in_session]
+        session = [s for s, in_session in sleeps if in_session]
+        assert session and max(session) <= 0.5
+        assert max(background) <= 1.0 and max(background) > 0.5  # el fondo no se despierta cada 500 ms
+        t0 = [c["t0_device_ms"] for c in chunks(client) if c["stream_id"] == "imu_l3" and c["session_id"] != SESSION][:4]
+        assert len(t0) == 4 and all(abs(b - a - 1000) <= 2 for a, b in itertools.pairwise(t0))
+        assert_all_valid(client)
+
+    go(scenario())
+
+
+def test_long_synthesis_runs_off_the_event_loop():
+    async def scenario():
+        h = Harness()
+        await h.run(2)
+        gate = threading.Event()
+        released: list[bool] = []
+        real = h.gateway._generator.live_session
+
+        def slow_live_session(**kw: Any):
+            inner = real(**kw)
+
+            def gen():
+                # Síntesis "larga": solo acaba cuando otra tarea del bucle la libera. Si corriera en el
+                # bucle, nadie la liberaría y `wait` agotaría su tiempo.
+                released.append(gate.wait(timeout=10))
+                yield from inner
+
+            return gen()
+
+        h.gateway._generator.live_session = slow_live_session
+        await h.send(start(1))
+        ticks = 0
+
+        async def ticker() -> None:
+            nonlocal ticks
+            while not released:
+                ticks += 1
+                if ticks == 5:
+                    gate.set()
+                await asyncio.sleep(0)
+
+        ticking = asyncio.create_task(ticker())
+        await h.run(3)
+        await ticking
+        assert released == [True] and ticks >= 5
+        session = chunks(h.client, SESSION)
+        assert session
+        for stream, seq in seqs_per_stream(chunks(h.client)).items():
+            assert seq == list(range(len(seq))), stream
         assert_all_valid(h.client)
 
     go(scenario())
@@ -588,6 +783,135 @@ def test_serve_opens_one_connection_per_device_with_its_last_will():
             assert client.on("status")[-1].payload["status"] == "offline"
 
     go(scenario())
+
+
+class FakeConnection:
+    """Un intento de conexión: entrar da `client`, o MqttError si es None (el broker la rechaza)."""
+
+    def __init__(self, client: FakeClient | None) -> None:
+        self.client = client
+
+    async def __aenter__(self) -> FakeClient:
+        if self.client is None:
+            raise aiomqtt.MqttError("[code:111] Connection refused")
+        return self.client
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class Connections:
+    """client_factory para `_serve`: anota cada intento (kwargs) y da el cliente que diga `plan(identifier,
+    intento)`; None = el broker rechaza la conexión."""
+
+    def __init__(self, plan) -> None:
+        self.plan = plan
+        self.attempts: list[dict] = []
+
+    def __call__(self, **kw: Any) -> FakeConnection:
+        self.attempts.append(kw)
+        n = sum(1 for a in self.attempts if a["identifier"] == kw["identifier"])
+        return FakeConnection(self.plan(kw["identifier"], n))
+
+
+def test_broker_drop_mid_run_reconnects_resubscribes_and_resumes_without_seq_gaps():
+    async def scenario():
+        clock = Clock()
+        backoff: list[float] = []
+        reached = asyncio.Event()
+        first = FakeClient(drop_after=30)
+        await first.queue.put(Message(topics.cmd(AST, DEV), json.dumps(start(1, session_type="spine_check", protocol_id="spine_length_rest_v1")).encode()))
+        second = FakeClient()
+
+        def plan(identifier: str, n: int) -> FakeClient:
+            if identifier.endswith("sim-01"):
+                return first if n == 1 else second
+            return FakeClient()
+
+        async def sleep(seconds: float) -> None:  # tiempo virtual; el ritmo nunca pasa de 1 s, el backoff sí
+            if seconds > 1.0:
+                backoff.append(seconds)
+            clock.advance(seconds)
+            if len(chunks(second, SESSION)) >= 20:
+                reached.set()
+            await asyncio.sleep(0)
+
+        connections = Connections(plan)
+        config = make_config()
+        task = asyncio.create_task(
+            _serve(MissionGenerator(config), settings(mqtt_reconnect_initial_s=3.0, mqtt_reconnect_max_s=5.0), client_factory=connections, clock=clock, sleep=sleep)
+        )
+        await asyncio.wait_for(reached.wait(), timeout=60)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert first.dropped and backoff == [3.0]
+        ours = [a for a in connections.attempts if a["identifier"].endswith("sim-01")]
+        assert len(ours) == 2 and all(a["will"].topic == topics.status(AST, DEV) for a in ours)
+        assert second.subscriptions == [(topics.cmd(AST, DEV), 1)]  # se vuelve a suscribir
+        # Al reconectar: estado `ok` (el Last Will dejó `offline`) antes que ningún chunk, y la sesión sigue.
+        assert second.published[0].channel in ("status", "clock") and second.on("status")[0].payload["status"] == "ok"
+        assert chunks(first, SESSION) and chunks(second, SESSION)
+        # Ni huecos ni duplicados de seq entre las dos conexiones (el chunk que falló se publica después).
+        both = chunks(first) + chunks(second)
+        for stream, seq in seqs_per_stream(both).items():
+            assert seq == list(range(len(seq))), stream
+        # La calibración se vuelve a dejar retained en la conexión nueva antes de sus chunks.
+        assert assert_calibrations_resolvable(second.published) > 0
+        assert second.on("status")[-1].payload["status"] == "offline" and second.on("status")[-1].retain  # SIGTERM
+        assert_all_valid(first)
+        assert_all_valid(second)
+
+    go(scenario())
+
+
+def test_reconnect_backoff_grows_caps_and_resets_after_connecting():
+    async def scenario():
+        clock = Clock()
+        backoff: list[float] = []
+        final = FakeClient()
+
+        def plan(identifier: str, n: int) -> FakeClient | None:
+            if n <= 5:
+                return None  # broker caído: conexión rechazada
+            return FakeClient(drop_messages=True) if n == 6 else final  # conecta y se corta enseguida; luego bien
+
+        async def sleep(seconds: float) -> None:
+            if seconds > 1.0:
+                backoff.append(seconds)
+            clock.advance(seconds)
+            await asyncio.sleep(0)
+
+        connections = Connections(plan)
+        config = make_config(lambda raw: raw.update(crew=raw["crew"][:1]))
+        s = settings(mqtt_reconnect_initial_s=1.5, mqtt_reconnect_factor=2.0, mqtt_reconnect_max_s=5.0)
+        task = asyncio.create_task(_serve(MissionGenerator(config), s, client_factory=connections, clock=clock, sleep=sleep))
+        await asyncio.wait_for(_until(lambda: final.on("status")), timeout=60)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert backoff == [1.5, 3.0, 5.0, 5.0, 5.0, 1.5]
+        assert len(connections.attempts) == 7 and all(a["will"].retain for a in connections.attempts)
+        assert final.subscriptions == [(topics.cmd(AST, DEV), 1)]
+        assert final.on("status")[-1].payload["status"] == "offline"
+
+    go(scenario())
+
+
+async def _until(predicate) -> None:
+    while not predicate():
+        await asyncio.sleep(0)
+
+
+def test_reconnect_settings_have_defaults_and_validate_the_cap(monkeypatch):
+    s = settings()
+    assert (s.mqtt_reconnect_initial_s, s.mqtt_reconnect_factor, s.mqtt_reconnect_max_s) == (1.0, 2.0, 30.0)
+    monkeypatch.setenv("SPINE_SIM_MQTT_RECONNECT_MAX_S", "0.5")
+    with pytest.raises(ValueError, match="mqtt_reconnect_max_s"):
+        settings()
+    with pytest.raises(ValueError):
+        settings(mqtt_reconnect_factor=0.5)
 
 
 def test_settings_come_from_spine_sim_env(monkeypatch):

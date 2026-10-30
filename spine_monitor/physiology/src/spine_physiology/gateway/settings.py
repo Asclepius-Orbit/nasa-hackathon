@@ -5,8 +5,9 @@ aquí solo va dónde está ese YAML, a qué broker conectarse y a qué ritmo ava
 """
 
 from pathlib import Path
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,8 +24,19 @@ class GatewaySettings(BaseSettings):
     # Prefijo del identificador MQTT: cada dispositivo abre su conexión `<prefijo>-<device_id>` (con su
     # propio Last Will, que MQTT solo admite uno por conexión).
     mqtt_client_id: str = "spine-sim-gateway"
+    # Reconexión con backoff exponencial si el broker rechaza la conexión o la corta: espera inicial (s),
+    # factor por intento fallido y tope (s). Vuelve a la inicial tras conectar.
+    mqtt_reconnect_initial_s: float = Field(default=1.0, gt=0)
+    mqtt_reconnect_factor: float = Field(default=2.0, ge=1)
+    mqtt_reconnect_max_s: float = Field(default=30.0, gt=0)
 
     # El día de misión avanza con el reloj de pared × speed (1 = tiempo real, 0 = día fijo). Obligatorio.
     speed: float = Field(ge=0)
     # Índice de día de misión en el arranque del gateway (0 = primer día simulado). Obligatorio.
     start_day: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _reconnect_cap(self) -> Self:
+        if self.mqtt_reconnect_max_s < self.mqtt_reconnect_initial_s:
+            raise ValueError("mqtt_reconnect_max_s must be >= mqtt_reconnect_initial_s")
+        return self

@@ -61,6 +61,8 @@ def _command(kind: str, n: int, device_id: str, **fields: object) -> bytes:
 def _schema(topic: str) -> str:
     if "/stream/" in topic:
         return "telemetry/stream-chunk"
+    if "/calibration/" in topic:
+        return "domain/calibration"
     return {"status": "telemetry/device-status", "clock": "telemetry/clock-sync", "ack": "telemetry/command-ack"}[topic.rsplit("/", 1)[-1]]
 
 
@@ -73,7 +75,8 @@ async def _scenario() -> None:
     received: list[tuple[str, dict, bool]] = []
 
     async with aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}") as observer:
-        for topic in (status_topic, clock_topic, ack_topic, f"{topics.ROOT}/crew/AST-01/device/{device_id}/stream/+"):
+        device_root = f"{topics.ROOT}/crew/AST-01/device/{device_id}"
+        for topic in (status_topic, clock_topic, ack_topic, f"{device_root}/stream/+", f"{device_root}/calibration/+"):
             await observer.subscribe(topic, qos=1)
 
         async def until(predicate) -> None:
@@ -114,11 +117,17 @@ async def _scenario() -> None:
         assert streams == set(config.protocol("lat_pulldown_standing_v1").streams)
         assert all(p["source"] == "simulator" for p in session_chunks())
         for topic, payload, _ in received:
-            assert validation.errors(_schema(topic), payload) == [], topic
+            if payload:  # un retained vacío de una ejecución anterior que no limpió
+                assert validation.errors(_schema(topic), payload) == [], topic
+        # Todo chunk que cita una calibración llega después de esa calibración (retained) en su topic.
+        calibrations = {p["calibration_id"] for t, p, _ in received if "/calibration/" in t and p}
+        cited = {p["calibration_id"] for t, p, _ in received if "/stream/" in t and "calibration_id" in p}
+        assert cited and cited <= calibrations
 
-        # Limpia los retained que deja el gateway (estado y anclaje de los dos dispositivos de prueba).
+        # Limpia los retained que deja el gateway (estado, anclaje y calibraciones de los dispositivos de prueba).
         for member in config.crew:
-            for topic in (topics.status(member.astronaut_id, member.device_id), topics.clock(member.astronaut_id, member.device_id)):
+            a, d = member.astronaut_id, member.device_id
+            for topic in (topics.status(a, d), topics.clock(a, d), *(topics.calibration(a, d, s.stream_id) for s in config.device.streams)):
                 await observer.publish(topic, payload=b"", qos=1, retain=True)
     assert clock_topic in {t for t, _, _ in received}
 

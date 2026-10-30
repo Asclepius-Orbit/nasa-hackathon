@@ -7,7 +7,7 @@ Generador sintético de misión. Publica lo que publicaría el hardware real: `S
 ## Diseño
 
 - **Núcleo puro.** `MissionGenerator` es un iterador perezoso de `Envelope`s (un mensaje de contrato más su topic, su indicador retained y el instante UTC `at`). No hace E/S.
-- **Sinks.** `JsonlSink` lo escribe todo a disco; `MqttSink` publica solo los mensajes que tienen topic (chunks, estado del dispositivo, reloj, acks de comandos). El gateway falso reutiliza el mismo núcleo en tiempo real.
+- **Sinks.** `JsonlSink` lo escribe todo a disco; `MqttSink` publica solo los mensajes que tienen topic (chunks, estado del dispositivo, reloj, acks de comandos y calibraciones, estas retained). El gateway falso reutiliza el mismo núcleo en tiempo real.
 - **Contratos.** Los payloads se construyen con los modelos de `spine_contracts` y se validan contra sus JSON Schemas; `source` es siempre `simulator`.
 
 ## Sin valores clínicos en el código
@@ -25,7 +25,7 @@ Todo parámetro numérico, fisiológico o técnico, es obligatorio y sale del YA
 | `crew` | por astronauta: ids, `latent_multipliers`, `exercise_adherence`, línea base (longitud de reposo del cordón, MVC de EMG por stream) y el `AstronautProfile` |
 | `device` | firmware, enlace, encendido y apagado diarios (UTC), batería, temperatura, intervalos de estado y de sincronización de reloj, streams con su colocación |
 | `protocols` | protocolos de ejercicio (repeticiones, duraciones, %MVC, ROM, carga) y de control de columna |
-| `schedule` | sesiones por día (`time_utc`, jitter, fases, `every_n_days`) y la ventana opcional de monitorización de fondo |
+| `schedule` | sesiones por día (`time_utc`, jitter, fases, `every_n_days`) y la ventana opcional de monitorización de fondo (`background.chunk_ms`, obligatorio: duración del chunk del stream de fondo de IMU + cordón, separada de `signals.chunk_ms`; el ejemplo usa 1000 ms) |
 | `calibration` | calibraciones de cordón, MVC de EMG e IMU: periodicidad, ruido, puntos |
 | `curves` | trayectoria típica de los cuatro latentes diarios por día de misión (puntos por tramos), `daily_sd` y `dose_drift_per_day` |
 | `signals` | `chunk_ms` y la síntesis de EMG, IMU y cordón (frecuencias, ruido, filtros, ADC, histéresis...) |
@@ -56,7 +56,7 @@ for env in gen.day_messages(5, "AST-01"):
 n = write_jsonl(gen.day_messages(5, "AST-01"), Path("out"), config=config, seed=gen.seed)
 ```
 
-Publicar por MQTT (vale cualquier objeto con la firma de `aiomqtt.Client.publish`; QoS 1, retained solo para el estado del dispositivo). Los objetos de dominio se saltan y no se cuentan:
+Publicar por MQTT (vale cualquier objeto con la firma de `aiomqtt.Client.publish`; QoS 1, retained para el estado del dispositivo y las calibraciones). Los objetos de dominio se saltan y no se cuentan:
 
 ```python
 import asyncio
@@ -71,7 +71,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`spine_physiology.sinks.pacing.paced` puede dosificar un flujo a tiempo real o a `speed` x tiempo real. Un solo día de la misión de ejemplo son unos 83 000 mensajes, casi todos chunks de fondo (ver Límites conocidos); para un fragmento más barato usa `gen.session_messages(ref)` (más abajo).
+`spine_physiology.sinks.pacing.paced` puede dosificar un flujo a tiempo real o a `speed` x tiempo real. Un solo día de la misión de ejemplo son unos 22 600 mensajes, casi todos chunks (ver Límites conocidos); para un fragmento más barato usa `gen.session_messages(ref)` (más abajo).
 
 ## Reproducibilidad
 
@@ -133,7 +133,7 @@ out/
       command_acks.jsonl  ground_truth.jsonl
 ```
 
-Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic (chunks, estado, reloj, acks) y `{"at", "payload"}` para los objetos de dominio. `JsonlSink` abre los ficheros de forma perezosa con un tope de manejadores abiertos y escribe `manifest.json` en `close()` (también funciona como gestor de contexto). El manifiesto lleva `complete: false` si el sink se cerró por una excepción. Las sesiones que no caben entre el encendido, la sesión anterior y el apagado se descartan ese día.
+Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic (chunks, estado, reloj, acks, calibraciones) y `{"at", "payload"}` para los objetos de dominio. `JsonlSink` abre los ficheros de forma perezosa con un tope de manejadores abiertos y escribe `manifest.json` en `close()` (también funciona como gestor de contexto). El manifiesto lleva `complete: false` si el sink se cerró por una excepción. Las sesiones que no caben entre el encendido, la sesión anterior y el apagado se descartan ese día.
 
 `ground_truth.jsonl` no tiene schema de contrato; cada registro lleva `type`, `astronaut_id` y `day` (los de sesión también `session_id` y `slot`): `latent_state` (latentes diarios y la dosis que los produjo), `device_events` (arranques, reinicios, deriva), `quality_faults`, `lost_chunks` y `expected_features` (valores verdaderos de las features del catálogo calculados del modelo sin ruido de sensor ni fallos).
 
@@ -149,21 +149,26 @@ Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic
 | `SPINE_SIM_MQTT_CLIENT_ID` | `spine-sim-gateway` | prefijo del client id; cada dispositivo se conecta como `<prefijo>-<device_id>` |
 | `SPINE_SIM_SPEED` | obligatoria | velocidad del día de misión: 1 = tiempo real, 0 = día fijo |
 | `SPINE_SIM_START_DAY` | obligatoria | índice de día de misión al arrancar (0 = primer día simulado) |
+| `SPINE_SIM_MQTT_RECONNECT_INITIAL_S` | `1.0` | primera espera antes de reconectar con el broker |
+| `SPINE_SIM_MQTT_RECONNECT_FACTOR` | `2.0` | multiplicador de la espera tras cada intento fallido (>= 1) |
+| `SPINE_SIM_MQTT_RECONNECT_MAX_S` | `30.0` | tope de la espera (>= la inicial) |
 
 ```bash
 SPINE_SIM_CONFIG=physiology/configs/example-mission.yaml SPINE_SIM_SPEED=1 SPINE_SIM_START_DAY=0 \
   uv run spine-sim-gateway
 ```
 
-- Se suscribe al topic de comandos de cada dispositivo y responde en el topic de acks. Los comandos se validan contra el JSON Schema. Admite `start_session`, `stop_session`, `mark_event` y `calibrate`. Todo comando aceptado recibe `accepted` y luego `completed`; `start_session` se rechaza (`rejected`) con `busy`, `unknown_stream` o `device_offline`, y `stop_session` y `mark_event` con `no_session` cuando no hay nada que parar o marcar. `mark_event` no cambia la señal; `calibrate` devuelve un `calibration_id`. Un comando reenviado (mismo `command_id`) recibe los mismos acks sin volver a ejecutarse; los comandos mal formados, demasiado grandes (> 16 KiB) o con duraciones absurdas (> 30 días) se rechazan como `invalid_command` y nunca paran el gateway.
+- Se suscribe al topic de comandos de cada dispositivo y responde en el topic de acks. Los comandos se validan contra el JSON Schema. Admite `start_session`, `stop_session`, `mark_event` y `calibrate`. Todo comando aceptado recibe `accepted` y luego `completed`; `start_session` se rechaza (`rejected`) con `busy`, `unknown_stream` o `device_offline`, y `stop_session` y `mark_event` con `no_session` cuando no hay nada que parar o marcar. `mark_event` no cambia la señal; `calibrate` devuelve un `calibration_id` y la calibración se publica en el bus justo antes del ack `completed`. Un comando reenviado (mismo `command_id`) recibe los mismos acks sin volver a ejecutarse; los comandos mal formados, demasiado grandes (> 16 KiB) o con duraciones absurdas (> 30 días) se rechazan como `invalid_command` y nunca paran el gateway.
 - `DeviceStatus` y `ClockSync` retained al arrancar y de forma periódica, un Last Will con `status: offline` y el mismo `offline` al parar de forma limpia. Por eso hay **una conexión MQTT por dispositivo**: MQTT solo admite un Last Will por conexión.
+- Las calibraciones se publican retained (QoS 1) en `asclepius/v1/crew/{astronaut_id}/device/{device_id}/calibration/{stream_id}`: la última vigente por stream. Además del comando `calibrate`, antes de un chunk que cita un `calibration_id` el gateway republica esa calibración si no es la que está retained en el bus, así un consumidor que llega tarde siempre puede resolverla.
+- Reconexión: si el broker rechaza o corta la conexión, el gateway espera con backoff exponencial (los ajustes `SPINE_SIM_MQTT_RECONNECT_*`) y se conecta de nuevo con el mismo estado (sesión, fondo, `seq`). En cada conexión se vuelve a suscribir al topic de comandos y republica el estado `ok` del dispositivo y el anclaje de reloj. Un publish fallido se reintenta en la conexión siguiente (sin hueco de `seq`; en QoS 1 puede haber duplicados). La síntesis pesada corre en un hilo de trabajo, así que el keepalive de MQTT no se bloquea. `last_seq` de `DeviceStatus` es el último `seq` publicado de cada stream.
 - Si `schedule.background.enabled`, los streams de fondo de IMU y cordón funcionan siempre que no haya sesión (la ventana horaria diaria del config se ignora, para que las demos valgan a cualquier hora). Una sesión pausa el fondo (mismo `stream_id`, el `seq` continúa) y después se reanuda con el mismo `session_id`.
 - Día de misión = `start_day` + días de reloj de pared transcurridos x `speed`, acotado a la misión. Una sesión nunca cambia de día a mitad.
 - Cuando se agota la batería de la ventana diaria de encendido y no hay sesión, el dispositivo se "recarga": `boot_id` nuevo, `seq` y reloj a 0, batería llena.
 
 ## Docker
 
-El servicio `simulator` está en el perfil `sim` de `app/docker-compose.yml` (necesita el broker, que arranca con él). Desde la raíz del repo:
+El servicio `simulator` está en el perfil `sim` de `app/docker-compose.yml` (necesita el broker, que arranca con él: `mosquitto` tiene un healthcheck y `simulator` lo espera con `condition: service_healthy`). Desde la raíz del repo:
 
 ```bash
 docker compose -f app/docker-compose.yml --profile sim up --build
@@ -181,7 +186,7 @@ Los tests que necesitan un broker real llevan el marcador `mosquitto` y se salta
 
 ## Límites conocidos
 
-- Volumen del fondo: los chunks son de 100 ms, así que cada hora de fondo son unos 36 000 chunks por stream. La configuración de ejemplo limita el fondo a una hora al día por ese motivo.
+- Volumen del fondo: con `schedule.background.chunk_ms` a 1000 ms, cada hora de fondo son unos 3 600 chunks por stream (10 veces menos que con chunks de 100 ms); sigue creciendo con la ventana. La configuración de ejemplo limita el fondo a una hora al día.
 - El cuestionario ODI semanal está aplazado: solo se genera el autoinforme diario.
-- Calibraciones, sesiones, autoinformes, contexto diario, perfiles y verdad de terreno no tienen topic MQTT: solo existen en JSONL (los objetos de dominio nunca van al bus).
+- Sesiones, autoinformes, contexto diario, perfiles y verdad de terreno no tienen topic MQTT: solo existen en JSONL (los objetos de dominio nunca van al bus). Las calibraciones sí van al bus.
 - Todos los números de la configuración de ejemplo son placeholders, no referencias clínicas.

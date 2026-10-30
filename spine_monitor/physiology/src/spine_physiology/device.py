@@ -25,7 +25,7 @@ siguen), los tramos `stalled` (los registra `chunks`) y los tramos de streaming 
 """
 
 import math
-from bisect import insort
+from bisect import bisect_left, insort
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -216,7 +216,7 @@ class SimDevice:
         self._plan = plan
         self._seq: dict[tuple[int, str], int] = {}
         self._anchors: dict[int, list[datetime]] = {}  # boot_id -> instantes reales de ClockSync
-        self._streaming: list[tuple[datetime, datetime]] = []  # tramos con streaming (batería)
+        self._streaming: list[tuple[datetime, datetime]] = []  # tramos con streaming (batería), ordenados y disjuntos
         self._stalls: dict[str, list[tuple[datetime, datetime]]] = {}  # stream_id -> ráfagas stalled
 
     @property
@@ -260,8 +260,20 @@ class SimDevice:
         self._record_streaming(start, n_samples, rate_hz)
 
     def _record_streaming(self, start: datetime, n_samples: int, rate_hz: float) -> None:
-        if n_samples > 0:
-            self._streaming.append((start, start + timedelta(microseconds=round(n_samples / rate_hz * 1e6))))
+        """Inserta el tramo fundiéndolo con los vecinos que solapan o tocan (la unión no cambia)."""
+        if n_samples <= 0:
+            return
+        new_a = start
+        new_b = start + timedelta(microseconds=round(n_samples / rate_hz * 1e6))
+        lo = bisect_left(self._streaming, new_a, key=lambda iv: iv[0])
+        if lo > 0 and self._streaming[lo - 1][1] >= new_a:
+            lo -= 1
+        hi = lo
+        while hi < len(self._streaming) and self._streaming[hi][0] <= new_b:
+            new_a = min(new_a, self._streaming[hi][0])
+            new_b = max(new_b, self._streaming[hi][1])
+            hi += 1
+        self._streaming[lo:hi] = [(new_a, new_b)]
 
     def chunks(
         self,
@@ -467,16 +479,12 @@ class SimDevice:
         cfg = self._config.device.battery
         hours_on = max(0.0, (at - self._plan.power_on).total_seconds()) / 3600.0
         streamed = 0.0
-        current_end: datetime | None = None
-        for a, b in sorted(self._streaming):
+        for a, b in self._streaming:  # ya ordenados y disjuntos
+            if a >= at:
+                break
             b = min(b, at)
-            if b <= a:
-                continue
-            if current_end is not None and a < current_end:
-                a = current_end
             if b > a:
                 streamed += (b - a).total_seconds()
-                current_end = b
         pct = cfg.start_pct - cfg.drain_pct_per_hour_idle * hours_on - (cfg.drain_pct_per_hour_streaming - cfg.drain_pct_per_hour_idle) * streamed / 3600.0
         return float(min(100.0, max(0.0, pct)))
 

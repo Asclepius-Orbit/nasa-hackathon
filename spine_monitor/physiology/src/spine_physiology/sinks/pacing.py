@@ -22,13 +22,29 @@ class Pacer:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         """`speed`: factor sobre el tiempo real (> 0), o None para no esperar nunca."""
-        raise NotImplementedError
+        if speed is not None and not speed > 0:
+            raise ValueError("speed must be > 0 or None")
+        self._speed = speed
+        self._clock = clock
+        self._sleep = sleep
+        self._anchor_sim: datetime | None = None
+        self._anchor_wall = 0.0
 
     async def wait_for(self, at: datetime) -> None:
-        raise NotImplementedError
+        if self._speed is None:
+            return
+        if self._anchor_sim is None:
+            self._anchor_sim = at
+            self._anchor_wall = self._clock()
+            return
+        target = self._anchor_wall + (at - self._anchor_sim).total_seconds() / self._speed
+        delay = target - self._clock()
+        if delay > 0:
+            await self._sleep(delay)
 
 
 async def paced(messages: Iterable[Envelope], pacer: Pacer) -> AsyncIterator[Envelope]:
     """Los mensajes en el mismo orden, cada uno cuando le toca según `pacer`."""
-    raise NotImplementedError
-    yield  # pragma: no cover  (hace de esto un generador asíncrono)
+    for envelope in messages:
+        await pacer.wait_for(envelope.at)
+        yield envelope

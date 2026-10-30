@@ -30,3 +30,19 @@ services:
     depends_on:
       - mosquitto
     restart: unless-stopped
+
+  simulator:
+    build:
+      context: ..
+      dockerfile: spine_monitor/physiology/Dockerfile
+    image: spine-simulator:dev
+    environment:
+      SPINE_SIM_CONFIG: /app/configs/example-mission.yaml
+      SPINE_SIM_MQTT_HOST: mosquitto
+      SPINE_SIM_MQTT_PORT: "1883"
+      SPINE_SIM_SPEED: "1"
+      SPINE_SIM_START_DAY: "0"
+    depends_on:
+      - mosquitto
+    profiles: ["sim"]
+    restart: unless-stopped

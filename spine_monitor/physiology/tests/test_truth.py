@@ -133,7 +133,7 @@ def test_gravity_changes_only_gravity_dependent_features(config, model):
 
 def test_background_features_only_count_emitted_chunks(config, model):
     plan, state, synthesis = synth(config, model, "background")
-    active = sess.active_chunks(config, plan)
+    active = sess.active_chunks(plan)
     with_pause = by_id(truth.expected_features(config, synthesis, state=state, active=active))
     stretch = synthesis.stream("stretch_lumbar")
     emitted = sum(k1 - k0 for k0, k1 in active) * stretch.samples_per_chunk
@@ -148,10 +148,10 @@ def test_quality_faults_record_lists_visible_episodes_with_times(config, model):
     plan, _, synthesis = synth(config, model, "background")
     stream = synthesis.stream("imu_l3")
     inside = FaultEpisode(QualityFlag.LOW_SNR, "imu_l3", 0, 5, 0.6, 1.0)
-    paused_chunk = sess.active_chunks(config, plan)[0][1]
+    paused_chunk = sess.active_chunks(plan)[0][1]
     hidden = FaultEpisode(QualityFlag.CLIPPING, "imu_l3", paused_chunk * stream.samples_per_chunk, (paused_chunk + 1) * stream.samples_per_chunk, 0.4, 0.6)
     patched = sess.StreamSynthesis(**{**{f: getattr(stream, f) for f in stream.__slots__}, "episodes": (inside, hidden)})
-    record = truth.quality_faults_record(session_key(config), [patched], active=sess.active_chunks(config, plan))
+    record = truth.quality_faults_record(session_key(config), [patched], active=sess.active_chunks(plan))
     assert record["type"] == "quality_faults" and record["session_id"] == session_key(config).session_id
     (episode,) = record["streams"]["imu_l3"]
     assert episode["flag"] == "low_snr" and episode["start"] == truth.iso(stream.start)

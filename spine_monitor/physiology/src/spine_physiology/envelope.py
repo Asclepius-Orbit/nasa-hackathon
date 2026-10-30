@@ -1,7 +1,7 @@
 """Sobre común de todo lo que produce el núcleo: un mensaje de contrato listo para un sink.
 
 El núcleo (generator, gateway) solo produce `Envelope`s; los sinks deciden qué hacer con ellos:
-JSONL escribe todos, MQTT publica solo los que llevan `topic` (los objetos de dominio nunca van al bus).
+JSONL escribe todos, MQTT publica solo los que llevan `topic` (los demás objetos de dominio nunca van al bus).
 """
 
 from dataclasses import dataclass
@@ -26,8 +26,12 @@ class EnvelopeKind(StrEnum):
     GROUND_TRUTH = "ground_truth"
 
 
-# Tipos que viajan por MQTT; el resto son objetos de dominio (solo JSONL).
-MQTT_KINDS = frozenset({EnvelopeKind.STREAM_CHUNK, EnvelopeKind.DEVICE_STATUS, EnvelopeKind.CLOCK_SYNC, EnvelopeKind.COMMAND_ACK})
+# Tipos que viajan por MQTT; el resto son objetos de dominio (solo JSONL). Las calibraciones van retained
+# (la vigente de cada stream); ver `RETAINED_KINDS`.
+MQTT_KINDS = frozenset({EnvelopeKind.STREAM_CHUNK, EnvelopeKind.DEVICE_STATUS, EnvelopeKind.CLOCK_SYNC, EnvelopeKind.COMMAND_ACK, EnvelopeKind.CALIBRATION})
+
+# Tipos que siempre se publican retained.
+RETAINED_KINDS = frozenset({EnvelopeKind.CALIBRATION})
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +42,7 @@ class Envelope:
       ground truth, que no tiene schema). No se modifica después de crear el sobre.
     - `topic`: topic MQTT para los tipos de `MQTT_KINDS`; None para los objetos de dominio.
     - `at`: instante UTC (aware) en que el mensaje existe/se publicaría; ordena la salida y el ritmo.
-    - `retained`: publicar como retained (DeviceStatus).
+    - `retained`: publicar como retained (DeviceStatus, ClockSync y siempre las calibraciones).
     - `day`: índice de día de misión (0 = primer día simulado); None para el perfil.
     """
 
@@ -55,6 +59,8 @@ class Envelope:
             raise ValueError(f"Envelope.at must be an aware UTC datetime, got {self.at!r}")
         if (self.topic is not None) != (self.kind in MQTT_KINDS):
             raise ValueError(f"{self.kind} envelopes {'need' if self.kind in MQTT_KINDS else 'must not have'} a topic")
+        if self.kind in RETAINED_KINDS and not self.retained:
+            raise ValueError(f"{self.kind} envelopes must be retained")
 
     @classmethod
     def of(

@@ -9,7 +9,7 @@ Contratos de datos compartidos por todos los componentes: gateway del wearable, 
 | Ruta | Qué es |
 |---|---|
 | `schemas/v1/common.schema.json` | Definiciones comunes: ids, enums, calidad, colocación |
-| `schemas/v1/telemetry/` | Mensajes MQTT: chunk de stream, estado del dispositivo, comando, ack de comando, sincronización de reloj |
+| `schemas/v1/telemetry/` | Mensajes MQTT: chunk de stream, estado del dispositivo, comando, ack de comando, sincronización de reloj. La entidad `domain/calibration` también se publica en el bus (ver Convenciones) |
 | `schemas/v1/domain/` | Entidades: sesión, calibración, perfil del astronauta, autoinforme, contexto diario, conjunto de features, baseline, evaluación |
 | `schemas/v1/engine/` | Cuerpos HTTP del motor: `/features`, `/baseline`, `/assess`, `/simulate`, errores |
 | `schemas/v1/app/` | Cuerpos HTTP de la API de solo lectura de la app: estado, histórico, explicación, listas de evaluaciones, sesiones y autoinformes, errores |
@@ -37,6 +37,7 @@ Los datos pertenecen a una **sesión**: `exercise` (protocolo estandarizado, p. 
 - **Tiempo**: `t0_device_ms` (monotónico) + `boot_id` en el dispositivo; el gateway añade `received_at` (UTC) y publica anclas `clock-sync`. Todo lo demás es RFC 3339 con desfase.
 - **Calidad**: score 0..1 más `flags` enumeradas por canal y chunk, e indica quién la evaluó.
 - `source` es `device`, `simulator` o `replay`: una demo que mezcle datos reales y simulados debe decirlo.
+- **Las calibraciones viajan por el bus**: `asclepius/v1/crew/{astronaut_id}/device/{device_id}/calibration/{stream_id}` (QoS 1, retained, un topic por stream, payload = `domain/calibration`). La última vigente queda retenida, así que un consumidor puede resolver el `calibration_id` de los chunks de stretch. Lo cubren `topics.calibration`, `topics.parse_calibration` y `SUBSCRIBE_ALL_CALIBRATIONS`.
 - Los ids son seudónimos (`AST-01`); ningún dato personal viaja por el bus MQTT.
 - Todo mensaje lleva `schema_version` (semver, mayor 1).
 

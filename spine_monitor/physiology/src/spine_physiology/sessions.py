@@ -6,9 +6,11 @@
   `schedule.background.enabled`, la sesión de fondo `spine_check` (IMU + cordón a las frecuencias
   reducidas) cubre la ventana `start_time_utc..end_time_utc` con `pauses` donde hay sesiones
   planificadas. Ids: `derive_uuid(seed, astronaut_id, day.index, slot)`. Toda sesión dura un número
-  entero de chunks (`signals.chunk_ms`), así que todos sus streams comparten la rejilla de chunks.
+  entero de chunks, así que todos sus streams comparten la rejilla de chunks. El chunk de las sesiones
+  es `signals.chunk_ms`; el del fondo es el suyo, `schedule.background.chunk_ms` (cada `SessionPlan` y
+  cada `SynthSpec` llevan su `chunk_ms`: no hay un tamaño de chunk global).
 - `active_chunks`: tramos de chunks que de verdad se emiten (el fondo pierde los chunks que tocan una
-  pausa: reanuda en el primer chunk de su rejilla que empieza tras el fin de la sesión).
+  pausa: reanuda en el primer chunk de su rejilla de fondo que empieza tras el fin de la sesión).
 - `synthesize`: arrays publicables de cada stream (señal + fallos de calidad + derivados del cordón),
   más los intermedios deterministas que usa el ground truth. RNG por `spec.keys` (en misión
   `(astronaut_id, day.index, slot)`): `(..., stream_id, "signal")`, `(..., stream_id, "faults")` y
@@ -19,6 +21,7 @@
   de cada tramo, en la primera sesión del día que usa ese stream (o al encender el dispositivo si
   ninguna lo usa) y valen hasta la siguiente; emg_mvc al inicio de cada sesión `exercise`. El
   `calibration_id` vigente va en `Session.streams` y en los chunks del cordón (length_mm lo exige).
+  Cada calibración se emite también por MQTT (retained, `topics.calibration`): ver `generator.calibration_envelope`.
 - `build_session`: registro Session (mission_context, streams con colocación y calibración,
   load_declared y planned_reps en `exercise`, eventos rep_start/rep_end con device_ms y boot_id, y en
   el fondo notas de pausa/reanudación).
@@ -107,6 +110,7 @@ class SessionPlan:
     stream_ids: tuple[str, ...]
     reps: tuple[Rep, ...]  # vacío en spine_check
     background: bool
+    chunk_ms: float  # duración de chunk de esta sesión: `signals.chunk_ms`, o `schedule.background.chunk_ms` en el fondo
     # Solo en el fondo: intervalos [inicio, fin) ocupados por sesiones planificadas (sin chunks del fondo).
     pauses: tuple[tuple[datetime, datetime], ...]
 
@@ -114,21 +118,26 @@ class SessionPlan:
 # --- Agenda -----------------------------------------------------------------------------------------
 
 
-def chunk_delta(config: MissionConfig) -> timedelta:
-    return timedelta(milliseconds=config.signals.chunk_ms)
+def chunk_ms_for(config: MissionConfig, *, background: bool) -> float:
+    """Duración de chunk de una sesión: la de las sesiones, o la propia del fondo."""
+    return config.schedule.background.chunk_ms if background else config.signals.chunk_ms
 
 
-def chunks_for(config: MissionConfig, duration_s: float) -> int:
+def chunk_delta(chunk_ms: float) -> timedelta:
+    return timedelta(milliseconds=chunk_ms)
+
+
+def chunks_for(duration_s: float, *, chunk_ms: float) -> int:
     """Chunks enteros que cubren `duration_s` (al menos uno), igual que `signals.n_samples`."""
-    return max(1, math.ceil(duration_s * 1000.0 / config.signals.chunk_ms - 1e-9))
+    return max(1, math.ceil(duration_s * 1000.0 / chunk_ms - 1e-9))
 
 
 def protocol_duration_s(protocol: ExerciseProtocol | SpineCheckProtocol) -> float:
     return exercise_duration_s(protocol) if isinstance(protocol, ExerciseProtocol) else protocol.duration_s
 
 
-def n_chunks(config: MissionConfig, plan: SessionPlan) -> int:
-    return (plan.end - plan.start) // chunk_delta(config)
+def n_chunks(plan: SessionPlan) -> int:
+    return (plan.end - plan.start) // chunk_delta(plan.chunk_ms)
 
 
 def stream_rate(config: MissionConfig, stream_id: str, *, background: bool) -> float:
@@ -147,7 +156,8 @@ def stream_rate(config: MissionConfig, stream_id: str, *, background: bool) -> f
 def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) -> tuple[SessionPlan, ...]:
     """Sesiones del día ordenadas por inicio (el fondo, si existe, incluido)."""
     tree = RngTree(seed)
-    chunk = chunk_delta(config)
+    chunk_ms = chunk_ms_for(config, background=False)
+    chunk = chunk_delta(chunk_ms)
     candidates: list[tuple[datetime, int, Any, ExerciseProtocol | SpineCheckProtocol]] = []
     for order, slot in enumerate(config.schedule.sessions):
         if day.phase not in slot.phases or day.index % slot.every_n_days:
@@ -164,7 +174,7 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
         # El dispositivo solo existe dentro de su ventana de encendido del día: la sesión (con su duración
         # en chunks enteros) se desplaza para caber entre el encendido, la sesión anterior y el apagado.
         earliest = power_on if previous_end is None else max(power_on, previous_end)
-        duration = chunks_for(config, protocol_duration_s(protocol)) * chunk
+        duration = chunks_for(protocol_duration_s(protocol), chunk_ms=chunk_ms) * chunk
         start = max(start, earliest)
         if start + duration > power_off:
             start = power_off - duration
@@ -183,6 +193,7 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
                 stream_ids=tuple(protocol.streams),
                 reps=rep_schedule(protocol) if exercise else (),
                 background=False,
+                chunk_ms=chunk_ms,
                 pauses=(),
             )
         )
@@ -192,7 +203,7 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
     if background.enabled:
         start = day.at(background.start_time_utc)
         window_s = (day.at(background.end_time_utc) - start).total_seconds()
-        end = start + chunks_for(config, window_s) * chunk
+        end = start + chunks_for(window_s, chunk_ms=background.chunk_ms) * chunk_delta(background.chunk_ms)
         pauses = tuple((max(p.start, start), min(p.end, end)) for p in plans if p.start < end and p.end > start)
         plans.append(
             SessionPlan(
@@ -205,6 +216,7 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
                 stream_ids=tuple(background.streams),
                 reps=(),
                 background=True,
+                chunk_ms=background.chunk_ms,
                 pauses=pauses,
             )
         )
@@ -212,13 +224,13 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
     return tuple(plans)
 
 
-def active_chunks(config: MissionConfig, plan: SessionPlan) -> tuple[tuple[int, int], ...]:
-    """Tramos [k0, k1) de chunks emitidos. Fondo: sin los chunks que acaban después del inicio de una
-    pausa y empiezan antes de su fin."""
-    total = n_chunks(config, plan)
+def active_chunks(plan: SessionPlan) -> tuple[tuple[int, int], ...]:
+    """Tramos [k0, k1) de chunks emitidos, en la rejilla de `plan.chunk_ms`. Fondo: sin los chunks que
+    acaban después del inicio de una pausa y empiezan antes de su fin."""
+    total = n_chunks(plan)
     if not plan.pauses:
         return ((0, total),)
-    chunk_us = config.signals.chunk_ms * 1000
+    chunk_us = round(plan.chunk_ms * 1000)
     blocked: list[tuple[int, int]] = []
     for pause_start, pause_end in plan.pauses:
         a = max(0, ((pause_start - plan.start) // _US) // chunk_us)
@@ -453,9 +465,9 @@ def build_session(
         events.append(_event("rep_start", plan.start + timedelta(seconds=rep.start_s), device_plan, rep_index=rep.index))
         events.append(_event("rep_end", plan.start + timedelta(seconds=rep.end_s), device_plan, rep_index=rep.index))
     if plan.background:
-        chunk = chunk_delta(config)
-        ranges = active_chunks(config, plan)
-        total = n_chunks(config, plan)
+        chunk = chunk_delta(plan.chunk_ms)
+        ranges = active_chunks(plan)
+        total = n_chunks(plan)
         for k0, k1 in ranges:
             if k0 > 0:
                 events.append(_event("note", plan.start + k0 * chunk, device_plan, note="background resumed"))
@@ -495,6 +507,7 @@ class SynthSpec:
     keys: tuple[Key, ...]  # prefijo de las ramas de RNG
     start: datetime  # instante real de la muestra 0 de todos los streams
     n_chunks: int
+    chunk_ms: float  # duración de cada chunk del tramo (sesiones: `signals.chunk_ms`; fondo: el suyo)
     stream_ids: tuple[str, ...]
     background: bool  # frecuencias reducidas y flexiones espontáneas
     reps: tuple[Rep, ...]
@@ -578,7 +591,7 @@ def synthesize(
     for stream_id in spec.stream_ids:
         kind = config.device.stream(stream_id).stream_kind
         rate = stream_rate(config, stream_id, background=spec.background)
-        spc = signals.samples_per_chunk(rate)
+        spc = signals.samples_per_chunk(rate, chunk_ms=spec.chunk_ms)
         n = spec.n_chunks * spc
         rng = tree.rng(*spec.keys, stream_id, "signal")
         truth: dict[str, Any] = {}
@@ -652,7 +665,8 @@ def mission_spec(
     return SynthSpec(
         keys=(plan.ref.astronaut_id, plan.ref.day, plan.ref.slot),
         start=plan.start,
-        n_chunks=n_chunks(config, plan),
+        n_chunks=n_chunks(plan),
+        chunk_ms=plan.chunk_ms,
         stream_ids=plan.stream_ids,
         background=plan.background,
         reps=plan.reps,

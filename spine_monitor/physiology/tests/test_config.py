@@ -31,6 +31,9 @@ def test_example_loads():
     assert config.device.stream("imu_l3").stream_kind is StreamKind.IMU
     assert config.protocol("lat_pulldown_standing_v1").session_type == "exercise"
     assert config.signals.samples_per_chunk(config.signals.emg.sample_rate_hz) == 100
+    background = config.schedule.background
+    assert background.chunk_ms == 1000.0
+    assert config.signals.samples_per_chunk(background.sample_rates_hz.imu, chunk_ms=background.chunk_ms) == 10
 
 
 def test_example_has_placeholder_warning():
@@ -42,6 +45,7 @@ def test_example_has_placeholder_warning():
     [
         ("seed",),
         ("signals", "chunk_ms"),
+        ("schedule", "background", "chunk_ms"),
         ("signals", "emg", "noise_rms_mv"),
         ("curves", "pain_stiffness", "daily_sd"),
         ("faults", "device", "clock", "drift_ppm"),
@@ -97,7 +101,9 @@ def test_times_must_be_strings(raw):
         (lambda d: d["curves"]["spine_elongation"]["points"].reverse(), "strictly sorted"),
         (lambda d: d["signals"]["imu"].update(sample_rate_hz=0.0), "greater than 0"),
         (lambda d: d["signals"]["stretch"].update(sample_rate_hz=15.0), "whole number"),
-        (lambda d: d["schedule"]["background"]["sample_rates_hz"].update(imu=5.0), "whole number"),
+        (lambda d: d["schedule"]["background"]["sample_rates_hz"].update(imu=0.5), "whole number"),
+        (lambda d: d["schedule"]["background"].update(chunk_ms=50.0), "whole number"),
+        (lambda d: d["schedule"]["background"].update(chunk_ms=0.0), "greater than 0"),
         (lambda d: d["signals"]["emg"].update(band_high_hz=600.0), "band"),
         (lambda d: d["signals"]["stretch"]["curve"].reverse(), "strictly increasing"),
         (lambda d: d["faults"]["quality"]["clipping"].update(probability=1.5), "less than or equal to 1"),
@@ -128,3 +134,9 @@ def test_config_is_frozen():
     config = load_config(EXAMPLE)
     with pytest.raises(ValidationError):
         config.seed = 1
+
+
+def test_background_chunk_is_independent_of_the_session_chunk(raw):
+    # 5 Hz no da muestras enteras en 100 ms (sesiones) pero sí en 1000 ms (fondo): se valida contra el chunk del fondo.
+    data = variant(raw, lambda d: d["schedule"]["background"]["sample_rates_hz"].update(imu=5.0))
+    assert MissionConfig.model_validate(data).schedule.background.sample_rates_hz.imu == 5.0

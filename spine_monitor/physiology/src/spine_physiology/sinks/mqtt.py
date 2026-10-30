@@ -1,7 +1,7 @@
 """Sink MQTT (aiomqtt): publica los envelopes con topic; los objetos de dominio nunca van al bus.
 
 Dueño: D1. QoS 1 para todo (lo fija el contrato AsyncAPI), retained según `Envelope.retained`
-(DeviceStatus). El cliente es cualquier objeto con la firma de `aiomqtt.Client.publish`, así los tests
+(DeviceStatus, ClockSync y calibraciones). El cliente es cualquier objeto con la firma de `aiomqtt.Client.publish`, así los tests
 usan un cliente falso sin broker.
 """
 

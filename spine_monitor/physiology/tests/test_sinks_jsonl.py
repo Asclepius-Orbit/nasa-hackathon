@@ -53,6 +53,11 @@ def test_layout_manifest_and_line_shapes(tmp_path, mission):
     line = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
     assert list(line) == ["topic", "retained", "at", "payload"]
     assert line["payload"] == first.payload and line["topic"] == first.topic
+    calibration = next(m for m in messages if m.kind is EnvelopeKind.CALIBRATION)
+    cal_path = day_dir(tmp_path, calibration.astronaut_id, calibration.day) / "calibrations.jsonl"
+    cal_line = json.loads(cal_path.read_text(encoding="utf-8").splitlines()[0])
+    assert list(cal_line) == ["topic", "retained", "at", "payload"] and cal_line["retained"] is True
+    assert cal_line["topic"] == calibration.topic and cal_line["payload"] == calibration.payload
     truth = next(m for m in messages if m.kind is EnvelopeKind.GROUND_TRUTH)
     truth_path = day_dir(tmp_path, truth.astronaut_id, truth.day) / FILES[EnvelopeKind.GROUND_TRUTH]
     assert list(json.loads(truth_path.read_text(encoding="utf-8").splitlines()[0])) == ["at", "payload"]

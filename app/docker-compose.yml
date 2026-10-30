@@ -6,6 +6,11 @@ services:
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 3 > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   engine:
@@ -28,7 +33,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
     restart: unless-stopped
 
   simulator:
@@ -43,6 +49,7 @@ services:
       SPINE_SIM_SPEED: "1"
       SPINE_SIM_START_DAY: "0"
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
     profiles: ["sim"]
     restart: unless-stopped

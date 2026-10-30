@@ -7,12 +7,16 @@
   diario (latent_state, device_events) a las 00:00; clock_sync en cada arranque y cada
   `device.clock_sync_interval_s` (retained); device_status (retained) al encender, cada
   `device.status_interval_s` y uno `offline` al apagar; por sesión, el registro Session y las
-  calibraciones que se registran en ella a su inicio, los stream_chunk a su `received_at` y el ground
+  calibraciones que se registran en ella a su inicio (cada una también por MQTT: topic
+  `topics.calibration`, retained, ver `calibration_envelope`), los stream_chunk a su `received_at` y el ground
   truth de la sesión (quality_faults, lost_chunks, expected_features) a su fin; el self_report a su hora.
 - `day_messages` / `session_messages`: la misma salida que dentro de `iter_messages`, regenerada sola
   (un día o una sesión sueltos dan exactamente los mismos payloads, en el mismo orden relativo).
 - `resimulate`: la sesión con otra gravedad (delega en `sessions.resimulate`).
 - API en vivo para el gateway: `live_session`, `live_calibration` y `live_background`.
+- Chunks: las sesiones usan `signals.chunk_ms`; el fondo, `schedule.background.chunk_ms`. Cada tramo lleva
+  su `chunk_ms` (SessionPlan / SynthSpec) y se pasa a `SimDevice.chunks` / `advance`; la pausa del fondo
+  se alinea a su propia rejilla.
 Topics con `spine_contracts.topics`. `source` siempre `simulator`.
 
 Cómo se recorre un astronauta-día (lo que garantiza la reproducibilidad por rama):
@@ -60,6 +64,15 @@ from spine_physiology.signals import rep_schedule
 from spine_physiology.state import DayInfo, LatentModel, MissionTimeline
 
 _US = timedelta(microseconds=1)
+
+
+def calibration_envelope(astronaut_id: str, device_id: str, calibration: CalibrationRecord, at: datetime) -> Envelope:
+    """Envelope MQTT de una calibración: `topics.calibration(astronaut_id, device_id, stream_id)`, QoS 1 y
+    retained (la vigente de cada stream); `day` es el de la calibración."""
+    return Envelope.of(
+        EnvelopeKind.CALIBRATION, calibration.model, at=at, astronaut_id=astronaut_id, day=calibration.day,
+        topic=topics.calibration(astronaut_id, device_id, calibration.stream_id), retained=True,
+    )  # fmt: skip
 
 
 def _chunk_start(start: datetime, k: int, samples_per_chunk: int, rate_hz: float) -> datetime:
@@ -246,15 +259,14 @@ class MissionGenerator:
             out.push(envelope(EnvelopeKind.SELF_REPORT, report, report.timestamp))
             for record in scheduled.values():
                 if record.day == day_index and record.session_id is None:
-                    out.push(envelope(EnvelopeKind.CALIBRATION, record.model, record.created_at))
+                    out.push(calibration_envelope(astronaut_id, device_id, record, record.created_at))
 
         # Eventos del día en orden: inicio de tramo (0) < fin de sesión (1) < instante de estado (2).
-        chunk = sess.chunk_delta(config)
         events: list[tuple[datetime, int, int, str, SessionPlan | None, int, int]] = []
         order = itertools.count()
         for plan in plans:
-            for k0, k1 in sess.active_chunks(config, plan):
-                events.append((plan.start + k0 * chunk, 0, next(order), "start", plan, k0, k1))
+            for k0, k1 in sess.active_chunks(plan):
+                events.append((plan.start + k0 * sess.chunk_delta(plan.chunk_ms), 0, next(order), "start", plan, k0, k1))
             events.append((plan.end, 1, next(order), "end", plan, 0, 0))
         for at in _status_times(config, device_plan):
             events.append((at, 2, next(order), "tick", None, 0, 0))
@@ -289,7 +301,7 @@ class MissionGenerator:
                         )  # fmt: skip
                         out.push(envelope(EnvelopeKind.SESSION, session, plan.start))
                         for record in recorded:
-                            out.push(envelope(EnvelopeKind.CALIBRATION, record.model, record.created_at))
+                            out.push(calibration_envelope(astronaut_id, device_id, record, record.created_at))
                         spec = sess.mission_spec(config, plan, day=day, gravity_environment=g)
                         synthesis = sess.synthesize(config, seed, spec, member=member, state=state, calibrations=in_force)
                         run = _Run(plan, synthesis, g, lost={s: [] for s in plan.stream_ids})
@@ -300,15 +312,17 @@ class MissionGenerator:
                         outcomes = device.chunks(
                             tree.rng(*run.synthesis.spec.keys, stream.stream_id, "device", k0), stream_id=stream.stream_id,
                             session_id=plan.session_id, start=start, rate_hz=stream.rate_hz, channels=channels,
-                            quality=quality, calibration_id=stream.calibration_id,
+                            chunk_ms=plan.chunk_ms, quality=quality, calibration_id=stream.calibration_id,
                         )  # fmt: skip
                         ends = _existing_chunk_ends(device_plan, start, k1 - k0, stream.samples_per_chunk, stream.rate_hz)
                         run.cursors.append(_Cursor(outcomes, ends))
                 else:
                     for stream_id in plan.stream_ids:
                         rate = sess.stream_rate(config, stream_id, background=plan.background)
-                        spc = config.signals.samples_per_chunk(rate)
-                        device.advance(stream_id, start=_chunk_start(plan.start, k0, spc, rate), n_samples=(k1 - k0) * spc, rate_hz=rate)
+                        spc = config.signals.samples_per_chunk(rate, chunk_ms=plan.chunk_ms)
+                        device.advance(
+                            stream_id, start=_chunk_start(plan.start, k0, spc, rate), n_samples=(k1 - k0) * spc, rate_hz=rate, chunk_ms=plan.chunk_ms
+                        )
             elif kind == "end":
                 assert plan is not None
                 run = runs.get(plan.ref.slot)
@@ -329,7 +343,7 @@ class MissionGenerator:
     def _session_truth(self, run: _Run, day_index: int, state: Any) -> list[dict[str, Any]]:
         plan = run.plan
         session = truth.TruthSession(plan.ref.astronaut_id, day_index, plan.session_id, plan.ref.slot, plan.protocol_id, run.gravity_environment)
-        active = sess.active_chunks(self._config, plan) if plan.background else None
+        active = sess.active_chunks(plan) if plan.background else None
         features = truth.expected_features(self._config, run.synthesis, state=state, active=active)
         return [
             truth.quality_faults_record(session, run.synthesis.streams, active=active),
@@ -348,15 +362,9 @@ class MissionGenerator:
         day_index: int,
     ) -> Envelope:
         """DeviceStatus con `last_seq` de lo enviado hasta `at` (SimDevice cuenta ya los tramos enteros)."""
-        payload = dump(device.status(rng, at))
         epoch = device_plan.epoch_at(at)
-        if epoch is not None:
-            for entry in payload.get("streams", []):
-                seq = last_seq.get((epoch.boot_id, entry["stream_id"]))
-                if seq is None:
-                    entry.pop("last_seq", None)
-                else:
-                    entry["last_seq"] = seq
+        published = {stream_id: seq for (boot_id, stream_id), seq in last_seq.items() if epoch is not None and boot_id == epoch.boot_id}
+        payload = dump(device.status(rng, at, published=published))
         topic = topics.status(astronaut_id, device_plan.device_id)
         return Envelope(EnvelopeKind.DEVICE_STATUS, topic, payload, at, True, astronaut_id, day_index)
 
@@ -418,10 +426,11 @@ class MissionGenerator:
         session = truth.TruthSession(astronaut_id, info.index, session_id, None, protocol_id, info.gravity_environment)
         residual: dict[str, float] = {}
         cursor = start
+        chunk_ms = sess.chunk_ms_for(config, background=False)
         if protocol is not None:
             exercise = isinstance(protocol, ExerciseProtocol)
             spec = self._live_spec(
-                (*keys, "protocol"), cursor, sess.chunks_for(config, sess.protocol_duration_s(protocol)), streams, info,
+                (*keys, "protocol"), cursor, sess.chunks_for(sess.protocol_duration_s(protocol), chunk_ms=chunk_ms), chunk_ms, streams, info,
                 background=False, reps=rep_schedule(protocol) if exercise else (), protocol=protocol if exercise else None, residual=residual,
             )  # fmt: skip
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
@@ -429,13 +438,13 @@ class MissionGenerator:
             yield Envelope(EnvelopeKind.GROUND_TRUTH, None, truth.expected_features_record(session, features), start, False, astronaut_id, info.index)
             yield from self._live_chunks(device, synthesis, session, astronaut_id, info.index)
             residual = synthesis.final_residual_mm
-            cursor = cursor + spec.n_chunks * sess.chunk_delta(config)
+            cursor = cursor + spec.n_chunks * sess.chunk_delta(chunk_ms)
         for block in itertools.count():
-            spec = self._live_spec((*keys, "rest", block), cursor, _live_block_chunks(config), streams, info, background=False, reps=(), protocol=None, residual=residual)
+            spec = self._live_spec((*keys, "rest", block), cursor, _live_block_chunks(config, chunk_ms), chunk_ms, streams, info, background=False, reps=(), protocol=None, residual=residual)
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
             yield from self._live_chunks(device, synthesis, session, astronaut_id, info.index)
             residual = synthesis.final_residual_mm
-            cursor = cursor + spec.n_chunks * sess.chunk_delta(config)
+            cursor = cursor + spec.n_chunks * sess.chunk_delta(chunk_ms)
 
     def live_calibration(
         self,
@@ -475,7 +484,7 @@ class MissionGenerator:
                 session_id=session_id, created_at=at, day=info.index,
             )  # fmt: skip
             self._live_calibrations[(astronaut_id, stream_id)] = record
-            out.append(Envelope.of(EnvelopeKind.CALIBRATION, record.model, at=at, astronaut_id=astronaut_id, day=info.index))
+            out.append(calibration_envelope(astronaut_id, member.device_id, record, at))
         return out
 
     def live_background(
@@ -507,12 +516,13 @@ class MissionGenerator:
         keys = (astronaut_id, "live", session_id, start.isoformat())
         residual: dict[str, float] = {}
         cursor = start
+        chunk_ms = background.chunk_ms
         for block in itertools.count():
-            spec = self._live_spec((*keys, block), cursor, _live_block_chunks(config), streams, info, background=True, reps=(), protocol=None, residual=residual)
+            spec = self._live_spec((*keys, block), cursor, _live_block_chunks(config, chunk_ms), chunk_ms, streams, info, background=True, reps=(), protocol=None, residual=residual)
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
             yield from self._live_chunks(device, synthesis, session, astronaut_id, info.index)
             residual = synthesis.final_residual_mm
-            cursor = cursor + spec.n_chunks * sess.chunk_delta(config)
+            cursor = cursor + spec.n_chunks * sess.chunk_delta(chunk_ms)
 
     def _live_in_force(self, astronaut_id: str, info: DayInfo, streams: Sequence[str]) -> dict[str, CalibrationRecord]:
         """Calibración vigente por stream: la última hecha en vivo, o la programada de la misión ese día."""
@@ -529,6 +539,7 @@ class MissionGenerator:
         keys: tuple[Any, ...],
         start: datetime,
         n_chunks: int,
+        chunk_ms: float,
         streams: tuple[str, ...],
         info: DayInfo,
         *,
@@ -539,7 +550,7 @@ class MissionGenerator:
     ) -> SynthSpec:
         device = self._config.device
         return SynthSpec(
-            keys=keys, start=start, n_chunks=n_chunks, stream_ids=streams, background=background, reps=reps, protocol=protocol,
+            keys=keys, start=start, n_chunks=n_chunks, chunk_ms=chunk_ms, stream_ids=streams, background=background, reps=reps, protocol=protocol,
             gravity_environment=info.gravity_environment,
             awake_from=info.at(device.power_on_time_utc),
             awake_to=info.at(device.power_off_time_utc),  # del día de misión, no del bloque: pasadas las 00:00 UTC la fracción despierta no se reinicia
@@ -570,7 +581,7 @@ class MissionGenerator:
                     device.chunks(
                         self._tree.rng(*spec.keys, stream.stream_id, "device", k), stream_id=stream.stream_id,
                         session_id=session.session_id, start=stream.chunk_start(k), rate_hz=stream.rate_hz, channels=channels,
-                        quality=quality, calibration_id=stream.calibration_id,
+                        chunk_ms=spec.chunk_ms, quality=quality, calibration_id=stream.calibration_id,
                     )
                 )  # fmt: skip
                 if not outcomes:
@@ -585,7 +596,7 @@ class MissionGenerator:
                     batch.append(Envelope.of(EnvelopeKind.STREAM_CHUNK, outcome.chunk, at=outcome.received_at, astronaut_id=astronaut_id, day=day_index, topic=topic))
             batch.sort(key=lambda e: e.at)
             yield from batch
-        end = spec.start + spec.n_chunks * sess.chunk_delta(config)
+        end = spec.start + spec.n_chunks * sess.chunk_delta(spec.chunk_ms)
         if any(s.episodes for s in synthesis.streams):
             record = truth.quality_faults_record(session, synthesis.streams)
             yield Envelope(EnvelopeKind.GROUND_TRUTH, None, record, end, False, astronaut_id, day_index)
@@ -593,10 +604,10 @@ class MissionGenerator:
             yield Envelope(EnvelopeKind.GROUND_TRUTH, None, truth.lost_chunks_record(session, lost), end, False, astronaut_id, day_index)
 
 
-def _live_block_chunks(config: MissionConfig) -> int:
-    """Chunks por bloque de síntesis en vivo: un intervalo de DeviceStatus (las flexiones del fondo no
-    cruzan bloques; el cordón encadena su residuo entre bloques)."""
-    return max(1, round(config.device.status_interval_s * 1000.0 / config.signals.chunk_ms))
+def _live_block_chunks(config: MissionConfig, chunk_ms: float) -> int:
+    """Chunks (de `chunk_ms`) por bloque de síntesis en vivo: un intervalo de DeviceStatus (las flexiones
+    del fondo no cruzan bloques; el cordón encadena su residuo entre bloques)."""
+    return max(1, round(config.device.status_interval_s * 1000.0 / chunk_ms))
 
 
 def _clock_times(config: MissionConfig, plan: DevicePlan) -> list[datetime]:
@@ -627,4 +638,4 @@ def _status_times(config: MissionConfig, plan: DevicePlan) -> list[datetime]:
     return times
 
 
-__all__ = ["MissionGenerator", "SessionRef", "StreamSynthesis"]
+__all__ = ["MissionGenerator", "SessionRef", "StreamSynthesis", "calibration_envelope"]

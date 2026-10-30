@@ -104,11 +104,12 @@ schedule:
     name: background
     protocol_id: background_monitoring_v1
     # Short window around the exercise session so the pause/resume is visible without huge outputs
-    # (at 100 ms per chunk, every background hour is 36 000 chunks per stream).
+    # (the background has its own chunk size: at 1000 ms every hour is 3 600 chunks per stream, not 36 000).
     start_time_utc: "09:30"
     end_time_utc: "10:30"
     streams: [imu_l3, stretch_lumbar]
     sample_rates_hz: { imu: 10.0, stretch: 10.0 }
+    chunk_ms: 1000.0
     bends_per_hour: 6.0
     bend_rom_deg: 20.0
     bend_duration_s: 3.0

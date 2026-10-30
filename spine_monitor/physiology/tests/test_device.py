@@ -69,8 +69,8 @@ def emit(device, config, stream_id, *, n=None, start=T0, seed=0, channels=None, 
     n_chunks = -(-n // spc)
     return list(
         device.chunks(
-            np.random.default_rng(seed), stream_id=stream_id, session_id=session, start=start, rate_hz=rate, channels=channels,
-            quality=quality or clean_quality(kind, n_chunks), calibration_id=cal,
+            np.random.default_rng(seed), stream_id=stream_id, session_id=session, start=start, rate_hz=rate, chunk_ms=config.signals.chunk_ms,
+            channels=channels, quality=quality or clean_quality(kind, n_chunks), calibration_id=cal,
         )
     )  # fmt: skip
 
@@ -116,7 +116,7 @@ def test_stretch_without_length_needs_no_calibration_but_length_requires_it(conf
     with pytest.raises(ValueError, match="calibration_id"):
         device.chunks(
             np.random.default_rng(0), stream_id="stretch_lumbar", session_id=SESSION, start=T0, rate_hz=config.signals.stretch.sample_rate_hz,
-            channels=channels_for(StreamKind.STRETCH, 200), quality=clean_quality(StreamKind.STRETCH, 10), calibration_id=None,
+            chunk_ms=config.signals.chunk_ms, channels=channels_for(StreamKind.STRETCH, 200), quality=clean_quality(StreamKind.STRETCH, 10), calibration_id=None,
         )  # fmt: skip
 
 
@@ -167,7 +167,7 @@ def test_seq_is_continuous_across_calls_and_advance(config):
     device = SimDevice(config, single_boot_plan(config))
     first = emit(device, config, "emg_lat_left", n=1000)
     assert [o.seq for o in first] == list(range(10))
-    device.advance("emg_lat_left", start=T0 + timedelta(seconds=1), n_samples=2000, rate_hz=1000.0)
+    device.advance("emg_lat_left", start=T0 + timedelta(seconds=1), n_samples=2000, rate_hz=1000.0, chunk_ms=100)
     assert device.next_seq(1234, "emg_lat_left") == 30
     after = emit(device, config, "emg_lat_left", n=300, start=T0 + timedelta(seconds=3))
     assert [o.seq for o in after] == [30, 31, 32]
@@ -178,7 +178,7 @@ def test_seq_is_continuous_across_calls_and_advance(config):
 def test_advance_matches_emitting_the_same_span(config):
     a, b = SimDevice(config, single_boot_plan(config)), SimDevice(config, single_boot_plan(config))
     emit(a, config, "emg_lat_left", n=2500)
-    b.advance("emg_lat_left", start=T0, n_samples=2500, rate_hz=1000.0)
+    b.advance("emg_lat_left", start=T0, n_samples=2500, rate_hz=1000.0, chunk_ms=100)
     assert a.next_seq(1234, "emg_lat_left") == b.next_seq(1234, "emg_lat_left") == 25
     assert a.battery_pct(T0 + timedelta(hours=1)) == b.battery_pct(T0 + timedelta(hours=1))
 
@@ -326,7 +326,7 @@ def test_status_reports_the_active_stream_rate(config):
     at = T0 + timedelta(seconds=5)
     rate = lambda: {s["stream_id"]: s["sample_rate_hz"] for s in dump(device.status(np.random.default_rng(0), at))["streams"]}
     assert rate()["imu_l3"] == nominal
-    device.advance("imu_l3", start=T0, n_samples=100, rate_hz=reduced)
+    device.advance("imu_l3", start=T0, n_samples=100, rate_hz=reduced, chunk_ms=100)
     assert rate()["imu_l3"] == reduced and rate()["emg_lat_left"] == config.signals.rate(StreamKind.EMG)
     emit(device, config, "imu_l3", n=100, start=T0 + timedelta(seconds=2))
     assert rate()["imu_l3"] == nominal
@@ -348,8 +348,8 @@ def test_battery_drains_and_drops_to_degraded(config):
     assert device.battery_pct(T0) == cfg.start_pct
     hour = T0 + timedelta(hours=1)
     assert device.battery_pct(hour) == pytest.approx(cfg.start_pct - cfg.drain_pct_per_hour_idle)
-    device.advance("emg_lat_left", start=T0, n_samples=1_800_000, rate_hz=1000.0)  # 30 min de streaming
-    device.advance("imu_l3", start=T0, n_samples=180_000, rate_hz=100.0)  # el mismo tramo no cuenta doble
+    device.advance("emg_lat_left", start=T0, n_samples=1_800_000, rate_hz=1000.0, chunk_ms=100)  # 30 min de streaming
+    device.advance("imu_l3", start=T0, n_samples=180_000, rate_hz=100.0, chunk_ms=100)  # el mismo tramo no cuenta doble
     expected = cfg.start_pct - cfg.drain_pct_per_hour_idle - (cfg.drain_pct_per_hour_streaming - cfg.drain_pct_per_hour_idle) * 0.5
     assert device.battery_pct(hour) == pytest.approx(expected)
     assert device.battery_pct(T0 + timedelta(days=5)) == 0.0
@@ -431,3 +431,38 @@ def test_everything_emitted_over_a_day_validates():
         assert validation.errors("telemetry/device-status", dump(device.status(np.random.default_rng(minute), at))) == []
     assert n_clock > 0
     assert copy.deepcopy(plan) == plan
+
+
+def test_chunk_size_is_the_one_given_per_call(config):
+    """Mismo tramo de muestras a 10 Hz: 1 chunk de 10 muestras por segundo con chunk_ms=1000 (fondo), y 1 de
+    una sola muestra con 100 ms; seq y advance siguen el tamaño de chunk de cada llamada."""
+    rate = config.schedule.background.sample_rates_hz.imu
+    channels = channels_for(StreamKind.IMU, 100)
+    quality = lambda n: clean_quality(StreamKind.IMU, n)
+    device = SimDevice(config, single_boot_plan(config))
+    heavy = list(device.chunks(np.random.default_rng(0), stream_id="imu_l3", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=100.0,
+                               channels=channels, quality=quality(100), calibration_id=None))  # fmt: skip
+    device = SimDevice(config, single_boot_plan(config))
+    light = list(device.chunks(np.random.default_rng(0), stream_id="imu_l3", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=1000.0,
+                               channels=channels, quality=quality(10), calibration_id=None))  # fmt: skip
+    assert (len(heavy), len(light)) == (100, 10)
+    assert {o.chunk.n_samples for o in heavy} == {1} and {o.chunk.n_samples for o in light} == {10}
+    assert [o.seq for o in light] == list(range(10)) and device.next_seq(1234, "imu_l3") == 10
+    other = SimDevice(config, single_boot_plan(config))
+    other.advance("imu_l3", start=T0, n_samples=100, rate_hz=rate, chunk_ms=1000.0)
+    assert other.next_seq(1234, "imu_l3") == 10
+
+
+def test_status_last_seq_uses_published_when_given(config):
+    device = SimDevice(config, single_boot_plan(config))
+    emit(device, config, "emg_lat_left", n=1000)  # el dispositivo ya consumió seq 0..9
+    at = T0 + timedelta(seconds=1)
+    by_id = lambda **kw: {s["stream_id"]: s for s in dump(device.status(np.random.default_rng(0), at, **kw))["streams"]}
+    assert by_id()["emg_lat_left"]["last_seq"] == 9  # sin published: next_seq - 1
+    published = by_id(published={"emg_lat_left": 4})
+    assert published["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in published["imu_l3"]
+    assert "last_seq" not in by_id(published={})["emg_lat_left"]  # nada publicado todavía: no declara seq
+    payload = dump(device.status(np.random.default_rng(0), at, published={"emg_lat_left": 4}))
+    assert validation.errors("telemetry/device-status", payload) == []
+    # Mismos números aleatorios con o sin published.
+    assert dump(device.status(np.random.default_rng(0), at))["temperature_c"] == payload["temperature_c"]

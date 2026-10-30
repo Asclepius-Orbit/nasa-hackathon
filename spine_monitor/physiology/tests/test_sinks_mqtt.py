@@ -74,3 +74,16 @@ def test_same_seed_same_bytes_through_sink(messages):
     again = FakeClient()
     asyncio.run(publish_all(MissionGenerator(tiny_config()).iter_messages(), MqttSink(again)))
     assert again.published == first.published
+
+
+def test_calibrations_are_published_retained_on_their_topic(messages):
+    from spine_physiology.envelope import EnvelopeKind
+
+    client = FakeClient()
+    asyncio.run(publish_all(messages, MqttSink(client)))
+    calibrations = [m for m in messages if m.kind is EnvelopeKind.CALIBRATION]
+    assert calibrations
+    published = {topic: (retain, qos) for topic, _, qos, retain in client.published}
+    for m in calibrations:
+        assert published[m.topic] == (True, QOS)
+    assert all("/calibration/" in m.topic for m in calibrations)

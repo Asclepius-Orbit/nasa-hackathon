@@ -48,8 +48,9 @@ def test_plan_day_lists_scheduled_sessions_and_background_sorted(config, timelin
     for plan in plans:
         assert plan.ref == sess.SessionRef(A, 0, plan.ref.slot)
         assert plan.session_id == RngTree(config.seed).uuid(A, 0, plan.ref.slot)
-        # Duración entera en chunks.
-        assert (plan.end - plan.start) % timedelta(milliseconds=config.signals.chunk_ms) == timedelta(0)
+        # Duración entera en chunks (del tamaño propio de la sesión: el fondo tiene el suyo).
+        assert plan.chunk_ms == sess.chunk_ms_for(config, background=plan.background)
+        assert (plan.end - plan.start) % timedelta(milliseconds=plan.chunk_ms) == timedelta(0)
     exercise = next(p for p in plans if p.ref.slot == "lat_pulldown")
     assert exercise.session_type == "exercise" and exercise.reps == rep_schedule(config.protocol("lat_pulldown_standing_v1"))
     assert abs((exercise.start - day.at(config.schedule.sessions[1].time_utc)).total_seconds()) < 5 * 600
@@ -112,12 +113,13 @@ def test_background_active_chunks_skip_the_pause_on_the_chunk_grid(config, timel
     plans = sess.plan_day(config, config.seed, A, timeline.day(0))
     background = next(p for p in plans if p.background)
     exercise = next(p for p in plans if p.ref.slot == "lat_pulldown")
-    chunk = timedelta(milliseconds=config.signals.chunk_ms)
-    (a0, a1), (b0, b1) = sess.active_chunks(config, background)
-    assert a0 == 0 and b1 == sess.n_chunks(config, background)
+    chunk = timedelta(milliseconds=config.schedule.background.chunk_ms)
+    assert background.chunk_ms == config.schedule.background.chunk_ms != config.signals.chunk_ms
+    (a0, a1), (b0, b1) = sess.active_chunks(background)
+    assert a0 == 0 and b1 == sess.n_chunks(background)
     assert background.start + a1 * chunk <= exercise.start < background.start + (a1 + 1) * chunk
     assert background.start + (b0 - 1) * chunk < exercise.end <= background.start + b0 * chunk
-    assert sess.active_chunks(config, exercise) == ((0, sess.n_chunks(config, exercise)),)
+    assert sess.active_chunks(exercise) == ((0, sess.n_chunks(exercise)),)
 
 
 def test_scheduled_calibrations_follow_every_n_days_and_segment_starts(config, timeline):
@@ -226,7 +228,7 @@ def _clean(raw):
 
 def test_synthesis_shapes_channels_and_calibration(config):
     plan, synthesis = _synth(config, "lat_pulldown")
-    n_chunks = sess.n_chunks(config, plan)
+    n_chunks = sess.n_chunks(plan)
     assert [s.stream_id for s in synthesis.streams] == list(plan.stream_ids)
     for stream in synthesis.streams:
         lengths = {len(a) for a in stream.channels.values()}
@@ -289,3 +291,35 @@ def test_stream_rate_rejects_emg_in_background(config):
         sess.stream_rate(config, "emg_lat_left", background=True)
     assert sess.stream_rate(config, "emg_lat_left", background=False) == config.signals.emg.sample_rate_hz
     assert config.device.stream("imu_l3").stream_kind is StreamKind.IMU
+
+
+def test_background_chunks_are_about_ten_times_fewer_than_at_session_chunk_size(config, timeline):
+    day = timeline.day(0)
+    background = next(p for p in sess.plan_day(config, config.seed, A, day) if p.background)
+
+    def emitted(cfg) -> int:
+        plan = next(p for p in sess.plan_day(cfg, cfg.seed, A, day) if p.background)
+        return sum(k1 - k0 for k0, k1 in sess.active_chunks(plan))
+
+    heavy = make_config(lambda raw: raw["schedule"]["background"].update(chunk_ms=raw["signals"]["chunk_ms"]))
+    ratio = emitted(heavy) / emitted(config)
+    assert ratio == pytest.approx(config.schedule.background.chunk_ms / config.signals.chunk_ms, rel=0.02) and 9 < ratio < 11
+    # El fondo sintetiza a su tamaño de chunk: un chunk de fondo lleva rate * chunk_ms / 1000 muestras.
+    _, synthesis = _synth(config, "background")
+    rates = config.schedule.background.sample_rates_hz
+    assert synthesis.stream("imu_l3").samples_per_chunk == round(rates.imu * background.chunk_ms / 1000)
+    assert len(synthesis.stream("imu_l3").quality) == sess.n_chunks(background)
+
+
+def test_background_pause_aligns_to_the_background_grid_not_the_session_one():
+    # Con chunks de fondo de 7 s el hueco de la pausa se redondea a esa rejilla, no a la de 100 ms.
+    config = make_config(lambda raw: raw["schedule"]["background"].update(chunk_ms=7000.0))
+    timeline = MissionTimeline(config)
+    plans = sess.plan_day(config, config.seed, A, timeline.day(0))
+    background = next(p for p in plans if p.background)
+    exercise = next(p for p in plans if p.ref.slot == "lat_pulldown")
+    chunk = timedelta(milliseconds=7000)
+    (a0, a1), (b0, b1) = sess.active_chunks(background)
+    assert background.start + a1 * chunk <= exercise.start < background.start + (a1 + 1) * chunk
+    assert background.start + (b0 - 1) * chunk < exercise.end <= background.start + b0 * chunk
+    assert (background.end - background.start) % chunk == timedelta(0)

@@ -4,7 +4,8 @@
   (`faults.plan_reboots`) con su tiempo offline y apagado a `power_off_time_utc`. Cada arranque tiene un
   boot_id derivado (`rng.derive_boot_id(seed, astronaut_id, day.index, n)`, n = 0, 1, ...) y una deriva
   de reloj propia. RNG: `(astronaut_id, day.index, "device")`. Plan regenerable solo por (astronauta, día).
-- `SimDevice.chunks`: trocea arrays de sesión en chunks de `signals.chunk_ms` (contratos EmgChunk /
+- `SimDevice.chunks`: trocea arrays de sesión en chunks de `chunk_ms` (argumento explícito de cada tramo:
+  `signals.chunk_ms` en sesiones, `schedule.background.chunk_ms` en el fondo) (contratos EmgChunk /
   ImuChunk / StretchChunk de spine_contracts, `source: simulator`): seq por (boot_id, stream) desde 0 y
   sin huecos salvo pérdidas (que también consumen seq), `t0_device_ms` del reloj del arranque (con
   deriva), `received_at` = instante real del final del chunk + latencia, metadatos (`acquisition`,
@@ -16,7 +17,7 @@
 - `SimDevice.advance`: consume seq como si se hubiera emitido (para regenerar una sesión suelta con los
   seq que tendría dentro del día completo).
 - `status` (DeviceStatus: ok/degraded por batería o stream stalled/offline, batería, temperatura,
-  link, streams con last_seq) y `clock_sync` (ClockSync `method: simulated`, None si está apagado).
+  link, streams con last_seq; `published` fija el last_seq de cada stream a lo ya publicado) y `clock_sync` (ClockSync `method: simulated`, None si está apagado).
 Todos los modelos se construyen sin pasar None a campos opcionales (ver `spine_contracts.dump`).
 
 Estado que depende del orden de llamadas (el generador procesa el día en orden temporal): los anclajes
@@ -230,8 +231,8 @@ class SimDevice:
 
     # --- reparto en chunks ------------------------------------------------------------------------
 
-    def _layout(self, start: datetime, n_samples: int, rate_hz: float) -> _Layout:
-        spc = self._config.signals.samples_per_chunk(rate_hz)
+    def _layout(self, start: datetime, n_samples: int, rate_hz: float, chunk_ms: float) -> _Layout:
+        spc = self._config.signals.samples_per_chunk(rate_hz, chunk_ms=chunk_ms)
         n_chunks = -(-n_samples // spc) if n_samples > 0 else 0
         start_us = np.rint(np.arange(n_chunks) * spc / rate_hz * 1e6).astype(np.int64)
         epoch_idx = np.full(n_chunks, -1, dtype=np.int64)
@@ -255,10 +256,10 @@ class SimDevice:
             layout.seq[selected] = base + np.arange(selected.size)
             self._seq[(boot.boot_id, stream_id)] = base + int(selected.size)
 
-    def advance(self, stream_id: str, *, start: datetime, n_samples: int, rate_hz: float) -> None:
-        """Consume los seq (y la batería) de un tramo de streaming sin generar chunks."""
+    def advance(self, stream_id: str, *, start: datetime, n_samples: int, rate_hz: float, chunk_ms: float) -> None:
+        """Consume los seq (y la batería) de un tramo de streaming sin generar chunks (`chunk_ms`: el del tramo)."""
         self._rates[stream_id] = rate_hz
-        layout = self._layout(start, n_samples, rate_hz)
+        layout = self._layout(start, n_samples, rate_hz, chunk_ms)
         self._assign_seq(layout, stream_id)
         self._record_streaming(start, n_samples, rate_hz)
 
@@ -286,12 +287,13 @@ class SimDevice:
         session_id: str,
         start: datetime,
         rate_hz: float,
+        chunk_ms: float,
         channels: Mapping[str, np.ndarray],
         quality: Sequence[ChunkQuality],
         calibration_id: str | None,
     ) -> Iterator[ChunkOutcome]:
         """Trocea `channels` (todas con n muestras; la muestra 0 es el instante real `start`) en chunks de
-        `signals.chunk_ms`; el último puede ser parcial. `quality[i]` es la del chunk i. Claves de `channels`:
+        `chunk_ms` (el del tramo: sesiones `signals.chunk_ms`, fondo `schedule.background.chunk_ms`); el último puede ser parcial. `quality[i]` es la del chunk i. Claves de `channels`:
         emg -> {"emg"}; imu -> los 6 de `signals.imu.IMU_CHANNELS`; stretch -> {"adc_counts",
         "resistance_ohm", "length_mm"} (las dos derivadas opcionales; con length_mm hace falta
         `calibration_id`). RNG: pérdidas y latencias de este tramo.
@@ -311,7 +313,7 @@ class SimDevice:
         n_samples = lengths.pop()
 
         self._rates[stream_id] = rate_hz
-        layout = self._layout(start, n_samples, rate_hz)
+        layout = self._layout(start, n_samples, rate_hz, chunk_ms)
         if len(quality) < layout.n_chunks:
             raise ValueError(f"need quality for {layout.n_chunks} chunks, got {len(quality)}")
         faults = self._config.faults.device
@@ -496,7 +498,10 @@ class SimDevice:
     def _stalled(self, stream_id: str, at: datetime) -> bool:
         return any(a <= at < b for a, b in self._stalls.get(stream_id, ()))
 
-    def status(self, rng: np.random.Generator, at: datetime) -> DeviceStatus:
+    def status(self, rng: np.random.Generator, at: datetime, *, published: Mapping[str, int] | None = None) -> DeviceStatus:
+        """DeviceStatus en `at`. `published`: stream_id -> último seq PUBLICADO del arranque en curso; si se
+        da, `streams[].last_seq` lo usa (y se omite en los streams que no figuran) en lugar de
+        `next_seq - 1`, para que el estado nunca declare un seq que aún no está en el bus."""
         cfg = self._config.device
         # Mismas extracciones del RNG esté el dispositivo encendido o no.
         temperature = float(rng.normal(cfg.temperature_c.mean, cfg.temperature_c.sd))
@@ -525,7 +530,7 @@ class SimDevice:
                 "state": "stalled" if is_stalled else "active",
                 "sample_rate_hz": self._rates.get(s.stream_id, self._config.signals.rate(s.stream_kind)),
             }
-            last = self.next_seq(epoch.boot_id, s.stream_id) - 1
+            last = self.next_seq(epoch.boot_id, s.stream_id) - 1 if published is None else published.get(s.stream_id, -1)
             if last >= 0:
                 entry["last_seq"] = last
             streams.append(entry)

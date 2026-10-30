@@ -5,7 +5,7 @@ Dueño: D1. Estructura:
     out/AST-01/profile.json                 el AstronautProfile (último recibido)
     out/AST-01/day-012/<fichero>.jsonl      un fichero por tipo (ver `FILES`), `day` con 3 dígitos
 Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic (chunks, estado, reloj,
-acks) y `{"at", "payload"}` para los objetos de dominio (JSON compacto, claves en el orden del payload,
+acks, calibraciones) y `{"at", "payload"}` para los objetos de dominio (JSON compacto, claves en el orden del payload,
 UTF-8, `\n`, sin relojes de pared: mismos bytes con la misma semilla). `close()` escribe el manifest.
 Los ficheros se abren perezosamente con un tope de manejadores: al superarlo se cierra el menos usado
 recientemente y se reabre (en modo append) cuando vuelve a hacer falta.

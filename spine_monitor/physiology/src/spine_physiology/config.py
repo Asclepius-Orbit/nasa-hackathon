@@ -351,6 +351,9 @@ class BackgroundConfig(_Model):
     end_time_utc: TimeOfDay
     streams: Annotated[list[StreamId], Field(min_length=1)]
     sample_rates_hz: BackgroundRates
+    # Duración de cada chunk del fondo (independiente de `signals.chunk_ms`: el fondo es de baja frecuencia
+    # y con chunks de sesión sería mucho más pesado de lo necesario).
+    chunk_ms: PositiveFloat
     # Flexiones espontáneas del tronco (proceso de Poisson) durante el fondo.
     bends_per_hour: NonNegFloat
     bend_rom_deg: NonNegFloat
@@ -602,8 +605,10 @@ class SignalsConfig(_Model):
         return {StreamKind.EMG: self.emg.sample_rate_hz, StreamKind.IMU: self.imu.sample_rate_hz,
                 StreamKind.STRETCH: self.stretch.sample_rate_hz}[kind]  # fmt: skip
 
-    def samples_per_chunk(self, rate_hz: float) -> int:
-        return round(rate_hz * self.chunk_ms / 1000)
+    def samples_per_chunk(self, rate_hz: float, *, chunk_ms: float | None = None) -> int:
+        """Muestras por chunk a `rate_hz`; `chunk_ms` None usa el de las sesiones (`signals.chunk_ms`),
+        el fondo pasa el suyo (`schedule.background.chunk_ms`)."""
+        return round(rate_hz * (self.chunk_ms if chunk_ms is None else chunk_ms) / 1000)
 
 
 # --- Fallos -----------------------------------------------------------------------------------------
@@ -862,18 +867,19 @@ class MissionConfig(_Model):
             if missing:
                 problems.append(f"daily_context.{section} missing phases {sorted(p.value for p in missing)}")
 
-        # Cada chunk debe contener un número entero de muestras, en sesión y en fondo.
+        # Cada chunk debe contener un número entero de muestras: en sesión con `signals.chunk_ms`, en el fondo
+        # con `schedule.background.chunk_ms`.
         rates = {
-            "signals.emg": self.signals.emg.sample_rate_hz,
-            "signals.imu": self.signals.imu.sample_rate_hz,
-            "signals.stretch": self.signals.stretch.sample_rate_hz,
-            "schedule.background.sample_rates_hz.imu": background.sample_rates_hz.imu,
-            "schedule.background.sample_rates_hz.stretch": background.sample_rates_hz.stretch,
+            ("signals.emg", self.signals.chunk_ms): self.signals.emg.sample_rate_hz,
+            ("signals.imu", self.signals.chunk_ms): self.signals.imu.sample_rate_hz,
+            ("signals.stretch", self.signals.chunk_ms): self.signals.stretch.sample_rate_hz,
+            ("schedule.background.sample_rates_hz.imu", background.chunk_ms): background.sample_rates_hz.imu,
+            ("schedule.background.sample_rates_hz.stretch", background.chunk_ms): background.sample_rates_hz.stretch,
         }
-        for where, rate in rates.items():
-            per_chunk = rate * self.signals.chunk_ms / 1000
+        for (where, chunk_ms), rate in rates.items():
+            per_chunk = rate * chunk_ms / 1000
             if per_chunk < 1 or abs(per_chunk - round(per_chunk)) > 1e-9:
-                problems.append(f"{where}: {rate} Hz × chunk_ms {self.signals.chunk_ms} must give a whole number (>= 1) of samples")
+                problems.append(f"{where}: {rate} Hz × chunk_ms {chunk_ms} must give a whole number (>= 1) of samples")
 
         if problems:
             raise ValueError("; ".join(problems))

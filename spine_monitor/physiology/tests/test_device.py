@@ -319,6 +319,29 @@ def test_status_ok_and_validates_against_contract(config):
     assert {s["state"] for s in payload["streams"]} == {"active"}
 
 
+def test_status_reports_the_active_stream_rate(config):
+    device = SimDevice(config, single_boot_plan(config))
+    nominal = config.signals.rate(StreamKind.IMU)
+    reduced = nominal / 2
+    at = T0 + timedelta(seconds=5)
+    rate = lambda: {s["stream_id"]: s["sample_rate_hz"] for s in dump(device.status(np.random.default_rng(0), at))["streams"]}
+    assert rate()["imu_l3"] == nominal
+    device.advance("imu_l3", start=T0, n_samples=100, rate_hz=reduced)
+    assert rate()["imu_l3"] == reduced and rate()["emg_lat_left"] == config.signals.rate(StreamKind.EMG)
+    emit(device, config, "imu_l3", n=100, start=T0 + timedelta(seconds=2))
+    assert rate()["imu_l3"] == nominal
+
+
+def test_clock_anchors_stay_sorted_whatever_the_sync_order(config):
+    device = SimDevice(config, single_boot_plan(config, drift_ppm=50.0))
+    for minutes in (30, 10, 20):
+        device.clock_sync(np.random.default_rng(0), T0 + timedelta(minutes=minutes))
+    anchors = device._anchors[1234]
+    assert anchors == sorted(anchors)
+    outcomes = emit(device, config, "emg_lat_left", n=500, start=T0 + timedelta(minutes=25))
+    assert outcomes
+
+
 def test_battery_drains_and_drops_to_degraded(config):
     device = SimDevice(config, single_boot_plan(config, boot_at=T0))
     cfg = config.device.battery

@@ -218,3 +218,29 @@ def test_drift_and_latency_within_configured_ranges():
     latency = sample_latency_ms(rng, clock, 500)
     assert latency.dtype == np.float64 and latency.shape == (500,)
     assert clock.latency_ms.min <= latency.min() and latency.max() <= clock.latency_ms.max
+
+
+def test_imu_is_reclipped_to_sensor_range_after_faults():
+    config = make_config(out_of_calibration=1.0, low_snr=1.0, motion_artifact=1.0)
+    imu = config.signals.imu
+    channels = {c: np.full(2000, 0.9 * (imu.accel_range_g if c.startswith("accel") else imu.gyro_range_dps)) for c in signal(StreamKind.IMU)}
+    _, altered, _ = run(config, StreamKind.IMU, channels)
+    for name, arr in altered.items():
+        limit = imu.accel_range_g if name.startswith("accel") else imu.gyro_range_dps
+        assert np.abs(arr).max() <= limit
+        assert np.abs(arr).max() == limit  # el fallo sí llegó a saturar
+
+
+def test_motion_artifact_band_and_warmup_decay_come_from_config():
+    base = make_config(motion_artifact=1.0, sensor_warmup=1.0)
+    raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    raw = copy.deepcopy(raw)
+    for name in FLAGS:
+        raw["faults"]["quality"][name].update(probability=1.0 if name in {"motion_artifact", "sensor_warmup"} else 0.0, kinds=["emg", "imu", "stretch"])
+    raw["faults"]["quality"]["motion_artifact"].update(band_low_hz=2.0, band_high_hz=3.0, max_fraction_of_rate=0.4)
+    raw["faults"]["quality"]["sensor_warmup"]["decay_fraction"] = 0.05
+    other = MissionConfig.model_validate(raw)
+    channels = signal(StreamKind.EMG)
+    _, a, _ = run(base, StreamKind.EMG, channels)
+    _, b, _ = run(other, StreamKind.EMG, channels)
+    assert not np.array_equal(a["emg"], b["emg"])

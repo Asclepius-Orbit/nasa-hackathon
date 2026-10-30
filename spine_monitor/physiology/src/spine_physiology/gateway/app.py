@@ -45,6 +45,7 @@ import logging
 import math
 import re
 import signal
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
@@ -81,6 +82,16 @@ _log = logging.getLogger(__name__)
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _DAY_S = 86400.0
 _MESSAGE_MAX = 300  # maxLength de error.message en command-ack.schema.json
+# Los comandos del esquema son diminutos (cientos de bytes): por encima de esto ni se parsea (un JSON enorme o
+# anidado hasta el absurdo no debe costar tiempo ni tumbar el bucle). Si se lee su command_id, `invalid_command`.
+_PAYLOAD_MAX_BYTES = 16 * 1024
+_COMMAND_ID_PREFIX = re.compile(rb'"command_id"\s*:\s*"([0-9a-f-]{36})"')
+# Tope de max_duration_s / duration_s: el esquema no lo acota y un valor enorme desborda timedelta/datetime
+# (OverflowError) cuando ya se habría tocado el estado. 30 días cubre de sobra cualquier misión de demo.
+_DURATION_MAX_S = 30 * 86400
+# Comandos ya tratados por dispositivo (LRU): un QoS 1 puede reentregarse (DUP) y entonces se reenvían los
+# mismos acks en vez de volver a ejecutar el comando.
+_HANDLED_MAX = 256
 
 type AckStatus = Literal["accepted", "rejected", "completed", "failed"]
 type AckCode = Literal["busy", "unknown_stream", "no_session", "device_offline", "calibration_failed", "invalid_command", "internal"]
@@ -185,6 +196,8 @@ class _Unit:
     published: dict[tuple[int, str], int] = field(default_factory=dict)
     # Acks que salen más tarde (completed de una calibración con duración).
     pending: list[tuple[datetime, Envelope]] = field(default_factory=list)
+    # command_id -> acks ya enviados (LRU acotada a `_HANDLED_MAX`), para responder igual a una reentrega.
+    handled: OrderedDict[str, list[Envelope]] = field(default_factory=OrderedDict)
 
     @property
     def astronaut_id(self) -> str:
@@ -317,8 +330,15 @@ class FakeGateway:
             body["result"] = {"calibration_id": calibration_id}
         return self._envelope(EnvelopeKind.COMMAND_ACK, CommandAck.model_validate(body), unit, at, topics.ack(unit.astronaut_id, unit.device_id))
 
+    async def _publish_ack(self, client: MqttPublisher, unit: _Unit, envelope: Envelope) -> None:
+        """Publica un ack y lo anota (si su comando sigue en la LRU) para poder reenviarlo ante una reentrega."""
+        await self._publish(client, envelope)
+        sent = unit.handled.get(str(envelope.payload["command_id"]))
+        if sent is not None:
+            sent.append(envelope)
+
     async def _reply(self, client: MqttPublisher, unit: _Unit, command_id: str, status: AckStatus, at: datetime, **kw: Any) -> None:
-        await self._publish(client, self._ack(unit, command_id, status, at, **kw))
+        await self._publish_ack(client, unit, self._ack(unit, command_id, status, at, **kw))
 
     # --- fuentes de chunks ------------------------------------------------------------------------
 
@@ -403,21 +423,46 @@ class FakeGateway:
             if unit is None:
                 _log.warning("message on unexpected topic %s ignored", topic)
                 return
-            try:
-                data = json.loads(payload)
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                data = None
+            oversized = len(payload) > _PAYLOAD_MAX_BYTES
+            data: Any = None
+            if not oversized:
+                try:
+                    data = json.loads(payload)
+                except (ValueError, RecursionError):  # ValueError cubre UnicodeDecodeError y JSONDecodeError
+                    data = None
             command_id = data.get("command_id") if isinstance(data, dict) else None
+            if oversized:
+                found = _COMMAND_ID_PREFIX.search(payload[:_PAYLOAD_MAX_BYTES])
+                command_id = found.group(1).decode("ascii") if found else None
             if not isinstance(command_id, str) or not _UUID.fullmatch(command_id):
                 _log.warning("unreadable command on %s ignored (no command_id)", topic)
                 return
             now = self._now()
+            previous = unit.handled.get(command_id)
+            if previous:  # reentrega (DUP): mismos acks, sin volver a ejecutar
+                unit.handled.move_to_end(command_id)
+                _log.info("%s: command %s redelivered, resending its %d acks", unit.astronaut_id, command_id, len(previous))
+                try:
+                    for envelope in list(previous):
+                        await self._publish(client, envelope)
+                except Exception:  # noqa: BLE001
+                    _log.exception("%s: could not resend the acks of %s", unit.astronaut_id, command_id)
+                return
+            unit.handled[command_id] = []
+            while len(unit.handled) > _HANDLED_MAX:
+                unit.handled.popitem(last=False)
             try:
-                await self._dispatch(client, unit, command_id, data, now)
+                if oversized:
+                    message = f"command payload of {len(payload)} bytes exceeds the {_PAYLOAD_MAX_BYTES} byte limit"
+                    await self._reply(client, unit, command_id, "rejected", now, code="invalid_command", message=message)
+                else:
+                    await self._dispatch(client, unit, command_id, data, now)
             except Exception:  # noqa: BLE001  (un comando nunca tumba el gateway)
                 _log.exception("%s: command %s failed", unit.astronaut_id, command_id)
                 with contextlib.suppress(Exception):
                     await self._reply(client, unit, command_id, "failed", now, code="internal", message="internal gateway error")
+            if not unit.handled.get(command_id, True):  # no llegó a salir ningún ack: una reentrega se ejecuta de nuevo
+                del unit.handled[command_id]
 
     async def _dispatch(self, client: MqttPublisher, unit: _Unit, command_id: str, data: Any, now: datetime) -> None:
         problems = validation.errors("telemetry/command", data)
@@ -427,6 +472,12 @@ class FakeGateway:
         command = command_adapter.validate_python(data)
         if (command.astronaut_id, command.device_id) != (unit.astronaut_id, unit.device_id):
             message = f"command for {command.astronaut_id}/{command.device_id} received on the topic of {unit.astronaut_id}/{unit.device_id}"
+            await self._reply(client, unit, command_id, "rejected", now, code="invalid_command", message=message)
+            return
+        # `not <= tope` también rechaza NaN/inf (json.loads acepta 1e999); se valida antes de tocar estado.
+        duration = command.max_duration_s if isinstance(command, StartSessionCommand) else command.duration_s if isinstance(command, CalibrateCommand) else None
+        if duration is not None and not duration <= _DURATION_MAX_S:
+            message = f"duration exceeds the {_DURATION_MAX_S} s limit of this gateway"
             await self._reply(client, unit, command_id, "rejected", now, code="invalid_command", message=message)
             return
         match command:
@@ -454,6 +505,9 @@ class FakeGateway:
         if unit.device.plan.epoch_at(now) is None:
             await self._reply(client, unit, cid, "rejected", now, code="device_offline", message="the device is rebooting")
             return
+        # `accepted` primero: si publicarlo falla no se ha tocado nada (ni sesión ni fondo) y el estado
+        # sigue coherente con el `failed` que verá el cliente.
+        await self._reply(client, unit, cid, "accepted", now)
         start = await self._stop_background(client, unit, now)
         iterator = self._generator.live_session(
             astronaut_id=unit.astronaut_id, day=self.mission_day(now), device=unit.device, session_id=command.session_id,
@@ -463,8 +517,10 @@ class FakeGateway:
         source = _Source(iterator, device=unit.device, session_id=command.session_id, day=self.mission_day(now), streams=self._session_streams(command))
         deadline = None if command.max_duration_s is None else start + timedelta(seconds=command.max_duration_s)
         unit.session = _Session(command.session_id, cid, source, deadline)
-        await self._reply(client, unit, cid, "accepted", now)
-        await self._publish_clock(client, unit, now)
+        try:
+            await self._publish_clock(client, unit, now)
+        except Exception:  # noqa: BLE001  (la sesión ya está aceptada y en marcha; el ClockSync periódico lo repone)
+            _log.warning("%s: could not publish the ClockSync at session start", unit.astronaut_id, exc_info=True)
 
     async def _stop_session(self, client: MqttPublisher, unit: _Unit, command: StopSessionCommand, now: datetime) -> None:
         cid = command.command_id
@@ -505,7 +561,7 @@ class FakeGateway:
         await self._reply(client, unit, cid, "accepted", now)
         completed = self._ack(unit, cid, "completed", done, calibration_id=calibrations[0].payload["calibration_id"])
         if done <= now:
-            await self._publish(client, completed)
+            await self._publish_ack(client, unit, completed)
         else:
             unit.pending.append((done, completed))
 
@@ -523,7 +579,7 @@ class FakeGateway:
         ready = sorted((p for p in unit.pending if p[0] <= now), key=lambda p: p[0])
         unit.pending = [p for p in unit.pending if p[0] > now]
         for _, envelope in ready:
-            await self._publish(client, envelope)
+            await self._publish_ack(client, unit, envelope)
 
         session = unit.session
         if session is not None:

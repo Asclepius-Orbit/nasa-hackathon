@@ -218,6 +218,8 @@ class SimDevice:
         self._anchors: dict[int, list[datetime]] = {}  # boot_id -> instantes reales de ClockSync
         self._streaming: list[tuple[datetime, datetime]] = []  # tramos con streaming (batería), ordenados y disjuntos
         self._stalls: dict[str, list[tuple[datetime, datetime]]] = {}  # stream_id -> ráfagas stalled
+        self._rates: dict[str, float] = {}  # stream_id -> última frecuencia usada (la activa, p. ej. la reducida del fondo)
+        self.live_previous_lost: dict[str, bool] = {}  # solo modo en vivo: stream_id -> el último chunk emitido se perdió
 
     @property
     def plan(self) -> DevicePlan:
@@ -255,6 +257,7 @@ class SimDevice:
 
     def advance(self, stream_id: str, *, start: datetime, n_samples: int, rate_hz: float) -> None:
         """Consume los seq (y la batería) de un tramo de streaming sin generar chunks."""
+        self._rates[stream_id] = rate_hz
         layout = self._layout(start, n_samples, rate_hz)
         self._assign_seq(layout, stream_id)
         self._record_streaming(start, n_samples, rate_hz)
@@ -307,6 +310,7 @@ class SimDevice:
             raise ValueError(f"channels must have the same length, got {sorted(lengths)}")
         n_samples = lengths.pop()
 
+        self._rates[stream_id] = rate_hz
         layout = self._layout(start, n_samples, rate_hz)
         if len(quality) < layout.n_chunks:
             raise ValueError(f"need quality for {layout.n_chunks} chunks, got {len(quality)}")
@@ -345,7 +349,8 @@ class SimDevice:
             if selected.size == 0:
                 continue
             boot_us = _us(boot.boot_at - start)
-            anchors = sorted([boot_us] + [_us(a - start) for a in self._anchors.get(boot.boot_id, []) if a >= boot.boot_at])
+            # _anchors se mantiene ordenado con insort y todos son >= boot_at: la lista ya sale ordenada
+            anchors = [boot_us] + [_us(a - start) for a in self._anchors.get(boot.boot_id, []) if a >= boot.boot_at]
             offsets = layout.start_us[selected]
             last = np.asarray(anchors)[np.searchsorted(anchors, offsets, side="right") - 1]
             error_ms = abs(boot.drift_ppm) * 1e-6 * (offsets - last) / 1000.0
@@ -518,7 +523,7 @@ class SimDevice:
                 "stream_id": s.stream_id,
                 "stream_kind": s.stream_kind.value,
                 "state": "stalled" if is_stalled else "active",
-                "sample_rate_hz": self._config.signals.rate(s.stream_kind),
+                "sample_rate_hz": self._rates.get(s.stream_id, self._config.signals.rate(s.stream_kind)),
             }
             last = self.next_seq(epoch.boot_id, s.stream_id) - 1
             if last >= 0:

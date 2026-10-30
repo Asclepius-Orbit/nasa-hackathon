@@ -21,7 +21,7 @@ class MqttPublisher(Protocol):
 
 def encode(envelope: Envelope) -> bytes:
     """Payload JSON compacto en UTF-8 (mismo JSON que la línea JSONL)."""
-    return json.dumps(envelope.payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(envelope.payload, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
 class MqttSink:

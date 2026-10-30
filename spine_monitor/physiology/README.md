@@ -103,12 +103,12 @@ earth = gen.resimulate(ref, GravityEnvironment.EARTH_1G)
 |---|---|
 | `clipping` | clips to +-amplitude x peak |
 | `lead_off` | replaces the signal with noise of amplitude x RMS |
-| `motion_artifact` | adds a low-frequency burst (< 20 Hz) |
+| `motion_artifact` | adds a low-frequency burst; band set by `band_low_hz`, `band_high_hz` and `max_fraction_of_rate` |
 | `powerline_noise` | adds a sine at `frequency_hz` |
 | `low_snr` | adds white noise |
 | `saturated_adc` | counts pinned at the ADC maximum (or the channel range) |
 | `out_of_calibration` | adds an offset |
-| `sensor_warmup` | adds a slow drift that decays |
+| `sensor_warmup` | adds a slow drift that decays (`decay_fraction` of the episode length) |
 
 On the stretch cord only `adc_counts` is altered (integers, clipped to the ADC); `length_mm` is derived from them and inherits their quality. Each affected chunk carries the flag and the minimum score.
 
@@ -133,7 +133,7 @@ out/
       command_acks.jsonl  ground_truth.jsonl
 ```
 
-Each line is `{"topic", "retained", "at", "payload"}` for message types with a topic (chunks, status, clock, acks) and `{"at", "payload"}` for domain objects. `JsonlSink` opens files lazily with a cap on open handles and writes `manifest.json` on `close()` (it also works as a context manager).
+Each line is `{"topic", "retained", "at", "payload"}` for message types with a topic (chunks, status, clock, acks) and `{"at", "payload"}` for domain objects. `JsonlSink` opens files lazily with a cap on open handles and writes `manifest.json` on `close()` (it also works as a context manager). The manifest carries `complete: false` if the sink was closed because of an exception. Sessions that do not fit between power-on, the previous session and power-off are dropped that day.
 
 `ground_truth.jsonl` has no contract schema; each record has `type`, `astronaut_id` and `day` (session records also `session_id` and `slot`): `latent_state` (daily latents and the dose that produced them), `device_events` (boots, reboots, drift), `quality_faults`, `lost_chunks` and `expected_features` (true values of the feature catalog computed from the model without sensor noise or faults).
 
@@ -155,7 +155,7 @@ SPINE_SIM_CONFIG=physiology/configs/example-mission.yaml SPINE_SIM_SPEED=1 SPINE
   uv run spine-sim-gateway
 ```
 
-- It subscribes to each device's command topic and answers on the ack topic. Commands are validated against the JSON Schema. Supported: `start_session`, `stop_session`, `mark_event` and `calibrate`. Every accepted command gets `accepted` and then `completed`; `start_session` is `rejected` with `busy`, `unknown_stream` or `device_offline`, and `stop_session` and `mark_event` with `no_session` when there is nothing to stop or mark. `mark_event` does not change the signal; `calibrate` returns a `calibration_id`.
+- It subscribes to each device's command topic and answers on the ack topic. Commands are validated against the JSON Schema. Supported: `start_session`, `stop_session`, `mark_event` and `calibrate`. Every accepted command gets `accepted` and then `completed`; `start_session` is `rejected` with `busy`, `unknown_stream` or `device_offline`, and `stop_session` and `mark_event` with `no_session` when there is nothing to stop or mark. `mark_event` does not change the signal; `calibrate` returns a `calibration_id`. A redelivered command (same `command_id`) gets the same acks without running again; malformed, oversized (> 16 KiB) or absurdly long commands (> 30 days) are rejected as `invalid_command` and never stop the gateway.
 - Retained `DeviceStatus` and `ClockSync` at startup and periodically, a Last Will with `status: offline`, and the same `offline` on clean shutdown. That is why there is **one MQTT connection per device**: MQTT allows a single Last Will per connection.
 - If `schedule.background.enabled`, the IMU and stretch background streams run whenever there is no session (the daily time window of the config is ignored, so demos work at any hour). A session pauses the background (same `stream_id`, `seq` continues) and it resumes with the same `session_id` afterwards.
 - Mission day = `start_day` + elapsed wall-clock days x `speed`, capped to the mission. A session never changes day halfway.

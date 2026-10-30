@@ -103,12 +103,12 @@ earth = gen.resimulate(ref, GravityEnvironment.EARTH_1G)
 |---|---|
 | `clipping` | retalla a +-amplitude x pic |
 | `lead_off` | substitueix el senyal per soroll d'amplitude x RMS |
-| `motion_artifact` | afegeix una ràfega de baixa freqüència (< 20 Hz) |
+| `motion_artifact` | afegeix una ràfega de baixa freqüència; la banda la fixen `band_low_hz`, `band_high_hz` i `max_fraction_of_rate` |
 | `powerline_noise` | afegeix un sinus a `frequency_hz` |
 | `low_snr` | afegeix soroll blanc |
 | `saturated_adc` | comptes clavats al màxim de l'ADC (o al rang del canal) |
 | `out_of_calibration` | afegeix un desplaçament (offset) |
-| `sensor_warmup` | afegeix una deriva lenta que decau |
+| `sensor_warmup` | afegeix una deriva lenta que decau (`decay_fraction` de la durada de l'episodi) |
 
 Al cordó només s'alteren les `adc_counts` (enters, retallats a l'ADC); `length_mm` es deriva d'elles i en hereta la qualitat. Cada chunk afectat porta el flag i l'score mínim.
 
@@ -133,7 +133,7 @@ out/
       command_acks.jsonl  ground_truth.jsonl
 ```
 
-Cada línia és `{"topic", "retained", "at", "payload"}` per als tipus amb topic (chunks, estat, rellotge, acks) i `{"at", "payload"}` per als objectes de domini. `JsonlSink` obre els fitxers de manera mandrosa amb un topall de manejadors oberts i escriu `manifest.json` a `close()` (també funciona com a gestor de context).
+Cada línia és `{"topic", "retained", "at", "payload"}` per als tipus amb topic (chunks, estat, rellotge, acks) i `{"at", "payload"}` per als objectes de domini. `JsonlSink` obre els fitxers de manera mandrosa amb un topall de manejadors oberts i escriu `manifest.json` a `close()` (també funciona com a gestor de context). El manifest porta `complete: false` si el sink s'ha tancat per una excepció. Les sessions que no caben entre l'encesa, la sessió anterior i l'apagada es descarten aquell dia.
 
 `ground_truth.jsonl` no té schema de contracte; cada registre porta `type`, `astronaut_id` i `day` (els de sessió també `session_id` i `slot`): `latent_state` (latents diaris i la dosi que els va produir), `device_events` (arrencades, reinicis, deriva), `quality_faults`, `lost_chunks` i `expected_features` (valors veritables de les features del catàleg calculats del model sense soroll de sensor ni errors).
 
@@ -155,7 +155,7 @@ SPINE_SIM_CONFIG=physiology/configs/example-mission.yaml SPINE_SIM_SPEED=1 SPINE
   uv run spine-sim-gateway
 ```
 
-- Se subscriu al topic de comandes de cada dispositiu i respon al topic d'acks. Les comandes es validen contra el JSON Schema. Admet `start_session`, `stop_session`, `mark_event` i `calibrate`. Tota comanda acceptada rep `accepted` i després `completed`; `start_session` es rebutja (`rejected`) amb `busy`, `unknown_stream` o `device_offline`, i `stop_session` i `mark_event` amb `no_session` quan no hi ha res a aturar o marcar. `mark_event` no canvia el senyal; `calibrate` retorna un `calibration_id`.
+- Se subscriu al topic de comandes de cada dispositiu i respon al topic d'acks. Les comandes es validen contra el JSON Schema. Admet `start_session`, `stop_session`, `mark_event` i `calibrate`. Tota comanda acceptada rep `accepted` i després `completed`; `start_session` es rebutja (`rejected`) amb `busy`, `unknown_stream` o `device_offline`, i `stop_session` i `mark_event` amb `no_session` quan no hi ha res a aturar o marcar. `mark_event` no canvia el senyal; `calibrate` retorna un `calibration_id`. Una comanda reenviada (mateix `command_id`) rep els mateixos acks sense tornar-se a executar; les comandes mal formades, massa grans (> 16 KiB) o amb durades absurdes (> 30 dies) es rebutgen com a `invalid_command` i mai aturen el gateway.
 - `DeviceStatus` i `ClockSync` retained en arrencar i de manera periòdica, un Last Will amb `status: offline` i el mateix `offline` en aturar-se netament. Per això hi ha **una connexió MQTT per dispositiu**: MQTT només admet un Last Will per connexió.
 - Si `schedule.background.enabled`, els streams de fons d'IMU i cordó funcionen sempre que no hi hagi sessió (la finestra horària diària del config s'ignora, perquè les demos valguin a qualsevol hora). Una sessió pausa el fons (mateix `stream_id`, el `seq` continua) i després es reprèn amb el mateix `session_id`.
 - Dia de missió = `start_day` + dies de rellotge de paret transcorreguts x `speed`, acotat a la missió. Una sessió mai canvia de dia a mig camí.

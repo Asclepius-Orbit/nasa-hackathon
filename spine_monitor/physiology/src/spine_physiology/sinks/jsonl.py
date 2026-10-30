@@ -1,7 +1,7 @@
 """Sink JSONL: una carpeta por astronauta y día.
 
 Dueño: D1. Estructura:
-    out/manifest.json                       config (model_dump JSON), semilla, versión del paquete y del contrato
+    out/manifest.json                       config (model_dump JSON), semilla, versión del paquete y del contrato, `complete`
     out/AST-01/profile.json                 el AstronautProfile (último recibido)
     out/AST-01/day-012/<fichero>.jsonl      un fichero por tipo (ver `FILES`), `day` con 3 dígitos
 Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic (chunks, estado, reloj,
@@ -49,7 +49,14 @@ def _line(envelope: Envelope) -> str:
         record["retained"] = envelope.retained
     record["at"] = envelope.at.isoformat()
     record["payload"] = envelope.payload
-    return json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n"
+    return json.dumps(record, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n"
+
+
+def _version(package: str) -> str:
+    try:
+        return metadata.version(package)
+    except metadata.PackageNotFoundError:
+        return "unknown"
 
 
 class JsonlSink:
@@ -87,15 +94,15 @@ class JsonlSink:
         if envelope.kind is EnvelopeKind.PROFILE:
             path = self._out_dir / envelope.astronaut_id / PROFILE_FILE
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(envelope.payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+            path.write_text(json.dumps(envelope.payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8", newline="\n")
             return
         if envelope.day is None:
             raise ValueError(f"{envelope.kind} envelope without day")
         path = day_dir(self._out_dir, envelope.astronaut_id, envelope.day) / FILES[envelope.kind]
         self._handle(path).write(_line(envelope))
 
-    def close(self) -> None:
-        """Cierra los ficheros abiertos y escribe el manifest. Idempotente."""
+    def close(self, *, complete: bool = True) -> None:
+        """Cierra los ficheros abiertos y escribe el manifest (`complete` False si la ejecución se interrumpió). Idempotente."""
         if self._closed:
             return
         self._closed = True
@@ -106,16 +113,17 @@ class JsonlSink:
         manifest = {
             "config": self._config.model_dump(mode="json"),
             "seed": self._seed,
-            "package_version": metadata.version("spine-physiology"),
-            "contracts_version": metadata.version("spine-contracts"),
+            "package_version": _version("spine-physiology"),
+            "contracts_version": _version("spine-contracts"),
+            "complete": complete,
         }
-        (self._out_dir / MANIFEST_FILE).write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+        (self._out_dir / MANIFEST_FILE).write_text(json.dumps(manifest, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8", newline="\n")
 
     def __enter__(self) -> JsonlSink:
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
-        self.close()
+        self.close(complete=exc_type is None)
 
 
 def write_jsonl(messages: Iterable[Envelope], out_dir: Path, *, config: MissionConfig, seed: int) -> int:

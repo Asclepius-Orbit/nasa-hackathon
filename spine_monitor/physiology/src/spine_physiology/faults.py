@@ -6,7 +6,7 @@
 - `apply_quality_faults`: altera la señal de cada episodio y devuelve la quality por chunk (flag + score
   mínimo de lo que lo toque). Semántica de `amplitude` (relativa a la señal limpia del canal en el chunk):
   clipping: recorte a ±amplitude × pico | lead_off: señal sustituida por ruido de amplitude × RMS |
-  motion_artifact: ráfaga de baja frecuencia (< 20 Hz) de amplitude × RMS | powerline_noise: seno de
+  motion_artifact: ráfaga de baja frecuencia (banda de `motion_artifact`) de amplitude × RMS | powerline_noise: seno de
   `frequency_hz` de amplitude × RMS | low_snr: ruido blanco de amplitude × RMS | saturated_adc: cuentas
   clavadas al máximo del ADC (o al rango del canal) | out_of_calibration: offset de amplitude × RMS |
   sensor_warmup: deriva lenta que decae, de amplitude × RMS.
@@ -223,6 +223,11 @@ def apply_quality_faults(
             out[name] = np.rint(signal).astype(original.dtype)
         else:
             out[name] = signal.astype(original.dtype)
+    if kind is StreamKind.IMU:
+        # Los fallos (offset, ruido, artefactos) pueden sacar el IMU del rango del sensor: se recorta al fondo de escala.
+        for name in out:
+            limit = signals.imu.accel_range_g if name.startswith("accel") else signals.imu.gyro_range_dps
+            np.clip(out[name], -limit, limit, out=out[name])
     return out, quality
 
 
@@ -273,8 +278,9 @@ def _apply_episode(
         segment[:] = centre + rng.normal(0.0, 1.0, m) * amp * ref_rms
     elif flag is QualityFlag.MOTION_ARTIFACT:
         # Ráfaga de baja frecuencia (< 20 Hz): tres senos con ventana de seno (sube y baja).
-        top = min(19.0, 0.4 * rate_hz)
-        freqs = rng.uniform(min(1.0, top / 2), top, 3)
+        cfg = faults.motion_artifact
+        top = min(cfg.band_high_hz, cfg.max_fraction_of_rate * rate_hz)
+        freqs = rng.uniform(min(cfg.band_low_hz, top / 2), top, 3)
         phases = rng.uniform(0.0, 2 * math.pi, 3)
         shape = sum(np.sin(2 * math.pi * f * t + p) for f, p in zip(freqs, phases, strict=True)) * math.sqrt(2 / 3)
         segment += amp * ref_rms * shape * np.sin(math.pi * (np.arange(m) + 0.5) / m)
@@ -289,7 +295,7 @@ def _apply_episode(
     elif flag is QualityFlag.OUT_OF_CALIBRATION:
         segment += rng.choice((-1.0, 1.0)) * amp * ref_rms
     elif flag is QualityFlag.SENSOR_WARMUP:
-        tau = max(m / rate_hz / 3, 1 / rate_hz)
+        tau = max(m / rate_hz * faults.sensor_warmup.decay_fraction, 1 / rate_hz)
         segment += rng.choice((-1.0, 1.0)) * amp * ref_rms * np.exp(-t / tau)
     else:
         raise ValueError(f"flag {flag.value} is not an injectable quality fault")

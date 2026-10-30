@@ -103,12 +103,12 @@ earth = gen.resimulate(ref, GravityEnvironment.EARTH_1G)
 |---|---|
 | `clipping` | recorta a +-amplitude x pico |
 | `lead_off` | sustituye la señal por ruido de amplitude x RMS |
-| `motion_artifact` | añade una ráfaga de baja frecuencia (< 20 Hz) |
+| `motion_artifact` | añade una ráfaga de baja frecuencia; la banda la fijan `band_low_hz`, `band_high_hz` y `max_fraction_of_rate` |
 | `powerline_noise` | añade un seno a `frequency_hz` |
 | `low_snr` | añade ruido blanco |
 | `saturated_adc` | cuentas clavadas al máximo del ADC (o al rango del canal) |
 | `out_of_calibration` | añade un desplazamiento (offset) |
-| `sensor_warmup` | añade una deriva lenta que decae |
+| `sensor_warmup` | añade una deriva lenta que decae (`decay_fraction` de la duración del episodio) |
 
 En el cordón solo se alteran las `adc_counts` (enteros, recortados al ADC); `length_mm` se deriva de ellas y hereda su calidad. Cada chunk afectado lleva el flag y el score mínimo.
 
@@ -133,7 +133,7 @@ out/
       command_acks.jsonl  ground_truth.jsonl
 ```
 
-Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic (chunks, estado, reloj, acks) y `{"at", "payload"}` para los objetos de dominio. `JsonlSink` abre los ficheros de forma perezosa con un tope de manejadores abiertos y escribe `manifest.json` en `close()` (también funciona como gestor de contexto).
+Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic (chunks, estado, reloj, acks) y `{"at", "payload"}` para los objetos de dominio. `JsonlSink` abre los ficheros de forma perezosa con un tope de manejadores abiertos y escribe `manifest.json` en `close()` (también funciona como gestor de contexto). El manifiesto lleva `complete: false` si el sink se cerró por una excepción. Las sesiones que no caben entre el encendido, la sesión anterior y el apagado se descartan ese día.
 
 `ground_truth.jsonl` no tiene schema de contrato; cada registro lleva `type`, `astronaut_id` y `day` (los de sesión también `session_id` y `slot`): `latent_state` (latentes diarios y la dosis que los produjo), `device_events` (arranques, reinicios, deriva), `quality_faults`, `lost_chunks` y `expected_features` (valores verdaderos de las features del catálogo calculados del modelo sin ruido de sensor ni fallos).
 
@@ -155,7 +155,7 @@ SPINE_SIM_CONFIG=physiology/configs/example-mission.yaml SPINE_SIM_SPEED=1 SPINE
   uv run spine-sim-gateway
 ```
 
-- Se suscribe al topic de comandos de cada dispositivo y responde en el topic de acks. Los comandos se validan contra el JSON Schema. Admite `start_session`, `stop_session`, `mark_event` y `calibrate`. Todo comando aceptado recibe `accepted` y luego `completed`; `start_session` se rechaza (`rejected`) con `busy`, `unknown_stream` o `device_offline`, y `stop_session` y `mark_event` con `no_session` cuando no hay nada que parar o marcar. `mark_event` no cambia la señal; `calibrate` devuelve un `calibration_id`.
+- Se suscribe al topic de comandos de cada dispositivo y responde en el topic de acks. Los comandos se validan contra el JSON Schema. Admite `start_session`, `stop_session`, `mark_event` y `calibrate`. Todo comando aceptado recibe `accepted` y luego `completed`; `start_session` se rechaza (`rejected`) con `busy`, `unknown_stream` o `device_offline`, y `stop_session` y `mark_event` con `no_session` cuando no hay nada que parar o marcar. `mark_event` no cambia la señal; `calibrate` devuelve un `calibration_id`. Un comando reenviado (mismo `command_id`) recibe los mismos acks sin volver a ejecutarse; los comandos mal formados, demasiado grandes (> 16 KiB) o con duraciones absurdas (> 30 días) se rechazan como `invalid_command` y nunca paran el gateway.
 - `DeviceStatus` y `ClockSync` retained al arrancar y de forma periódica, un Last Will con `status: offline` y el mismo `offline` al parar de forma limpia. Por eso hay **una conexión MQTT por dispositivo**: MQTT solo admite un Last Will por conexión.
 - Si `schedule.background.enabled`, los streams de fondo de IMU y cordón funcionan siempre que no haya sesión (la ventana horaria diaria del config se ignora, para que las demos valgan a cualquier hora). Una sesión pausa el fondo (mismo `stream_id`, el `seq` continúa) y después se reanuda con el mismo `session_id`.
 - Día de misión = `start_day` + días de reloj de pared transcurridos x `speed`, acotado a la misión. Una sesión nunca cambia de día a mitad.

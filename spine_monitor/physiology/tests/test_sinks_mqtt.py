@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import json
 
 import pytest
@@ -51,6 +52,12 @@ def test_encode_is_compact_utf8_json(messages):
     raw = encode(messages[0])
     assert json.loads(raw.decode("utf-8")) == messages[0].payload
     assert raw == json.dumps(messages[0].payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def test_encode_rejects_nan(messages):
+    bad = dataclasses.replace(messages[0], payload={"x": float("nan")})
+    with pytest.raises(ValueError):
+        encode(bad)
 
 
 def test_publish_all_accepts_async_iterable_and_matches_batch(messages):

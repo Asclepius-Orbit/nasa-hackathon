@@ -409,6 +409,37 @@ def test_live_calibration_validates_and_becomes_the_one_in_force(config):
         generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="imu", stream_ids=[], at=at)
 
 
+def test_live_blocks_after_midnight_keep_the_awake_window_of_the_mission_day(config):
+    generator = MissionGenerator(config)
+    info = generator._timeline.day(1)
+    after_midnight = datetime.combine(info.date + timedelta(days=1), datetime.min.time(), tzinfo=UTC) + timedelta(minutes=5)
+    for start in (T0, after_midnight):
+        spec = generator._live_spec(("k",), start, 1, ("stretch_lumbar",), info, background=True, reps=(), protocol=None, residual={})
+        assert spec.awake_from == info.at(config.device.power_on_time_utc)
+        assert spec.awake_to == info.at(config.device.power_off_time_utc)
+
+
+def test_live_packet_gap_survives_block_boundaries():
+    def edit(raw):
+        raw["device"]["status_interval_s"] = 0.5  # bloques de un chunk: cada chunk es frontera de bloque
+        raw["faults"]["device"]["packet_loss"].update(probability=0.3, burst_chunks={"min": 1, "max": 1})
+
+    config = tiny_config(edit)
+    generator = MissionGenerator(config)
+    chunks = take_chunks(generator.live_background(astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_BACKGROUND, start=T0), 150)
+    last: dict[str, int] = {}
+    jumps = 0
+    for m in chunks:
+        p = m.payload
+        prev = last.get(p["stream_id"])
+        if prev is not None and p["seq"] > prev + 1:
+            jumps += 1
+            states = p["quality"].values()
+            assert any("packet_gap" in q["flags"] for q in states)
+        last[p["stream_id"]] = p["seq"]
+    assert jumps
+
+
 def test_live_output_is_deterministic(config):
     def run():
         generator = MissionGenerator(config)

@@ -86,6 +86,32 @@ def test_close_idempotent_and_write_after_close_fails(tmp_path, mission):
     assert len((day_dir(tmp_path, "AST-01", 12) / FILES[EnvelopeKind.SESSION]).read_text(encoding="utf-8").splitlines()) == 1
 
 
+def test_manifest_complete_flag_and_nan_rejected(tmp_path, mission):
+    config, _ = mission
+    with JsonlSink(tmp_path / "ok", config=config, seed=1) as sink:
+        sink.write(env(EnvelopeKind.SESSION))
+    assert json.loads((tmp_path / "ok" / MANIFEST_FILE).read_text(encoding="utf-8"))["complete"] is True
+    with pytest.raises(RuntimeError), JsonlSink(tmp_path / "bad", config=config, seed=1) as sink:
+        sink.write(env(EnvelopeKind.SESSION))
+        raise RuntimeError("boom")
+    assert json.loads((tmp_path / "bad" / MANIFEST_FILE).read_text(encoding="utf-8"))["complete"] is False
+    with JsonlSink(tmp_path / "nan", config=config, seed=1) as sink, pytest.raises(ValueError):
+        sink.write(env(EnvelopeKind.SESSION, payload={"x": float("nan")}))
+
+
+def test_manifest_version_falls_back_to_unknown(tmp_path, mission, monkeypatch):
+    from importlib import metadata
+
+    def missing(name):
+        raise metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(metadata, "version", missing)
+    config, _ = mission
+    JsonlSink(tmp_path, config=config, seed=1).close()
+    manifest = json.loads((tmp_path / MANIFEST_FILE).read_text(encoding="utf-8"))
+    assert manifest["package_version"] == "unknown" and manifest["contracts_version"] == "unknown"
+
+
 def test_max_open_files_validated(tmp_path, mission):
     with pytest.raises(ValueError):
         JsonlSink(tmp_path, config=mission[0], seed=1, max_open_files=0)

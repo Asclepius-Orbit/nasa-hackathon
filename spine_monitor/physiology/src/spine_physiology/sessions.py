@@ -159,10 +159,18 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
 
     plans: list[SessionPlan] = []
     previous_end: datetime | None = None
+    power_on, power_off = day.at(config.device.power_on_time_utc), day.at(config.device.power_off_time_utc)
     for start, _, slot, protocol in candidates:
-        if previous_end is not None and start < previous_end:
-            start = previous_end
-        end = start + chunks_for(config, protocol_duration_s(protocol)) * chunk
+        # El dispositivo solo existe dentro de su ventana de encendido del día: la sesión (con su duración
+        # en chunks enteros) se desplaza para caber entre el encendido, la sesión anterior y el apagado.
+        earliest = power_on if previous_end is None else max(power_on, previous_end)
+        duration = chunks_for(config, protocol_duration_s(protocol)) * chunk
+        start = max(start, earliest)
+        if start + duration > power_off:
+            start = power_off - duration
+        if start < earliest:
+            continue  # no cabe en la ventana de encendido: la sesión no se realiza ese día
+        end = start + duration
         exercise = isinstance(protocol, ExerciseProtocol)
         plans.append(
             SessionPlan(

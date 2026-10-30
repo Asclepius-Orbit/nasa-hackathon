@@ -541,8 +541,8 @@ class MissionGenerator:
         return SynthSpec(
             keys=keys, start=start, n_chunks=n_chunks, stream_ids=streams, background=background, reps=reps, protocol=protocol,
             gravity_environment=info.gravity_environment,
-            awake_from=datetime.combine(start.date(), device.power_on_time_utc, tzinfo=UTC),
-            awake_to=datetime.combine(start.date(), device.power_off_time_utc, tzinfo=UTC),
+            awake_from=info.at(device.power_on_time_utc),
+            awake_to=info.at(device.power_off_time_utc),  # del día de misión, no del bloque: pasadas las 00:00 UTC la fracción despierta no se reinicia
             initial_residual_mm=dict(residual),
         )  # fmt: skip
 
@@ -558,13 +558,13 @@ class MissionGenerator:
         gap = QualityState(loss.packet_gap_score, frozenset({QualityFlag.PACKET_GAP}))
         device_id = config.member(astronaut_id).device_id
         spec = synthesis.spec
-        previous_lost = {s.stream_id: False for s in synthesis.streams}
+        previous_lost = device.live_previous_lost  # por stream y en el dispositivo: la pérdida al final de un bloque marca el primer chunk del siguiente
         lost: dict[str, list[ChunkOutcome]] = {s.stream_id: [] for s in synthesis.streams}
         for k in range(spec.n_chunks):
             batch: list[Envelope] = []
             for stream in synthesis.streams:
                 channels, quality = stream.slice(k, k + 1)
-                if previous_lost[stream.stream_id]:
+                if previous_lost.get(stream.stream_id, False):
                     quality = [{key: state.merge(gap) for key, state in quality[0].items()}]
                 outcomes = list(
                     device.chunks(

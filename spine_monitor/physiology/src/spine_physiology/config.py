@@ -193,6 +193,12 @@ class BatteryConfig(_Model):
     # Por debajo de este nivel el DeviceStatus pasa a `degraded`.
     degraded_below_pct: Percent
 
+    @model_validator(mode="after")
+    def _drain(self) -> Self:
+        if self.drain_pct_per_hour_streaming < self.drain_pct_per_hour_idle:
+            raise ValueError("drain_pct_per_hour_streaming must be >= drain_pct_per_hour_idle")
+        return self
+
 
 class DeviceConfig(_Model):
     """Wearable simulado (uno por astronauta, mismo modelo y streams para todos)."""
@@ -619,17 +625,38 @@ class PowerlineFaultConfig(QualityFaultConfig):
     frequency_hz: Literal[50, 60]
 
 
+class MotionArtifactFaultConfig(QualityFaultConfig):
+    """Ráfaga de baja frecuencia: tres senos con frecuencias uniformes en [band_low_hz, techo]."""
+
+    band_low_hz: PositiveFloat
+    # Techo de la banda; el efectivo es min(band_high_hz, max_fraction_of_rate x fs) para no acercarse a Nyquist.
+    band_high_hz: PositiveFloat
+    max_fraction_of_rate: Annotated[float, Field(gt=0, lt=0.5)]
+
+    @model_validator(mode="after")
+    def _band(self) -> Self:
+        if self.band_low_hz >= self.band_high_hz:
+            raise ValueError("band_low_hz must be < band_high_hz")
+        return self
+
+
+class WarmupFaultConfig(QualityFaultConfig):
+    """Deriva que decae exponencialmente: tau = decay_fraction x duración del episodio."""
+
+    decay_fraction: PositiveFloat
+
+
 class QualityFaultsConfig(_Model):
     """Fallos inyectables. packet_gap, band_recovering y clock_uncertain no se inyectan: se derivan."""
 
     clipping: QualityFaultConfig
     lead_off: QualityFaultConfig
-    motion_artifact: QualityFaultConfig
+    motion_artifact: MotionArtifactFaultConfig
     powerline_noise: PowerlineFaultConfig
     low_snr: QualityFaultConfig
     saturated_adc: QualityFaultConfig
     out_of_calibration: QualityFaultConfig
-    sensor_warmup: QualityFaultConfig
+    sensor_warmup: WarmupFaultConfig
 
     def items(self) -> tuple[tuple[QualityFlag, QualityFaultConfig], ...]:
         return tuple((QualityFlag(name), getattr(self, name)) for name in type(self).model_fields)

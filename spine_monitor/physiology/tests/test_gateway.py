@@ -371,6 +371,104 @@ def test_invalid_commands_are_rejected_or_ignored_without_crashing():
     go(scenario())
 
 
+def test_hostile_payloads_never_bring_the_gateway_down():
+    async def scenario():
+        h = Harness()
+        # Anidado hasta provocar RecursionError en json.loads: se ignora (menor que el tope de tamaño).
+        deep = b"[" * 10_000 + b"]" * 10_000
+        await h.send(deep)
+        assert h.client.published == []
+        # Demasiado grande con command_id legible: invalid_command sin parsear; sin command_id: se ignora.
+        big = start(1)
+        big["padding"] = "x" * 20_000
+        await h.send(big)
+        (ack,) = h.client.acks(start(1)["command_id"])
+        assert ack["status"] == "rejected" and ack["error"]["code"] == "invalid_command"
+        await h.send(b'{"padding": "' + b"x" * 20_000 + b'"}')
+        assert len(h.client.published) == 1
+        # Y sigue funcionando.
+        await h.send(start(2))
+        assert h.client.acks(start(2)["command_id"])[0]["status"] == "accepted"
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_failed_accepted_publish_leaves_no_session_running():
+    async def scenario():
+        h = Harness()
+        await h.run(2)
+        real = h.client.publish
+
+        async def flaky(topic: str, payload: bytes, qos: int, retain: bool) -> None:
+            if topic.endswith("/ack"):
+                raise ConnectionError("broker gone")
+            await real(topic, payload, qos, retain)
+
+        h.client.publish = flaky
+        await h.send(start(1))
+        h.client.publish = real
+        assert h.gateway._units[0].session is None
+        assert h.client.acks(start(1)["command_id"]) == []
+        await h.run(2)  # el fondo sigue publicando
+        assert chunks(h.client)[-1]["session_id"] != SESSION
+        # El cliente reintenta (mismo command_id): se ejecuta de nuevo con normalidad.
+        await h.send(start(1))
+        assert [a["status"] for a in h.client.acks(start(1)["command_id"])] == ["accepted"]
+        assert h.gateway._units[0].session is not None
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_redelivered_commands_get_the_same_acks_without_re_executing():
+    async def scenario():
+        h = Harness()
+        await h.send(start(1))
+        await h.send(start(1))  # DUP de QoS 1
+        assert [a["status"] for a in h.client.acks(start(1)["command_id"])] == ["accepted", "accepted"]
+        assert len({json.dumps(a, sort_keys=True) for a in h.client.acks(start(1)["command_id"])}) == 1
+        await h.run(2)
+        await h.send(stop(2))
+        await h.send(stop(2))  # DUP
+        assert [a["status"] for a in h.client.acks(stop(2)["command_id"])] == ["accepted", "completed"] * 2
+        assert [a["status"] for a in h.client.acks(start(1)["command_id"])][-1] == "completed"
+        assert not any(a["status"] == "rejected" for a in h.client.acks(stop(2)["command_id"]))
+        assert h.gateway._units[0].session is None
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_handled_commands_lru_is_bounded():
+    async def scenario():
+        h = Harness()
+        for n in range(1, 300):
+            await h.send(stop(n))  # no_session: cada uno anota su ack
+        assert len(h.gateway._units[0].handled) <= 256
+
+    go(scenario())
+
+
+def test_huge_durations_are_rejected_before_touching_state():
+    async def scenario():
+        h = Harness()
+        await h.run(2)
+        await h.send(start(1, max_duration_s=10**12))
+        await h.send(command("calibrate", 2, session_id=SESSION, calibration_type="imu", stream_ids=["imu_l3"], duration_s=1e300))
+        await h.send(command("calibrate", 3, session_id=SESSION, calibration_type="imu", stream_ids=["imu_l3"], duration_s=1e999))
+        for n in (1, 2, 3):
+            (ack,) = h.client.acks(start(n)["command_id"])
+            assert ack["status"] == "rejected" and ack["error"]["code"] == "invalid_command"
+            assert "duration exceeds" in ack["error"]["message"]
+        assert h.gateway._units[0].session is None
+        await h.run(2)
+        assert chunks(h.client)[-1]["session_id"] != SESSION  # el fondo no se paró
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
 # --- día de misión y dispositivo ------------------------------------------------------------------
 
 

@@ -92,6 +92,22 @@ def test_overlapping_sessions_are_shifted_after_the_previous_one():
         assert after.start == before.end
 
 
+def test_sessions_stay_inside_the_device_power_window():
+    def edit(raw):
+        sessions = raw["schedule"]["sessions"]
+        sessions[0].update(time_utc="06:30", start_jitter_s=3600.0)
+        sessions[2].update(time_utc="22:29", start_jitter_s=3600.0)
+
+    config = make_config(edit)
+    timeline = MissionTimeline(config)
+    chunk = timedelta(milliseconds=config.signals.chunk_ms)
+    for day in timeline:
+        on, off = day.at(config.device.power_on_time_utc), day.at(config.device.power_off_time_utc)
+        for plan in sess.plan_day(config, config.seed, A, day):
+            assert on <= plan.start < plan.end <= off
+            assert (plan.end - plan.start) % chunk == timedelta(0)
+
+
 def test_background_active_chunks_skip_the_pause_on_the_chunk_grid(config, timeline):
     plans = sess.plan_day(config, config.seed, A, timeline.day(0))
     background = next(p for p in plans if p.background)

@@ -1,19 +1,24 @@
 [project]
 name = "spine-physiology"
 version = "0.1.0"
-description = "Add your description here"
+description = "Synthetic mission data generator: simulated wearable telemetry, sessions and ground truth over JSONL or MQTT"
 readme = "README.md"
 authors = [
     { name = "Oriol Orbea", email = "oriol.orbea@gmail.com" }
 ]
 requires-python = ">=3.14.8,<3.15"
 dependencies = [
+    "aiomqtt>=2.5.1",
     "numpy>=2.5.4",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.1",
+    "pyyaml>=6.0.3",
     "scipy>=1.18.1",
     "spine-contracts",
 ]
+
+[project.scripts]
+spine-sim-gateway = "spine_physiology.gateway.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.11.20,<0.12.0"]

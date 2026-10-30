@@ -5,5 +5,8 @@ members = ["contracts", "physiology", "engine", "mcp_server", "agent", "backend"
 dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
-testpaths = ["contracts/tests", "engine/tests"]
+testpaths = ["contracts/tests", "engine/tests", "physiology/tests"]
 addopts = "--import-mode=importlib"
+markers = [
+    "mosquitto: integration test against a real MQTT broker on 127.0.0.1:1883 (skipped when none is running)",
+]

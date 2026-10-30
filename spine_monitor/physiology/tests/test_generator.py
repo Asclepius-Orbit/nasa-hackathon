@@ -72,23 +72,69 @@ def mission(config) -> list[Envelope]:
     return list(MissionGenerator(config).iter_messages())
 
 
+@pytest.fixture(scope="module")
+def sparse_config() -> MissionConfig:
+    """stretch/imu cada 7 días: el día 2 (segundo del tramo inflight) usa las calibraciones del día 1."""
+
+    def edit(raw):
+        raw["calibration"]["stretch"]["every_n_days"] = 7
+        raw["calibration"]["imu"]["every_n_days"] = 7
+
+    return tiny_config(edit)
+
+
+@pytest.fixture(scope="module")
+def sparse_mission(sparse_config) -> list[Envelope]:
+    return list(MissionGenerator(sparse_config).iter_messages())
+
+
 def session_of(envelope: Envelope) -> str | None:
     return envelope.payload.get("session_id") if envelope.kind in (EnvelopeKind.STREAM_CHUNK, EnvelopeKind.SESSION, EnvelopeKind.CALIBRATION, EnvelopeKind.GROUND_TRUTH) else None
+
+
+def first_emissions(mission: list[Envelope]) -> dict[tuple[str, str], Envelope]:
+    """(astronauta, calibration_id) -> sobre de la calibración tal como la emitió la misión completa."""
+    out: dict[tuple[str, str], Envelope] = {}
+    for m in mission:
+        if m.kind is EnvelopeKind.CALIBRATION:
+            assert (m.astronaut_id, m.payload["calibration_id"]) not in out  # iter_messages no repite calibraciones
+            out[(m.astronaut_id, m.payload["calibration_id"])] = m
+    return out
+
+
+def unresolved_citations(messages: list[Envelope]) -> tuple[int, list[str]]:
+    """(chunks con calibration_id, ids sin resolver en `messages`). Un chunk necesita su calibración emitida
+    antes; un registro Session, en algún punto de la salida (la que se registra en esa sesión sale justo
+    después del Session, en el mismo instante)."""
+    everything = {(m.astronaut_id, m.payload["calibration_id"]) for m in messages if m.kind is EnvelopeKind.CALIBRATION}
+    emitted: set[tuple[str, str]] = set()
+    cited, missing = 0, []
+    for m in messages:
+        if m.kind is EnvelopeKind.CALIBRATION:
+            emitted.add((m.astronaut_id, m.payload["calibration_id"]))
+        elif m.kind is EnvelopeKind.SESSION:
+            missing += [s["calibration_id"] for s in m.payload["streams"] if "calibration_id" in s and (m.astronaut_id, s["calibration_id"]) not in everything]
+        elif m.kind is EnvelopeKind.STREAM_CHUNK and "calibration_id" in m.payload:
+            cited += 1
+            if (m.astronaut_id, m.payload["calibration_id"]) not in emitted:
+                missing.append(m.payload["calibration_id"])
+    return cited, missing
 
 
 # --- Reproducibilidad -------------------------------------------------------------------------------
 
 
 def test_same_seed_gives_identical_output_and_another_seed_differs(config, mission):
-    assert list(MissionGenerator(config).day_messages(1)) == [m for m in mission if m.day == 1]
-    other = list(MissionGenerator(config, seed=config.seed + 1).day_messages(1))
+    assert list(MissionGenerator(config).day_messages(1, include_carried_calibrations=False)) == [m for m in mission if m.day == 1]
+    other = list(MissionGenerator(config, seed=config.seed + 1).day_messages(1, include_carried_calibrations=False))
     assert [m.payload for m in other] != [m.payload for m in mission if m.day == 1]
     assert MissionGenerator(config).seed == config.seed and MissionGenerator(config, seed=7).seed == 7
 
 
-def test_a_day_equals_its_slice_of_the_mission_whatever_the_consumption_order(config, mission):
-    generator = MissionGenerator(config)
-    late, early = generator.day_messages(3), generator.day_messages(0, "AST-02")
+def test_a_day_equals_its_slice_of_the_mission_whatever_the_consumption_order(sparse_config, sparse_mission):
+    generator = MissionGenerator(sparse_config)
+    mission = sparse_mission
+    late, early = generator.day_messages(3, include_carried_calibrations=False), generator.day_messages(2, "AST-02", include_carried_calibrations=False)
     # Consumo intercalado de dos días y de un astronauta suelto en el mismo generador.
     got3, got0 = [], []
     for a, b in itertools.zip_longest(late, early):
@@ -97,18 +143,72 @@ def test_a_day_equals_its_slice_of_the_mission_whatever_the_consumption_order(co
         if b is not None:
             got0.append(b)
     assert got3 == [m for m in mission if m.day == 3]
-    assert got0 == [m for m in mission if m.day == 0 and m.astronaut_id == "AST-02"]
+    assert got0 == [m for m in mission if m.day == 2 and m.astronaut_id == "AST-02"]
 
 
-def test_every_session_equals_its_slice_of_the_day(config, mission):
-    generator = MissionGenerator(config)
+def test_every_session_equals_its_slice_of_the_day(sparse_config, sparse_mission):
+    generator = MissionGenerator(sparse_config)
     for day in (0, 2):
         for astronaut in ("AST-01", "AST-02"):
-            day_msgs = [m for m in mission if m.day == day and m.astronaut_id == astronaut]
+            day_msgs = [m for m in sparse_mission if m.day == day and m.astronaut_id == astronaut]
             for plan in reversed(generator.sessions(day, astronaut)):  # orden inverso a propósito
-                alone = list(generator.session_messages(plan.ref))
+                alone = list(generator.session_messages(plan.ref, include_carried_calibrations=False))
                 assert alone == [m for m in day_msgs if session_of(m) == plan.session_id], plan.ref
                 assert Counter(m.kind for m in alone)[EnvelopeKind.SESSION] == 1
+
+
+def test_a_day_regenerated_alone_carries_the_calibrations_still_in_force_from_earlier_days(sparse_config, sparse_mission):
+    generator = MissionGenerator(sparse_config)
+    emitted = first_emissions(sparse_mission)
+    streams = [s.stream_id for s in sparse_config.device.streams]
+    carried_days, carried_types = set(), set()
+    for day in generator.iter_days():
+        for astronaut in (None, "AST-01"):
+            crew = [astronaut] if astronaut else [m.astronaut_id for m in sparse_config.crew]
+            alone = list(generator.day_messages(day.index, astronaut))
+            exact = list(generator.day_messages(day.index, astronaut, include_carried_calibrations=False))
+            assert exact == [m for m in sparse_mission if m.day == day.index and m.astronaut_id in crew]
+            n = len(alone) - len(exact)
+            carried = alone[:n]
+            assert alone[n:] == exact  # primero las arrastradas, luego el día exacto
+            in_force = [(a, r) for a in crew for s in streams if (r := generator.calibration_in_force(a, s, day.index)) is not None]
+            assert {(m.astronaut_id, m.payload["calibration_id"]) for m in carried} == {(a, r.calibration_id) for a, r in in_force if r.day < day.index}
+            assert len(carried) == len({(m.astronaut_id, m.payload["calibration_id"]) for m in carried})
+            for m in carried:
+                # Bit a bit el sobre que la misión emitió el día en que se registró (ids, created_at, at, day).
+                assert m.kind is EnvelopeKind.CALIBRATION and m.day < day.index
+                assert m == emitted[(m.astronaut_id, m.payload["calibration_id"])]
+                carried_types.add(m.payload["calibration_type"])
+            cited, missing = unresolved_citations(alone)
+            assert cited > 0 and missing == []  # el día suelto se resuelve solo
+            if carried:
+                carried_days.add(day.index)
+                assert unresolved_citations(exact)[1]  # sin las arrastradas, no
+    assert carried_days == {2}
+    assert carried_types == {"stretch", "imu"}  # las emg_mvc se registran en su sesión: nunca se arrastran
+
+
+def test_a_session_regenerated_alone_carries_the_calibrations_recorded_outside_it(sparse_config, sparse_mission):
+    generator = MissionGenerator(sparse_config)
+    emitted = first_emissions(sparse_mission)
+    origins = set()
+    for day in (1, 2):
+        for plan in generator.sessions(day, "AST-01"):
+            alone = list(generator.session_messages(plan.ref))
+            exact = list(generator.session_messages(plan.ref, include_carried_calibrations=False))
+            n = len(alone) - len(exact)
+            carried = alone[:n]
+            assert alone[n:] == exact
+            (session,) = [m for m in exact if m.kind is EnvelopeKind.SESSION]
+            declared = {s["calibration_id"] for s in session.payload["streams"] if "calibration_id" in s}
+            recorded = {m.payload["calibration_id"] for m in exact if m.kind is EnvelopeKind.CALIBRATION}
+            assert [m.payload["calibration_id"] for m in carried] == [i for i in [s.get("calibration_id") for s in session.payload["streams"]] if i in declared - recorded]
+            for m in carried:
+                assert m == emitted[("AST-01", m.payload["calibration_id"])] and m.payload.get("session_id") != plan.session_id
+                origins.add("earlier day" if m.day < day else "same day")
+            cited, missing = unresolved_citations(alone)
+            assert cited > 0 and missing == [], plan.ref
+    assert origins == {"earlier day", "same day"}  # día 2: las del día 1; y otras sesiones del mismo día
 
 
 def test_unknown_session_or_day_fails_eagerly(config):
@@ -290,7 +390,7 @@ def test_background_chunks_are_about_ten_times_fewer_than_at_100_ms_and_slices_s
     generator = MissionGenerator(config)
     bg = next(p for p in generator.sessions(1, "AST-01") if p.background)
     day = [m for m in generator.day_messages(1, "AST-01") if session_of(m) == bg.session_id]
-    assert list(generator.session_messages(bg.ref)) == day  # la sesión de fondo sola = su rebanada del día (seq incluido)
+    assert list(generator.session_messages(bg.ref, include_carried_calibrations=False)) == day  # la sesión de fondo sola = su rebanada del día (seq incluido)
     seqs = [m.payload["seq"] for m in day if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_id"] == "imu_l3"]
     assert seqs == sorted(seqs) and seqs[0] >= 0
 
@@ -466,6 +566,62 @@ def test_live_calibration_validates_and_becomes_the_one_in_force(config):
         generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="imu", stream_ids=["emg_lat_left"], at=at)
     with pytest.raises(ValueError):
         generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="imu", stream_ids=[], at=at)
+
+
+def test_calibration_in_force_is_the_live_one_or_else_the_scheduled_one_of_that_day(sparse_config):
+    generator = MissionGenerator(sparse_config)
+    timeline = generator.timeline
+    scheduled = [sess.scheduled_calibrations(sparse_config, sparse_config.seed, timeline, "AST-01", d)["stretch_lumbar"] for d in timeline]
+    assert [generator.calibration_in_force("AST-01", "stretch_lumbar", d.index) for d in timeline] == scheduled
+    assert scheduled[2] == scheduled[1] and generator.calibration_in_force("AST-01", "imu_l3", 2).day == 1
+    assert generator.calibration_in_force("AST-01", "emg_lat_left", 2) is None  # la MVC solo existe en vivo o en su sesión
+    (first,) = generator.live_calibration(astronaut_id="AST-01", day=2, session_id=LIVE_SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], at=T0)
+    (second,) = generator.live_calibration(astronaut_id="AST-01", day=2, session_id=LIVE_SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], at=T0 + timedelta(seconds=1))
+    assert {generator.calibration_in_force("AST-01", "stretch_lumbar", d.index).calibration_id for d in timeline} == {second.payload["calibration_id"]}
+    assert generator.calibration_in_force("AST-02", "stretch_lumbar", 2).calibration_id != second.payload["calibration_id"]
+    # Por id: también una en vivo ya sustituida, o una programada vigente ese día.
+    assert generator.calibration("AST-01", first.payload["calibration_id"], 2).model == generator.calibration("AST-01", first.payload["calibration_id"], 0).model
+    assert calibration_envelope("AST-01", sparse_config.member("AST-01").device_id, generator.calibration("AST-01", first.payload["calibration_id"], 2), first.at) == first
+    assert generator.calibration("AST-01", scheduled[2].calibration_id, 2) == scheduled[2]
+    assert generator.calibration("AST-01", scheduled[0].calibration_id, 2) is None
+    with pytest.raises(KeyError):
+        generator.calibration_in_force("AST-01", "nope_stream", 0)
+
+
+def test_live_blocks_pick_up_a_calibration_made_while_they_run():
+    def edit(raw):
+        raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
+        raw["faults"]["device"]["reboot"]["probability_per_hour"] = 0.0
+
+    config = tiny_config(edit)
+    generator = MissionGenerator(config)
+    old = generator.calibration_in_force("AST-01", "stretch_lumbar", 1).calibration_id
+    sources = {
+        "background": (generator.live_background(astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_BACKGROUND, start=T0), config.schedule.background.chunk_ms),
+        "session": (
+            generator.live_session(
+                astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_SESSION, session_type="spine_check", protocol_id="free_rest_v1",
+                stream_ids=["stretch_lumbar"], start=T0,
+            ),
+            config.signals.chunk_ms,
+        ),
+    }  # fmt: skip
+    for name, (iterator, chunk_ms) in sources.items():
+        block = round(config.device.status_interval_s * 1000.0 / chunk_ms)
+
+        def stretch(n: int, iterator=iterator) -> list[dict]:
+            return [m.payload for m in take_chunks(iterator, n) if m.payload["stream_id"] == "stretch_lumbar"]
+
+        before = stretch(4)
+        (calibration,) = generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], at=T0)
+        new = calibration.payload["calibration_id"]
+        after = stretch(4 * block)
+        first_seq = before[0]["seq"]
+        assert {p["calibration_id"] for p in before} == {old}, name
+        # El bloque en curso sigue con la anterior; desde el siguiente, la nueva (búsqueda por bloque).
+        assert all(p["calibration_id"] == (old if p["seq"] - first_seq < block else new) for p in after), name
+        assert any(p["calibration_id"] == new for p in after), name
+        old = new
 
 
 def test_live_blocks_after_midnight_keep_the_awake_window_of_the_mission_day(config):

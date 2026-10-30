@@ -163,20 +163,36 @@ def assert_all_valid(client: FakeClient) -> None:
             assert p.retain and p.topic == topics.calibration(p.payload["astronaut_id"], p.payload["device_id"], p.payload["stream_id"])
 
 
-def assert_calibrations_resolvable(published: list[Published]) -> int:
+def assert_calibrations_resolvable(published: list[Published], *, superseded_ok: bool = False) -> int:
     """Cada chunk con calibration_id llega cuando la retained de `topics.calibration` de su stream es esa
-    calibración (publicada antes por este cliente): un consumidor tardío siempre la resuelve. Devuelve
-    cuántos chunks la citan."""
+    calibración (publicada antes por este cliente): un consumidor tardío siempre la resuelve. Con
+    `superseded_ok`, también vale una que fue la retained de ese topic antes (el resto del bloque en curso
+    tras un `calibrate`). Devuelve cuántos chunks la citan."""
     retained: dict[str, str] = {}
+    history: dict[str, set[str]] = {}
     cited = 0
     for p in published:
         if p.channel == "calibration":
             retained[p.topic] = p.payload["calibration_id"]
+            history.setdefault(p.topic, set()).add(p.payload["calibration_id"])
         elif p.channel == "stream" and "calibration_id" in p.payload:
             c = p.payload
-            assert retained.get(topics.calibration(c["astronaut_id"], c["device_id"], c["stream_id"])) == c["calibration_id"], (c["stream_id"], c["seq"])
+            topic = topics.calibration(c["astronaut_id"], c["device_id"], c["stream_id"])
+            ok = retained.get(topic) == c["calibration_id"] or (superseded_ok and c["calibration_id"] in history.get(topic, set()))
+            assert ok, (c["stream_id"], c["seq"], c["calibration_id"], retained.get(topic))
             cited += 1
     return cited
+
+
+def assert_retained_calibrations_never_regress(published: list[Published]) -> None:
+    """En cada topic de calibración, una vez sale otro calibration_id no vuelve a salir uno anterior."""
+    seen: dict[str, list[str]] = {}
+    for p in published:
+        if p.channel == "calibration":
+            ids = seen.setdefault(p.topic, [])
+            calibration_id = p.payload["calibration_id"]
+            assert not ids or ids[-1] == calibration_id or calibration_id not in ids, (p.topic, ids, calibration_id)
+            ids.append(calibration_id)
 
 
 def chunks(client: FakeClient, session_id: str | None = None) -> list[dict]:
@@ -400,8 +416,65 @@ def test_every_chunk_citing_a_calibration_comes_after_its_retained_calibration()
         await h.run(4)
         cited = {c["calibration_id"] for c in chunks(h.client) if "calibration_id" in c}
         assert live in cited and cited <= {p.payload["calibration_id"] for p in h.client.on("calibration")}
-        assert assert_calibrations_resolvable(h.client.published) > 10
+        # Tras el calibrate, el resto del bloque de fondo en curso aún cita la anterior (ya retained antes).
+        assert assert_calibrations_resolvable(h.client.published, superseded_ok=True) > 10
+        assert_retained_calibrations_never_regress(h.client.published)
         assert not any(p.channel not in SCHEMAS for p in h.client.published)  # el ground truth nunca va al bus
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def stretch_ids_after(client: FakeClient, mark: int) -> list[str]:
+    return [p.payload["calibration_id"] for p in client.published[mark:] if p.channel == "stream" and p.payload["stream_kind"] == "stretch"]
+
+
+def test_calibrate_while_background_runs_moves_its_chunks_to_the_new_calibration_from_the_next_block():
+    async def scenario():
+        h = Harness()
+        block_s = h.config.device.status_interval_s  # un bloque en vivo = un intervalo de estado
+        await h.run(5)
+        (old,) = {c["calibration_id"] for c in chunks(h.client) if c["stream_kind"] == "stretch"}
+        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"])
+        await h.send(cal)
+        accepted, completed = h.client.acks(cal["command_id"])
+        new = completed["result"]["calibration_id"]
+        assert accepted["status"] == "accepted" and completed["status"] == "completed" and new != old
+        mark = len(h.client.published)
+        await h.run(2 * block_s)
+        ids = stretch_ids_after(h.client, mark)
+        assert len({c["session_id"] for c in chunks(h.client)}) == 1  # todo es fondo
+        # El resto del bloque en curso cita la anterior; desde el bloque siguiente, la nueva y ya nunca la anterior.
+        first_new = ids.index(new)
+        assert set(ids[:first_new]) <= {old} and set(ids[first_new:]) == {new} and len(ids) - first_new >= block_s / 2
+        # La retained del stream pasa de la anterior a la nueva y no vuelve atrás (antes se republicaba la vieja).
+        topic = topics.calibration(AST, DEV, "stretch_lumbar")
+        assert [p.payload["calibration_id"] for p in h.client.on("calibration") if p.topic == topic] == [old, new]
+        assert_retained_calibrations_never_regress(h.client.published)
+        assert assert_calibrations_resolvable(h.client.published, superseded_ok=True) > 0
+        assert h.client.acks(cal["command_id"])[-1]["result"]["calibration_id"] == new  # el ack no cambia
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_a_calibrate_superseded_before_it_completes_is_not_published_but_keeps_its_ack():
+    async def scenario():
+        h = Harness()
+        await h.run(3)
+        (scheduled,) = {c["calibration_id"] for c in chunks(h.client) if c["stream_kind"] == "stretch"}
+        slow = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], duration_s=10)
+        fast = command("calibrate", 2, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"])
+        await h.send(slow)
+        await h.send(fast)
+        await h.run(h.config.device.status_interval_s + 10)
+        slow_completed = h.client.acks(slow["command_id"])[-1]
+        fast_id = h.client.acks(fast["command_id"])[-1]["result"]["calibration_id"]
+        assert slow_completed["status"] == "completed" and slow_completed["result"]["calibration_id"] not in (fast_id, scheduled)
+        topic = topics.calibration(AST, DEV, "stretch_lumbar")
+        assert [p.payload["calibration_id"] for p in h.client.on("calibration") if p.topic == topic] == [scheduled, fast_id]
+        assert stretch_ids_after(h.client, 0)[-1] == fast_id
+        assert_retained_calibrations_never_regress(h.client.published)
         assert_all_valid(h.client)
 
     go(scenario())
@@ -859,6 +932,7 @@ def test_broker_drop_mid_run_reconnects_resubscribes_and_resumes_without_seq_gap
             assert seq == list(range(len(seq))), stream
         # La calibración se vuelve a dejar retained en la conexión nueva antes de sus chunks.
         assert assert_calibrations_resolvable(second.published) > 0
+        assert_retained_calibrations_never_regress(first.published + second.published)
         assert second.on("status")[-1].payload["status"] == "offline" and second.on("status")[-1].retain  # SIGTERM
         assert_all_valid(first)
         assert_all_valid(second)

@@ -13,18 +13,22 @@ Por cada astronauta del config (`FakeGateway`, normalmente uno por conexión MQT
     cambia la señal: el protocolo en vivo sigue su propio ritmo.
   - calibrate: `accepted` y `completed` con `result.calibration_id` (`MissionGenerator.live_calibration`)
     pasados `duration_s` (o al momento). Justo antes del `completed` se publica cada calibración en
-    `topics.calibration(...)` (QoS 1, retained). El contrato solo admite un calibration_id por ack: con
-    varios streams va el del primero (todas pasan a estar vigentes igualmente).
+    `topics.calibration(...)` (QoS 1, retained), salvo que otro `calibrate` del mismo stream la haya
+    sustituido mientras tanto. El contrato solo admite un calibration_id por ack: con varios streams va el
+    del primero (todas pasan a estar vigentes igualmente).
   - Comando inválido: `rejected`/`invalid_command` si se puede leer su command_id; si no, se ignora.
     Un error inesperado al procesarlo da `failed`/`internal`; el gateway nunca se cae por un comando.
 - DeviceStatus retained en `topics.status(...)` al arrancar y cada `device.status_interval_s`; ClockSync
   retained en `topics.clock(...)` al arrancar, al empezar cada sesión y cada `device.clock_sync_interval_s`.
   `last_seq` de cada stream = último seq PUBLICADO del arranque en curso (nunca uno aún no enviado).
   Last Will retained con `status: offline` (`last_will`) y el mismo `offline` al pararse limpiamente.
-- Calibraciones en el bus: antes de publicar un chunk con `calibration_id`, si el retained de
-  `topics.calibration(...)` de ese stream no es esa calibración, se publica (retained) la vigente: la de un
-  `calibrate` o la programada de la misión. Así un consumidor que se conecta tarde siempre resuelve el
-  calibration_id de los chunks que recibe. El ground truth nunca va al bus.
+- Calibraciones en el bus: antes de publicar un chunk con `calibration_id`, si cita la calibración vigente
+  de su stream (`MissionGenerator.calibration_in_force`: la de un `calibrate` o, si no, la programada de la
+  misión ese día) y no es la retained de `topics.calibration(...)`, se publica (retained). Así un consumidor
+  que se conecta tarde resuelve el calibration_id de los chunks que recibe. Tras un `calibrate`, los chunks
+  que quedan del bloque en curso (como mucho un intervalo de estado) aún citan la anterior: no se republica
+  si ya salió otra después, de modo que la retained de un stream nunca vuelve atrás. El ground truth nunca
+  va al bus.
 - Fondo (si `schedule.background.enabled`): IMU + cordón de `live_background` siempre que no hay sesión
   (sin la ventana horaria del config: el gateway es para demos a cualquier hora). Una sesión lo pausa
   (mismo stream_id, el seq sigue) y al acabar se reanuda con el mismo session_id; cada día de misión
@@ -267,11 +271,10 @@ class _Unit:
     pending: list[tuple[datetime, Envelope]] = field(default_factory=list)
     # command_id -> acks ya enviados (LRU acotada a `_HANDLED_MAX`), para responder igual a una reentrega.
     handled: OrderedDict[str, list[Envelope]] = field(default_factory=OrderedDict)
-    # Calibraciones conocidas por calibration_id (de `calibrate` y las programadas de los días vistos).
-    calibrations: dict[str, Envelope] = field(default_factory=dict)
-    calibration_days: set[int] = field(default_factory=set)  # días cuyas programadas ya están en `calibrations`
     # topic de calibración -> calibration_id retained ahí por esta conexión (se vacía al reconectar).
     retained_calibrations: dict[str, str] = field(default_factory=dict)
+    # topic de calibración -> último calibration_id publicado en cualquier conexión (no se vacía al reconectar).
+    bus_calibrations: dict[str, str] = field(default_factory=dict)
     unresolved_calibrations: set[str] = field(default_factory=set)  # ids sin calibración conocida (avisados ya)
 
     def sources(self) -> list[_Source]:
@@ -376,36 +379,39 @@ class FakeGateway:
         await client.publish(envelope.topic, payload=_encode(envelope.payload), qos=QOS, retain=envelope.retained)
 
     async def _publish_chunk(self, client: MqttPublisher, unit: _Unit, envelope: Envelope) -> None:
-        calibration_id = envelope.payload.get("calibration_id")
-        if calibration_id is not None:
-            await self._ensure_calibration(client, unit, str(calibration_id), envelope.day)
+        if envelope.payload.get("calibration_id") is not None:
+            await self._ensure_calibration(client, unit, envelope)
         await self._publish(client, envelope)
         key = (int(envelope.payload["boot_id"]), str(envelope.payload["stream_id"]))
         unit.published[key] = max(unit.published.get(key, -1), int(envelope.payload["seq"]))
 
-    def _known_calibration(self, unit: _Unit, calibration_id: str, day: int | None) -> Envelope | None:
-        """La calibración `calibration_id`: de un `calibrate` o, si no, una programada de la misión vigente el
-        día `day` (las que usa `live_session`/`live_background` cuando no hay calibración en vivo)."""
-        found = unit.calibrations.get(calibration_id)
-        if found is None and day is not None and day not in unit.calibration_days:
-            unit.calibration_days.add(day)
-            timeline = self._generator.timeline
-            scheduled = sess.scheduled_calibrations(self._config, self._generator.seed, timeline, unit.astronaut_id, timeline.day(day))
-            for record in scheduled.values():
-                envelope = calibration_envelope(unit.astronaut_id, unit.device_id, record, record.created_at)
-                unit.calibrations.setdefault(record.calibration_id, envelope)
-            found = unit.calibrations.get(calibration_id)
-        return found
-
-    async def _ensure_calibration(self, client: MqttPublisher, unit: _Unit, calibration_id: str, day: int | None) -> None:
-        """Deja retained en el bus la calibración que cita un chunk antes de publicarlo."""
-        envelope = self._known_calibration(unit, calibration_id, day)
-        if envelope is None:
+    async def _ensure_calibration(self, client: MqttPublisher, unit: _Unit, chunk: Envelope) -> None:
+        """Deja retained en el bus la calibración que cita un chunk antes de publicarlo, sin que la retained de
+        su stream vuelva nunca a una anterior."""
+        calibration_id = str(chunk.payload["calibration_id"])
+        stream_id = str(chunk.payload["stream_id"])
+        day = self.mission_day(chunk.at) if chunk.day is None else chunk.day
+        record = self._generator.calibration_in_force(unit.astronaut_id, stream_id, day)
+        if record is None or record.calibration_id != calibration_id:
+            # Chunk de un bloque sintetizado antes de un `calibrate`: cita la anterior. Solo se (re)publica si
+            # en el bus no ha salido otra después para ese stream (p. ej. el calibrate aún no ha acabado).
+            topic = topics.calibration(unit.astronaut_id, unit.device_id, stream_id)
+            if unit.bus_calibrations.get(topic, calibration_id) != calibration_id:
+                return
+            record = self._generator.calibration(unit.astronaut_id, calibration_id, day)
+        if record is None:
             if calibration_id not in unit.unresolved_calibrations:
                 unit.unresolved_calibrations.add(calibration_id)
                 _log.warning("%s: chunks reference unknown calibration %s; not published on the bus", unit.astronaut_id, calibration_id)
             return
-        await self._publish_calibration(client, unit, envelope)
+        await self._publish_calibration(client, unit, calibration_envelope(unit.astronaut_id, unit.device_id, record, record.created_at))
+
+    def _still_in_force(self, unit: _Unit, envelope: Envelope) -> bool:
+        """La calibración del sobre sigue siendo la vigente de su stream (ningún `calibrate` posterior la sustituyó)."""
+        payload = envelope.payload
+        day = self.mission_day(envelope.at) if envelope.day is None else envelope.day
+        record = self._generator.calibration_in_force(unit.astronaut_id, str(payload["stream_id"]), day)
+        return record is not None and record.calibration_id == payload["calibration_id"]
 
     async def _publish_calibration(self, client: MqttPublisher, unit: _Unit, envelope: Envelope) -> None:
         """Publica una calibración (retained) salvo que ya sea la retained de su topic en esta conexión."""
@@ -415,6 +421,7 @@ class FakeGateway:
             return
         await self._publish(client, envelope)
         unit.retained_calibrations[envelope.topic] = calibration_id
+        unit.bus_calibrations[envelope.topic] = calibration_id
 
     def _envelope(self, kind: EnvelopeKind, model: Any, unit: _Unit, at: datetime, topic: str, *, retained: bool = False) -> Envelope:
         return Envelope.of(kind, model, at=at, astronaut_id=unit.astronaut_id, day=self.mission_day(at), topic=topic, retained=retained)
@@ -704,10 +711,8 @@ class FakeGateway:
         except ValueError as error:
             await self._reply(client, unit, cid, "rejected", now, code="invalid_command", message=str(error))
             return
-        # El generador ya las da por vigentes (una sesión que empiece antes de `done` las cita: entonces
-        # `_ensure_calibration` las publica antes de su primer chunk).
-        for calibration in calibrations:
-            unit.calibrations[str(calibration.payload["calibration_id"])] = calibration
+        # El generador ya las da por vigentes (`calibration_in_force`): el siguiente bloque de la sesión o del
+        # fondo las cita, aunque sea antes de `done`, y `_ensure_calibration` las publica antes de su primer chunk.
         await self._reply(client, unit, cid, "accepted", now)
         completed = self._ack(unit, cid, "completed", done, calibration_id=calibrations[0].payload["calibration_id"])
         # Las calibraciones (retained) antes del `completed`: quien lea el ack ya puede resolver su id.
@@ -740,7 +745,8 @@ class FakeGateway:
         for item in sorted((p for p in unit.pending if p[0] <= now), key=lambda p: p[0]):
             envelope = item[1]
             if envelope.kind is EnvelopeKind.CALIBRATION:
-                await self._publish_calibration(client, unit, envelope)
+                if self._still_in_force(unit, envelope):  # otro `calibrate` posterior del stream ya la sustituyó: no se publica
+                    await self._publish_calibration(client, unit, envelope)
             else:
                 await self._publish_ack(client, unit, envelope)
             unit.pending = [p for p in unit.pending if p is not item]

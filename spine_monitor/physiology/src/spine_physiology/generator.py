@@ -11,9 +11,17 @@
   `topics.calibration`, retained, ver `calibration_envelope`), los stream_chunk a su `received_at` y el ground
   truth de la sesión (quality_faults, lost_chunks, expected_features) a su fin; el self_report a su hora.
 - `day_messages` / `session_messages`: la misma salida que dentro de `iter_messages`, regenerada sola
-  (un día o una sesión sueltos dan exactamente los mismos payloads, en el mismo orden relativo).
+  (un día o una sesión sueltos dan exactamente los mismos payloads, en el mismo orden relativo). Con
+  `include_carried_calibrations` (por defecto) van primero, además, las calibraciones arrastradas: las
+  registradas antes (otro día o, en una sesión, fuera de ella) que siguen vigentes y que la salida cita, con
+  el mismo sobre que emitió la misión completa (ids, created_at, `at` y `day` originales). Así un día o una
+  sesión sueltos se resuelven solos. `iter_messages` no las repite: ya salieron en su día.
 - `resimulate`: la sesión con otra gravedad (delega en `sessions.resimulate`).
-- API en vivo para el gateway: `live_session`, `live_calibration` y `live_background`.
+- `calibration_in_force`: la calibración vigente de un stream (la última en vivo; si no, la programada de
+  la misión ese día). La usan los bloques en vivo y el gateway.
+- API en vivo para el gateway: `live_session`, `live_calibration` y `live_background`. Cada bloque en vivo
+  busca la calibración vigente al empezar, así que tras un `calibrate` los chunks citan la nueva desde el
+  bloque siguiente.
 - Chunks: las sesiones usan `signals.chunk_ms`; el fondo, `schedule.background.chunk_ms`. Cada tramo lleva
   su `chunk_ms` (SessionPlan / SynthSpec) y se pasa a `SimDevice.chunks` / `advance`; la pausa del fondo
   se alinea a su propia rejilla.
@@ -145,8 +153,12 @@ class MissionGenerator:
         self._timeline = MissionTimeline(config)
         self._latents = LatentModel(config, self._timeline, self._seed)
         self._plans: dict[tuple[str, int], tuple[SessionPlan, ...]] = {}
+        # Calibraciones programadas vigentes por (astronauta, día): deterministas, se calculan una vez.
+        self._scheduled: dict[tuple[str, int], dict[str, CalibrationRecord]] = {}
         # Calibraciones hechas en vivo (gateway), por (astronauta, stream): sustituyen a las programadas.
         self._live_calibrations: dict[tuple[str, str], CalibrationRecord] = {}
+        # Todas las hechas en vivo por (astronauta, calibration_id), también las ya sustituidas (ver `calibration`).
+        self._live_by_id: dict[tuple[str, str], CalibrationRecord] = {}
 
     @property
     def config(self) -> MissionConfig:
@@ -170,7 +182,8 @@ class MissionGenerator:
     def iter_messages(self) -> Iterator[Envelope]:
         yield from self.profiles()
         for day in self._timeline:
-            yield from self.day_messages(day.index)
+            # Sin arrastradas: cada calibración ya sale una vez, el día en que se registra.
+            yield from self.day_messages(day.index, include_carried_calibrations=False)
 
     def profiles(self) -> Iterator[Envelope]:
         at = self._timeline.day(0).start
@@ -178,13 +191,20 @@ class MissionGenerator:
             profile = reports.build_profile(member, updated_at=at)
             yield Envelope.of(EnvelopeKind.PROFILE, profile, at=at, astronaut_id=member.astronaut_id, day=None)
 
-    def day_messages(self, day: int, astronaut_id: str | None = None) -> Iterator[Envelope]:
-        """Mensajes de un día (de un astronauta, o de todos mezclados por `at`)."""
+    def day_messages(self, day: int, astronaut_id: str | None = None, *, include_carried_calibrations: bool = True) -> Iterator[Envelope]:
+        """Mensajes de un día (de un astronauta, o de todos mezclados por `at`).
+
+        `include_carried_calibrations`: primero las calibraciones de días anteriores aún vigentes ese día
+        (las que citan sus sesiones y chunks), idénticas a como las emitió la misión completa en su día;
+        su `at` es anterior al día, así que van delante también al mezclar astronautas. Con False, la
+        rebanada exacta del día dentro de `iter_messages`.
+        """
         self._timeline.day(day)  # IndexError ya, no al consumir
+        carried = include_carried_calibrations
         if astronaut_id is not None:
             self._config.member(astronaut_id)
-            return self._astronaut_day(astronaut_id, day)
-        streams = [self._astronaut_day(m.astronaut_id, day) for m in self._config.crew]
+            return self._astronaut_day(astronaut_id, day, carried=carried)
+        streams = [self._astronaut_day(m.astronaut_id, day, carried=carried) for m in self._config.crew]
         return heapq.merge(*streams, key=lambda e: e.at)
 
     def sessions(self, day: int, astronaut_id: str) -> tuple[SessionPlan, ...]:
@@ -203,14 +223,54 @@ class MissionGenerator:
                 return plan
         raise KeyError(f"no session {ref.slot!r} for {ref.astronaut_id} on day {ref.day}")
 
-    def session_messages(self, ref: SessionRef, *, gravity_environment: GravityEnvironment | None = None) -> Iterator[Envelope]:
+    def session_messages(
+        self,
+        ref: SessionRef,
+        *,
+        gravity_environment: GravityEnvironment | None = None,
+        include_carried_calibrations: bool = True,
+    ) -> Iterator[Envelope]:
         """Session, calibraciones registradas en ella, chunks y ground truth de la sesión, como en la misión
-        (con `gravity_environment` distinta solo cambia lo que depende de la gravedad)."""
+        (con `gravity_environment` distinta solo cambia lo que depende de la gravedad).
+
+        `include_carried_calibrations`: primero las calibraciones vigentes en la sesión registradas fuera de
+        ella (otro día, otra sesión o al encender), idénticas a como las emitió la misión completa. Con
+        False, la rebanada exacta de la sesión dentro del día.
+        """
         self.session_plan(ref)
-        return self._astronaut_day(ref.astronaut_id, ref.day, target=ref.slot, gravity=gravity_environment)
+        return self._astronaut_day(ref.astronaut_id, ref.day, target=ref.slot, gravity=gravity_environment, carried=include_carried_calibrations)
 
     def resimulate(self, ref: SessionRef, gravity_environment: GravityEnvironment) -> list[Envelope]:
         return sess.resimulate(self, ref, gravity_environment)
+
+    def calibration_in_force(self, astronaut_id: str, stream_id: str, day: int) -> CalibrationRecord | None:
+        """Calibración vigente de un stream el día de misión `day`: la última hecha en vivo
+        (`live_calibration`) o, si no hay, la programada de la misión ese día (stretch e imu; None si el
+        stream no tiene). La única regla: la usan los bloques en vivo y el gateway."""
+        self._config.member(astronaut_id)
+        self._config.device.stream(stream_id)
+        live = self._live_calibrations.get((astronaut_id, stream_id))
+        if live is not None:
+            return live
+        return self._scheduled_calibrations(astronaut_id, day).get(stream_id)
+
+    def calibration(self, astronaut_id: str, calibration_id: str, day: int) -> CalibrationRecord | None:
+        """La calibración `calibration_id` que puede citar un chunk del día `day`: una hecha en vivo (también si
+        otra posterior ya la sustituyó) o una programada de la misión vigente ese día. None si no es ninguna."""
+        self._config.member(astronaut_id)
+        live = self._live_by_id.get((astronaut_id, calibration_id))
+        if live is not None:
+            return live
+        return next((r for r in self._scheduled_calibrations(astronaut_id, day).values() if r.calibration_id == calibration_id), None)
+
+    def _scheduled_calibrations(self, astronaut_id: str, day: int) -> dict[str, CalibrationRecord]:
+        """`sessions.scheduled_calibrations` cacheado por (astronauta, día); no se modifica el resultado."""
+        key = (astronaut_id, day)
+        scheduled = self._scheduled.get(key)
+        if scheduled is None:
+            scheduled = sess.scheduled_calibrations(self._config, self._seed, self._timeline, astronaut_id, self._timeline.day(day))
+            self._scheduled[key] = scheduled
+        return scheduled
 
     # --- Recorrido de un astronauta-día -----------------------------------------------------------
 
@@ -221,6 +281,7 @@ class MissionGenerator:
         *,
         target: str | None = None,
         gravity: GravityEnvironment | None = None,
+        carried: bool = False,
     ) -> Iterator[Envelope]:
         config, seed, tree = self._config, self._seed, self._tree
         member = config.member(astronaut_id)
@@ -230,9 +291,15 @@ class MissionGenerator:
         device_plan = plan_device_day(config, seed, astronaut_id, day)
         device = SimDevice(config, device_plan)
         plans = self.sessions(day_index, astronaut_id)
-        scheduled = sess.scheduled_calibrations(config, seed, self._timeline, astronaut_id, day)
+        scheduled = self._scheduled_calibrations(astronaut_id, day_index)
         full = target is None
         out = _Reorder()
+
+        if carried:
+            # Calibraciones arrastradas, delante de todo: el mismo sobre que en su día (todo sale de la semilla
+            # y de su día de registro, sin estado de RNG de otros días). Su `at` no es posterior a nada de lo que sigue.
+            for record in self._carried_calibrations(scheduled, plans, day_index, target):
+                yield calibration_envelope(astronaut_id, device_id, record, record.created_at)
 
         def envelope(kind: EnvelopeKind, model: Any, at: datetime, **kw: Any) -> Envelope:
             return Envelope.of(kind, model, at=at, astronaut_id=astronaut_id, day=day_index, **kw)
@@ -340,6 +407,19 @@ class MissionGenerator:
             drain(run, None)
         yield from out.release(None)
 
+    @staticmethod
+    def _carried_calibrations(
+        scheduled: dict[str, CalibrationRecord], plans: Sequence[SessionPlan], day_index: int, target: str | None
+    ) -> list[CalibrationRecord]:
+        """Calibraciones vigentes que la salida cita pero no registra. Día entero: las programadas de un día
+        anterior (en el orden de `device.streams`). Sesión: las vigentes en sus streams registradas fuera de
+        ella (otro día, otra sesión, al encender), en el orden de sus streams. Las emg_mvc se registran
+        siempre en su propia sesión, así que nunca se arrastran."""
+        if target is None:
+            return [record for record in scheduled.values() if record.day < day_index]
+        plan = next(p for p in plans if p.ref.slot == target)
+        return [scheduled[s] for s in plan.stream_ids if s in scheduled and scheduled[s].session_id != plan.session_id]
+
     def _session_truth(self, run: _Run, day_index: int, state: Any) -> list[dict[str, Any]]:
         plan = run.plan
         session = truth.TruthSession(plan.ref.astronaut_id, day_index, plan.session_id, plan.ref.slot, plan.protocol_id, run.gravity_environment)
@@ -421,7 +501,6 @@ class MissionGenerator:
         config = self._config
         protocol = config.protocols.get(protocol_id)
         state = self._latents.state(astronaut_id, info.index)
-        calibrations = self._live_in_force(astronaut_id, info, streams)
         keys = (astronaut_id, "live", session_id)
         session = truth.TruthSession(astronaut_id, info.index, session_id, None, protocol_id, info.gravity_environment)
         residual: dict[str, float] = {}
@@ -433,6 +512,7 @@ class MissionGenerator:
                 (*keys, "protocol"), cursor, sess.chunks_for(sess.protocol_duration_s(protocol), chunk_ms=chunk_ms), chunk_ms, streams, info,
                 background=False, reps=rep_schedule(protocol) if exercise else (), protocol=protocol if exercise else None, residual=residual,
             )  # fmt: skip
+            calibrations = self._in_force(astronaut_id, info.index, streams)  # por bloque: un `calibrate` vale desde el siguiente
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
             features = truth.expected_features(config, synthesis, state=state)
             yield Envelope(EnvelopeKind.GROUND_TRUTH, None, truth.expected_features_record(session, features), start, False, astronaut_id, info.index)
@@ -441,6 +521,7 @@ class MissionGenerator:
             cursor = cursor + spec.n_chunks * sess.chunk_delta(chunk_ms)
         for block in itertools.count():
             spec = self._live_spec((*keys, "rest", block), cursor, _live_block_chunks(config, chunk_ms), chunk_ms, streams, info, background=False, reps=(), protocol=None, residual=residual)
+            calibrations = self._in_force(astronaut_id, info.index, streams)
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
             yield from self._live_chunks(device, synthesis, session, astronaut_id, info.index)
             residual = synthesis.final_residual_mm
@@ -484,6 +565,7 @@ class MissionGenerator:
                 session_id=session_id, created_at=at, day=info.index,
             )  # fmt: skip
             self._live_calibrations[(astronaut_id, stream_id)] = record
+            self._live_by_id[(astronaut_id, record.calibration_id)] = record
             out.append(calibration_envelope(astronaut_id, member.device_id, record, at))
         return out
 
@@ -511,7 +593,6 @@ class MissionGenerator:
         background = config.schedule.background
         streams = tuple(background.streams)
         state = self._latents.state(astronaut_id, info.index)
-        calibrations = self._live_in_force(astronaut_id, info, streams)
         session = truth.TruthSession(astronaut_id, info.index, session_id, None, background.protocol_id, info.gravity_environment)
         keys = (astronaut_id, "live", session_id, start.isoformat())
         residual: dict[str, float] = {}
@@ -519,17 +600,17 @@ class MissionGenerator:
         chunk_ms = background.chunk_ms
         for block in itertools.count():
             spec = self._live_spec((*keys, block), cursor, _live_block_chunks(config, chunk_ms), chunk_ms, streams, info, background=True, reps=(), protocol=None, residual=residual)
+            calibrations = self._in_force(astronaut_id, info.index, streams)  # por bloque: un `calibrate` vale desde el siguiente
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
             yield from self._live_chunks(device, synthesis, session, astronaut_id, info.index)
             residual = synthesis.final_residual_mm
             cursor = cursor + spec.n_chunks * sess.chunk_delta(chunk_ms)
 
-    def _live_in_force(self, astronaut_id: str, info: DayInfo, streams: Sequence[str]) -> dict[str, CalibrationRecord]:
-        """Calibración vigente por stream: la última hecha en vivo, o la programada de la misión ese día."""
-        scheduled = sess.scheduled_calibrations(self._config, self._seed, self._timeline, astronaut_id, info)
+    def _in_force(self, astronaut_id: str, day: int, streams: Sequence[str]) -> dict[str, CalibrationRecord]:
+        """`calibration_in_force` de cada stream que tiene calibración."""
         out: dict[str, CalibrationRecord] = {}
         for stream_id in streams:
-            record = self._live_calibrations.get((astronaut_id, stream_id)) or scheduled.get(stream_id)
+            record = self.calibration_in_force(astronaut_id, stream_id, day)
             if record is not None:
                 out[stream_id] = record
         return out

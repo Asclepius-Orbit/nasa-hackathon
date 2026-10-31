@@ -14,11 +14,41 @@ def test_topic_layout():
     assert topics.cmd("AST-01", "wb-01") == "asclepius/v1/crew/AST-01/device/wb-01/cmd"
     assert topics.ack("AST-01", "wb-01") == "asclepius/v1/crew/AST-01/device/wb-01/ack"
     assert topics.clock("AST-01", "wb-01") == "asclepius/v1/crew/AST-01/device/wb-01/clock"
+    assert (
+        topics.calibration("AST-01", "wb-01", "stretch_lumbar")
+        == "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_lumbar"
+    )
 
 
 def test_wildcard_subscriptions():
     assert topics.SUBSCRIBE_ALL_STREAMS == "asclepius/v1/crew/+/device/+/stream/+"
     assert topics.SUBSCRIBE_ALL_STATUS == "asclepius/v1/crew/+/device/+/status"
+    assert topics.SUBSCRIBE_ALL_CALIBRATIONS == "asclepius/v1/crew/+/device/+/calibration/+"
+
+
+def test_parse_calibration_round_trip():
+    topic = topics.calibration("AST-02", "sim-01", "stretch_lumbar")
+
+    assert topics.parse_calibration(topic) == ("AST-02", "sim-01", "stretch_lumbar")
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "asclepius/v1/crew/AST-01/device/wb-01/stream/stretch_lumbar",
+        "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_lumbar/extra",
+        "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_lumbar\n",
+        "asclepius/v1/crew/+/device/+/calibration/+",
+    ],
+)
+def test_parse_calibration_rejects_other_topics(topic):
+    with pytest.raises(ValueError):
+        topics.parse_calibration(topic)
+
+
+def test_parse_stream_rejects_calibration_topics():
+    with pytest.raises(ValueError):
+        topics.parse_stream(topics.calibration("AST-01", "wb-01", "stretch_lumbar"))
 
 
 def test_parse_stream_round_trip():
@@ -55,6 +85,8 @@ def test_device_and_stream_ids_are_checked(bad):
         topics.cmd("AST-01", bad)
     with pytest.raises(ValueError):
         topics.stream("AST-01", "wb-01", bad)
+    with pytest.raises(ValueError):
+        topics.calibration("AST-01", "wb-01", bad)
 
 
 @pytest.mark.parametrize(

@@ -53,6 +53,18 @@ def test_asyncapi_addresses_match_the_topic_helpers():
     assert channels["cmd"]["address"].format(**ids) == topics.cmd("AST-01", "wb-01")
     assert channels["ack"]["address"].format(**ids) == topics.ack("AST-01", "wb-01")
     assert channels["clock"]["address"].format(**ids) == topics.clock("AST-01", "wb-01")
+    assert channels["calibration"]["address"].format(**ids) == topics.calibration("AST-01", "wb-01", "emg_lat_left")
+
+
+def test_asyncapi_calibration_is_retained_qos1_with_the_calibration_schema():
+    document = load("asyncapi.yaml")
+    operation = document["operations"]["sendCalibration"]
+    message = document["components"]["messages"]["calibration"]
+
+    assert operation["channel"] == {"$ref": "#/channels/calibration"}
+    assert operation["bindings"]["mqtt"]["qos"] == 1
+    assert operation["bindings"]["mqtt"]["retain"] is True
+    assert message["payload"] == {"$ref": "schemas/v1/domain/calibration.schema.json"}
 
 
 def test_openapi_paths_are_the_engine_endpoints():

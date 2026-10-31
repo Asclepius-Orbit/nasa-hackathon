@@ -5,7 +5,7 @@ info:
   description: |
     MQTT contract between the wearable gateway (or the simulator) and the on-board app.
     The document is written from the point of view of the GATEWAY: it sends streams, status,
-    command acks and clock anchors, and it receives commands. The real device and the
+    command acks, clock anchors and calibrations, and it receives commands. The real device and the
     simulator publish on the same topics with the same payloads; the `source` field says which.
 
     Topic layout: `asclepius/v1/crew/{astronaut_id}/device/{device_id}/...`.
@@ -73,6 +73,20 @@ channels:
     messages:
       clockSync:
         $ref: '#/components/messages/clockSync'
+  calibration:
+    address: asclepius/v1/crew/{astronaut_id}/device/{device_id}/calibration/{stream_id}
+    description: |
+      Calibration in force for one stream, so a bus consumer can resolve the `calibration_id` of stretch chunks.
+      Retained: the broker keeps the latest calibration per stream and a late subscriber receives it on subscribing.
+    parameters:
+      astronaut_id: {}
+      device_id: {}
+      stream_id:
+        description: Stream the calibration applies to.
+        examples: [stretch_lumbar]
+    messages:
+      calibration:
+        $ref: '#/components/messages/calibration'
 operations:
   sendStreamChunk:
     action: send
@@ -120,6 +134,15 @@ operations:
         qos: 1
         retain: true
         bindingVersion: 0.2.0
+  sendCalibration:
+    action: send
+    channel:
+      $ref: '#/channels/calibration'
+    bindings:
+      mqtt:
+        qos: 1
+        retain: true
+        bindingVersion: 0.2.0
 components:
   messages:
     streamChunk:
@@ -147,3 +170,8 @@ components:
       title: Clock anchor
       payload:
         $ref: 'schemas/v1/telemetry/clock-sync.schema.json'
+    calibration:
+      name: Calibration
+      title: Calibration in force
+      payload:
+        $ref: 'schemas/v1/domain/calibration.schema.json'

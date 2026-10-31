@@ -18,6 +18,7 @@ SUBSCRIBE_ALL_STREAMS = f"{ROOT}/crew/+/device/+/stream/+"
 SUBSCRIBE_ALL_STATUS = f"{ROOT}/crew/+/device/+/status"
 SUBSCRIBE_ALL_ACKS = f"{ROOT}/crew/+/device/+/ack"
 SUBSCRIBE_ALL_CLOCKS = f"{ROOT}/crew/+/device/+/clock"
+SUBSCRIBE_ALL_CALIBRATIONS = f"{ROOT}/crew/+/device/+/calibration/+"
 
 
 class StreamTopic(NamedTuple):
@@ -59,6 +60,10 @@ def clock(astronaut_id: str, device_id: str) -> str:
     return f"{_device(astronaut_id, device_id)}/clock"
 
 
+def calibration(astronaut_id: str, device_id: str, stream_id: str) -> str:
+    return f"{_device(astronaut_id, device_id)}/calibration/{_checked('stream_id', stream_id, STREAM_ID)}"
+
+
 _STREAM_TOPIC = re.compile(
     rf"{re.escape(ROOT)}/crew/(?P<astronaut_id>{ASTRONAUT_ID.pattern})"
     rf"/device/(?P<device_id>{DEVICE_ID.pattern})"
@@ -71,4 +76,19 @@ def parse_stream(topic: str) -> StreamTopic:
     match = _STREAM_TOPIC.fullmatch(topic)
     if match is None:
         raise ValueError(f"not a stream topic: {topic!r}")
+    return StreamTopic(**match.groupdict())
+
+
+_CALIBRATION_TOPIC = re.compile(
+    rf"{re.escape(ROOT)}/crew/(?P<astronaut_id>{ASTRONAUT_ID.pattern})"
+    rf"/device/(?P<device_id>{DEVICE_ID.pattern})"
+    rf"/calibration/(?P<stream_id>{STREAM_ID.pattern})"
+)
+
+
+def parse_calibration(topic: str) -> StreamTopic:
+    """Ids of a calibration topic. Raises ValueError for any other topic."""
+    match = _CALIBRATION_TOPIC.fullmatch(topic)
+    if match is None:
+        raise ValueError(f"not a calibration topic: {topic!r}")
     return StreamTopic(**match.groupdict())

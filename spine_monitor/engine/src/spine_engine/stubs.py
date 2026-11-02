@@ -37,7 +37,7 @@ class NullFeatureExtractor:
 
     def extract(self, request: FeaturesRequest) -> FeatureSet:
         session = request.session
-        return FeatureSet(
+        return FeatureSet(  # pyright: ignore[reportCallIssue]  # generated model: window/skipped have positional Field defaults
             schema_version=SCHEMA_VERSION,
             astronaut_id=session.astronaut_id,
             session_id=session.session_id,

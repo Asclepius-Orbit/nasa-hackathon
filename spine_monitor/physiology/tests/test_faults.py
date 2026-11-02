@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 import yaml
 from spine_contracts import QualityFlag, StreamKind
-
 from spine_physiology.config import MissionConfig
 from spine_physiology.faults import (
     CLEAN,

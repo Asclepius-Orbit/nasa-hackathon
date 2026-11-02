@@ -2,7 +2,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from spine_physiology.config import StretchSignalConfig, load_config
 from spine_physiology.signals.stretch import (
     adc_to_resistance,

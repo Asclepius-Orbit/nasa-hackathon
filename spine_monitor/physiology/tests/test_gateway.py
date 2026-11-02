@@ -912,7 +912,13 @@ def test_broker_drop_mid_run_reconnects_resubscribes_and_resumes_without_seq_gap
         connections = Connections(plan)
         config = make_config()
         task = asyncio.create_task(
-            _serve(MissionGenerator(config), settings(mqtt_reconnect_initial_s=3.0, mqtt_reconnect_max_s=5.0), client_factory=connections, clock=clock, sleep=sleep)
+            _serve(
+                MissionGenerator(config),
+                settings(mqtt_reconnect_initial_s=3.0, mqtt_reconnect_max_s=5.0),
+                client_factory=connections,
+                clock=clock,
+                sleep=sleep,
+            )
         )
         await asyncio.wait_for(reached.wait(), timeout=60)
         task.cancel()

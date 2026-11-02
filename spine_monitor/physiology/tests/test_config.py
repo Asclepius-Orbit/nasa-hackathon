@@ -5,7 +5,6 @@ import pytest
 import yaml
 from pydantic import ValidationError
 from spine_contracts import GravityEnvironment, MissionPhase, StreamKind
-
 from spine_physiology.config import MissionConfig, load_config
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "configs" / "example-mission.yaml"

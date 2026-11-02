@@ -267,7 +267,8 @@ def test_microgravity_removes_gravity_from_accel_and_keeps_everything_else():
     _, earth = _synth(config, "am_spine_check", day=4, gravity=GravityEnvironment.EARTH_1G)
     _, micro = _synth(config, "am_spine_check", day=4)
     e, m = earth.stream("imu_l3").channels, micro.stream("imu_l3").channels
-    accel = lambda c: np.sqrt(c["accel_x"] ** 2 + c["accel_y"] ** 2 + c["accel_z"] ** 2)
+    def accel(c):
+        return np.sqrt(c["accel_x"] ** 2 + c["accel_y"] ** 2 + c["accel_z"] ** 2)
     assert np.mean(accel(e)) == pytest.approx(1.0, abs=0.05)
     assert np.mean(accel(m)) < 0.1
     for gyro in ("gyro_x", "gyro_y", "gyro_z"):

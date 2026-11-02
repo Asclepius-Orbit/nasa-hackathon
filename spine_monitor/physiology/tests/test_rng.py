@@ -2,7 +2,6 @@ import re
 
 import numpy as np
 import pytest
-
 from spine_physiology.rng import RngTree, derive_boot_id, derive_uuid, generator, seed_sequence
 
 # Patrón `uuid` de common.schema.json.

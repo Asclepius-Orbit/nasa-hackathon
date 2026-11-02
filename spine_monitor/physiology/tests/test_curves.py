@@ -2,7 +2,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from spine_physiology.config import load_config
 from spine_physiology.curves import PiecewiseLinear, dose_drift
 

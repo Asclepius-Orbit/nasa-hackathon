@@ -1,15 +1,14 @@
 import asyncio
 import dataclasses
+import importlib.util
 import json
+from pathlib import Path
 
 import pytest
 from spine_physiology import MissionGenerator
 from spine_physiology.envelope import MQTT_KINDS
 from spine_physiology.sinks.mqtt import QOS, MqttSink, encode, publish_all
 from spine_physiology.sinks.pacing import Pacer, paced
-
-import importlib.util
-from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location("_tiny_mission", Path(__file__).with_name("test_generator.py"))
 _module = importlib.util.module_from_spec(_spec)

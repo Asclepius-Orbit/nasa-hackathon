@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 from spine_contracts import GravityEnvironment, MissionPhase
-
 from spine_physiology.config import MissionConfig, load_config
 from spine_physiology.curves import PiecewiseLinear
 from spine_physiology.state import LatentModel, MissionTimeline

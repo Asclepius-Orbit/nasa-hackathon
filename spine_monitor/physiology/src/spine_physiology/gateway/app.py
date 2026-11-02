@@ -437,12 +437,16 @@ class FakeGateway:
         # Lo comprometido en el dispositivo va por delante de lo publicado (lecturas de anticipo): el estado
         # declara solo lo que ya está en el bus.
         status = unit.device.status(unit.status_rng, now, published=self._published_seqs(unit, now))
-        await self._publish(client, self._envelope(EnvelopeKind.DEVICE_STATUS, status, unit, now, topics.status(unit.astronaut_id, unit.device_id), retained=True))
+        await self._publish(
+            client, self._envelope(EnvelopeKind.DEVICE_STATUS, status, unit, now, topics.status(unit.astronaut_id, unit.device_id), retained=True)
+        )
 
     async def _publish_clock(self, client: MqttPublisher, unit: _Unit, now: datetime) -> None:
         sync = unit.device.clock_sync(unit.clock_rng, now)
         if sync is not None:  # reiniciando: no hay reloj que anclar
-            await self._publish(client, self._envelope(EnvelopeKind.CLOCK_SYNC, sync, unit, now, topics.clock(unit.astronaut_id, unit.device_id), retained=True))
+            await self._publish(
+                client, self._envelope(EnvelopeKind.CLOCK_SYNC, sync, unit, now, topics.clock(unit.astronaut_id, unit.device_id), retained=True)
+            )
 
     def _ack(
         self,
@@ -798,7 +802,10 @@ class FakeGateway:
     def _step(self) -> float:
         """Espera máxima del bucle (s): un chunk de la fuente activa más corta (la sesión de cada dispositivo
         o, sin ella, su fondo; sin ninguna, un chunk de sesión)."""
-        chunks = [unit.session.source.chunk if unit.session is not None else unit.background.chunk if unit.background is not None else self._session_chunk for unit in self._units]
+        chunks = [
+            unit.session.source.chunk if unit.session is not None else unit.background.chunk if unit.background is not None else self._session_chunk
+            for unit in self._units
+        ]
         return min(chunks).total_seconds()
 
     async def _wait(self, seconds: float) -> None:
@@ -827,7 +834,9 @@ class FakeGateway:
         for unit in self._units:
             status = self._offline_status(unit.member, now, battery_pct=unit.device.battery_pct(now))
             try:
-                await self._publish(client, self._envelope(EnvelopeKind.DEVICE_STATUS, status, unit, now, topics.status(unit.astronaut_id, unit.device_id), retained=True))
+                await self._publish(
+                    client, self._envelope(EnvelopeKind.DEVICE_STATUS, status, unit, now, topics.status(unit.astronaut_id, unit.device_id), retained=True)
+                )
             except Exception:  # noqa: BLE001  (el broker puede haberse ido ya)
                 _log.warning("%s: could not publish the offline status on shutdown", unit.astronaut_id, exc_info=True)
 
@@ -892,7 +901,14 @@ async def _serve(
     """Una conexión MQTT por dispositivo (cada una con su Last Will) y un `FakeGateway` por dispositivo, que
     sobrevive a las reconexiones (`_connection`). `sleep` también marca las esperas del backoff."""
     config: MissionConfig = generator.config
-    _log.info("gateway for %s on %s:%d (day %d, speed %s)", [m.astronaut_id for m in config.crew], settings.mqtt_host, settings.mqtt_port, settings.start_day, settings.speed)
+    _log.info(
+        "gateway for %s on %s:%d (day %d, speed %s)",
+        [m.astronaut_id for m in config.crew],
+        settings.mqtt_host,
+        settings.mqtt_port,
+        settings.start_day,
+        settings.speed,
+    )
     gateways = [(m, FakeGateway(generator, settings, clock=clock, sleep=sleep, astronaut_ids=[m.astronaut_id])) for m in config.crew]
     async with asyncio.TaskGroup() as group:
         for member, gateway in gateways:

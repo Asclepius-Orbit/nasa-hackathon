@@ -4,7 +4,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 from scipy import signal as sp_signal
-
 from spine_physiology.config import EmgSignalConfig, load_config
 from spine_physiology.signals import Rep, n_samples, rep_schedule
 from spine_physiology.signals.emg import (

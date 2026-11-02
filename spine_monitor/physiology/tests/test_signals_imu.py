@@ -3,7 +3,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 from spine_contracts import AnatomicalPlane
-
 from spine_physiology.config import ImuSignalConfig, load_config
 from spine_physiology.signals import rep_schedule
 from spine_physiology.signals.imu import (

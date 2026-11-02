@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 import yaml
 from spine_contracts import GravityEnvironment, MissionPhase, QualityFlag, StreamKind, dump, validation
-
 from spine_physiology.config import MissionConfig
 from spine_physiology.device import BootEpoch, DevicePlan, SimDevice, plan_device_day, plan_device_live
 from spine_physiology.faults import CLEAN, QualityState, RebootEvent, clean_quality
@@ -116,7 +115,10 @@ def test_stretch_without_length_needs_no_calibration_but_length_requires_it(conf
     with pytest.raises(ValueError, match="calibration_id"):
         device.chunks(
             np.random.default_rng(0), stream_id="stretch_lumbar", session_id=SESSION, start=T0, rate_hz=config.signals.stretch.sample_rate_hz,
-            chunk_ms=config.signals.chunk_ms, channels=channels_for(StreamKind.STRETCH, 200), quality=clean_quality(StreamKind.STRETCH, 10), calibration_id=None,
+            chunk_ms=config.signals.chunk_ms,
+            channels=channels_for(StreamKind.STRETCH, 200),
+            quality=clean_quality(StreamKind.STRETCH, 10),
+            calibration_id=None,
         )  # fmt: skip
 
 
@@ -324,7 +326,8 @@ def test_status_reports_the_active_stream_rate(config):
     nominal = config.signals.rate(StreamKind.IMU)
     reduced = nominal / 2
     at = T0 + timedelta(seconds=5)
-    rate = lambda: {s["stream_id"]: s["sample_rate_hz"] for s in dump(device.status(np.random.default_rng(0), at))["streams"]}
+    def rate():
+        return {s["stream_id"]: s["sample_rate_hz"] for s in dump(device.status(np.random.default_rng(0), at))["streams"]}
     assert rate()["imu_l3"] == nominal
     device.advance("imu_l3", start=T0, n_samples=100, rate_hz=reduced, chunk_ms=100)
     assert rate()["imu_l3"] == reduced and rate()["emg_lat_left"] == config.signals.rate(StreamKind.EMG)
@@ -438,7 +441,8 @@ def test_chunk_size_is_the_one_given_per_call(config):
     una sola muestra con 100 ms; seq y advance siguen el tamaño de chunk de cada llamada."""
     rate = config.schedule.background.sample_rates_hz.imu
     channels = channels_for(StreamKind.IMU, 100)
-    quality = lambda n: clean_quality(StreamKind.IMU, n)
+    def quality(n):
+        return clean_quality(StreamKind.IMU, n)
     device = SimDevice(config, single_boot_plan(config))
     heavy = list(device.chunks(np.random.default_rng(0), stream_id="imu_l3", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=100.0,
                                channels=channels, quality=quality(100), calibration_id=None))  # fmt: skip
@@ -457,7 +461,8 @@ def test_status_last_seq_uses_published_when_given(config):
     device = SimDevice(config, single_boot_plan(config))
     emit(device, config, "emg_lat_left", n=1000)  # el dispositivo ya consumió seq 0..9
     at = T0 + timedelta(seconds=1)
-    by_id = lambda **kw: {s["stream_id"]: s for s in dump(device.status(np.random.default_rng(0), at, **kw))["streams"]}
+    def by_id(**kw):
+        return {s["stream_id"]: s for s in dump(device.status(np.random.default_rng(0), at, **kw))["streams"]}
     assert by_id()["emg_lat_left"]["last_seq"] == 9  # sin published: next_seq - 1
     published = by_id(published={"emg_lat_left": 4})
     assert published["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in published["imu_l3"]

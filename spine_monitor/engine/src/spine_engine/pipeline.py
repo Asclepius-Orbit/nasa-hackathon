@@ -3,9 +3,9 @@ from uuid import uuid4
 
 from spine_contracts import (
     SCHEMA_VERSION,
-    AssessRequest,
     Assessment,
     AssessmentDomain,
+    AssessRequest,
     BasedOn,
     Completeness,
     DomainAssessment,

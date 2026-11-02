@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from spine_contracts import SCHEMA_VERSION, Baseline, FeaturesRequest, FeatureSet, FeatureValue, Level
+from spine_contracts import SCHEMA_VERSION, Baseline, FeatureSet, FeaturesRequest, FeatureValue, Level
 
 from spine_engine.interfaces import Deviation, RiskResult, TriageDecision
 from spine_engine.pipeline import AssessmentPipeline

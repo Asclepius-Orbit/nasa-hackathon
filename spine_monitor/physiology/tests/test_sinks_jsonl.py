@@ -1,3 +1,4 @@
+import importlib.util
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,9 +9,6 @@ from spine_physiology.envelope import Envelope, EnvelopeKind
 from spine_physiology.sinks.jsonl import FILES, MANIFEST_FILE, JsonlSink, day_dir, write_jsonl
 
 AT = datetime(2030, 1, 1, tzinfo=UTC)
-
-import importlib.util
-from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location("_tiny_mission", Path(__file__).with_name("test_generator.py"))
 _module = importlib.util.module_from_spec(_spec)

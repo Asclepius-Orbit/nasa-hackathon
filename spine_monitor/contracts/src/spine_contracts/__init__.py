@@ -58,8 +58,8 @@ from spine_contracts.models.domain.baseline_schema import Baseline
 from spine_contracts.models.domain.baseline_schema import Entry as BaselineEntry
 from spine_contracts.models.domain.calibration_schema import EmgMvcCalibration, ImuCalibration, StretchCalibration
 from spine_contracts.models.domain.daily_context_schema import DailyContext
-from spine_contracts.models.domain.feature_set_schema import FeatureSet
 from spine_contracts.models.domain.feature_set_schema import Feature as FeatureValue
+from spine_contracts.models.domain.feature_set_schema import FeatureSet
 from spine_contracts.models.domain.self_report_schema import DailySelfReport, RedFlagReport, WeeklyOdiReport
 from spine_contracts.models.domain.session_schema import Session
 from spine_contracts.models.engine.assess_request_schema import AssessRequest

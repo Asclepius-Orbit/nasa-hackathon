@@ -104,7 +104,9 @@ async def _scenario() -> None:
             )  # fmt: skip
             await until(lambda: len(session_chunks()) >= 40)
             assert acks("accepted")
-            await observer.publish(topics.cmd("AST-01", device_id), qos=1, payload=_command("stop_session", 2, device_id, session_id=SESSION, reason="completed"))
+            await observer.publish(
+                topics.cmd("AST-01", device_id), qos=1, payload=_command("stop_session", 2, device_id, session_id=SESSION, reason="completed")
+            )
             await until(lambda: len(acks("completed")) >= 2)
             await observer.publish(topics.cmd("AST-01", device_id), qos=1, payload=b"not json at all")
         finally:

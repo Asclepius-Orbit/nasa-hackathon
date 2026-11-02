@@ -9,7 +9,6 @@ import yaml
 from spine_contracts import GravityEnvironment, MissionPhase
 from spine_contracts.messages import dump
 from spine_contracts.validation import errors
-
 from spine_physiology.config import CrewMember, MissionConfig, load_config
 from spine_physiology.reports import build_daily_context, build_daily_self_report, build_profile
 from spine_physiology.rng import derive_uuid, generator

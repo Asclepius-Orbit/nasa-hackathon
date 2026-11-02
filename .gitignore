@@ -71,3 +71,5 @@ traces/
 .DS_Store
 Thumbs.db
 Desktop.ini
+# Subagent-driven-development scratch workspace
+.superpowers/

@@ -11,6 +11,7 @@ dist/
 .pyright/
 .hypothesis/
 .coverage
+coverage.xml
 .coverage.*
 htmlcov/
 .ipynb_checkpoints/

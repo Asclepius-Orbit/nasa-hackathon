@@ -1,5 +1,8 @@
 name: nightly-mutation
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: "0 3 * * *"
@@ -15,4 +18,9 @@ jobs:
       - name: Full mutation report (non blocking)
         env:
           GATE_MUTATION: full
-        run: docker compose -f app/docker-compose.yml run --rm -T quality
+        run: |
+          docker compose -f app/docker-compose.yml run --rm -T quality 2>&1 | tee mutation-output.log
+      - name: Summary
+        if: always()
+        run: |
+          { echo '### Full mutation report (tail)'; echo '```'; tail -n 60 mutation-output.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

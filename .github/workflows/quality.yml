@@ -1,0 +1,29 @@
+name: quality
+
+on:
+  pull_request:
+    branches: [develop]
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    # Incremental mutation on a large physiology file can take an hour or more.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Quality gate (lint, types, tests, coverage, incremental mutation)
+        env:
+          GATE_MUTATION: changed
+        run: docker compose -f app/docker-compose.yml run --rm -T quality
+      - name: Diff coverage
+        # coverage.xml paths are relative to spine_monitor/, so diff-cover must run from there to map them to git paths.
+        working-directory: spine_monitor
+        run: |
+          pip install diff-cover
+          diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=90

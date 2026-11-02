@@ -1,0 +1,18 @@
+name: nightly-mutation
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    # A full physiology run takes about 2.5 h; 360 min is the GitHub-hosted maximum.
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full mutation report (non blocking)
+        env:
+          GATE_MUTATION: full
+        run: docker compose -f app/docker-compose.yml run --rm -T quality

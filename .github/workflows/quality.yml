@@ -26,8 +26,9 @@ jobs:
           MUTATION_BASE: origin/${{ github.base_ref }}
         run: docker compose -f app/docker-compose.yml run --rm -T quality
       - name: Diff coverage
-        # coverage.xml paths are relative to spine_monitor/, so diff-cover must run from there to map them to git paths.
-        working-directory: spine_monitor
+        # Runs in the quality image (diff-cover is in the locked dev group); the WORKDIR spine_monitor/ makes coverage.xml paths map to git paths.
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: pipx run --spec diff-cover==11.0.0 diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90
+        run: >
+          docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
+          sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'

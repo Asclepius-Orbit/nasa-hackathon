@@ -17,8 +17,10 @@ from datetime import datetime, timedelta
 import numpy as np
 from spine_contracts import AstronautProfile, DailyContext, DailySelfReport
 from spine_contracts.messages import SCHEMA_VERSION
+from spine_contracts.models.common_schema import Source
 from spine_contracts.models.domain.daily_context_schema import Countermeasure, ExerciseItem, MedicationItem
-from spine_contracts.models.domain.self_report_schema import PainLocation, Sleep
+from spine_contracts.models.domain.daily_context_schema import Type as CountermeasureType
+from spine_contracts.models.domain.self_report_schema import PainLocation, Side, Sleep
 
 from spine_physiology.config import CrewMember, MissionConfig
 from spine_physiology.state import DailyActivity, DayInfo, LatentState
@@ -74,7 +76,7 @@ def build_daily_context(
         exercise.append(ExerciseItem(**item))
 
     countermeasures = [
-        Countermeasure(type=bout.type, duration_min=bout.duration_min)
+        Countermeasure(type=CountermeasureType(bout.type), duration_min=bout.duration_min)
         for bout in activity.countermeasures
         if bout.duration_min > 0
     ]
@@ -130,7 +132,7 @@ def build_daily_self_report(
 
     pain_locations = []
     if pain >= cfg.pain_location_min_nrs:
-        pain_locations = [PainLocation(region=loc.region, side=loc.side) for loc in cfg.pain_locations]
+        pain_locations = [PainLocation(region=loc.region, side=Side(loc.side)) for loc in cfg.pain_locations]
 
     # Horas perdidas por dolor: el sueño baja con pain_nrs (penalización lineal, sin piso más allá de 0).
     hours = float(rng.normal(cfg.sleep_hours.mean, cfg.sleep_hours.sd)) - cfg.sleep_pain_penalty_h_per_nrs * pain
@@ -147,7 +149,7 @@ def build_daily_self_report(
         astronaut_id=member.astronaut_id,
         timestamp=timestamp,
         mission_day=day.mission_day,
-        source=SOURCE,
+        source=Source(SOURCE),
         kind="daily",
         pain_nrs=pain,
         pain_nrs_worst_24h=worst_24h,

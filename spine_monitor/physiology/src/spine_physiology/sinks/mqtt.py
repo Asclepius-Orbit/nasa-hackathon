@@ -6,7 +6,7 @@ usan un cliente falso sin broker.
 """
 
 import json
-from collections.abc import AsyncIterable, Iterable
+from collections.abc import AsyncIterable, Awaitable, Iterable
 from typing import Protocol
 
 from spine_physiology.envelope import MQTT_KINDS, Envelope
@@ -16,7 +16,8 @@ QOS = 1
 
 
 class MqttPublisher(Protocol):
-    async def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> None: ...
+    # `def` + Awaitable (no `async def`): aiomqtt devuelve Coroutine, que un `async def` de Protocol no admite.
+    def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> Awaitable[None]: ...
 
 
 def encode(envelope: Envelope) -> bytes:

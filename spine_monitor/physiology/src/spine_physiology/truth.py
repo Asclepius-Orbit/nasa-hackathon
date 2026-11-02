@@ -212,8 +212,8 @@ def band_median_hz(config: MissionConfig, fatigue: float, rate_hz: float) -> flo
     filtro de fase cero de `signals.emg`, sin ruido de sensor)."""
     sos = emg_signal._band_sos(config.signals.emg, fatigue, rate_hz)
     freqs, h = sp_signal.sosfreqz(sos, worN=emg_signal._RESPONSE_GRID, fs=rate_hz)
-    power = np.cumsum(np.abs(h) ** 4)
-    return float(np.interp(power[-1] / 2.0, power, freqs))
+    power = np.cumsum(np.abs(np.asarray(h)) ** 4)
+    return float(np.interp(power[-1] / 2.0, power, np.asarray(freqs)))
 
 
 def expected_features(

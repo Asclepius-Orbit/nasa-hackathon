@@ -15,6 +15,10 @@ coverage.xml
 .coverage.*
 htmlcov/
 .ipynb_checkpoints/
+# Mutation testing (spine_monitor/quality/mutation.sh stages in /tmp; these cover direct runs)
+mutants/
+mutants-run.log
+.mutmut-cache
 
 # ── Node / TypeScript / Electron / Vite / pnpm ─
 node_modules/

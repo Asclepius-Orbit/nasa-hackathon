@@ -64,8 +64,10 @@ services:
     depends_on:
       mosquitto:
         condition: service_healthy
+    # The whole repo, not just spine_monitor: quality/mutation.sh needs .git to find the changed files.
     volumes:
-      - ../spine_monitor:/work/spine_monitor
+      - ..:/work
     environment:
       GATE_MUTATION: "${GATE_MUTATION:-off}"
+      MUTATION_BASE: "${MUTATION_BASE:-}"
     profiles: ["quality"]

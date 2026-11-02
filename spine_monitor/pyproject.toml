@@ -13,6 +13,7 @@ dev = [
     "ruff",
     "pyright",
     "httpx",
+    "mutmut>=3.8.1",
 ]
 
 [tool.pytest.ini_options]

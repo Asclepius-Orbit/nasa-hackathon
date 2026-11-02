@@ -53,3 +53,19 @@ services:
         condition: service_healthy
     profiles: ["sim"]
     restart: unless-stopped
+
+  quality:
+    build:
+      context: ..
+      dockerfile: spine_monitor/quality/Dockerfile
+    image: spine-quality:dev
+    # Shares mosquitto's network namespace so the tests' 127.0.0.1:1883 reaches the broker.
+    network_mode: "service:mosquitto"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - ../spine_monitor:/work/spine_monitor
+    environment:
+      GATE_MUTATION: "${GATE_MUTATION:-off}"
+    profiles: ["quality"]

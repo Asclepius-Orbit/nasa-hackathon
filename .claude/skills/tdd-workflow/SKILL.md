@@ -34,6 +34,8 @@ Cualquier otro cambio de código sigue el ciclo.
 
 Cada test lleva exactamente un marker de esta tabla; `conftest.py` pone `unit` por defecto, `integration` a los `mosquitto` y `contract` a los de `contracts/tests`. `mosquitto` es adicional.
 
+El engine ya se fuzzea con Schemathesis contra `contracts/openapi.yaml` (`engine/tests/test_contract_openapi_fuzz.py`); al implementar las APIs de backend y app, añadir el mismo test de Schemathesis.
+
 ## Dobles de test
 
 - Solo en las fronteras: HTTP, MQTT, reloj, aleatoriedad.

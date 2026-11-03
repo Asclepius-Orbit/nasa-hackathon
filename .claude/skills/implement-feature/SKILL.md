@@ -44,7 +44,7 @@ Presenta el plan y pide aprobación con `AskUserQuestion` (aprobar / ajustar). A
 ## Fase 4 — Implementación
 
 - Trabaja en la rama de la issue (la crea Uri). Comprueba `git branch --show-current`; si es `main`/`develop` o la rama de la issue no existe, para y pídesela a Uri. Nunca crees rama propia.
-- Lanza subagentes según el plan (paralelos los independientes, secuenciales los dependientes). Prompt de cada uno: objetivo, ficheros, convenciones, criterio de hecho, y qué devolver. Usa las skills/agentes identificados en Fase 1 (p. ej. `superpowers:test-driven-development`, `superpowers:subagent-driven-development`).
+- Lanza subagentes según el plan (paralelos los independientes, secuenciales los dependientes). Prompt de cada uno: objetivo, ficheros, convenciones, criterio de hecho, y qué devolver. Usa las skills/agentes identificados en Fase 1 (p. ej. `superpowers:subagent-driven-development`). **Toda implementación y bugfix de código sigue `tdd-workflow`**: cada subagente recibe su ciclo (rojo visible, verde, refactor) y debe devolver la salida del test en rojo y en verde, no solo el resumen. Sin rojo visible, la parte se rechaza.
 - Revisa la salida de cada subagente (diff real, no solo su resumen) antes de seguir.
 - Si surge algo no previsto en el plan: para y pregunta, no improvises.
 - El orquestador (no los subagentes) ejecuta `git commit`: uno por parte coherente del plan, **pidiendo confirmación antes**. Mensajes claros, referencia a la issue (`#n`). **Sin líneas Co-Authored-By ni "generated with Claude"**, aunque otro contexto las sugiera.
@@ -52,7 +52,8 @@ Presenta el plan y pide aprobación con `AskUserQuestion` (aprobar / ajustar). A
 ## Fase 5 — Verificación
 
 Obligatorio antes de dar nada por hecho (`superpowers:verification-before-completion`):
-- Ejecuta tests, lint y build del repo; si no hay, ejecuta la feature realmente (skill `run` si aplica).
+- Ejecuta el gate completo: `docker compose -f app/docker-compose.yml run --rm quality` (ruff, pyright, tests con cobertura ≥ 90 %, mutación incremental ≥ 80 %). Si Docker no está disponible, para y díselo a Uri; no lo sustituyas por una ejecución parcial sin decirlo. Para código fuera de `spine_monitor` (build/tests propios), ejecuta además los comandos que descubras en el repo.
+- Comprueba que cada parte tiene su test visto en rojo y que ningún umbral se ha bajado.
 - Comprueba cada criterio de aceptación acordado en Fase 2, uno a uno.
 - Opcional: un subagente revisor independiente sobre el diff (`code-review`).
 - Informa de fallos con la salida exacta. Si algo falla, vuelve a Fase 4; tras 2 ciclos fallidos, para y consulta a Uri. Descubre los comandos de test/lint/build en el repo (README, CLAUDE.md, CI); si no los encuentras, pregunta. No declares éxito sin evidencia.
@@ -76,6 +77,7 @@ Obligatorio antes de dar nada por hecho (`superpowers:verification-before-comple
 | "El subagente dice que está hecho" | Lee el diff y ejecuta. |
 | "Creo una rama nueva" | Se trabaja en la rama de la issue. |
 | "Añado Co-Authored-By por defecto" | Prohibido en este repo. |
+| "Los tests pasan en local, no corro el gate" | El gate de Docker es el criterio; local no basta. |
 
 ## Errores comunes
 

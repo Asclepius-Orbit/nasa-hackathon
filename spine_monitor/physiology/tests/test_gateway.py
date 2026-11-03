@@ -132,11 +132,11 @@ def stop(n: int, session_id: str = SESSION) -> dict:
 class Harness:
     """Gateway + cliente falso + reloj virtual. `run(seconds)` avanza el reloj y publica lo que toca."""
 
-    def __init__(self, config: MissionConfig | None = None, **kw: Any) -> None:
+    def __init__(self, config: MissionConfig | None = None, *, generator: MissionGenerator | None = None, **kw: Any) -> None:
         self.config = config or make_config()
         self.clock = Clock()
         self.client = FakeClient()
-        self.gateway = FakeGateway(MissionGenerator(self.config), settings(**kw), clock=self.clock, astronaut_ids=[AST])
+        self.gateway = FakeGateway(generator or MissionGenerator(self.config), settings(**kw), clock=self.clock, astronaut_ids=[AST])
 
     async def send(self, payload: dict | bytes, topic: str | None = None) -> None:
         raw = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
@@ -1050,22 +1050,24 @@ def test_the_payload_limit_is_inclusive_and_the_rejection_names_the_size():
     go(scenario())
 
 
-def test_an_unexpected_error_is_acked_as_failed_and_the_gateway_goes_on(monkeypatch):
+class BrokenLiveSessions(MissionGenerator):
+    """Colaborador inyectado que falla donde el gateway le pide una sesión en vivo."""
+
+    def live_session(self, **kwargs: Any):
+        raise RuntimeError("boom")
+
+
+def test_an_unexpected_error_is_acked_as_failed_and_the_gateway_goes_on():
     async def scenario():
-        h = Harness()
-
-        def explode(*args, **kwargs):
-            raise RuntimeError("boom")
-
-        with monkeypatch.context() as patch:
-            patch.setattr(h.gateway._generator, "live_session", explode)
-            await h.send(start(1))
+        config = make_config()
+        h = Harness(config, generator=BrokenLiveSessions(config))
+        await h.send(start(1))
         acks = h.client.acks(start(1)["command_id"])
         assert [a["status"] for a in acks] == ["accepted", "failed"]
         assert acks[1]["error"] == {"code": "internal", "message": "internal gateway error"}
         assert h.gateway._units[0].session is None
-        await h.send(start(2))
-        assert h.client.acks(start(2)["command_id"])[0]["status"] == "accepted"
+        await h.send(stop(2))  # sigue atendiendo comandos
+        assert h.client.acks(stop(2)["command_id"])[0]["error"]["code"] == "no_session"
         assert_all_valid(h.client)
 
     go(scenario())
@@ -1095,7 +1097,7 @@ def test_the_handled_commands_memory_keeps_the_most_recent_ones():
         h = Harness()
         for n in range(1, 300):
             await h.send(stop(n))
-        handled = h.gateway._units[0].handled
+        handled = h.gateway._units[0].handled  # cota interna (no esta en ningun contrato): la memoria es acotada y expulsa lo mas antiguo
         assert len(handled) == 256
         assert stop(299)["command_id"] in handled and stop(1)["command_id"] not in handled and stop(44)["command_id"] in handled
 

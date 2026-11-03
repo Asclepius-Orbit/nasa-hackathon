@@ -78,12 +78,11 @@ class AssessmentPipeline:
             for domain in AssessmentDomain
         ]
 
-        return Assessment(
+        assessment = Assessment(
             schema_version=SCHEMA_VERSION,
             assessment_id=str(uuid4()),
             astronaut_id=request.astronaut_id,
             as_of=request.as_of,
-            mission_day=request.mission_day,
             level=triage.level,
             risk_score=risk.score,
             confidence=risk.confidence,
@@ -100,3 +99,7 @@ class AssessmentPipeline:
                 self_report_ids=[report.report_id for report in request.self_reports or []],
             ),
         )
+        # `dump` emite lo que se fijó: un `mission_day=None` explícito saldría como null y el schema pide un entero.
+        if request.mission_day is not None:
+            assessment.mission_day = request.mission_day
+        return assessment

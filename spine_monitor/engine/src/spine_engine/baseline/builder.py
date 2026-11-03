@@ -48,9 +48,8 @@ class StatisticalBaselineBuilder:
     @staticmethod
     def _entry(feature_id, protocol_id, gravity, values: list[float]) -> BaselineEntry:
         mid = median(values)
-        return BaselineEntry(
+        entry = BaselineEntry(  # pyright: ignore[reportCallIssue]  # generated model: `protocol_id` has a positional Field default
             feature_id=feature_id,
-            protocol_id=protocol_id,
             gravity_environment=gravity,
             n=len(values),
             mean=sum(values) / len(values),
@@ -60,6 +59,10 @@ class StatisticalBaselineBuilder:
             min=min(values),
             max=max(values),
         )
+        # `dump` emite lo que se fijó: un `protocol_id=None` explícito saldría como null y el schema pide un string.
+        if protocol_id is not None:
+            entry.protocol_id = protocol_id
+        return entry
 
 
 def _sort_key(item: tuple) -> tuple:

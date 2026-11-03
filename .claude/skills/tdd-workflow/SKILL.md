@@ -48,10 +48,10 @@ El engine ya se fuzzea con Schemathesis contra `contracts/openapi.yaml` (`engine
 Comando único, igual en local y CI:
 
 ```bash
-docker compose -f app/docker-compose.yml run --rm quality
+GATE_MUTATION=changed docker compose -f app/docker-compose.yml run --rm quality
 ```
 
-Ejecuta, en orden: `ruff check`, `pyright`, `pytest` con cobertura (líneas y ramas ≥ 90 %, orden aleatorio, timeout), y mutación incremental (≥ 80 % en ficheros modificados). En PRs, CI añade diff coverage ≥ 90 %. Un nightly corre la mutación completa sin bloquear.
+Ejecuta, en orden: `ruff check`, `pyright`, `pytest` con cobertura (líneas y ramas ≥ 90 %, orden aleatorio, timeout), y mutación incremental (≥ 80 % en ficheros modificados). Sin `GATE_MUTATION=changed` se salta la mutación (bucle rápido). `changed` compara contra `origin/develop` por defecto (`MUTATION_BASE` lo cambia) y solo cuenta cambios commiteados: commitea antes de correrlo. En PRs, CI añade diff coverage ≥ 90 %. Un nightly corre la mutación completa sin bloquear.
 
 Bucle rápido mientras desarrollas: `cd spine_monitor && uv run pytest <ruta> -q -p no:randomly`.
 

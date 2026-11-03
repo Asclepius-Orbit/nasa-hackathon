@@ -1004,3 +1004,112 @@ def test_settings_come_from_spine_sim_env(monkeypatch):
     monkeypatch.delenv("SPINE_SIM_SPEED")
     with pytest.raises(ValueError):
         GatewaySettings()
+
+
+# --- textos y límites de los rechazos ------------------------------------------------------------------
+
+
+def test_rejections_say_what_is_wrong():
+    async def scenario():
+        h = Harness()
+        await h.send(start(1))
+        await h.send(start(2, OTHER))
+        assert h.client.acks(start(2)["command_id"])[0]["error"] == {"code": "busy", "message": f"session {SESSION} is already running on this device"}
+        await h.send(stop(3))
+        await h.send(start(4, OTHER, stream_ids=["nope_a", "nope_b"]))
+        assert h.client.acks(start(4)["command_id"])[0]["error"] == {"code": "unknown_stream", "message": "unknown streams: nope_a, nope_b"}
+        await h.send(command("calibrate", 5, session_id=SESSION, calibration_type="imu", stream_ids=["nope_a", "nope_b"]))
+        assert h.client.acks(command("calibrate", 5)["command_id"])[0]["error"]["message"] == "unknown streams: nope_a, nope_b"
+        other_device = start(6)
+        other_device["astronaut_id"], other_device["device_id"] = "AST-02", "sim-02"
+        await h.send(other_device)
+        assert h.client.acks(start(6)["command_id"])[0]["error"] == {
+            "code": "invalid_command", "message": "command for AST-02/sim-02 received on the topic of AST-01/sim-01",
+        }  # fmt: skip
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_the_payload_limit_is_inclusive_and_the_rejection_names_the_size():
+    async def scenario():
+        h = Harness()
+        limit = 16 * 1024
+        base = json.dumps(start(1)).encode()
+        at_limit = base + b" " * (limit - len(base))  # JSON valido con exactamente `limit` bytes
+        assert len(at_limit) == limit
+        await h.send(at_limit)
+        assert [a["status"] for a in h.client.acks(start(1)["command_id"])] == ["accepted"]
+        await h.send(stop(2))
+        over = json.dumps(start(3)).encode()
+        over += b" " * (limit + 1 - len(over))
+        await h.send(over)
+        (ack,) = h.client.acks(start(3)["command_id"])
+        assert ack["error"] == {"code": "invalid_command", "message": f"command payload of {limit + 1} bytes exceeds the {limit} byte limit"}
+
+    go(scenario())
+
+
+def test_an_unexpected_error_is_acked_as_failed_and_the_gateway_goes_on(monkeypatch):
+    async def scenario():
+        h = Harness()
+
+        def explode(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(h.gateway._generator, "live_session", explode)
+            await h.send(start(1))
+        acks = h.client.acks(start(1)["command_id"])
+        assert [a["status"] for a in acks] == ["accepted", "failed"]
+        assert acks[1]["error"] == {"code": "internal", "message": "internal gateway error"}
+        assert h.gateway._units[0].session is None
+        await h.send(start(2))
+        assert h.client.acks(start(2)["command_id"])[0]["status"] == "accepted"
+        assert_all_valid(h.client)
+
+    go(scenario())
+
+
+def test_commands_that_need_the_device_are_rejected_while_it_reboots():
+    def edit(raw):
+        raw["faults"]["device"]["reboot"].update(probability_per_hour=3600.0, offline_s={"min": 20.0, "max": 30.0})
+
+    async def scenario():
+        h = Harness(make_config(edit))
+        reboot = h.gateway._units[0].device.plan.reboots[0]
+        h.clock.now = reboot.at + timedelta(seconds=5)
+        assert h.gateway._units[0].device.plan.epoch_at(h.clock.now) is None
+        await h.send(start(1))
+        await h.send(command("calibrate", 2, session_id=SESSION, calibration_type="imu", stream_ids=["imu_l3"]))
+        offline = {"code": "device_offline", "message": "the device is rebooting"}
+        assert [(a["status"], a["error"]) for a in h.client.acks(start(1)["command_id"])] == [("rejected", offline)]
+        assert [(a["status"], a["error"]) for a in h.client.acks(command("calibrate", 2)["command_id"])] == [("rejected", offline)]
+        assert h.gateway._units[0].session is None
+
+    go(scenario())
+
+
+def test_the_handled_commands_memory_keeps_the_most_recent_ones():
+    async def scenario():
+        h = Harness()
+        for n in range(1, 300):
+            await h.send(stop(n))
+        handled = h.gateway._units[0].handled
+        assert len(handled) == 256
+        assert stop(299)["command_id"] in handled and stop(1)["command_id"] not in handled and stop(44)["command_id"] in handled
+
+    go(scenario())
+
+
+def test_a_session_with_max_duration_streams_until_then():
+    async def scenario():
+        h = Harness()
+        await h.send(start(1, max_duration_s=3))
+        await h.run(8)
+        session = chunks(h.client, SESSION)
+        ends = [datetime.fromisoformat(c["received_at"]) for c in session]
+        assert max(ends) >= T0 + timedelta(seconds=2)  # no se corta nada mas empezar
+        assert len({c["seq"] for c in session if c["stream_id"] == "imu_l3"}) >= 5
+
+    go(scenario())

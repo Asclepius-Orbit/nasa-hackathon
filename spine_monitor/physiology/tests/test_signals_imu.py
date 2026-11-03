@@ -264,3 +264,18 @@ def test_determinism(params):
         assert a[ch].dtype == np.float64
         assert np.array_equal(a[ch], b[ch])
     assert not np.array_equal(a["accel_x"], c["accel_x"])
+
+
+def test_background_bends_are_rare_at_a_few_per_hour():
+    for seed in range(5):
+        angle = background_angle_profile(
+            np.random.default_rng(seed), n_samples=600, rate_hz=10.0, bends_per_hour=6.0, bend_rom_deg=20.0, bend_duration_s=3.0
+        )  # 60 s: 0.1 flexiones esperadas
+        assert np.count_nonzero(angle) < 0.5 * angle.size
+
+
+def test_two_samples_are_enough_for_a_gyro_signal(clean):
+    out = synth_imu(
+        np.random.default_rng(0), clean, angle_deg=np.array([0.0, 10.0]), plane=AnatomicalPlane.SAGITTAL, gravity_g=1.0, rate_hz=10.0, tremor_dps=0.0
+    )
+    assert max(abs(out[c]).max() for c in ("gyro_x", "gyro_y", "gyro_z")) == pytest.approx(100.0)  # 10 deg en 0.1 s

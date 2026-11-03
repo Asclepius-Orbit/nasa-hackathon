@@ -394,3 +394,27 @@ def test_median_frequency_known_tone():
     rate = 1000.0
     t = np.arange(int(10 * rate)) / rate
     assert median_frequency(np.sin(2 * np.pi * 100 * t), rate) == pytest.approx(100.0, abs=2.0)
+
+
+def test_rms_and_median_frequency_reject_inputs_too_short_to_measure(rate):
+    with pytest.raises(ValueError, match=r"^rms of an empty array is undefined$"):
+        rms(np.array([]))
+    with pytest.raises(ValueError, match=r"^median_frequency needs at least 2 samples$"):
+        median_frequency(np.array([1.0]), rate)
+    assert np.isfinite(median_frequency(np.array([1.0, -1.0]), rate))  # dos muestras bastan
+
+
+def test_median_frequency_of_degenerate_spectra(rate):
+    assert median_frequency(np.zeros(500), rate) == 0.0  # sin potencia no hay frecuencia mediana
+    nyquist = np.tile([1.0, -1.0], 250)  # toda la potencia en la ultima banda
+    assert median_frequency(nyquist, rate) > 0.9 * rate / 2
+
+
+def test_fatigue_above_one_counts_as_one(clean, rate):
+    pct = constant(40.0, 600)
+
+    def run(fatigue):
+        return synth_emg(np.random.default_rng(5), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=pct, fatigue=constant(fatigue, 600), rate_hz=rate)
+
+    assert np.array_equal(run(2.5), run(1.0))
+    assert not np.array_equal(run(1.0), run(0.5))

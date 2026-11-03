@@ -471,3 +471,61 @@ def test_status_last_seq_uses_published_when_given(config):
     assert validation.errors("telemetry/device-status", payload) == []
     # Mismos números aleatorios con o sin published.
     assert dump(device.status(np.random.default_rng(0), at))["temperature_c"] == payload["temperature_c"]
+
+
+def test_chunks_rejects_malformed_input_naming_the_problem(config):
+    device = SimDevice(config, single_boot_plan(config))
+    n = config.signals.samples_per_chunk(config.signals.rate(StreamKind.IMU)) * 4
+
+    def call(stream_id, channels, quality=None, cal=CAL_ID):
+        kind = STREAMS[stream_id]
+        return device.chunks(
+            np.random.default_rng(0), stream_id=stream_id, session_id=SESSION, start=T0, rate_hz=config.signals.rate(kind),
+            chunk_ms=config.signals.chunk_ms, channels=channels, quality=quality if quality is not None else clean_quality(kind, 4), calibration_id=cal,
+        )  # fmt: skip
+
+    imu = channels_for(StreamKind.IMU, n)
+    short = {k: v for k, v in imu.items() if k != "gyro_z"}
+    with pytest.raises(ValueError, match=r"^imu stream imu_l3 needs channels \['gyro_z'\]$"):
+        call("imu_l3", short)
+    with pytest.raises(ValueError, match=r"^calibration_id is required when length_mm is present$"):
+        call("stretch_lumbar", channels_for(StreamKind.STRETCH, n), cal=None)
+    ragged = {**imu, "gyro_z": imu["gyro_z"][: n - 1]}
+    with pytest.raises(ValueError, match=rf"^channels must have the same length, got \[{n - 1}, {n}\]$"):
+        call("imu_l3", ragged)
+    with pytest.raises(ValueError, match=r"^need quality for 4 chunks, got 3$"):
+        call("imu_l3", imu, quality=clean_quality(StreamKind.IMU, 3))
+
+
+def test_microseconds_of_a_timedelta_are_whole_numbers():
+    from spine_physiology.device import _us
+
+    value = _us(timedelta(seconds=2, microseconds=7))
+    assert value == 2_000_007 and isinstance(value, int)
+
+
+def test_status_reports_a_published_seq_of_zero_and_the_whole_rssi_range(config):
+    cfg = make_config(lambda raw: raw["device"].update(link_type="ble", rssi_dbm={"min": -55, "max": -55}))
+    device = SimDevice(cfg, single_boot_plan(cfg))
+    payload = dump(device.status(np.random.default_rng(0), T0, published={"imu_l3": 0}))
+    by_id = {s["stream_id"]: s for s in payload["streams"]}
+    assert by_id["imu_l3"]["last_seq"] == 0 and "last_seq" not in by_id["emg_lat_left"]
+    assert payload["link"]["rssi_dbm"] == -55
+
+
+def test_status_is_degraded_only_below_the_battery_threshold_and_a_stall_ends_exactly_when_the_burst_does():
+    def edit(raw):
+        raw["device"]["battery"].update(start_pct=20.0, drain_pct_per_hour_streaming=0.0, drain_pct_per_hour_idle=0.0, degraded_below_pct=20.0)
+
+    cfg = make_config(edit)
+    device = SimDevice(cfg, single_boot_plan(cfg))
+    assert dump(device.status(np.random.default_rng(0), T0))["status"] == "ok"  # 20 % no es "por debajo de 20 %"
+
+    def lossy(raw):
+        raw["faults"]["device"]["packet_loss"].update(probability=1.0, burst_chunks={"min": 5, "max": 5})
+
+    cfg = make_config(lossy)
+    device = SimDevice(cfg, single_boot_plan(cfg))
+    emit(device, cfg, "emg_lat_left", n=1000)  # 10 chunks de 100 ms perdidos: stalled en [T0, T0 + 1 s)
+    assert dump(device.status(np.random.default_rng(0), T0 + timedelta(milliseconds=999)))["status"] == "degraded"
+    assert dump(device.status(np.random.default_rng(0), T0 + timedelta(seconds=1)))["status"] == "ok"

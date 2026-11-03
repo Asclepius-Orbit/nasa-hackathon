@@ -1167,6 +1167,32 @@ git commit -m "Document the TDD workflow and the quality gate in the READMEs"
 
 ---
 
+### Task 14: Mutación más rápida en re-ejecuciones (spike acotado, pedido por Uri)
+
+**Files:**
+- Modify: `spine_monitor/quality/mutation.sh`, `app/docker-compose.yml`, `.github/workflows/quality.yml`, `.github/workflows/nightly-mutation.yml` (solo lo que la medición justifique)
+
+**Interfaces:**
+- Consumes: `sh quality/mutation.sh changed|full` y `MUTATION_STAGE`, `MUTATION_PACKAGES`, `MUTATION_BASE` de la Task 6.
+- Produces: tiempos medidos antes y después; opcionalmente `MUTATION_JOBS` (procesos hijos de mutmut), un volumen Docker con nombre para el directorio de trabajo de mutmut, y caché de CI.
+
+**Contexto medido:** la corrida completa de physiology tarda 108 min en un contenedor inactivo; `mutation.sh` prepara su copia en `/tmp/mutation` y la descarta con `--rm`, así que cada corrida empieza de cero. Lanzar unos 5 contenedores de mutación en paralelo hace que la fase de tests limpios agote el timeout y aborte la corrida. Restricciones: no recortar mutantes ni código, no bajar el umbral del 80 %, el mutation score de cada fichero no debe cambiar por la optimización.
+
+- [ ] **Step 1: Línea base de tiempos.** En un contenedor inactivo, con `nproc` anotado, medir `sh quality/mutation.sh changed physiology/src/spine_physiology/signals/stretch.py` (385 mutantes) y `full` del paquete `engine`. Registrar segundos, mutantes y mutantes por segundo.
+- [ ] **Step 2: Paralelismo.** Leer cómo `mutation.sh` invoca `mutmut run` y qué admite mutmut 3.8.1 (`mutmut run --help`, procesos hijos). Probar valores crecientes sobre el mismo fichero; registrar tiempo y confirmar que el score no cambia y que la fase de tests limpios no hace timeout.
+- [ ] **Step 3: Estado persistente.** Montar un volumen Docker con nombre en `MUTATION_STAGE`. Ejecutar el mismo fichero tres veces: sin cambios, cambiando el cuerpo de una función de `src`, y cambiando solo un test. Registrar cuánto tarda cada una y si mutmut reutiliza los resultados de los mutantes ya evaluados. Si no reutiliza, decirlo con la evidencia y no seguir con la caché.
+- [ ] **Step 4: Perfil de physiology.** Medir mutantes por segundo por módulo de `physiology/src` para saber qué módulos dominan y proponer grupos para una matriz de CI.
+- [ ] **Step 5: Implementar solo lo que se haya medido como útil.** `MUTATION_JOBS` en `mutation.sh` con un valor por defecto seguro; volumen con nombre en el servicio `quality` si el Step 3 lo justifica; `actions/cache` (acción fijada a una versión mayor) con clave por hash de `src` y `tests` de cada paquete, y matriz por paquete en el nightly, si los Steps 3 y 4 lo justifican.
+- [ ] **Step 6: Verificación.** Repetir las mediciones del Step 1 con los cambios y mostrar la mejora con números. Comprobar que el score por fichero es el mismo y que la prueba de pasa/falla de `changed` sigue funcionando (un test debilitado hace salir ≠ 0). Validar el YAML.
+- [ ] **Step 7: Commit (pedir confirmación a Uri)**
+
+```bash
+git add spine_monitor/quality app/docker-compose.yml .github
+git commit -m "Speed up repeated mutation runs with parallel mutmut jobs and a persistent state"
+```
+
+---
+
 ## Autorrevisión frente al spec
 
 | Requisito del spec | Task |

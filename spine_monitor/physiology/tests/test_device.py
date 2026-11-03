@@ -497,6 +497,8 @@ def test_chunks_rejects_malformed_input_naming_the_problem(config):
         call("imu_l3", imu, quality=clean_quality(StreamKind.IMU, 3))
 
 
+# `_us` es el unico punto de conversion timedelta->int del dispositivo; solo su tipo (int, no float)
+# distingue al mutante `/`, y eso no llega intacto a la salida publica.
 def test_microseconds_of_a_timedelta_are_whole_numbers():
     from spine_physiology.device import _us
 

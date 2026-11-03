@@ -247,3 +247,40 @@ def test_determinism(config, params):
     m1 = measured_curve(np.random.default_rng(1), params, cal, rest_length_mm=REST_MM)
     m2 = measured_curve(np.random.default_rng(1), params, cal, rest_length_mm=REST_MM)
     assert m1 == m2
+
+
+def test_curve_validation_boundaries_and_messages():
+    x = np.array([1.0])
+    # Dos puntos bastan; incrementos pequenos (< 1) pero positivos son validos.
+    assert resistance_to_length(np.array([1.25]), [(1.0, 10.0), (1.5, 10.5)])[0] == pytest.approx(10.25)
+    with pytest.raises(ValueError, match=r"^curve must have at least two \(resistance_ohm, length_mm\) points$"):
+        resistance_to_length(x, [(1.0, 10.0)])
+    message = r"^curve must be strictly increasing in resistance and length$"
+    for flat in ([(1.0, 10.0), (1.0, 20.0)], [(1.0, 10.0), (2.0, 10.0)], [(1.0, 10.0), (3.0, 20.0), (2.0, 30.0)], [(1.0, 10.0), (3.0, 20.0), (4.0, 15.0)]):
+        with pytest.raises(ValueError, match=message):
+            length_to_resistance(x, flat)
+
+
+def test_measured_curve_spreads_lengths_evenly_up_to_the_top_of_the_true_curve(config, params):
+    cal = config.calibration.stretch.model_copy(update={"measurement_noise_mm": 0.0})
+    true = params.curve_pairs()
+    top = true[-1][1]
+    for rest in (REST_MM, top + 10.0):  # el reposo por encima del alcance usa como alcance el ancho de la curva
+        curve = measured_curve(np.random.default_rng(0), params, cal, rest_length_mm=rest)
+        reach = top if top > rest else rest + (true[-1][1] - true[0][1])
+        assert [p[1] for p in curve] == pytest.approx(np.linspace(rest, reach, cal.n_points))
+
+
+def test_measurement_error_is_clipped_to_a_quarter_of_the_step_on_both_sides(config, params):
+    cal = config.calibration.stretch.model_copy(update={"measurement_noise_mm": 1000.0})
+    true = params.curve_pairs()
+    step = (true[-1][1] - REST_MM) / (cal.n_points - 1)
+    nominal = np.linspace(REST_MM, true[-1][1], cal.n_points)
+    seen_low = seen_high = False
+    for seed in range(20):
+        lengths = np.array([p[1] for p in measured_curve(np.random.default_rng(seed), params, cal, rest_length_mm=REST_MM)])
+        error = (lengths - nominal)[1:]
+        assert np.abs(error).max() <= step / 4 + 1e-9 and lengths[0] == REST_MM
+        seen_low |= bool(np.isclose(error.min(), -step / 4))
+        seen_high |= bool(np.isclose(error.max(), step / 4))
+    assert seen_low and seen_high

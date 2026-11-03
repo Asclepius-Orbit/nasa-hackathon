@@ -45,3 +45,16 @@ def test_dose_drift_cumulative():
     out = dose_drift([1.0, 0.5, 0.0, 1.5], 2.0)
     assert np.allclose(out, [0.0, 1.0, 3.0, 2.0])
     assert dose_drift([], 1.0).shape == (0,)
+
+
+def test_empty_and_non_increasing_points_are_rejected_with_a_clear_message():
+    with pytest.raises(ValueError, match=r"^PiecewiseLinear needs at least one point$"):
+        PiecewiseLinear([])
+    with pytest.raises(ValueError, match=r"^points must be strictly increasing in x: \[0\.0, 5\.0, 5\.0\]$"):
+        PiecewiseLinear([(0.0, 1.0), (5.0, 2.0), (5.0, 3.0)])
+
+
+def test_dose_drift_is_float64_whatever_the_input_precision():
+    out = dose_drift(np.array([0.5, 0.25], dtype=np.float32), 0.1)
+    assert out.dtype == np.float64
+    assert out == pytest.approx([0.05, 0.05 + 0.075])

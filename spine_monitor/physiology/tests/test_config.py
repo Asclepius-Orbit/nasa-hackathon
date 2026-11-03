@@ -139,3 +139,35 @@ def test_background_chunk_is_independent_of_the_session_chunk(raw):
     # 5 Hz no da muestras enteras en 100 ms (sesiones) pero sí en 1000 ms (fondo): se valida contra el chunk del fondo.
     data = variant(raw, lambda d: d["schedule"]["background"]["sample_rates_hz"].update(imu=5.0))
     assert MissionConfig.model_validate(data).schedule.background.sample_rates_hz.imu == 5.0
+
+
+def test_samples_per_chunk_scales_with_rate_and_chunk_length():
+    signals = load_config(EXAMPLE).signals
+    assert signals.samples_per_chunk(1000.0, chunk_ms=1000.0) == 1000
+    assert signals.samples_per_chunk(250.0, chunk_ms=400.0) == 100
+    assert signals.samples_per_chunk(10.0, chunk_ms=1500.0) == 15
+    assert signals.samples_per_chunk(1000.0) == round(1000.0 * signals.chunk_ms / 1000)
+
+
+def test_unknown_ids_raise_keyerror_naming_the_id():
+    config = load_config(EXAMPLE)
+    for lookup, message in (
+        (lambda: config.device.stream("nope"), "unknown stream_id: 'nope'"),
+        (lambda: config.member("AST-99"), "unknown astronaut_id: 'AST-99'"),
+        (lambda: config.protocol("zzz"), "unknown protocol_id: 'zzz'"),
+    ):
+        with pytest.raises(KeyError) as excinfo:
+            lookup()
+        assert excinfo.value.args == (message,)
+
+
+def test_numeric_time_of_day_is_rejected_with_the_quoting_hint(raw):
+    data = variant(raw, lambda d: d["device"].__setitem__("power_on_time_utc", 700))
+    with pytest.raises(ValidationError, match=r"time of day must be a quoted 'HH:MM' or 'HH:MM:SS' string"):
+        MissionConfig.model_validate(data)
+
+
+def test_load_config_reads_utf8_files(tmp_path):
+    path = tmp_path / "mission.yaml"
+    path.write_text(EXAMPLE.read_text(encoding="utf-8").replace("# PLACEHOLDER", "# PLACEHOLDER ñandú — acentos", 1), encoding="utf-8")
+    assert load_config(path) == load_config(EXAMPLE)

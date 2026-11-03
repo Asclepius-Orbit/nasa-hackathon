@@ -41,3 +41,10 @@ def test_zero_median_without_spread_still_divides_by_something():
     z = RobustZScorer().score(0.0, entry(median=0.0, mad=0.0, std=0.0))
 
     assert z == 0.0
+
+
+def test_the_default_floor_is_five_percent_of_the_median():
+    z = RobustZScorer().score(44.0, entry(median=40.0, mad=0.0, std=0.0))
+
+    assert z == pytest.approx(4.0 / (0.05 * 40.0))
+    assert RobustZScorer().score(36.0, entry(median=-40.0, mad=0.0, std=0.0)) == pytest.approx(76.0 / (0.05 * 40.0))

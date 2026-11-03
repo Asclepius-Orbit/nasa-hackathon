@@ -15,9 +15,11 @@ from spine_physiology.faults import (
     apply_quality_faults,
     clean_quality,
     mask_quality,
+    merge_quality,
     plan_packet_loss,
     plan_quality_faults,
     plan_reboots,
+    quality_key,
     sample_drift_ppm,
     sample_latency_ms,
 )
@@ -243,3 +245,75 @@ def test_motion_artifact_band_and_warmup_decay_come_from_config():
     _, a, _ = run(base, StreamKind.EMG, channels)
     _, b, _ = run(other, StreamKind.EMG, channels)
     assert not np.array_equal(a["emg"], b["emg"])
+
+
+def test_quality_key_maps_each_channel_to_its_quality_entry():
+    assert [quality_key(StreamKind.IMU, c) for c in ("accel_x", "accel_z", "gyro_y", "gyro_z")] == ["accel", "accel", "gyro", "gyro"]
+    assert [quality_key(StreamKind.STRETCH, c) for c in ("adc_counts", "resistance_ohm", "length_mm")] == ["adc_counts", "adc_counts", "length_mm"]
+    assert quality_key(StreamKind.EMG, "emg") == "emg"
+
+
+def test_merge_quality_combines_chunk_by_chunk_and_demands_equal_lengths():
+    low, high = QualityState(0.4, frozenset({QualityFlag.LOW_SNR})), QualityState(0.7, frozenset({QualityFlag.CLIPPING}))
+    merged = merge_quality([{"accel": low}, {"accel": CLEAN}], [{"accel": high, "gyro": high}, {"gyro": low}])
+    assert merged[0]["accel"] == low.merge(high) and merged[0]["gyro"] == high  # clave en ambos: se funden; solo en uno: se toma tal cual
+    assert merged[1] == {"accel": CLEAN, "gyro": low}
+    with pytest.raises(ValueError, match=r"^quality sequences differ in length: 2 != 1$"):
+        merge_quality([{}, {}], [{}])
+
+
+def test_mask_quality_rejects_unknown_keys_and_handles_empty_masks():
+    kwargs = {"flag": QualityFlag.BAND_RECOVERING, "score": 0.5, "samples_per_chunk": 10}
+    with pytest.raises(ValueError, match=r"^quality key 'emg' not valid for stretch \(expected one of \('adc_counts', 'length_mm'\)\)$"):
+        mask_quality(np.ones(5, dtype=bool), kind=StreamKind.STRETCH, key="emg", **kwargs)
+    assert mask_quality(np.zeros(0, dtype=bool), kind=StreamKind.STRETCH, key="length_mm", **kwargs) == []
+    one = mask_quality(np.ones(1, dtype=bool), kind=StreamKind.STRETCH, key="length_mm", **kwargs)
+    assert len(one) == 1 and QualityFlag.BAND_RECOVERING in one[0]["length_mm"].flags
+
+
+def test_apply_quality_faults_edge_cases_inputs_and_dtypes():
+    config = make_config()
+    faults = config.faults.quality
+
+    def apply(kind, channels, episodes):
+        return apply_quality_faults(
+            np.random.default_rng(0), episodes, kind=kind, channels=channels, rate_hz=1000.0, samples_per_chunk=SPC, signals=config.signals, faults=faults
+        )  # fmt: skip
+
+    episode = FaultEpisode(QualityFlag.LOW_SNR, "s_01", 0, 1, 0.3, 2.0)
+    with pytest.raises(ValueError, match=r"^channels must have the same length, got \[3, 5\]$"):
+        apply(StreamKind.IMU, {"accel_x": np.zeros(5), "gyro_x": np.zeros(3)}, [episode])
+    out, quality = apply(StreamKind.EMG, {"emg": np.zeros(0)}, [episode])
+    assert out["emg"].size == 0 and quality == []
+    out, quality = apply(StreamKind.EMG, {"emg": np.array([0.5])}, [episode])  # una sola muestra: el episodio se aplica
+    assert len(quality) == 1 and QualityFlag.LOW_SNR in quality[0]["emg"].flags and out["emg"][0] != 0.5
+    out, _ = apply(StreamKind.EMG, {"emg": np.arange(300, dtype=np.int16)}, [FaultEpisode(QualityFlag.LOW_SNR, "s_01", 0, 300, 0.3, 5.0)])
+    assert out["emg"].dtype == np.int16 and np.array_equal(out["emg"], np.rint(out["emg"]))
+    out, _ = apply(StreamKind.EMG, {"emg": np.arange(300, dtype=np.float32)}, [FaultEpisode(QualityFlag.LOW_SNR, "s_01", 0, 300, 0.3, 5.0)])
+    assert out["emg"].dtype == np.float32
+
+
+def test_stretch_counts_are_pinned_to_the_adc_range_by_the_faults():
+    config = make_config()
+    adc_max = (1 << config.signals.stretch.circuit.adc_bits) - 1
+    huge = FaultEpisode(QualityFlag.LOW_SNR, "s_01", 0, 2000, 0.2, 1000.0)
+    out, _ = apply_quality_faults(
+        np.random.default_rng(0), [huge], kind=StreamKind.STRETCH, channels=signal(StreamKind.STRETCH), rate_hz=20.0,
+        samples_per_chunk=SPC, signals=config.signals, faults=config.faults.quality,
+    )  # fmt: skip
+    assert out["adc_counts"].min() == 0 and out["adc_counts"].max() == adc_max
+
+
+def test_no_samples_means_no_chunks_and_one_sample_means_one():
+    config = make_config(low_snr=1.0)
+    for n, expected in ((0, 0), (1, 1), (SPC, 1), (SPC + 1, 2)):
+        _, _, quality = run(config, StreamKind.EMG, {"emg": np.zeros(n)})
+        assert len(quality) == expected
+
+
+def test_quick_reboots_never_overlap_the_previous_outage():
+    cfg = make_config().faults.device.reboot.model_copy(update={"probability_per_hour": 3600.0})
+    events = plan_reboots(np.random.default_rng(1), cfg, start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 1, 0, 5, tzinfo=UTC))
+    assert len(events) > 3
+    for a, b in zip(events, events[1:], strict=False):
+        assert (b.at - a.at).total_seconds() > a.offline_s

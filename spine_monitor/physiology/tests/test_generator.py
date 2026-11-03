@@ -1,4 +1,5 @@
 import itertools
+import json
 from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -725,6 +726,7 @@ def test_calibrations_made_at_power_on_outside_any_session_are_emitted_that_day(
     assert [m.day for m in day0] == [0, 0]
 
 
+# La identidad de las cachés interna es lo único observable de que se calculan una vez (la salida es idéntica con o sin caché).
 def test_plans_and_scheduled_calibrations_are_computed_once_and_reused(config):
     generator = MissionGenerator(config)
     assert generator.sessions(1, "AST-01") is generator.sessions(1, "AST-01")
@@ -739,6 +741,7 @@ def test_session_plan_of_a_missing_slot_names_it(config):
     assert excinfo.value.args == ("no session 'nope' for AST-01 on day 0",)
 
 
+# Helper privado puro: sus casos (redondeo al microsegundo, k>0) no se pueden aislar en la salida publica de una mision.
 def test_chunk_start_is_the_real_instant_of_the_chunk():
     from spine_physiology.generator import _chunk_start
 
@@ -759,6 +762,8 @@ def _plan_with_boots(*boots):
     return t0, DevicePlan("AST-01", "DEV-01", t0, t0 + timedelta(seconds=30), epochs, ())
 
 
+# Helper privado puro: los solapes y bordes de arranque que prueba no los produce un plan real
+# (arranques disjuntos), asi que no se alcanzan desde la salida publica.
 def test_existing_chunk_ends_cover_only_chunks_that_start_while_a_boot_is_up():
     from spine_physiology.generator import _existing_chunk_ends
 
@@ -780,6 +785,7 @@ def test_existing_chunk_ends_never_count_a_chunk_twice_and_follow_the_chunk_grid
     assert _existing_chunk_ends(plan, t0, 0, 5, 4.0) == []
 
 
+# Helper privado puro: el empate exacto con la marca solo se da con instantes construidos a mano.
 def test_reorder_releases_only_what_is_strictly_before_the_mark():
     from spine_physiology.generator import _Reorder
 
@@ -875,3 +881,40 @@ def test_live_lost_chunks_are_reported_at_the_end_of_their_block_and_only_the_fo
         follows_loss = p["seq"] > previous.get(p["stream_id"], -1) + 1
         assert gap == follows_loss, (p["stream_id"], p["seq"])
         previous[p["stream_id"]] = p["seq"]
+
+
+def _rounded(value, digits=4):
+    if isinstance(value, float):
+        return round(value, digits)
+    if isinstance(value, dict):
+        return {k: _rounded(v, digits) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_rounded(v, digits) for v in value]
+    return value
+
+
+def _live_digest(messages) -> str:
+    import hashlib
+
+    line = json.dumps([[m.kind.value, m.at.isoformat(), _rounded(m.payload)] for m in messages], sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(line.encode()).hexdigest()[:16]
+
+
+def test_live_output_for_a_fixed_seed_is_pinned():
+    """Pin de los valores en vivo (las etiquetas de RNG `live`/`rest`/`protocol`/`device`/`calibration` solo se notan aqui)."""
+    config = tiny_config(lambda raw: raw["faults"]["device"]["packet_loss"].update(probability=0.0))
+    generator = MissionGenerator(config)
+    session = list(
+        itertools.islice(
+            generator.live_session(
+                astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_SESSION, session_type="exercise",
+                protocol_id="lat_pulldown_standing_v1", stream_ids=[], start=T0,
+            ),
+            150,
+        )
+    )  # fmt: skip
+    live = generator.live_background(astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_BACKGROUND, start=T0)
+    background = list(itertools.islice(live, 60))
+    calibration = generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="imu", stream_ids=["imu_l3"], at=T0)
+    digests = (_live_digest(session), _live_digest(background), _live_digest(calibration))
+    assert digests == ("9ecc1d0b633328d5", "9d8254cb72273c50", "644f19204615b2fa")

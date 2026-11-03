@@ -703,3 +703,175 @@ def test_example_config_profiles():
     assert [p.astronaut_id for p in profiles] == ["AST-01", "AST-02"]
     assert all(validation.errors("domain/astronaut-profile", p.payload) == [] and p.day is None for p in profiles)
     assert profiles[0].at == datetime(2026, 11, 1, tzinfo=UTC)
+
+
+def test_calibrations_made_at_power_on_outside_any_session_are_emitted_that_day():
+    def edit(raw):
+        for s in raw["schedule"]["sessions"]:
+            s["phases"] = ["postflight"]
+        raw["schedule"]["background"]["enabled"] = False
+
+    config = tiny_config(edit)
+    generator = MissionGenerator(config)
+    day0 = [m for m in generator.day_messages(0, "AST-01", include_carried_calibrations=False) if m.kind is EnvelopeKind.CALIBRATION]
+    device_id = config.member("AST-01").device_id
+    expected = []
+    for stream in ("imu_l3", "stretch_lumbar"):
+        record = generator.calibration_in_force("AST-01", stream, 0)
+        assert record is not None and record.session_id is None and record.day == 0
+        assert record.created_at == generator.timeline.day(0).at(config.device.power_on_time_utc)
+        expected.append(calibration_envelope("AST-01", device_id, record, record.created_at))
+    assert sorted(day0, key=lambda m: m.topic) == sorted(expected, key=lambda m: m.topic)
+    assert [m.day for m in day0] == [0, 0]
+
+
+def test_plans_and_scheduled_calibrations_are_computed_once_and_reused(config):
+    generator = MissionGenerator(config)
+    assert generator.sessions(1, "AST-01") is generator.sessions(1, "AST-01")
+    assert generator.sessions(1, "AST-01") is not generator.sessions(1, "AST-02")
+    assert generator._scheduled_calibrations("AST-01", 1) is generator._scheduled_calibrations("AST-01", 1)
+
+
+def test_session_plan_of_a_missing_slot_names_it(config):
+    generator = MissionGenerator(config)
+    with pytest.raises(KeyError) as excinfo:
+        generator.session_plan(SessionRef("AST-01", 0, "nope"))
+    assert excinfo.value.args == ("no session 'nope' for AST-01 on day 0",)
+
+
+def test_chunk_start_is_the_real_instant_of_the_chunk():
+    from spine_physiology.generator import _chunk_start
+
+    start = datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
+    assert _chunk_start(start, 0, 100, 200.0) == start
+    assert _chunk_start(start, 3, 100, 200.0) == start + timedelta(seconds=1.5)
+    assert _chunk_start(start, 1, 10, 3.0) == start + timedelta(microseconds=3_333_333)  # redondeado al microsegundo
+
+
+def _plan_with_boots(*boots):
+    from spine_physiology.device import BootEpoch, DevicePlan
+
+    t0 = datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
+    epochs = tuple(
+        BootEpoch(boot_id=i, boot_at=t0 + timedelta(seconds=a), end_at=None if b is None else t0 + timedelta(seconds=b), drift_ppm=0.0)
+        for i, (a, b) in enumerate(boots)
+    )
+    return t0, DevicePlan("AST-01", "DEV-01", t0, t0 + timedelta(seconds=30), epochs, ())
+
+
+def test_existing_chunk_ends_cover_only_chunks_that_start_while_a_boot_is_up():
+    from spine_physiology.generator import _existing_chunk_ends
+
+    # 30 chunks de 1 s desde t0; arranque 1 en [2, 10) y arranque 2 desde el 20, abierto.
+    t0, plan = _plan_with_boots((2, 10), (20, None))
+    ends = _existing_chunk_ends(plan, t0, 30, 10, 10.0)
+    seconds = [(e - t0).total_seconds() for e in ends]
+    # Empiezan en 2..9 y 20..29 (inicio == arranque incluido, inicio == caida excluido): acaban en 3..10 y 21..30.
+    assert seconds == [*range(3, 11), *range(21, 31)]
+
+
+def test_existing_chunk_ends_never_count_a_chunk_twice_and_follow_the_chunk_grid():
+    from spine_physiology.generator import _existing_chunk_ends
+
+    t0, plan = _plan_with_boots((0, 4), (2, None))  # solapados (no ocurre en la practica): el primero se queda el chunk
+    ends = _existing_chunk_ends(plan, t0, 6, 5, 4.0)  # chunks de 1.25 s
+    assert [(e - t0).total_seconds() for e in ends] == [1.25, 2.5, 3.75, 5.0, 6.25, 7.5]
+    t0, plan = _plan_with_boots((0, None))
+    assert _existing_chunk_ends(plan, t0, 0, 5, 4.0) == []
+
+
+def test_reorder_releases_only_what_is_strictly_before_the_mark():
+    from spine_physiology.generator import _Reorder
+
+    t0 = datetime(2030, 1, 1, tzinfo=UTC)
+    reorder = _Reorder()
+    for second, kind in ((2, EnvelopeKind.SESSION), (1, EnvelopeKind.SELF_REPORT), (2, EnvelopeKind.DAILY_CONTEXT), (3, EnvelopeKind.GROUND_TRUTH)):
+        reorder.push(Envelope(kind=kind, topic=None, payload={}, at=t0 + timedelta(seconds=second), retained=False, astronaut_id="AST-01", day=0))
+    assert [e.kind for e in reorder.release(t0 + timedelta(seconds=2))] == [EnvelopeKind.SELF_REPORT]
+    assert [e.kind for e in reorder.release(t0 + timedelta(seconds=3))] == [EnvelopeKind.SESSION, EnvelopeKind.DAILY_CONTEXT]  # empate: orden de llegada
+    assert [e.kind for e in reorder.release(None)] == [EnvelopeKind.GROUND_TRUTH]
+
+
+def test_live_calibration_errors_name_the_problem_and_imu_calibrations_work(config):
+    generator = MissionGenerator(config)
+    common = {"astronaut_id": "AST-01", "day": 1, "session_id": LIVE_SESSION, "at": T0}
+    with pytest.raises(ValueError, match=r"^unknown calibration_type 'gyro'$"):
+        generator.live_calibration(calibration_type="gyro", stream_ids=["imu_l3"], **common)
+    with pytest.raises(ValueError, match=r"^calibrate needs at least one stream_id$"):
+        generator.live_calibration(calibration_type="imu", stream_ids=[], **common)
+    (imu,) = generator.live_calibration(calibration_type="imu", stream_ids=["imu_l3"], **common)
+    assert imu.payload["calibration_type"] == "imu" and validation.errors("domain/calibration", imu.payload) == []
+    assert generator.calibration_in_force("AST-01", "imu_l3", 1).day == 1
+    assert generator.calibration("AST-01", imu.payload["calibration_id"], 0).calibration_id == imu.payload["calibration_id"]
+
+
+def test_live_session_without_a_known_protocol_or_streams_uses_every_device_stream(config):
+    generator = MissionGenerator(config)
+    chunks = take_chunks(
+        generator.live_session(
+            astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_SESSION, session_type="spine_check", protocol_id="free_rest_v1",
+            stream_ids=[], start=T0,
+        ),
+        40,
+    )  # fmt: skip
+    assert {m.payload["stream_id"] for m in chunks} == {s.stream_id for s in config.device.streams}
+
+
+def test_live_exercise_session_announces_its_features_then_streams_contiguous_chunks_across_blocks():
+    config = tiny_config(lambda raw: raw["faults"]["device"]["packet_loss"].update(probability=0.0))
+    generator = MissionGenerator(config)
+    messages = list(
+        itertools.islice(
+            generator.live_session(
+                astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_SESSION, session_type="exercise",
+                protocol_id="lat_pulldown_standing_v1", stream_ids=[], start=T0,
+            ),
+            400,
+        )
+    )  # fmt: skip
+    first = messages[0]
+    assert (first.kind, first.retained, first.topic, first.astronaut_id, first.day, first.at) == (EnvelopeKind.GROUND_TRUTH, False, None, "AST-01", 1, T0)
+    assert {k: v for k, v in first.payload.items() if k != "features"} == {
+        "type": "expected_features", "astronaut_id": "AST-01", "day": 1, "session_id": LIVE_SESSION, "slot": None,
+        "protocol_id": "lat_pulldown_standing_v1", "gravity_environment": "microgravity",
+    }  # fmt: skip
+    reps = next(f for f in first.payload["features"] if f["feature_id"] == "exercise.rep_count")
+    assert reps["value"] == 3.0  # las 3 repeticiones del protocolo: va como ejercicio, con sus reps
+    for stream_id in ("imu_l3", "emg_lat_left"):
+        chunks = [m.payload for m in messages if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_id"] == stream_id]
+        assert len(chunks) > 40  # el protocolo (32 chunks) y al menos un bloque de reposo despues
+        steps = {b["t0_device_ms"] - a["t0_device_ms"] for a, b in itertools.pairwise(chunks)}
+        assert steps <= {round(config.signals.chunk_ms) + d for d in (-1, 0, 1)}
+    block_ends = [m for m in messages[1:] if m.kind is EnvelopeKind.GROUND_TRUTH]
+    for m in block_ends:
+        assert (m.retained, m.topic, m.astronaut_id, m.day) == (False, None, "AST-01", 1)
+        assert m.payload["session_id"] == LIVE_SESSION and m.payload["type"] in {"quality_faults", "lost_chunks"}
+    protocol_end = T0 + 32 * timedelta(milliseconds=config.signals.chunk_ms)
+    assert block_ends and block_ends[0].at == protocol_end
+    assert all((m.at - protocol_end) % timedelta(seconds=config.device.status_interval_s) == timedelta(0) for m in block_ends)
+
+
+def test_live_lost_chunks_are_reported_at_the_end_of_their_block_and_only_the_following_chunk_is_marked_as_gap():
+    def edit(raw):
+        raw["faults"]["device"]["packet_loss"].update(probability=0.4, burst_chunks={"min": 1, "max": 1})
+
+    config = tiny_config(edit)
+    generator = MissionGenerator(config)
+    messages = list(
+        itertools.islice(generator.live_background(astronaut_id="AST-01", day=1, device=live_device(config), session_id=LIVE_BACKGROUND, start=T0), 300)
+    )
+    lost = [m for m in messages if m.kind is EnvelopeKind.GROUND_TRUTH and m.payload["type"] == "lost_chunks"]
+    assert lost
+    block = timedelta(seconds=config.device.status_interval_s)
+    for m in lost:
+        assert (m.retained, m.astronaut_id, m.day, m.payload["session_id"]) == (False, "AST-01", 1, LIVE_BACKGROUND)
+        assert (m.at - T0) % block == timedelta(0)
+    previous: dict[str, int] = {}
+    for m in messages:
+        if m.kind is not EnvelopeKind.STREAM_CHUNK:
+            continue
+        p = m.payload
+        gap = any("packet_gap" in q["flags"] for q in p["quality"].values())
+        follows_loss = p["seq"] > previous.get(p["stream_id"], -1) + 1
+        assert gap == follows_loss, (p["stream_id"], p["seq"])
+        previous[p["stream_id"]] = p["seq"]

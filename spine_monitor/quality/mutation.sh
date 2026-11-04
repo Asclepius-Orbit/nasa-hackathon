@@ -2,9 +2,11 @@
 # Mutation testing with mutmut, one workspace package at a time.
 #
 #   sh quality/mutation.sh changed [file[::name] ...]
-#                                   score of the functions and methods changed vs the base, aggregated;
-#                                   exit 1 when below MUTATION_THRESHOLD (80 %), 0 when there is nothing to mutate,
-#                                   2 on any infrastructure error (fail closed).
+#                                   score of the functions and methods changed vs the base, aggregated. Exit codes:
+#                                     0  score >= MUTATION_THRESHOLD (80 %), or nothing to mutate, or the score is below
+#                                        it but fewer than MUTATION_MIN_SAMPLE (10) mutants were scored (see below)
+#                                     1  score below the threshold with at least MUTATION_MIN_SAMPLE mutants scored
+#                                     2  any infrastructure error (fail closed; never masked by the minimum-sample rule)
 #   sh quality/mutation.sh full     score per package; always exits 0 (errors are warnings on stderr).
 #
 # Run from spine_monitor/. Explicit arguments (paths relative to spine_monitor/) replace the git diff in `changed`:
@@ -29,8 +31,13 @@
 #   left unchecked is an error. Each mutant gets the same tests as in a whole-file run, so the cost scales with the
 #   changed functions, plus a fixed cost per package: mutmut's stats run (whole package suite under coverage) and its
 #   clean run of the whole suite (kept as in a whole-file run; not narrowed to the tests of the selected units).
-# - Small selections: one mutant that flips between identical runs (about 3 of 385 in stretch.py) moves the score by
-#   100/N points for N selected mutants. There is no minimum-sample rule; the per-module lines show N.
+# - Minimum sample (decided by Uri on 2026-11-04): when `changed` scores fewer than MUTATION_MIN_SAMPLE mutants (default
+#   10; 0 disables the rule; the count is the denominator of the aggregate score, skipped mutants excluded), a score
+#   below the threshold is printed together with a notice "score shown, not enforced" and the exit code is 0, not 1.
+#   This is a conscious decision: a change that selects fewer than 10 mutants can pass the gate without its tests
+#   killing them. Reason: one mutant that flips between identical runs (about 3 of 385 in stretch.py is measured) moves
+#   the score by 100/N points for N scored mutants, so on a handful of mutants the score is noise. The rule only turns
+#   the below-threshold exit 1 into 0; it never touches exit 2, nor a score at or above the threshold.
 #
 # The score is AGGREGATE over all selected functions, not per file: per-module scores are printed for
 # visibility, but gating each one would block every PR that touches a weakly-killed function until it reaches 80 %.
@@ -56,6 +63,7 @@ set -eu
 MODE="${1:-}"
 [ $# -gt 0 ] && shift
 THRESHOLD="${MUTATION_THRESHOLD:-80}"
+MIN_SAMPLE="${MUTATION_MIN_SAMPLE:-10}"
 STAGE="${MUTATION_STAGE:-/tmp/mutation}"
 # physiology last: it has by far the most mutants and the slowest tests.
 PACKAGES="${MUTATION_PACKAGES:-contracts engine backend mcp_server agent physiology}"
@@ -217,7 +225,7 @@ for pkg in $PACKAGES; do
         infra_error "could not score the mutants of $pkg"
 done
 
-python - "$STAGE/totals" "$THRESHOLD" <<'EOF' || exit $?
+python - "$STAGE/totals" "$THRESHOLD" "$MIN_SAMPLE" <<'EOF' || exit $?
 import sys
 detected = considered = 0
 for line in open(sys.argv[1]):
@@ -225,10 +233,16 @@ for line in open(sys.argv[1]):
     detected += d
     considered += c
 threshold = float(sys.argv[2])
+min_sample = int(sys.argv[3])
 if not considered:
     print("mutation: the changed functions produced no mutants")
     sys.exit(0)
 score = 100 * detected / considered
 print(f"mutation score of changed functions (aggregate): {score:.1f} % ({detected}/{considered}), threshold {threshold:g} %")
-sys.exit(0 if score >= threshold else 1)
+if score >= threshold:
+    sys.exit(0)
+if considered < min_sample:
+    print(f"mutation: only {considered} mutants selected (< {min_sample}): score shown, not enforced")
+    sys.exit(0)
+sys.exit(1)
 EOF

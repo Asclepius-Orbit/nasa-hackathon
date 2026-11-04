@@ -72,5 +72,7 @@ services:
     environment:
       GATE_MUTATION: "${GATE_MUTATION:-off}"
       MUTATION_BASE: "${MUTATION_BASE:-}"
+      MUTATION_PACKAGES: "${MUTATION_PACKAGES:-}"
+      MUTATION_MIN_SAMPLE: "${MUTATION_MIN_SAMPLE:-}"
       SPINE_REQUIRE_BROKER: "1"
     profiles: ["quality"]

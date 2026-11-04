@@ -14,9 +14,10 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    # Incremental mutation scales with the changed functions; a change selecting 1541 mutants took 15 min on
-    # 22 CPUs and is estimated at about 2 h on a 2-vCPU runner.
-    timeout-minutes: 120
+    # Incremental mutation scales with the changed functions. A branch-wide diff selecting 1541 mutants took about
+    # 15 min on a 22-CPU machine (measured); on a 2-vCPU hosted runner that is only an ESTIMATE (extrapolated, not
+    # measured) of about 2 h. 240 min leaves margin over that estimate.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
         with:

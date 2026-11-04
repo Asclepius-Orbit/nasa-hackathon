@@ -1,17 +1,26 @@
-name: nightly-mutation
+name: full-mutation
 
 permissions:
   contents: read
 
+# Manual only. A full physiology run takes about 108 min measured on a 22-CPU machine and is estimated (not measured)
+# to be an order of magnitude slower on a 2-vCPU hosted runner, longer than the 360-min job maximum. The full mutation
+# report is therefore normally run locally:
+#   GATE_MUTATION=full docker compose -f app/docker-compose.yml run --rm quality
+# This workflow remains for a self-hosted or larger runner, or for a single package (input `packages`).
 on:
-  schedule:
-    - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      packages:
+        description: "Space-separated packages to mutate (empty: all of them)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   mutation:
     runs-on: ubuntu-latest
-    # A full physiology run takes about 2.5 h; 360 min is the GitHub-hosted maximum.
+    # 360 min is the GitHub-hosted maximum.
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +28,7 @@ jobs:
         shell: bash
         env:
           GATE_MUTATION: full
+          MUTATION_PACKAGES: ${{ inputs.packages }}
         run: |
           docker compose -f app/docker-compose.yml run --rm -T quality 2>&1 | tee mutation-output.log
       - name: Summary

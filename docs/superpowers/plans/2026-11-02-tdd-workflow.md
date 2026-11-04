@@ -1191,6 +1191,8 @@ git add spine_monitor/quality app/docker-compose.yml .github
 git commit -m "Speed up repeated mutation runs with parallel mutmut jobs and a persistent state"
 ```
 
+**Resultado (2026-11-04, medido, no adoptado):** no hay commit de código. mutmut 3.8.1 ya usa por defecto todos los núcleos (`max_children` = 22): con 8, 11 y 33 procesos `stretch.py` (385 mutantes) tarda 438, 466 y 449 s frente a 367-381 s por defecto. Dos corridas idénticas cambian el veredicto de unos 3 mutantes (92,5 % frente a 91,7 %). Una caché de `mutants/` en un volumen reutiliza resultados (re-ejecución sin cambios 136 s, un cambio de función 186 s), pero mutmut no invalida el estado al cambiar solo los tests: con todos los tests de `stretch` desactivados la caché seguía dando 92,5 % cuando el resultado real era 83,1 %, así que dejaría pasar `changed` con tests debilitados. Opción segura no construida ni medida: `actions/cache` con clave del hash exacto de src, tests, `pyproject.toml` y `uv.lock`, sin restore-keys (solo acelera re-ejecuciones idénticas). El tiempo de la corrida completa solo baja repartiendo physiology por módulos en una matriz de CI (physiology son unas 6051 de unas 7480 líneas de código fuente); ese reparto no está medido.
+
 ---
 
 ## Autorrevisión frente al spec

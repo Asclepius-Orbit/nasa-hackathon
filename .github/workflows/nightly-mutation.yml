@@ -16,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Full mutation report (non blocking)
+        shell: bash
         env:
           GATE_MUTATION: full
         run: |
@@ -23,4 +24,4 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          { echo '### Full mutation report (tail)'; echo '```'; tail -n 60 mutation-output.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### Full mutation report (tail)'; echo '```'; [ -f mutation-output.log ] && tail -n 60 mutation-output.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

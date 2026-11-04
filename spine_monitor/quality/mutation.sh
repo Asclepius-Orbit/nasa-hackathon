@@ -42,6 +42,15 @@
 # $MUTATION_STAGE keeps mutants/ and caches out of the bind-mounted source tree.
 # The staged pyproject.toml of each package gets a generated [tool.mutmut] appended, so a package must not
 # define its own [tool.mutmut] table (TOML forbids the duplicate).
+#
+# Logging calls are not mutated (`full` and `changed` alike): mutants of the arguments of `_log.warning("msg %s", x)`
+# change no behaviour the tests observe and would only count against the 80 % gate. The generated config sets mutmut's
+# `do_not_mutate_patterns` (a regex applied to every source line; the expressions that start on a matching line are
+# skipped, children included) to LOG_CALL below: a statement that starts a call to debug/info/warning/warn/error/
+# exception/critical/log on a `log`, `_log`, `logger`, `_logger` or `logging` object (optionally `self.`-prefixed).
+# Nothing else is skipped and the production code carries no `# pragma: no mutate`. Calls that do not start their line
+# (`x = log.info(...)`, `if c: log.info(...)`) and `logging.basicConfig(...)` are still mutated. Both the skipped
+# mutants and the score are those mutmut 3.8.1 reports: skipped statements simply do not exist for it.
 set -eu
 
 MODE="${1:-}"
@@ -52,6 +61,8 @@ STAGE="${MUTATION_STAGE:-/tmp/mutation}"
 PACKAGES="${MUTATION_PACKAGES:-contracts engine backend mcp_server agent physiology}"
 ROOT="$(pwd)"
 NAMES=""
+# TOML literal string (single quotes): the backslashes reach mutmut untouched.
+LOG_CALL='^\s*(?:self\.)?_?(?:log|logger|logging)\.(?:debug|info|warning|warn|error|exception|critical|log)\('
 
 case "$MODE" in
     changed | full) ;;
@@ -107,6 +118,7 @@ run_package() {
         echo "pytest_add_cli_args = [$pytest_args]"
         echo "pytest_add_cli_args_test_selection = [\"tests\"]"
         echo "use_git_change_detection = false"
+        printf '%s\n' "do_not_mutate_patterns = ['$LOG_CALL']"
         [ -z "$only" ] || echo "only_mutate = [$only]"
     } >> "$dir/pyproject.toml" || return 1
     (

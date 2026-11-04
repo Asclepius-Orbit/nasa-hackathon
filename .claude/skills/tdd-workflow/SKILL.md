@@ -51,7 +51,7 @@ Comando único, igual en local y CI:
 GATE_MUTATION=changed docker compose -f app/docker-compose.yml run --rm quality
 ```
 
-Ejecuta, en orden: `ruff check`, `pyright`, `pytest` con cobertura (líneas y ramas ≥ 90 %, orden aleatorio, timeout), y mutación incremental (≥ 80 % en las funciones y métodos modificados). Sin `GATE_MUTATION=changed` se salta la mutación (bucle rápido). `changed` compara contra `origin/develop` por defecto (`MUTATION_BASE` lo cambia) y solo cuenta cambios commiteados: commitea antes de correrlo. En PRs, CI añade diff coverage ≥ 90 %. Un nightly corre la mutación completa sin bloquear.
+Ejecuta, en orden: `ruff check`, `pyright`, `pytest` con cobertura (líneas y ramas ≥ 90 %, orden aleatorio, timeout), y mutación incremental (≥ 80 % en las funciones y métodos modificados). Sin `GATE_MUTATION=changed` se salta la mutación (bucle rápido). `changed` compara contra `origin/develop` por defecto (`MUTATION_BASE` lo cambia) y solo cuenta cambios commiteados: commitea antes de correrlo. Si `changed` puntúa menos de 10 mutantes (`MUTATION_MIN_SAMPLE`, 0 lo desactiva) y queda bajo 80 %, muestra la puntuación pero no falla (decisión de Uri: con tan pocos mutantes la puntuación es ruido). En PRs, CI añade diff coverage ≥ 90 %. La mutación completa se corre a mano: en local con `GATE_MUTATION=full` (hay también un workflow manual), no en un nightly.
 
 Bucle rápido mientras desarrollas: `cd spine_monitor && uv run pytest <ruta> -q -p no:randomly`.
 

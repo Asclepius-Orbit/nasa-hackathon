@@ -7,6 +7,7 @@ mensajes retained que deja, para no ensuciar un entorno de desarrollo con el sim
 
 import asyncio
 import json
+import os
 import socket
 import sys
 import uuid
@@ -36,10 +37,17 @@ def _broker_up() -> bool:
         return False
 
 
-pytestmark = [
-    pytest.mark.mosquitto,
-    pytest.mark.skipif(not _broker_up(), reason=f"no MQTT broker on {HOST}:{PORT}"),
-]
+pytestmark = pytest.mark.mosquitto
+
+
+def _require_broker() -> None:
+    """Sin broker: salta, salvo con SPINE_REQUIRE_BROKER=1 (el gate de Docker), donde falla."""
+    if _broker_up():
+        return
+    reason = f"no MQTT broker on {HOST}:{PORT}"
+    if os.environ.get("SPINE_REQUIRE_BROKER") == "1":
+        pytest.fail(f"SPINE_REQUIRE_BROKER=1 but {reason}: the mosquitto test must not be skipped in the gate")
+    pytest.skip(reason)
 
 
 def _config() -> MissionConfig:
@@ -135,5 +143,6 @@ async def _scenario() -> None:
 
 
 def test_gateway_against_a_real_broker():
+    _require_broker()
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho necesita add_reader
     asyncio.run(_scenario(), loop_factory=loop_factory)

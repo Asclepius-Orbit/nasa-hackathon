@@ -40,9 +40,10 @@ def test_engine_answers_what_the_contract_promises(case: schemathesis.Case) -> N
 def _domain_rejections(response) -> list:
     """`positive_data_acceptance` toma por fallo un 422 a una petición válida según el schema.
 
-    El contrato documenta ese 422 como `insufficient_data` (p. ej. un baseline sin sesiones en gravedad
-    de referencia), que no es una violación; se excluye la comprobación solo para esa respuesta, y el
-    cuerpo sigue validándose contra el schema de error. Cualquier otro rechazo de datos válidos falla.
+    El contrato documenta ese 422 en POST /baseline (`insufficient_data`: p. ej. sin sesiones en gravedad de
+    referencia), pero Schemathesis 4.33 no lee las respuestas documentadas para este check: solo compara con
+    `expected_statuses` de su configuración. Se excluye la comprobación únicamente para ese 422 y el cuerpo
+    sigue validándose contra el schema de error. Cualquier otro rechazo de datos válidos falla.
     """
     if response.status_code == 422 and json.loads(response.content).get("type") == "insufficient_data":
         return [positive_data_acceptance]

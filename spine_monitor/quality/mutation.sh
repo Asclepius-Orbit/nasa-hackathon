@@ -37,7 +37,10 @@
 #   This is a conscious decision: a change that selects fewer than 10 mutants can pass the gate without its tests
 #   killing them. Reason: one mutant that flips between identical runs (about 3 of 385 in stretch.py is measured) moves
 #   the score by 100/N points for N scored mutants, so on a handful of mutants the score is noise. The rule only turns
-#   the below-threshold exit 1 into 0; it never touches exit 2, nor a score at or above the threshold.
+#   the below-threshold exit 1 into 0; it never touches exit 2, nor a score at or above the threshold. N is the
+#   AGGREGATE denominator over all selected packages, and the rule also applies in explicit-file mode.
+#   MUTATION_MIN_SAMPLE must be a non-negative integer and MUTATION_THRESHOLD a non-negative number (80, 80.5); both
+#   are validated before any work and a bad value is a usage error (exit 2) in `changed` and `full` alike.
 #
 # The score is AGGREGATE over all selected functions, not per file: per-module scores are printed for
 # visibility, but gating each one would block every PR that touches a weakly-killed function until it reaches 80 %.
@@ -75,6 +78,12 @@ LOG_CALL='^\s*(?:self\.)?_?(?:log|logger|logging)\.(?:debug|info|warning|warn|er
 case "$MODE" in
     changed | full) ;;
     *) echo "usage: sh quality/mutation.sh changed [file[::name] ...] | full" >&2; exit 2 ;;
+esac
+case "$MIN_SAMPLE" in
+    '' | *[!0-9]*) echo "mutation: ERROR: MUTATION_MIN_SAMPLE must be a non-negative integer, got '$MIN_SAMPLE'" >&2; exit 2 ;;
+esac
+case "$THRESHOLD" in
+    '' | . | *[!0-9.]* | *.*.* | .* | *.) echo "mutation: ERROR: MUTATION_THRESHOLD must be a non-negative number like 80 or 80.5, got '$THRESHOLD'" >&2; exit 2 ;;
 esac
 
 # Infrastructure error: fatal (exit 2) in `changed`, a warning in `full`.

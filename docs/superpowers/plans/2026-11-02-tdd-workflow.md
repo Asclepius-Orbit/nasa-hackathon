@@ -1202,6 +1202,11 @@ git commit -m "Speed up repeated mutation runs with parallel mutmut jobs and a p
 - **Task 16 — Mutantes de argumentos de log.** Excluir por configuración de mutmut, sin `pragma: no mutate` en el código, solo si existe un mecanismo limpio y medido; si no, informar y no hacer nada.
 - Decisión sobre protección de rama (I1): aceptar sin protección; el check de CI informa pero no bloquea.
 
+**Resultados (2026-11-04):**
+- **Task 17:** solo `POST /baseline` puede devolver 422 `insufficient_data` (único `raise` en `baseline/builder.py`); se documentó en `openapi.yaml` sin subir versión. La exclusión del check ST202 del fuzz se mantiene porque Schemathesis 4.33 no lee las respuestas documentadas en ese check.
+- **Task 15:** `changed` muta solo las funciones y métodos tocados por el diff. Un diff de una función (`resistance_to_adc`): 34 mutantes en 171 s frente a 385 mutantes y ~395 s de todo `stretch.py`. Todo el diff de esta rama: 1541 mutantes en lugar de 7840, 796-880 s y 92 % en 22 CPUs; en un runner de 2 vCPU se estima (extrapolado, no medido) en unas 2 h, al límite del timeout de 120 min. Se corrigieron falsos "matados" del paquete engine (pytest no puede seleccionar por id los tests de Schemathesis y salía con 4, que mutmut cuenta como matado): el score real de engine es 83,4 % (546/655), no el 94,8 % que daba. No se añadió regla de muestra mínima: un mutante que cambia de veredicto mueve la puntuación 100/N puntos.
+- **Task 16:** `do_not_mutate_patterns` de mutmut 3.8.1 salta los argumentos de las llamadas de log (`log`/`_log`/`logger`/`_logger`/`logging` más `debug|info|warning|warn|error|exception|critical|log`) sin `pragma` en el código: 125 de los 8993 mutantes de physiology (todos de `gateway/app.py`), no ~150. Verificado comparando las listas completas antes y después. Excluye también 7 mutantes de log que hoy se matan.
+
 ---
 
 ## Autorrevisión frente al spec

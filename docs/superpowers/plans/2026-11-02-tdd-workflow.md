@@ -1195,6 +1195,15 @@ git commit -m "Speed up repeated mutation runs with parallel mutmut jobs and a p
 
 ---
 
+### Tasks 15 a 17: decisiones de Uri tras la revisión final (2026-11-04)
+
+- **Task 17 — Contrato 422.** Documentar en `contracts/openapi.yaml` que `POST /baseline` y `POST /assess` pueden devolver 422 `insufficient_data` con una petición válida, y quitar la exclusión del check ST202 del fuzz de Schemathesis (`engine/tests/test_contract_openapi_fuzz.py`). Uri avisa al equipo del cambio de contrato.
+- **Task 15 — Mutación solo de las funciones tocadas.** Motivo: los tiempos de mutación están medidos en 22 CPUs y un runner de GitHub para repo privado tiene 2 vCPU; `changed` muta ficheros enteros y el primer PR de esta rama (10 ficheros de physiology) excedería el timeout de 120 min. `changed` debe mutar solo las funciones del diff (con mutmut 3.8.1, que identifica mutantes por función), con medición antes y después, sin bajar el umbral del 80 % ni recortar mutantes. El nightly completo en un runner de 2 vCPU sigue sin resolverse.
+- **Task 16 — Mutantes de argumentos de log.** Excluir por configuración de mutmut, sin `pragma: no mutate` en el código, solo si existe un mecanismo limpio y medido; si no, informar y no hacer nada.
+- Decisión sobre protección de rama (I1): aceptar sin protección; el check de CI informa pero no bloquea.
+
+---
+
 ## Autorrevisión frente al spec
 
 | Requisito del spec | Task |

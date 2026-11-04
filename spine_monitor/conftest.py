@@ -3,8 +3,13 @@
 from pathlib import PurePath
 
 import pytest
+from hypothesis import settings
 
 pytest_plugins = ["pytester"]  # lo necesita tests/test_markers.py; debe declararse en el conftest raíz
+
+# Sin deadline: en runners lentos un ejemplo lento no debe ser un fallo intermitente. No se deriva la semilla.
+settings.register_profile("spine", deadline=None)
+settings.load_profile("spine")
 
 KINDS = ("unit", "integration", "contract", "property", "golden")
 

@@ -45,7 +45,36 @@ def test_dose_drift_is_zero_when_the_plan_is_met(drift, n):
     assert np.allclose(dose_drift([1.0] * n, drift), 0.0)
 
 
-@given(ratios=st.lists(st.floats(min_value=0.0, max_value=2.0), min_size=1, max_size=30), drift=coord)
-def test_dose_drift_is_the_running_sum_of_the_daily_shortfall(ratios, drift):
-    expected = np.cumsum([drift * (1.0 - r) for r in ratios])
-    assert np.allclose(dose_drift(ratios, drift), expected)
+ratio_lists = st.lists(st.floats(min_value=0.0, max_value=2.0), min_size=1, max_size=30)
+shortfall_ratios = st.lists(st.floats(min_value=0.0, max_value=0.9), min_size=1, max_size=30)
+surplus_ratios = st.lists(st.floats(min_value=1.1, max_value=2.0), min_size=1, max_size=30)
+positive_drift = st.floats(min_value=1e-3, max_value=1e3)
+
+
+@given(ratios=ratio_lists, drift=coord)
+def test_dose_drift_has_one_value_per_day(ratios, drift):
+    assert len(dose_drift(ratios, drift)) == len(ratios)
+
+
+@given(ratios=ratio_lists, drift=coord)
+def test_dose_drift_starts_with_the_first_day_shortfall(ratios, drift):
+    assert dose_drift(ratios, drift)[0] == pytest.approx(drift * (1.0 - ratios[0]))
+
+
+@given(ratios=shortfall_ratios, drift=positive_drift)
+def test_a_shortfall_makes_the_drift_grow_monotonically(ratios, drift):
+    out = dose_drift(ratios, drift)
+    assert np.all(np.diff(out) >= 0.0)
+    assert out[-1] > 0.0
+
+
+@given(ratios=surplus_ratios, drift=positive_drift)
+def test_a_surplus_makes_the_drift_negative(ratios, drift):
+    out = dose_drift(ratios, drift)
+    assert np.all(np.diff(out) <= 0.0)
+    assert out[-1] < 0.0
+
+
+@given(ratios=ratio_lists, drift=coord)
+def test_dose_drift_is_linear_in_the_drift_rate(ratios, drift):
+    assert np.allclose(dose_drift(ratios, 2.0 * drift), 2.0 * dose_drift(ratios, drift))

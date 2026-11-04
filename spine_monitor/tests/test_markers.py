@@ -31,3 +31,18 @@ def test_every_test_ends_with_exactly_one_kind_marker(pytester):
 @pytest.mark.parametrize("marker", sorted(KINDS | {"mosquitto"}))
 def test_markers_are_registered(pytestconfig, marker):
     assert any(line.startswith(f"{marker}:") for line in pytestconfig.getini("markers"))
+
+
+def test_a_test_with_two_kind_markers_fails_collection(pytester):
+    pytester.makeconftest(CONFTEST.read_text(encoding="utf-8"))
+    pytester.makepyfile(
+        test_two="""
+        import pytest
+        @pytest.mark.unit
+        @pytest.mark.property
+        def test_both(): pass
+        """
+    )
+    result = pytester.runpytest("--collect-only", "-q")
+    assert result.ret != 0
+    result.stderr.fnmatch_lines(["*test_both*more than one kind marker*"])

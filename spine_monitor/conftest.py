@@ -16,7 +16,10 @@ KINDS = ("unit", "integration", "contract", "property", "golden")
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
-        if any(item.get_closest_marker(kind) for kind in KINDS):
+        declared = sorted({m.name for m in item.iter_markers() if m.name in KINDS})
+        if len(declared) > 1:
+            raise pytest.UsageError(f"{item.nodeid} has more than one kind marker: {', '.join(declared)}; use exactly one")
+        if declared:
             continue
         parts = PurePath(str(item.path)).parts
         if item.get_closest_marker("mosquitto"):

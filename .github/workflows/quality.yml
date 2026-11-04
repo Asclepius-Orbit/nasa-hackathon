@@ -14,7 +14,8 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    # Incremental mutation on a large physiology file can take an hour or more.
+    # Incremental mutation scales with the changed functions; a change selecting 1541 mutants took 15 min on
+    # 22 CPUs and is estimated at about 2 h on a 2-vCPU runner.
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4

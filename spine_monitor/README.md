@@ -30,7 +30,7 @@ $env:GATE_MUTATION='changed'; docker compose -f app/docker-compose.yml run --rm 
 
 - `fail_under` coverage is a single combined figure for lines and branches (branch coverage is on): the 90 % threshold applies to that combined total, not to each one separately.
 - After changing `pyproject.toml` or `uv.lock` the quality image must be rebuilt: `docker compose -f app/docker-compose.yml build quality`, or add `--build` to `run`.
-- Mutation testing does not run by default. With `GATE_MUTATION=changed` it is incremental: only the files changed in your committed work against `origin/develop` (or against `MUTATION_BASE` if set), and their aggregate mutation score must be >= 80 %.
+- Mutation testing does not run by default. With `GATE_MUTATION=changed` it is incremental: only the functions and methods whose lines changed in your committed work against `origin/develop` (or against `MUTATION_BASE` if set), and their aggregate mutation score must be >= 80 %. Changed lines outside any function (imports, constants, class attributes) add no mutants, because mutmut never mutates them.
 - With `GATE_MUTATION=full` it covers every package, only reports and never fails; a full physiology run takes about 2 hours measured on a 22-CPU machine, and will be much slower on a 2-vCPU CI runner.
 - Markers: each test carries exactly one of `unit`, `integration`, `contract`, `property` or `golden` (`mosquitto` is additional). `conftest.py` defaults to `unit`, to `integration` for `mosquitto`-marked tests and to `contract` for tests under `contracts/tests`.
 - To regenerate the golden snapshot `physiology/tests/golden/tiny-mission.json` deliberately, run the golden test with `UPDATE_GOLDEN=1` and review the diff.

@@ -2,13 +2,14 @@
 # Mutation testing with mutmut, one workspace package at a time.
 #
 #   sh quality/mutation.sh changed [file[::name] ...]
-#                               score of the functions and methods changed vs the base, aggregated;
-#                               exit 1 when below MUTATION_THRESHOLD (80 %), 0 when there is nothing to mutate,
-#                               2 on any infrastructure error (fail closed).
-#   sh quality/mutation.sh full score per package; always exits 0 (errors are warnings on stderr).
+#                                   score of the functions and methods changed vs the base, aggregated;
+#                                   exit 1 when below MUTATION_THRESHOLD (80 %), 0 when there is nothing to mutate,
+#                                   2 on any infrastructure error (fail closed).
+#   sh quality/mutation.sh full     score per package; always exits 0 (errors are warnings on stderr).
 #
 # Run from spine_monitor/. Explicit arguments (paths relative to spine_monitor/) replace the git diff in `changed`:
-# `file` is every function of the file, `file::func` or `file::Class.method` only that one.
+# `file` is every function of the file, `file::func` or `file::Class.method` only that one; a file that is not a
+# <package>/src/**/*.py of the packages (./ and absolute paths under spine_monitor/ are normalised) exits 2.
 # Base for `changed`: $MUTATION_BASE, else the first of origin/develop, develop, origin/main, main that exists.
 # Only committed changes count (git diff base...HEAD): on a Windows checkout the container's git would see
 # every CRLF file in the working tree as modified. mutmut still mutates the working tree, so commit first.
@@ -27,8 +28,7 @@
 #   dropped, as mutmut names it) and the score counts only those mutants, read from `mutmut results`; a selected mutant
 #   left unchecked is an error. Each mutant gets the same tests as in a whole-file run, so the cost scales with the
 #   changed functions, plus a fixed cost per package: mutmut's stats run (whole package suite under coverage) and its
-#   clean run of the whole suite. Restricting the clean run to the unit's tests is not possible: pytest cannot address
-#   the engine's Schemathesis test ids (exit 4).
+#   clean run of the whole suite (kept as in a whole-file run; not narrowed to the tests of the selected units).
 # - Small selections: one mutant that flips between identical runs (about 3 of 385 in stretch.py) moves the score by
 #   100/N points for N selected mutants. There is no minimum-sample rule; the per-module lines show N.
 #
@@ -95,6 +95,10 @@ run_package() {
     # This test compares the source text of the generated models with the generator output, so under
     # mutmut it reads the rewritten mutants/ tree and fails the clean run. It checks text, not behaviour.
     [ "$pkg" != contracts ] || pytest_args="$pytest_args, \"--deselect\", \"tests/test_generated_models.py::test_generated_models_are_up_to_date\""
+    # mutmut reruns each mutant's tests by node id, and pytest cannot address the Schemathesis-generated ids of this
+    # file (`...[POST /assess]`: exit 4), which mutmut records as a kill: every mutant the fuzz test reached was a fake
+    # kill. Ignored under mutmut; it still runs in the normal suite. Every other id of every package is addressable.
+    [ "$pkg" != engine ] || pytest_args="$pytest_args, \"--ignore\", \"tests/test_contract_openapi_fuzz.py\""
     {
         echo
         echo "[tool.mutmut]"
@@ -184,8 +188,7 @@ for pkg in $PACKAGES; do
     [ -s "$sel/$pkg" ] || continue
     files="$(cut -f1 "$sel/$pkg" | sort -u)"
     # <module>.<mangled>__mutmut_* per unit (<module>.x*__mutmut_* for a whole file). Every name contains __mutmut_, so
-    # none matches a function name and mutmut's clean run keeps the whole suite, as without names: restricting it to the
-    # tests that reach the unit fails, pytest exit 4, because the Schemathesis test ids of engine cannot be addressed.
+    # none matches a function name and mutmut's clean run keeps the whole suite, exactly as in a whole-file run.
     NAMES="$(awk -F '\t' '{ print $2 "." ($3 == "*" ? "x*" : $3) "__mutmut_*" }' "$sel/$pkg")"
     echo "$pkg:"; for f in $files; do echo "    $f"; done
     # shellcheck disable=SC2086 # one glob per word

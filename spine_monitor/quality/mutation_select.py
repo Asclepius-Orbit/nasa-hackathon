@@ -13,6 +13,7 @@ The rules (what a unit is, how a hunk maps to units) are documented in mutation.
 
 import ast
 import collections
+import os
 import re
 import subprocess
 import sys
@@ -28,11 +29,32 @@ def fail(message: str) -> NoReturn:
     sys.exit(2)
 
 
-def git(*args: str) -> str:
-    done = subprocess.run(["git", "-c", "safe.directory=*", "-c", "core.quotePath=false", *args], check=False, capture_output=True, text=True)
+def git(*args: str) -> bytes:
+    done = subprocess.run(["git", "-c", "safe.directory=*", "-c", "core.quotePath=false", *args], check=False, capture_output=True)
     if done.returncode != 0:
-        fail(f"git {' '.join(args)} failed: {done.stderr.strip()}")
+        fail(f"git {' '.join(args)} failed: {done.stderr.decode(errors='replace').strip()}")
     return done.stdout
+
+
+def decode(raw: bytes, path: str) -> str:
+    """Python source as text: UTF-8 with or without BOM (the BOM is dropped); anything else is an error."""
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        fail(f"{path} is not UTF-8: {e}")
+
+
+def explicit_path(arg: str, packages: list[str]) -> str:
+    """An explicit FILE argument as `<pkg>/src/...py` relative to spine_monitor/ (the cwd), or exit 2."""
+    path = os.path.normpath(arg).replace(os.sep, "/")
+    if os.path.isabs(path):
+        rel = os.path.relpath(path).replace(os.sep, "/")
+        path = path if rel.startswith("../") else rel
+    if not re.fullmatch(r"[^/]+/src/.+\.py", path) or path.split("/", 1)[0] not in packages:
+        fail(f"{arg} is not a <package>/src/**/*.py file of the packages ({' '.join(packages)}) under spine_monitor/")
+    if not Path(path).is_file():
+        fail(f"{arg} not found")
+    return path
 
 
 def units(source: str, path: str) -> list[tuple[str, int, int]]:
@@ -63,7 +85,8 @@ def module_of(pkg_path: str) -> str:
 
 def changed_lines(base: str) -> dict[str, list[tuple[int, int]]]:
     """New-side line ranges touched by each committed */src/*.py change in base...HEAD (pure deletions: (n, n + 1))."""
-    diff = git("diff", "-U0", "--no-ext-diff", "--no-color", "--no-renames", "--relative", "--diff-filter=d", f"{base}...HEAD", "--", "*/src/*.py")
+    args = ("-U0", "--no-ext-diff", "--no-color", "--no-renames", "--relative", "--diff-filter=d", f"{base}...HEAD", "--", "*/src/*.py")
+    diff = git("diff", *args).decode("utf-8", errors="surrogateescape")
     ranges: dict[str, list[tuple[int, int]]] = collections.defaultdict(list)
     path, in_header = None, False
     for line in diff.splitlines():
@@ -87,15 +110,14 @@ def select(out: Path, packages: list[str], args: list[str]) -> None:
     if args[:1] == ["--base"]:
         base = args[1]
         print(f"mutation: functions changed in {base}...HEAD")
-        targets = {path: (lines, git("show", f"HEAD:./{path}")) for path, lines in changed_lines(base).items()}
+        targets = {path: (lines, decode(git("show", f"HEAD:./{path}"), path)) for path, lines in changed_lines(base).items()}
     else:
         print("mutation: explicit files")
         targets = {}
         for arg in args:
-            path, _, name = arg.partition("::")
-            if not Path(path).is_file():
-                fail(f"{path} not found")
-            entry = targets.setdefault(path, ([], Path(path).read_text(encoding="utf-8")))
+            file, _, name = arg.partition("::")
+            path = explicit_path(file, packages)
+            entry = targets.setdefault(path, ([], decode(Path(path).read_bytes(), path)))
             entry[0].append(name)
     targets = {p: t for p, t in targets.items() if re.fullmatch(r"[^/]+/src/.+\.py", p)}
     if not targets:
@@ -148,9 +170,13 @@ def selected(key: str, wanted: dict[str, set[str]]) -> bool:
 
 def score(pkg: str, selection: Path, results: Path, totals: Path, no_tests: bool) -> None:
     wanted: dict[str, set[str]] = collections.defaultdict(set)
+    known: dict[str, set[str]] = {}  # module -> mangled names of the units of its staged file
     for line in selection.read_text(encoding="utf-8").splitlines():
-        _, module, name = line.split("\t")
+        pkg_path, module, name = line.split("\t")
         wanted[module].add(name)
+        if module not in known:
+            source = results.parent / pkg_path
+            known[module] = {unit for unit, _, _ in units(decode(source.read_bytes(), str(source)), str(source))}
     by_module: dict[str, collections.Counter[str]] = collections.defaultdict(collections.Counter)
     undetected = []
     for line in results.read_text(encoding="utf-8").splitlines():
@@ -160,6 +186,11 @@ def score(pkg: str, selection: Path, results: Path, totals: Path, no_tests: bool
             continue
         if module not in wanted:
             fail(f"mutant {key} of {pkg} belongs to no selected module: module naming does not match mutmut's")
+        # Unit naming guard: every mutant of a selected file must belong to one of its units as named here. Otherwise a
+        # selected unit could match no mutant because the naming drifted (mutmut upgrade), not because it has none, and
+        # pass as 0/0. Units with no mutant at all (decorated, Protocol stubs, `pragma: no mutate`) still pass.
+        if "x" + key.rpartition(".x")[2].partition("__mutmut_")[0] not in known[module]:
+            fail(f"mutant {key} of {pkg} matches no function or method of its file: unit naming does not match mutmut's")
         if not selected(key, wanted):
             continue
         if status == "not checked":

@@ -1,0 +1,16 @@
+/* Base element and global rules, ported from the on-board app mock (v11). */
+:root {
+  font-family: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--panel);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-size: 18px; line-height: 1.45; }
+button { font: inherit; color: inherit; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+:focus-visible { outline: 4px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+h1 { font-size: 34px; line-height: 1.15; margin: 0 0 6px; font-weight: 800; }
+h2 { font-size: 22px; margin: 0 0 12px; font-weight: 800; }
+h3 { font-size: 18px; margin: 0 0 6px; }

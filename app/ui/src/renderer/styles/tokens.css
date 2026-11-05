@@ -1,0 +1,10 @@
+/* Design tokens, values taken verbatim from the on-board app mock (v11). */
+:root {
+  --panel: #E8ECEE; --surface: #F7F9FA; --ink: #1B2730; --muted: #55656F; --rail: #4A6274; --line: #C7D0D5;
+  --action: #1E4E8C; --action-soft: #DCE6F3;
+  /* Clinical risk only: nothing else uses these three. */
+  --risk-green: #2F7D4A; --risk-amber: #A86400; --risk-red: #B3261E;
+  --urgent: #B3261E; --urgent-soft: #FBE9E7; --focus: #F2B705;
+  --nodata: repeating-linear-gradient(135deg, #D5DCE0 0 8px, #E8ECEE 8px 16px);
+  --radius-s: 6px; --radius-l: 14px; --target: 64px;
+}

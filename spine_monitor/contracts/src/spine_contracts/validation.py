@@ -46,12 +46,13 @@ def validator(name: str) -> Draft202012Validator:
 
 def errors(name: str, payload: object) -> list[str]:
     """Human-readable problems, one per violation ('pointer: message'); empty when valid."""
-    found = sorted(validator(name).iter_errors(payload), key=lambda e: list(map(str, e.absolute_path)))
+    # jsonschema acepta cualquier instancia; su stub (`_JsonParameter`) es más estrecho que `object` (ignores de abajo).
+    found = sorted(validator(name).iter_errors(payload), key=lambda e: list(map(str, e.absolute_path)))  # pyright: ignore[reportArgumentType]
     return [f"/{'/'.join(map(str, e.absolute_path))}: {e.message}" for e in found]
 
 
 def validate(name: str, payload: object) -> None:
     """Raise jsonschema.ValidationError if the payload violates the schema."""
-    error = next(iter(validator(name).iter_errors(payload)), None)
+    error = next(iter(validator(name).iter_errors(payload)), None)  # pyright: ignore[reportArgumentType]  # ver `errors`
     if error is not None:
         raise ValidationError(f"{name}: {error.message}", path=error.absolute_path, schema_path=error.absolute_schema_path)

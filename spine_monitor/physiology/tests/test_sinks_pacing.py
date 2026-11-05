@@ -1,6 +1,8 @@
 import asyncio
+import importlib.util
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from spine_physiology import MissionGenerator
@@ -9,15 +11,13 @@ from spine_physiology.sinks.jsonl import write_jsonl
 from spine_physiology.sinks.mqtt import MqttSink, encode, publish_all
 from spine_physiology.sinks.pacing import Pacer, paced
 
+
 class FakeClient:
     def __init__(self) -> None:
         self.published: list[tuple[str, bytes, int, bool]] = []
 
     async def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> None:
         self.published.append((topic, payload, qos, retain))
-
-import importlib.util
-from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location("_tiny_mission", Path(__file__).with_name("test_generator.py"))
 _module = importlib.util.module_from_spec(_spec)
@@ -29,7 +29,15 @@ T0 = datetime(2030, 1, 1, tzinfo=UTC)
 
 
 def env(seconds: float) -> Envelope:
-    return Envelope(kind=EnvelopeKind.SESSION, topic=None, payload={"s": seconds}, at=T0 + timedelta(seconds=seconds), retained=False, astronaut_id="AST-01", day=0)
+    return Envelope(
+        kind=EnvelopeKind.SESSION,
+        topic=None,
+        payload={"s": seconds},
+        at=T0 + timedelta(seconds=seconds),
+        retained=False,
+        astronaut_id="AST-01",
+        day=0,
+    )
 
 
 class FakeTime:

@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from jsonschema import FormatChecker
 from jsonschema.exceptions import ValidationError
-
 from spine_contracts import validation
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "valid"

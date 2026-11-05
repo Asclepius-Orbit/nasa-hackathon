@@ -13,7 +13,8 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 from typing import Any, Protocol
 
 import aiomqtt
@@ -129,12 +130,17 @@ class IncomingMessage(Protocol):
 
 
 class MqttClient(Protocol):
-    async def __aenter__(self) -> "MqttClient": ...
-    async def __aexit__(self, *exc: object) -> object: ...
-    async def subscribe(self, topic: str, qos: int) -> object: ...
-    async def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> object: ...
+    """What the app uses of `aiomqtt.Client`. Plain `def` + Awaitable: aiomqtt returns coroutines."""
+
+    def subscribe(self, topic: str, qos: int) -> Awaitable[object]: ...
+
+    def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> Awaitable[object]: ...
+
     @property
     def messages(self) -> AsyncIterator[IncomingMessage]: ...
+
+
+type ClientFactory = Callable[[], AbstractAsyncContextManager[MqttClient]]
 
 
 def _as_bytes(payload: bytes | bytearray | str | int | float | None) -> bytes:
@@ -150,7 +156,7 @@ class Bus:
 
     def __init__(
         self,
-        client_factory: Callable[[], MqttClient],
+        client_factory: ClientFactory,
         *,
         reconnect_min_s: float = 1.0,
         reconnect_max_s: float = 30.0,

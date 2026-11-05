@@ -18,10 +18,6 @@ class EngineError(Exception):
         self.status = status
         self.problem = problem
 
-    @property
-    def type(self) -> str | None:
-        return None if self.problem is None else self.problem.get("type")
-
 
 class EngineClient:
     def __init__(self, client: httpx.AsyncClient) -> None:

@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from spine_contracts import topics, validation
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 
 async def test_subscribes_to_every_bus_topic(harness):

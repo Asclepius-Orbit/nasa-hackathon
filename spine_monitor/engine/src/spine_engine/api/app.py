@@ -7,7 +7,6 @@ details del contrato en lugar del 422 propio de FastAPI.
 """
 
 import json
-from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI, Request

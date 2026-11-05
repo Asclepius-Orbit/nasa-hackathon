@@ -280,13 +280,6 @@ class Store:
         ).fetchone()
         return None if row is None else SessionRow(json.loads(row["payload"]), row["state"], row["error"])
 
-    def session_phases(self, session_ids: set[str]) -> dict[str, str]:
-        if not session_ids:
-            return {}
-        marks = ",".join("?" * len(session_ids))
-        rows = self._db.execute(f"SELECT session_id, phase FROM sessions WHERE session_id IN ({marks})", tuple(session_ids))
-        return {row["session_id"]: row["phase"] for row in rows}
-
     # --- commands and acks -------------------------------------------------------------------------
 
     def insert_command(self, command: dict[str, Any], state: str) -> None:

@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from spine_contracts import SCHEMA_VERSION, Baseline, FeaturesRequest, FeatureSet, FeatureValue, Level
+from spine_contracts import SCHEMA_VERSION, Baseline, FeatureSet, FeaturesRequest, FeatureValue, Level
 
 from spine_engine.interfaces import Deviation, RiskResult, TriageDecision
 from spine_engine.pipeline import AssessmentPipeline
@@ -37,7 +37,7 @@ class NullFeatureExtractor:
 
     def extract(self, request: FeaturesRequest) -> FeatureSet:
         session = request.session
-        return FeatureSet(
+        return FeatureSet(  # pyright: ignore[reportCallIssue]  # generated model: window/skipped have positional Field defaults
             schema_version=SCHEMA_VERSION,
             astronaut_id=session.astronaut_id,
             session_id=session.session_id,

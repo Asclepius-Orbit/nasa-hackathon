@@ -3,9 +3,9 @@ from uuid import uuid4
 
 from spine_contracts import (
     SCHEMA_VERSION,
-    AssessRequest,
     Assessment,
     AssessmentDomain,
+    AssessRequest,
     BasedOn,
     Completeness,
     DomainAssessment,
@@ -43,7 +43,7 @@ def _completeness(feature_sets: Sequence[FeatureSet], deviations: Sequence[Devia
     """Qué parte de lo esperado se pudo evaluar. Lo que falta nunca cuenta como verde."""
     compared = {d.feature_id for d in deviations}
     present = {f.feature_id for fs in feature_sets for f in fs.features}
-    skipped = {s.feature_id: s.reason for fs in feature_sets for s in fs.skipped} if feature_sets else {}
+    skipped = {s.feature_id: s.reason for fs in feature_sets for s in fs.skipped or []} if feature_sets else {}
     missing = [MissingItem(what=fid, reason=_MISSING_REASON_BY_SKIP[reason.value]) for fid, reason in skipped.items()]
     missing += [MissingItem(what=fid, reason=MissingReason.NO_BASELINE) for fid in sorted(present - compared)]
     expected = len(present | set(skipped))
@@ -70,7 +70,7 @@ class AssessmentPipeline:
 
         evaluated = {domain for d in deviations if (domain := _domain_of(d.feature_id)) is not None}
         domains = [
-            DomainAssessment(
+            DomainAssessment(  # pyright: ignore[reportCallIssue]  # generated model: `score` has a positional Field default
                 domain=domain,
                 level=triage.domain_levels.get(domain, triage.level if domain in evaluated else Level.GREEN),
                 evaluated=domain in evaluated,
@@ -78,12 +78,11 @@ class AssessmentPipeline:
             for domain in AssessmentDomain
         ]
 
-        return Assessment(
+        assessment = Assessment(
             schema_version=SCHEMA_VERSION,
             assessment_id=str(uuid4()),
             astronaut_id=request.astronaut_id,
             as_of=request.as_of,
-            mission_day=request.mission_day,
             level=triage.level,
             risk_score=risk.score,
             confidence=risk.confidence,
@@ -97,6 +96,10 @@ class AssessmentPipeline:
                 baseline_id=request.baseline.baseline_id,
                 baseline_version=request.baseline.version,
                 session_ids=[fs.session_id for fs in request.feature_sets if fs.session_id is not None],
-                self_report_ids=[report.report_id for report in request.self_reports],
+                self_report_ids=[report.report_id for report in request.self_reports or []],
             ),
         )
+        # `dump` emite lo que se fijó: un `mission_day=None` explícito saldría como null y el schema pide un entero.
+        if request.mission_day is not None:
+            assessment.mission_day = request.mission_day
+        return assessment

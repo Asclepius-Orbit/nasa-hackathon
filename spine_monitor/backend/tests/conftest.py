@@ -19,13 +19,12 @@ from typing import Any
 import aiomqtt
 import httpx
 import pytest
+from monitor.main import create_app
+from monitor.settings import AppSettings
 from spine_contracts import FeatureSet, FeaturesRequest, topics
 from spine_engine.api import create_app as create_engine_app
 from spine_engine.factory import default_baseline_builder, default_pipeline
 from spine_engine.settings import EngineSettings
-
-from monitor.main import create_app
-from monitor.settings import AppSettings
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
 ASTRONAUT, DEVICE = "AST-01", "wb-01"
@@ -61,7 +60,7 @@ class FakeMqtt:
         self.subscriptions: list[tuple[str, int]] = []
         self.fail_publish = False
 
-    def factory(self) -> "_FakeClient":
+    def factory(self) -> _FakeClient:
         return _FakeClient(self)
 
     def deliver(self, topic: str, payload: dict[str, Any] | bytes) -> None:
@@ -84,7 +83,7 @@ class _FakeClient:
     def __init__(self, broker: FakeMqtt) -> None:
         self._broker = broker
 
-    async def __aenter__(self) -> "_FakeClient":
+    async def __aenter__(self) -> _FakeClient:
         return self
 
     async def __aexit__(self, *exc: object) -> None:

@@ -71,7 +71,11 @@ paths:
               schema:
                 $ref: 'schemas/v1/domain/baseline.schema.json'
         '422':
-          $ref: '#/components/responses/Error'
+          description: The request is invalid, or it is valid against the schema but the data is insufficient to build a baseline (type `insufficient_data`, e.g. no feature set of a session in reference gravity).
+          content:
+            application/problem+json:
+              schema:
+                $ref: 'schemas/v1/engine/error.schema.json'
         default:
           $ref: '#/components/responses/Error'
   /assess:

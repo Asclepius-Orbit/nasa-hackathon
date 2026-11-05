@@ -23,7 +23,7 @@ from monitor.api import build_router, install_problem_handlers
 from monitor.control import Control
 from monitor.db import Store
 from monitor.engine import EngineClient
-from monitor.ingest import Bus, Ingest, MqttClient
+from monitor.ingest import Bus, ClientFactory, Ingest
 from monitor.settings import AppSettings
 
 _log = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ class Runtime:
 def create_app(
     settings: AppSettings | None = None,
     *,
-    mqtt_client_factory: Callable[[], MqttClient] | None = None,
+    mqtt_client_factory: ClientFactory | None = None,
     engine_transport: httpx.AsyncBaseTransport | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:

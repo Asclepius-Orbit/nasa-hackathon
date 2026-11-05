@@ -58,10 +58,11 @@ def activation_profile(
     `peak_pct_mvc` escalar (igual en todas) o uno por rep. Sin reps: constante `rest_pct_mvc`.
     La campana es un seno² (Hann) que parte y vuelve al nivel de reposo con pendiente nula.
     """
-    if np.ndim(peak_pct_mvc) == 0:
-        peaks = [float(peak_pct_mvc)] * len(reps)
+    peak_values = np.asarray(peak_pct_mvc, dtype=np.float64)
+    if peak_values.ndim == 0:
+        peaks = [float(peak_values)] * len(reps)
     else:
-        peaks = [float(p) for p in peak_pct_mvc]
+        peaks = [float(p) for p in peak_values]
         if len(peaks) != len(reps):
             raise ValueError(f"peak_pct_mvc has {len(peaks)} values for {len(reps)} reps")
 
@@ -101,13 +102,14 @@ def fatigue_profile(reps: Sequence[Rep], *, fatigue_per_rep: float, n_samples: i
 def _band_sos(params: EmgSignalConfig, fatigue: float, rate_hz: float) -> np.ndarray:
     """Butterworth paso banda con ambos bordes desplazados un `fatigue_band_shift × fatiga` relativo."""
     scale = max(1.0 - params.fatigue_band_shift * fatigue, _MIN_BAND_SCALE)
-    return sp_signal.butter(
+    sos = sp_signal.butter(
         params.filter_order,
         [params.band_low_hz * scale, params.band_high_hz * scale],
         btype="bandpass",
         fs=rate_hz,
         output="sos",
     )
+    return np.asarray(sos, dtype=np.float64)  # el stub de scipy devuelve una unión por `output`
 
 
 def _zero_phase_power_gain(sos: np.ndarray) -> float:

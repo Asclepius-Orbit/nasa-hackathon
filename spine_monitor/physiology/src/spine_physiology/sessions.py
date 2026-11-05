@@ -599,7 +599,11 @@ def synthesize(
         if kind is StreamKind.EMG:
             params = signals.emg
             mvc = member.baseline.emg_mvc_rms_mv[stream_id]
-            peak = emg_signal.effective_pct_mvc(spec.protocol.pct_mvc, state.muscle_deconditioning, params) if spec.protocol is not None else params.rest_pct_mvc
+            peak = (
+                emg_signal.effective_pct_mvc(spec.protocol.pct_mvc, state.muscle_deconditioning, params)
+                if spec.protocol is not None
+                else params.rest_pct_mvc
+            )
             pct = emg_signal.activation_profile(reps, peak_pct_mvc=peak, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
             per_rep = emg_signal.effective_fatigue_per_rep(state.muscle_deconditioning, params)
             fatigue = emg_signal.fatigue_profile(reps, fatigue_per_rep=per_rep, n_samples=n, rate_hz=rate)

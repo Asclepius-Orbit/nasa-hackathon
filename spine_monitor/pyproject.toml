@@ -2,11 +2,51 @@
 members = ["contracts", "physiology", "engine", "mcp_server", "agent", "backend"]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "pytest-randomly",
+    "pytest-timeout",
+    "hypothesis",
+    "schemathesis",
+    "diff-cover",
+    "ruff",
+    "pyright",
+    "httpx",
+    "mutmut>=3.8.1",
+]
 
 [tool.pytest.ini_options]
-testpaths = ["contracts/tests", "engine/tests", "physiology/tests", "backend/tests"]
-addopts = "--import-mode=importlib"
+testpaths = ["tests", "contracts/tests", "engine/tests", "physiology/tests", "backend/tests", "mcp_server/tests", "agent/tests"]
+addopts = "--import-mode=importlib --strict-markers --timeout=120"
 markers = [
+    "unit: isolated logic, no I/O",
+    "integration: several components together or a real broker",
+    "contract: validates payloads or APIs against the JSON Schemas / OpenAPI / AsyncAPI",
+    "property: Hypothesis property-based test",
+    "golden: output compared with a versioned snapshot",
     "mosquitto: integration test against a real MQTT broker on 127.0.0.1:1883 (skipped when none is running)",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["spine_contracts", "spine_engine", "spine_physiology", "monitor", "spine_mcp_server", "spine_agent"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_empty = true
+
+[tool.ruff]
+target-version = "py314"
+line-length = 160
+extend-exclude = ["contracts/src/spine_contracts/models"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pyright]
+pythonVersion = "3.14"
+include = ["contracts/src", "engine/src", "physiology/src", "backend/src", "mcp_server/src", "agent/src"]
+exclude = ["contracts/src/spine_contracts/models"]
+typeCheckingMode = "standard"

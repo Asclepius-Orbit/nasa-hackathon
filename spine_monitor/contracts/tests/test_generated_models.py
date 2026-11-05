@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-
 from spine_contracts import (
     SCHEMA_VERSION,
     AppErrorResponse,
@@ -20,8 +19,8 @@ from spine_contracts import (
     DeviceStatus,
     ErrorResponse,
     Explanation,
-    FeaturesRequest,
     FeatureSet,
+    FeaturesRequest,
     History,
     SelfReportList,
     Session,

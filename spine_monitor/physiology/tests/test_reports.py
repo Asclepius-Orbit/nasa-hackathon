@@ -9,7 +9,6 @@ import yaml
 from spine_contracts import GravityEnvironment, MissionPhase
 from spine_contracts.messages import dump
 from spine_contracts.validation import errors
-
 from spine_physiology.config import CrewMember, MissionConfig, load_config
 from spine_physiology.reports import build_daily_context, build_daily_self_report, build_profile
 from spine_physiology.rng import derive_uuid, generator
@@ -372,3 +371,14 @@ def test_report_id_is_the_derived_uuid(config):
     day = days_of(config)[0]
     report = self_report(config, member, day, pain=0.0)
     assert report.report_id == derive_uuid(config.seed, member.astronaut_id, day.index, "self_report")
+
+
+def test_a_tiny_red_flag_probability_almost_never_raises_one(config):
+    def enable(d):
+        d["self_report"]["red_flag_probability_per_day"] = 1e-9
+        d["self_report"]["red_flags"] = ["leg_weakness"]
+
+    cfg = variant(config, enable)
+    member = config.crew[0]
+    days = days_of(cfg)
+    assert [dump(self_report(cfg, member, d, pain=0.2))["red_flags"] for d in days] == [[] for _ in days]

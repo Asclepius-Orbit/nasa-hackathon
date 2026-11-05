@@ -5,7 +5,7 @@ import json
 import pytest
 from spine_contracts import validation
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 DAILY = {"kind": "daily", "pain_nrs": 2, "stiffness_nrs": 3, "red_flags": []}
 

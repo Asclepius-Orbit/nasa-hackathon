@@ -1,0 +1,36 @@
+name: quality
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [develop]
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    # Incremental mutation scales with the changed functions. A branch-wide diff selecting 1541 mutants took about
+    # 15 min on a 22-CPU machine (measured); on a 2-vCPU hosted runner that is only an ESTIMATE (extrapolated, not
+    # measured) of about 2 h. 240 min leaves margin over that estimate.
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Quality gate (lint, types, tests, coverage, incremental mutation)
+        env:
+          GATE_MUTATION: changed
+          MUTATION_BASE: origin/${{ github.base_ref }}
+        run: docker compose -f app/docker-compose.yml run --rm -T quality
+      - name: Diff coverage
+        # Runs in the quality image (diff-cover is in the locked dev group); the WORKDIR spine_monitor/ makes coverage.xml paths map to git paths.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >
+          docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
+          sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'

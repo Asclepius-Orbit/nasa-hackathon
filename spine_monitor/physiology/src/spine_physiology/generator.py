@@ -47,7 +47,7 @@ import heapq
 import itertools
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 import numpy as np
@@ -520,7 +520,18 @@ class MissionGenerator:
             residual = synthesis.final_residual_mm
             cursor = cursor + spec.n_chunks * sess.chunk_delta(chunk_ms)
         for block in itertools.count():
-            spec = self._live_spec((*keys, "rest", block), cursor, _live_block_chunks(config, chunk_ms), chunk_ms, streams, info, background=False, reps=(), protocol=None, residual=residual)
+            spec = self._live_spec(
+                (*keys, "rest", block),
+                cursor,
+                _live_block_chunks(config, chunk_ms),
+                chunk_ms,
+                streams,
+                info,
+                background=False,
+                reps=(),
+                protocol=None,
+                residual=residual,
+            )
             calibrations = self._in_force(astronaut_id, info.index, streams)
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
             yield from self._live_chunks(device, synthesis, session, astronaut_id, info.index)
@@ -599,7 +610,18 @@ class MissionGenerator:
         cursor = start
         chunk_ms = background.chunk_ms
         for block in itertools.count():
-            spec = self._live_spec((*keys, block), cursor, _live_block_chunks(config, chunk_ms), chunk_ms, streams, info, background=True, reps=(), protocol=None, residual=residual)
+            spec = self._live_spec(
+                (*keys, block),
+                cursor,
+                _live_block_chunks(config, chunk_ms),
+                chunk_ms,
+                streams,
+                info,
+                background=True,
+                reps=(),
+                protocol=None,
+                residual=residual,
+            )
             calibrations = self._in_force(astronaut_id, info.index, streams)  # por bloque: un `calibrate` vale desde el siguiente
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)
             yield from self._live_chunks(device, synthesis, session, astronaut_id, info.index)
@@ -638,7 +660,9 @@ class MissionGenerator:
             initial_residual_mm=dict(residual),
         )  # fmt: skip
 
-    def _live_chunks(self, device: SimDevice, synthesis: SessionSynthesis, session: truth.TruthSession, astronaut_id: str, day_index: int) -> Iterator[Envelope]:
+    def _live_chunks(
+        self, device: SimDevice, synthesis: SessionSynthesis, session: truth.TruthSession, astronaut_id: str, day_index: int
+    ) -> Iterator[Envelope]:
         """Trocea un bloque en vivo llamando a `SimDevice.chunks` chunk a chunk (perezosamente), así el seq
         del dispositivo nunca va por delante de lo consumido: si el gateway corta el iterador, la siguiente
         sesión sigue el seq sin huecos. Contrapartida: cada pérdida es de un solo chunk (sin ráfagas ni
@@ -674,7 +698,9 @@ class MissionGenerator:
                     lost[stream.stream_id].append(outcome)
                 else:
                     topic = topics.stream(astronaut_id, device_id, stream.stream_id)
-                    batch.append(Envelope.of(EnvelopeKind.STREAM_CHUNK, outcome.chunk, at=outcome.received_at, astronaut_id=astronaut_id, day=day_index, topic=topic))
+                    batch.append(
+                        Envelope.of(EnvelopeKind.STREAM_CHUNK, outcome.chunk, at=outcome.received_at, astronaut_id=astronaut_id, day=day_index, topic=topic)
+                    )
             batch.sort(key=lambda e: e.at)
             yield from batch
         end = spec.start + spec.n_chunks * sess.chunk_delta(spec.chunk_ms)

@@ -17,7 +17,8 @@
 - `SimDevice.advance`: consume seq como si se hubiera emitido (para regenerar una sesión suelta con los
   seq que tendría dentro del día completo).
 - `status` (DeviceStatus: ok/degraded por batería o stream stalled/offline, batería, temperatura,
-  link, streams con last_seq; `published` fija el last_seq de cada stream a lo ya publicado) y `clock_sync` (ClockSync `method: simulated`, None si está apagado).
+  link, streams con last_seq; `published` fija el last_seq de cada stream a lo ya publicado) y `clock_sync`
+  (ClockSync `method: simulated`, None si está apagado).
 Todos los modelos se construyen sin pasar None a campos opcionales (ver `spine_contracts.dump`).
 
 Estado que depende del orden de llamadas (el generador procesa el día en orden temporal): los anclajes
@@ -293,7 +294,8 @@ class SimDevice:
         calibration_id: str | None,
     ) -> Iterator[ChunkOutcome]:
         """Trocea `channels` (todas con n muestras; la muestra 0 es el instante real `start`) en chunks de
-        `chunk_ms` (el del tramo: sesiones `signals.chunk_ms`, fondo `schedule.background.chunk_ms`); el último puede ser parcial. `quality[i]` es la del chunk i. Claves de `channels`:
+        `chunk_ms` (el del tramo: sesiones `signals.chunk_ms`, fondo `schedule.background.chunk_ms`); el último puede ser
+        parcial. `quality[i]` es la del chunk i. Claves de `channels`:
         emg -> {"emg"}; imu -> los 6 de `signals.imu.IMU_CHANNELS`; stretch -> {"adc_counts",
         "resistance_ohm", "length_mm"} (las dos derivadas opcionales; con length_mm hace falta
         `calibration_id`). RNG: pérdidas y latencias de este tramo.

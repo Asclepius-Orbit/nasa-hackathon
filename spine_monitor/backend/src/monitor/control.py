@@ -82,7 +82,7 @@ class Control:
         while pending := [t for t in self._tasks if not t.done()]:
             # Awaiting already finished tasks never yields, so only the pending ones are awaited.
             await asyncio.gather(*pending, return_exceptions=True)
-        self._tasks.clear()
+        await asyncio.sleep(0)  # let the done callbacks (logging, bookkeeping) run
 
     def close(self) -> None:
         for timer in self._timers.values():

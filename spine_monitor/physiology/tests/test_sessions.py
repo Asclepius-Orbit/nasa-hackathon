@@ -267,7 +267,8 @@ def test_microgravity_removes_gravity_from_accel_and_keeps_everything_else():
     _, earth = _synth(config, "am_spine_check", day=4, gravity=GravityEnvironment.EARTH_1G)
     _, micro = _synth(config, "am_spine_check", day=4)
     e, m = earth.stream("imu_l3").channels, micro.stream("imu_l3").channels
-    accel = lambda c: np.sqrt(c["accel_x"] ** 2 + c["accel_y"] ** 2 + c["accel_z"] ** 2)
+    def accel(c):
+        return np.sqrt(c["accel_x"] ** 2 + c["accel_y"] ** 2 + c["accel_z"] ** 2)
     assert np.mean(accel(e)) == pytest.approx(1.0, abs=0.05)
     assert np.mean(accel(m)) < 0.1
     for gyro in ("gyro_x", "gyro_y", "gyro_z"):
@@ -323,3 +324,60 @@ def test_background_pause_aligns_to_the_background_grid_not_the_session_one():
     assert background.start + a1 * chunk <= exercise.start < background.start + (a1 + 1) * chunk
     assert background.start + (b0 - 1) * chunk < exercise.end <= background.start + b0 * chunk
     assert (background.end - background.start) % chunk == timedelta(0)
+
+
+def test_a_session_that_would_end_after_power_off_is_moved_back_to_end_exactly_then(config):
+    def edit(raw):
+        raw["schedule"]["background"]["enabled"] = False
+        for s in raw["schedule"]["sessions"]:
+            s["start_jitter_s"] = 0.0
+        raw["schedule"]["sessions"][2]["time_utc"] = "22:29"
+
+    config = make_config(edit)
+    day = MissionTimeline(config).day(0)
+    last = sess.plan_day(config, config.seed, A, day)[-1]
+    assert last.ref.slot == "pm_spine_check"
+    assert last.end == day.at(config.device.power_off_time_utc)
+    assert last.start == last.end - timedelta(seconds=120)
+
+
+def test_a_session_that_does_not_fit_is_skipped_but_a_shorter_later_one_still_runs():
+    def edit(raw):
+        raw["device"]["power_off_time_utc"] = "06:34:30"
+        raw["schedule"]["background"].update(enabled=False, start_time_utc="06:31", end_time_utc="06:32")
+        sessions = raw["schedule"]["sessions"]
+        for s, at in zip(sessions, ("06:30:00", "06:30:01", "06:30:02"), strict=True):  # am, lat_pulldown, pm
+            s.update(time_utc=at, start_jitter_s=0.0)
+
+    config = make_config(edit)
+    plans = sess.plan_day(config, config.seed, A, MissionTimeline(config).day(0))
+    assert [p.ref.slot for p in plans] == ["am_spine_check", "pm_spine_check"]  # lat_pulldown (206 s) no cabe; pm_spine_check (120 s) si
+
+
+def test_active_chunks_split_around_each_pause_on_the_chunk_grid(config, timeline):
+    from dataclasses import replace
+
+    base = next(p for p in sess.plan_day(config, config.seed, A, timeline.day(0)) if p.background)
+    start = base.start
+    sec = timedelta(seconds=1)
+    plan = replace(base, end=start + 10 * sec, chunk_ms=1000.0)
+    assert sess.n_chunks(plan) == 10
+
+    def ranges(*pauses):
+        return sess.active_chunks(replace(plan, pauses=tuple((start + a * sec, start + b * sec) for a, b in pauses)))
+
+    assert ranges((0, 2)) == ((2, 10),)  # una pausa desde el inicio no deja un tramo vacio ni uno de 1 chunk
+    assert ranges((8, 10)) == ((0, 8),)  # ni al final
+    assert ranges((3, 3)) == ((0, 10),)  # una pausa vacia no parte nada
+    assert ranges((2, 4), (4, 6)) == ((0, 2), (6, 10))  # pausas contiguas
+    assert ranges((2, 4), (3, 5)) == ((0, 2), (5, 10))  # pausas solapadas
+
+
+def test_calibration_records_name_their_type_and_the_session_that_hosts_them(config, timeline):
+    scheduled = sess.scheduled_calibrations(config, config.seed, timeline, A, timeline.day(0))
+    assert (scheduled["stretch_lumbar"].calibration_type, scheduled["imu_l3"].calibration_type) == ("stretch", "imu")
+    exercise = next(p for p in sess.plan_day(config, config.seed, A, timeline.day(0)) if p.session_type == "exercise")
+    mvc = sess.session_mvc_calibrations(config, config.seed, exercise)
+    assert {r.calibration_type for r in mvc.values()} == {"emg_mvc"}
+    assert {r.session_id for r in mvc.values()} == {exercise.session_id}
+    assert {r.day for r in mvc.values()} == {0}

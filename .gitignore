@@ -11,9 +11,14 @@ dist/
 .pyright/
 .hypothesis/
 .coverage
+coverage.xml
 .coverage.*
 htmlcov/
 .ipynb_checkpoints/
+# Mutation testing (spine_monitor/quality/mutation.sh stages in /tmp; these cover direct runs)
+mutants/
+mutants-run.log
+.mutmut-cache
 
 # ── Node / TypeScript / Electron / Vite / pnpm ─
 node_modules/
@@ -71,3 +76,5 @@ traces/
 .DS_Store
 Thumbs.db
 Desktop.ini
+# Subagent-driven-development scratch workspace
+.superpowers/

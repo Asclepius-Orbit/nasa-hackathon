@@ -3,7 +3,7 @@
 import pytest
 from spine_contracts import topics
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 
 def stretch_topic(harness) -> str:

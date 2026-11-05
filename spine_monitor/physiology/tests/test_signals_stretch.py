@@ -2,7 +2,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from spine_physiology.config import StretchSignalConfig, load_config
 from spine_physiology.signals.stretch import (
     adc_to_resistance,
@@ -248,3 +247,42 @@ def test_determinism(config, params):
     m1 = measured_curve(np.random.default_rng(1), params, cal, rest_length_mm=REST_MM)
     m2 = measured_curve(np.random.default_rng(1), params, cal, rest_length_mm=REST_MM)
     assert m1 == m2
+
+
+def test_curve_validation_boundaries_and_messages():
+    x = np.array([1.0])
+    # Dos puntos bastan; incrementos pequenos (< 1) pero positivos son validos.
+    assert resistance_to_length(np.array([1.25]), [(1.0, 10.0), (1.5, 10.5)])[0] == pytest.approx(10.25)
+    with pytest.raises(ValueError, match=r"^curve must have at least two \(resistance_ohm, length_mm\) points$"):
+        resistance_to_length(x, [(1.0, 10.0)])
+    message = r"^curve must be strictly increasing in resistance and length$"
+    for flat in ([(1.0, 10.0), (1.0, 20.0)], [(1.0, 10.0), (2.0, 10.0)], [(1.0, 10.0), (3.0, 20.0), (2.0, 30.0)], [(1.0, 10.0), (3.0, 20.0), (4.0, 15.0)]):
+        with pytest.raises(ValueError, match=message):
+            length_to_resistance(x, flat)
+
+
+def test_measured_curve_spreads_lengths_evenly_up_to_the_top_of_the_true_curve(config, params):
+    # Curva real del ejemplo: longitudes 360..500 mm; 4 puntos de calibracion.
+    # Reposo 400: reparto uniforme 400 -> 500 en 3 pasos de 100/3: 400, 433.33, 466.67, 500.
+    # Reposo 510 (por encima del alcance): alcance = 510 + (500 - 360) = 650, pasos de 140/3: 510, 556.67, 603.33, 650.
+    assert params.curve_pairs()[0][1] == 360.0 and params.curve_pairs()[-1][1] == 500.0 and config.calibration.stretch.n_points == 4
+    cal = config.calibration.stretch.model_copy(update={"measurement_noise_mm": 0.0})
+    expected = {400.0: [400.0, 1300 / 3, 1400 / 3, 500.0], 510.0: [510.0, 510 + 140 / 3, 510 + 280 / 3, 650.0]}
+    for rest, lengths in expected.items():
+        curve = measured_curve(np.random.default_rng(0), params, cal, rest_length_mm=rest)
+        assert [p[1] for p in curve] == pytest.approx(lengths)
+
+
+def test_measurement_error_is_clipped_to_a_quarter_of_the_step_on_both_sides(config, params):
+    cal = config.calibration.stretch.model_copy(update={"measurement_noise_mm": 1000.0})
+    true = params.curve_pairs()
+    step = (true[-1][1] - REST_MM) / (cal.n_points - 1)
+    nominal = np.linspace(REST_MM, true[-1][1], cal.n_points)
+    seen_low = seen_high = False
+    for seed in range(20):
+        lengths = np.array([p[1] for p in measured_curve(np.random.default_rng(seed), params, cal, rest_length_mm=REST_MM)])
+        error = (lengths - nominal)[1:]
+        assert np.abs(error).max() <= step / 4 + 1e-9 and lengths[0] == REST_MM
+        seen_low |= bool(np.isclose(error.min(), -step / 4))
+        seen_high |= bool(np.isclose(error.max(), step / 4))
+    assert seen_low and seen_high

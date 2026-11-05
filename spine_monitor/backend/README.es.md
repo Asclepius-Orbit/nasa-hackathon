@@ -28,7 +28,7 @@ SQLite, envía los comandos que guían el protocolo y llama al motor, que no tie
 
 ## API de la UI (`/ui`, `api.py`)
 Lado de escritura para la UI. Separada de la API de solo lectura de `contracts/app-openapi.yaml` que
-usa el servidor MCP. La app rellena ids, `schema_version`, instantes y `source`, y valida la entidad
+usa el servidor MCP (ver más abajo). La app rellena ids, `schema_version`, instantes y `source`, y valida la entidad
 contra su schema. Los errores son problem details de `app/error`.
 
 | Método | Ruta | Qué |
@@ -45,6 +45,29 @@ contra su schema. Los errores son problem details de `app/error`.
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` con un motivo |
 | GET | `/ui/commands/{command_id}` | Estado del comando y sus acks (la UI lo consulta para pasar al siguiente paso) |
 | GET | `/health` | Vida, conexión MQTT y contadores de mensajes |
+
+## API de solo lectura para el servidor MCP (`readonly.py`)
+`contracts/app-openapi.yaml`, servida por una app FastAPI propia en el puerto 8002 (servicio `read-api`
+de compose), así el servidor MCP nunca llega a los endpoints de escritura `/ui`. Abre la misma SQLite con
+`PRAGMA query_only`: solo `GET`, y la conexión no puede escribir.
+
+- `/crew/{astronaut_id}/status` (`get_current_status`): última evaluación, sesión y autoinforme,
+  dispositivos, baseline activa y frescura. Lo que falta es `null` con `stale: true`; los umbrales son
+  `SPINE_APP_STALE_*_HOURS`.
+- `/crew/{astronaut_id}/history?from&to&limit` (`get_history`, y dos veces para `compare_periods`):
+  feature sets por el inicio de su sesión, evaluaciones por `as_of`.
+- `/assessments/{assessment_id}/explanation` (`explain_assessment`): la evaluación con sus entradas de
+  baseline (solo de los drivers), feature sets y autoinformes resueltos; lo que ya no existe va en
+  `unresolved`.
+- Recursos: una evaluación, sesión (solo las que se llegaron a ejecutar), feature set de una sesión,
+  autoinforme o baseline, y listas de evaluaciones, sesiones y autoinformes de una ventana.
+- Las ventanas son inclusivas, RFC 3339 con offset; `to` anterior a `from` es `invalid_range`. Las listas
+  van de más antiguo a más reciente, acotadas por `limit` (1-500, por defecto 100), conservando lo más
+  reciente y marcando `truncated`.
+- Un astronauta o entidad desconocidos dan `404 not_found`; los errores son problem details de `app/error`.
+- Se prueba contra el contrato con `openapi_drift` y se fuzzea con Schemathesis.
+
+Arrancarla sola: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
 
 ## Arrancarla
 ```

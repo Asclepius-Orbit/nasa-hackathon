@@ -132,8 +132,14 @@ class CommandRow:
         return self.payload["type"]
 
 
+# Sessions that really ran. `starting` never got an ack and `rejected` never started: they are not served
+# by the read-only API.
+SERVED_SESSION_STATES = ("running", "ended", "processing", "processed", "processing_failed")
+
+
 class Store:
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
+        """`read_only`: the connection refuses every write (`PRAGMA query_only`), for the read-only API."""
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
@@ -141,9 +147,27 @@ class Store:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
         self._db.executescript(SCHEMA)
+        if read_only:
+            self._db.execute("PRAGMA query_only=ON")
 
     def close(self) -> None:
         self._db.close()
+
+    def _window(self, table: str, column: str, where: str, args: tuple, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        """Items with `column` in [start, end], oldest first; when more than `limit`, the most recent are kept."""
+        rows = self._db.execute(
+            f"SELECT payload FROM {table} WHERE {where} AND {column} >= ? AND {column} <= ? ORDER BY {column} DESC LIMIT ?",
+            (*args, utc_key(start), utc_key(end), limit + 1),
+        ).fetchall()
+        items = [json.loads(row["payload"]) for row in rows[:limit]]
+        items.reverse()
+        return items, len(rows) > limit
+
+    def astronaut_known(self, astronaut_id: str) -> bool:
+        """True when anything at all was recorded for the astronaut."""
+        tables = ("profiles", "daily_context", "sessions", "self_reports", "assessments", "baselines", "device_status", "feature_sets")
+        query = " UNION ALL ".join(f"SELECT 1 FROM {t} WHERE astronaut_id = ?" for t in tables)
+        return self._db.execute(f"SELECT EXISTS ({query})", (astronaut_id,) * len(tables)).fetchone()[0] == 1
 
     def _one(self, sql: str, *args: object) -> dict[str, Any] | None:
         row = self._db.execute(sql, args).fetchone()
@@ -272,6 +296,22 @@ class Store:
         )
         return cursor.rowcount == 1
 
+    def served_session(self, session_id: str) -> dict[str, Any] | None:
+        marks = ",".join("?" * len(SERVED_SESSION_STATES))
+        return self._one(f"SELECT payload FROM sessions WHERE session_id = ? AND state IN ({marks})", session_id, *SERVED_SESSION_STATES)
+
+    def latest_served_session(self, astronaut_id: str) -> dict[str, Any] | None:
+        marks = ",".join("?" * len(SERVED_SESSION_STATES))
+        return self._one(
+            f"SELECT payload FROM sessions WHERE astronaut_id = ? AND state IN ({marks}) ORDER BY started_at DESC LIMIT 1",
+            astronaut_id,
+            *SERVED_SESSION_STATES,
+        )
+
+    def sessions_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        marks = ",".join("?" * len(SERVED_SESSION_STATES))
+        return self._window("sessions", "started_at", f"astronaut_id = ? AND state IN ({marks})", (astronaut_id, *SERVED_SESSION_STATES), start, end, limit)
+
     def active_session(self, astronaut_id: str, device_id: str) -> SessionRow | None:
         row = self._db.execute(
             "SELECT payload, state, error FROM sessions WHERE astronaut_id = ? AND device_id = ? "
@@ -353,11 +393,17 @@ class Store:
             utc_key(end),
         )
 
+    def feature_sets_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        return self._window("feature_sets", "anchor_at", "astronaut_id = ?", (astronaut_id,), start, end, limit)
+
     def put_baseline(self, baseline: dict[str, Any]) -> None:
         self._db.execute(
             "INSERT INTO baselines VALUES (?, ?, ?, ?, ?)",
             (baseline["baseline_id"], baseline["astronaut_id"], baseline["version"], utc_key(baseline["created_at"]), _dumps(baseline)),
         )
+
+    def baseline(self, baseline_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT payload FROM baselines WHERE baseline_id = ?", baseline_id)
 
     def latest_baseline(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM baselines WHERE astronaut_id = ? ORDER BY version DESC LIMIT 1", astronaut_id)
@@ -367,6 +413,12 @@ class Store:
             "INSERT INTO assessments VALUES (?, ?, ?, ?)",
             (assessment["assessment_id"], assessment["astronaut_id"], utc_key(assessment["as_of"]), _dumps(assessment)),
         )
+
+    def assessment(self, assessment_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT payload FROM assessments WHERE assessment_id = ?", assessment_id)
+
+    def assessments_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        return self._window("assessments", "as_of", "astronaut_id = ?", (astronaut_id,), start, end, limit)
 
     def latest_assessment(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM assessments WHERE astronaut_id = ? ORDER BY as_of DESC LIMIT 1", astronaut_id)
@@ -398,6 +450,12 @@ class Store:
             utc_key(start),
             utc_key(end),
         )
+
+    def self_reports_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        return self._window("self_reports", "timestamp", "astronaut_id = ?", (astronaut_id,), start, end, limit)
+
+    def latest_self_report_of_any_kind(self, astronaut_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT payload FROM self_reports WHERE astronaut_id = ? ORDER BY timestamp DESC LIMIT 1", astronaut_id)
 
     def latest_self_report(self, astronaut_id: str, kind: str) -> dict[str, Any] | None:
         return self._one(

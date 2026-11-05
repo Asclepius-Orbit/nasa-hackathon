@@ -27,7 +27,7 @@ SQLite, sends the commands that drive the protocol, and calls the stateless engi
 
 ## UI API (`/ui`, `api.py`)
 Write side for the UI. Separate from the read-only API of `contracts/app-openapi.yaml` used by the MCP
-server. The app fills ids, `schema_version`, instants and `source`, then validates the entity against
+server (see below). The app fills ids, `schema_version`, instants and `source`, then validates the entity against
 its schema. Errors are `app/error` problem details.
 
 | Method | Path | What |
@@ -44,6 +44,27 @@ its schema. Errors are `app/error` problem details.
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` with a reason |
 | GET | `/ui/commands/{command_id}` | Command state and acks (the UI polls it to move to the next step) |
 | GET | `/health` | Liveness, MQTT connection and message counters |
+
+## Read-only API for the MCP server (`readonly.py`)
+`contracts/app-openapi.yaml`, served by its own FastAPI app on port 8002 (compose service `read-api`), so
+the MCP server never reaches the `/ui` write endpoints. It opens the same SQLite with
+`PRAGMA query_only`: only `GET`, and the connection cannot write.
+
+- `/crew/{astronaut_id}/status` (`get_current_status`): latest assessment, session and self-report,
+  devices, active baseline and freshness. Missing data is `null` with `stale: true`; thresholds are
+  `SPINE_APP_STALE_*_HOURS`.
+- `/crew/{astronaut_id}/history?from&to&limit` (`get_history`, and twice for `compare_periods`): feature
+  sets by the start of their session, assessments by `as_of`.
+- `/assessments/{assessment_id}/explanation` (`explain_assessment`): the assessment with its baseline
+  entries (drivers only), feature sets and self-reports resolved; anything gone is in `unresolved`.
+- Resources: one assessment, session (only sessions that really ran), session feature set, self-report or
+  baseline, and lists of assessments, sessions and self-reports of a window.
+- Windows are inclusive, RFC 3339 with offset; `to` before `from` is `invalid_range`. Lists are oldest
+  first, capped by `limit` (1-500, default 100), keeping the most recent and setting `truncated`.
+- An unknown astronaut or entity is `404 not_found`; errors are `app/error` problem details.
+- Tested against the contract with `openapi_drift` and fuzzed with Schemathesis.
+
+Run it alone: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
 
 ## Running it
 ```

@@ -15,6 +15,14 @@ uv run spine-mcp-server          # o: uv run python -m spine_mcp_server
 uv run pytest mcp_server         # tests
 ```
 
+### Depurar amb MCP Inspector
+
+UI interactiva per cridar les eines i llegir-ne els esquemes. S'executa sota demanda amb `pnpm dlx` i no és una dependència del projecte. Mantén-la lligada a localhost.
+
+```bash
+pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
+```
+
 ## Eines
 
 | Eina | Paràmetres | Retorna (esquema del contracte) |

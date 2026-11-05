@@ -1,5 +1,5 @@
 // Generates the TypeScript types of the UI from the JSON Schemas in spine_monitor/contracts/schemas/v1,
-// which are the source of truth. Never edit src/contracts/v1.ts by hand: run `npm run gen:types`.
+// which are the source of truth. Never edit src/contracts/v1.ts by hand: run `pnpm run gen:types`.
 // `--check` fails when the committed file is stale (for CI).
 //
 // Every schema goes through one synthetic root, so a definition shared by several schemas
@@ -67,7 +67,7 @@ async function generate() {
     "/* eslint-disable */",
     "/**",
     " * Generated from spine_monitor/contracts/schemas/v1 by scripts/generate-contract-types.mjs.",
-    " * Do not edit by hand: run `npm run gen:types`.",
+    " * Do not edit by hand: run `pnpm run gen:types`.",
     " */",
   ].join("\n");
   return compile(root, "ContractsV1", {
@@ -85,7 +85,7 @@ const generated = await generate();
 if (process.argv.includes("--check")) {
   const current = await readFile(output, "utf8").catch(() => "");
   if (current !== generated) {
-    console.error(`${path.relative(process.cwd(), output)} is stale: run \`npm run gen:types\``);
+    console.error(`${path.relative(process.cwd(), output)} is stale: run \`pnpm run gen:types\``);
     process.exit(1);
   }
   console.log("contract types are up to date");

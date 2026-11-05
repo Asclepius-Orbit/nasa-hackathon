@@ -6,7 +6,16 @@ Solo hay operaciones de lectura y de simulación: el servidor MCP nunca escribe 
 from datetime import datetime
 from typing import Protocol
 
-from spine_contracts import AssessRequest, Explanation, History, SimulateRequest, SimulateResponse, Status
+from spine_contracts import (
+    AssessRequest,
+    Explanation,
+    History,
+    SelfReportList,
+    SessionList,
+    SimulateRequest,
+    SimulateResponse,
+    Status,
+)
 
 
 class AppReader(Protocol):
@@ -18,6 +27,14 @@ class AppReader(Protocol):
 
     def get_history(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> History:
         """Feature sets y valoraciones en [from_, to], de más antiguo a más reciente, con como mucho `limit` elementos."""
+        ...
+
+    def get_sessions(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SessionList:
+        """Sesiones iniciadas en [from_, to], de más antigua a más reciente, con como mucho `limit` elementos."""
+        ...
+
+    def get_self_reports(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SelfReportList:
+        """Autoinformes con marca de tiempo en [from_, to], de más antiguo a más reciente, con como mucho `limit` elementos."""
         ...
 
     def get_explanation(self, assessment_id: str) -> Explanation:

@@ -796,6 +796,7 @@ export interface ContractsV1 {
   "engine/features-request"?: FeaturesRequest;
   "engine/simulate-request"?: SimulateRequest;
   "engine/simulate-response"?: SimulateResponse;
+  "mcp/compare-periods"?: ComparePeriods;
   "telemetry/clock-sync"?: ClockSync;
   "telemetry/command-ack"?: CommandAck;
   "telemetry/command"?: Command;
@@ -1952,6 +1953,165 @@ export interface SimulateResponse {
   reference: Assessment;
   scenario: Assessment;
   hypothetical: true;
+}
+/**
+ * Output of the MCP tool compare_periods. The MCP server calls GET /crew/{astronaut_id}/history twice (period A, period B) and computes this comparison; there is no HTTP endpoint for it. Every delta is B minus A (positive means B is higher than A; whether higher is better or worse depends on the feature). Absence is never good news: a missing value is null, never omitted and never 0. Check warnings before interpreting the numbers.
+ */
+export interface ComparePeriods {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  period_a: Period;
+  period_b: Period;
+  /**
+   * Features present in BOTH periods, one entry per (feature_id, protocol_id, gravity_environment). Only the same protocol and the same gravity are comparable, so they are part of the key.
+   */
+  features: FeatureComparison[];
+  /**
+   * Keys with data in period A only: the feature disappeared or was not measured in period B. Not a comparison.
+   */
+  only_in_a: FeatureKey[];
+  /**
+   * Keys with data in period B only: the feature is new or was not measured in period A. Not a comparison.
+   */
+  only_in_b: FeatureKey[];
+  /**
+   * Assessment levels per period.
+   */
+  levels: {
+    a: LevelCounts;
+    b: LevelCounts;
+  };
+  /**
+   * Mean of each assessment score per period, on [0, 1], and delta = b - a. A value is null when the period has no assessments (and delta is null if either side is null).
+   */
+  scores: {
+    risk_score: ScoreComparison;
+    confidence: ScoreComparison;
+    completeness: ScoreComparison;
+  };
+  /**
+   * Reasons the comparison may be incomplete or misleading. period_a_empty / period_b_empty: the period has no data. period_a_truncated / period_b_truncated: the history had more items than the limit and only the most recent were used, so the period is partly missing. unit_mismatch: the same key had different units in the two periods and was left out of features.
+   */
+  warnings: ("period_a_empty" | "period_b_empty" | "period_a_truncated" | "period_b_truncated" | "unit_mismatch")[];
+}
+/**
+ * One compared time window and how much data it had.
+ */
+export interface Period {
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  from: string;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  to: string;
+  /**
+   * Assessments found in the window.
+   */
+  assessments_count: number;
+  /**
+   * Feature sets found in the window.
+   */
+  feature_sets_count: number;
+  /**
+   * True if the history was cut at its limit and only the most recent items were kept.
+   */
+  truncated: boolean;
+}
+/**
+ * One feature measured in both periods. delta = b - a, in the feature unit.
+ */
+export interface FeatureComparison {
+  /**
+   * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
+   */
+  feature_id: string;
+  /**
+   * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
+   */
+  protocol_id: string;
+  /**
+   * Gravity the astronaut is exposed to while the data is recorded. Mandatory context: in microgravity an accelerometer does not see gravity, so Earth and space IMU data are not directly comparable.
+   */
+  gravity_environment: "earth_1g" | "microgravity" | "moon_0_16g" | "mars_0_38g";
+  /**
+   * Unit of every number of this entry (e.g. %, deg, mm, Hz).
+   */
+  unit: string;
+  a: FeatureStats;
+  b: FeatureStats;
+  /**
+   * b.mean - a.mean, in the feature unit.
+   */
+  delta_mean: number;
+  /**
+   * b.median - a.median, in the feature unit.
+   */
+  delta_median: number;
+}
+/**
+ * Statistics of one feature in one period, in the unit of the feature.
+ */
+export interface FeatureStats {
+  /**
+   * Number of feature values aggregated.
+   */
+  n: number;
+  /**
+   * Mean of the values, in the feature unit.
+   */
+  mean: number;
+  /**
+   * Median of the values, in the feature unit.
+   */
+  median: number;
+}
+/**
+ * Comparison key of a feature: values are comparable only with the same feature, protocol and gravity.
+ */
+export interface FeatureKey {
+  /**
+   * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
+   */
+  feature_id: string;
+  /**
+   * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
+   */
+  protocol_id: string;
+  /**
+   * Gravity the astronaut is exposed to while the data is recorded. Mandatory context: in microgravity an accelerometer does not see gravity, so Earth and space IMU data are not directly comparable.
+   */
+  gravity_environment: "earth_1g" | "microgravity" | "moon_0_16g" | "mars_0_38g";
+}
+/**
+ * Number of assessments per level in one period.
+ */
+export interface LevelCounts {
+  green: number;
+  amber: number;
+  red: number;
+  /**
+   * Level of the most recent assessment of the period, or null when the period has no assessments.
+   */
+  latest: ("green" | "amber" | "red") | null;
+}
+/**
+ * Mean of a score in each period and delta = b - a. null when a period has no assessments.
+ */
+export interface ScoreComparison {
+  a: number | null;
+  b: number | null;
+  /**
+   * b - a, in [-1, 1]; null if a or b is null.
+   */
+  delta: number | null;
 }
 /**
  * Gateway answer to a command, published QoS 1 on .../device/{device_id}/ack. A command normally gets 'accepted' first and 'completed' (or 'failed') later; rejected is final.

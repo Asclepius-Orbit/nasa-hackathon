@@ -15,6 +15,7 @@ from spine_contracts import (
     BaselineRequest,
     ClockSync,
     CommandAck,
+    ComparePeriods,
     DailyContext,
     DeviceStatus,
     ErrorResponse,
@@ -68,6 +69,7 @@ PARSERS = {
     "app/session-list": SessionList.model_validate,
     "app/self-report-list": SelfReportList.model_validate,
     "app/error": AppErrorResponse.model_validate,
+    "mcp/compare-periods": ComparePeriods.model_validate,
 }
 
 # RFC 9457 problem details carry no schema_version

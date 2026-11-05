@@ -14,3 +14,18 @@ Two project skills in `.claude/skills/` drive PR review with subagents:
 - `receive-review`: applies the requested changes on a PR. It triages each comment against the code, rebases onto `develop`, applies fixes with TDD, fixes failing CI, re-runs the quality gate, pushes with `--force-with-lease`, resolves threads and re-requests review.
 
 Both ask for confirmation before publishing, committing or pushing, and never add Claude attribution.
+
+## Third-party skills and tooling
+
+Vendored skills in `.claude/skills/` (provenance and licences in `.claude/skills/THIRD_PARTY.md`):
+
+- `mcp-builder`: designing MCP servers and their evals (for `mcp_server`).
+- `property-based-testing`: Hypothesis properties for `physiology` and `engine`.
+- `modern-python`: uv and ruff conventions. Its advice to use `ty` does not apply: this repo type-checks with pyright.
+- `async-python-patterns`, `python-testing-patterns`, `python-type-safety`: asyncio, pytest and typing references.
+
+The project `.mcp.json` registers Context7 (pinned version) so Claude Code can look up current docs for FastAPI, aiomqtt, the `mcp` SDK, numpy and pydantic. It sends the queries to Upstash.
+
+`.claude/skills/ROUTING.md` maps each kind of task to the skills that apply. `implement-feature`, `tdd-workflow`, `review-pr` and `receive-review` use it to name those skills in the subagent prompts.
+
+New dependencies: `pint` (units, in `physiology`), `pydantic-evals` (dev, for agent evals), and `vitest` and `uplot` (dev, in `app/ui`).

@@ -15,6 +15,14 @@ uv run spine-mcp-server          # o: uv run python -m spine_mcp_server
 uv run pytest mcp_server         # tests
 ```
 
+### Depurar con MCP Inspector
+
+UI interactiva para llamar a las herramientas y leer sus esquemas. Se ejecuta bajo demanda con `npx` y no es una dependencia del proyecto. Mantenla ligada a localhost.
+
+```bash
+npx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
+```
+
 ## Herramientas
 
 | Herramienta | Parámetros | Devuelve (esquema del contrato) |

@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "period_a": {
+    "from": "2027-02-02T00:00:00Z",
+    "to": "2027-02-09T23:59:59Z",
+    "assessments_count": 4,
+    "feature_sets_count": 6,
+    "truncated": false
+  },
+  "period_b": {
+    "from": "2027-02-10T00:00:00Z",
+    "to": "2027-02-17T23:59:59Z",
+    "assessments_count": 5,
+    "feature_sets_count": 7,
+    "truncated": false
+  },
+  "features": [
+    {
+      "feature_id": "emg.latissimus_dorsi.left.rms_pct_mvc",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "microgravity",
+      "unit": "%",
+      "a": { "n": 40, "mean": 47.0, "median": 46.5 },
+      "b": { "n": 50, "mean": 52.4, "median": 52.0 },
+      "delta_mean": 5.4,
+      "delta_median": 5.5
+    },
+    {
+      "feature_id": "imu.l3.sagittal.rom_deg",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "microgravity",
+      "unit": "deg",
+      "a": { "n": 40, "mean": 31.0, "median": 30.8 },
+      "b": { "n": 50, "mean": 28.2, "median": 28.0 },
+      "delta_mean": -2.8,
+      "delta_median": -2.8
+    }
+  ],
+  "only_in_a": [
+    {
+      "feature_id": "emg.latissimus_dorsi.left.median_freq_hz",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "microgravity"
+    }
+  ],
+  "only_in_b": [
+    {
+      "feature_id": "stretch.lumbar.peak_elongation_mm",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "gravity_environment": "microgravity"
+    }
+  ],
+  "levels": {
+    "a": { "green": 3, "amber": 1, "red": 0, "latest": "green" },
+    "b": { "green": 2, "amber": 2, "red": 1, "latest": "amber" }
+  },
+  "scores": {
+    "risk_score": { "a": 0.21, "b": 0.38, "delta": 0.17 },
+    "confidence": { "a": 0.84, "b": 0.8, "delta": -0.04 },
+    "completeness": { "a": 0.9, "b": 0.86, "delta": -0.04 }
+  },
+  "warnings": []
+}

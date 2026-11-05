@@ -2,4 +2,4 @@
 
 # spine_monitor
 
-Workspace d'uv amb els paquets Python: `contracts`, `physiology`, `engine`, `mcp_server` i `agent`.
+Workspace d'uv amb els paquets Python: `contracts`, `physiology`, `engine`, `mcp_server`, `agent` i `backend`.

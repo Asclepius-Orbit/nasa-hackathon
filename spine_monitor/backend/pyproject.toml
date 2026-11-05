@@ -6,6 +6,8 @@ requires-python = ">=3.14.8,<3.15"
 dependencies = [
     "aiomqtt>=2.5.1",
     "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.16.1",
     "spine-contracts",
     "uvicorn[standard]>=0.54.0",
 ]

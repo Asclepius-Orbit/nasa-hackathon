@@ -2,4 +2,4 @@
 
 # spine_monitor
 
-Workspace de uv con los paquetes Python: `contracts`, `physiology`, `engine`, `mcp_server` y `agent`.
+Workspace de uv con los paquetes Python: `contracts`, `physiology`, `engine`, `mcp_server`, `agent` y `backend`.

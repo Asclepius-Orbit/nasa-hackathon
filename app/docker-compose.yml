@@ -28,13 +28,18 @@ services:
       dockerfile: spine_monitor/backend/Dockerfile
     image: spine-backend:dev
     environment:
-      MQTT_HOST: mosquitto
-      MQTT_PORT: "1883"
+      SPINE_APP_MQTT_HOST: mosquitto
+      SPINE_APP_MQTT_PORT: "1883"
+      SPINE_APP_ENGINE_URL: http://engine:8001
+    volumes:
+      - backend_data:/data
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
       mosquitto:
         condition: service_healthy
+      engine:
+        condition: service_started
     restart: unless-stopped
 
   simulator:
@@ -53,3 +58,6 @@ services:
         condition: service_healthy
     profiles: ["sim"]
     restart: unless-stopped
+
+volumes:
+  backend_data:

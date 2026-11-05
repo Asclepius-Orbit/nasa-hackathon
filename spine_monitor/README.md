@@ -2,4 +2,4 @@
 
 # spine_monitor
 
-uv workspace with the Python packages: `contracts`, `physiology`, `engine`, `mcp_server` and `agent`.
+uv workspace with the Python packages: `contracts`, `physiology`, `engine`, `mcp_server`, `agent` and `backend`.

@@ -36,6 +36,10 @@ Cada test lleva exactamente un marker de esta tabla; `conftest.py` pone `unit` p
 
 El engine ya se fuzzea con Schemathesis contra `contracts/openapi.yaml` (`engine/tests/test_contract_openapi_fuzz.py`); al implementar las APIs de backend y app, añadir el mismo test de Schemathesis.
 
+## Skills de apoyo
+
+Según lo que toque el cambio, carga también (tabla completa en `.claude/skills/ROUTING.md`): `property-based-testing` para invariantes y ida y vuelta (marker `property`), `python-testing-patterns` para fixtures y parametrización, `async-python-patterns` si hay asyncio, `python-type-safety` si pyright protesta. Este fichero manda sobre ellas en markers, dobles y umbrales.
+
 ## Dobles de test
 
 - Solo en las fronteras: HTTP, MQTT, reloj, aleatoriedad.

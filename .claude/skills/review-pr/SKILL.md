@@ -55,6 +55,8 @@ Lanza en UN mensaje tres subagentes con la plantilla `reviewer-prompt.md` (relle
 | Tests/TDD y umbrales | Sonnet medio | Un test por cambio de comportamiento, un marker de la tabla, dobles solo en fronteras, sin mockear lógica propia, sin bajar umbrales, sin `# pragma: no mutate` ni `# type: ignore` nuevos |
 | Seguridad | Sonnet medio; Opus alto si toca auth, secretos o red | Inyección, secretos en código/logs, validación de entrada, red, dependencias |
 
+**Skills por dimensión**: según los ficheros del diff, añade al prompt de cada revisor las skills pertinentes de `.claude/skills/ROUTING.md` como criterio de revisión (con la línea de la regla 3 de ese fichero): Tests/TDD con `property-based-testing` y `python-testing-patterns`; Corrección con `async-python-patterns` si hay asyncio y `python-type-safety` para tipado; cambios en `mcp_server` con `mcp-builder` (nombres, errores, esquemas de tools); UI con `impeccable` y `ui-ux-pro-max`. Sirven para detectar problemas, no para pedir cambios de estilo.
+
 Para PRs muy pequeñas puedes usar `caveman:cavecrew-reviewer` como apoyo, nunca como sustituto de las tres dimensiones.
 
 Cada hallazgo llega con `fichero:línea`, severidad (BLOQUEANTE / LEVE), evidencia y arreglo exacto si existe. Si una dimensión no devuelve resultado, relánzala: sin las tres no se aprueba.

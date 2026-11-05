@@ -81,6 +81,24 @@ def test_skipped_features_count_as_missing():
     assert completeness.score < 0.8
 
 
+def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
+    # The schema allows `skipped: null`; the completeness must read it as "none skipped".
+    req = request()
+    req.feature_sets[0].skipped = None
+
+    completeness = stub_pipeline().evaluate(req).completeness
+
+    assert completeness.score == 0.8
+
+
+def test_null_self_reports_mean_no_self_reports():
+    # The schema allows `self_reports: null`; based_on must list none instead of failing.
+    req = request()
+    req.self_reports = None
+
+    assert stub_pipeline().evaluate(req).based_on.self_report_ids == []
+
+
 def test_based_on_traces_the_inputs():
     based_on = stub_pipeline().evaluate(request()).based_on
 

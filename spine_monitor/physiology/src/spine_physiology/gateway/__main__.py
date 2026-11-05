@@ -10,7 +10,7 @@ from spine_physiology.gateway.settings import GatewaySettings
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    settings = GatewaySettings()  # los campos obligatorios vienen del entorno
+    settings = GatewaySettings()  # pyright: ignore[reportCallIssue]  # pydantic-settings: los campos obligatorios vienen del entorno
     # aiomqtt (paho) necesita add_reader/add_writer, que el bucle Proactor de Windows no tiene.
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     try:

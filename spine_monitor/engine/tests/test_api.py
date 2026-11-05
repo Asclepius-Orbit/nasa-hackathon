@@ -62,6 +62,19 @@ def test_baseline_is_built_from_the_feature_sets(client):
     assert {e["feature_id"] for e in body["entries"]} >= {"imu.l3.sagittal.rom_deg"}
 
 
+def test_baseline_entries_omit_protocol_id_when_the_feature_sets_have_none(client):
+    request = example("baseline-request")
+    for feature_set in request["feature_sets"]:
+        del feature_set["protocol_id"]
+
+    response = client.post("/baseline", json=request)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert all("protocol_id" not in entry for entry in body["entries"])
+    assert validation.errors("domain/baseline", body) == []
+
+
 def test_assess_returns_a_valid_assessment(client):
     response = client.post("/assess", json=example("assess-request"))
 
@@ -70,6 +83,18 @@ def test_assess_returns_a_valid_assessment(client):
     assert validation.errors("domain/assessment", body) == []
     assert body["astronaut_id"] == "AST-01"
     assert body["completeness"]["score"] == 0.8
+
+
+def test_assess_without_mission_day_omits_it_instead_of_sending_null(client):
+    request = example("assess-request")
+    del request["mission_day"]
+
+    response = client.post("/assess", json=request)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "mission_day" not in body
+    assert validation.errors("domain/assessment", body) == []
 
 
 def test_simulate_returns_a_hypothetical_pair(client):

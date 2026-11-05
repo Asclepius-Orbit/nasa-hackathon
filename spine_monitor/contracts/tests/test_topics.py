@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from spine_contracts import topics
 
 COMMON = json.loads((Path(__file__).resolve().parents[1] / "schemas" / "v1" / "common.schema.json").read_text(encoding="utf-8"))

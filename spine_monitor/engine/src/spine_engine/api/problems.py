@@ -8,7 +8,8 @@ PROBLEM_JSON = "application/problem+json"
 
 
 def problem(type_: Type, title: str, status: int, detail: str | None = None, errors: list[Error] | None = None) -> JSONResponse:
-    body = ErrorResponse(type=type_, title=title, status=status)
+    # Falso positivo de pyright: el modelo generado declara el default de `errors` como Field posicional.
+    body = ErrorResponse(type=type_, title=title, status=status)  # pyright: ignore[reportCallIssue]
     if detail is not None:
         body.detail = detail
     if errors:

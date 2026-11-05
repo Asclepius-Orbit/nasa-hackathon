@@ -53,3 +53,26 @@ services:
         condition: service_healthy
     profiles: ["sim"]
     restart: unless-stopped
+
+  quality:
+    build:
+      context: ..
+      dockerfile: spine_monitor/quality/Dockerfile
+    image: spine-quality:dev
+    # Shares mosquitto's network namespace so the tests' 127.0.0.1:1883 reaches the broker.
+    network_mode: "service:mosquitto"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    # The whole repo, not just spine_monitor: quality/mutation.sh needs .git to find the changed files.
+    # .git is remounted read-only: the gate only reads history.
+    volumes:
+      - ..:/work
+      - ../.git:/work/.git:ro
+    environment:
+      GATE_MUTATION: "${GATE_MUTATION:-off}"
+      MUTATION_BASE: "${MUTATION_BASE:-}"
+      MUTATION_PACKAGES: "${MUTATION_PACKAGES:-}"
+      MUTATION_MIN_SAMPLE: "${MUTATION_MIN_SAMPLE:-}"
+      SPINE_REQUIRE_BROKER: "1"
+    profiles: ["quality"]

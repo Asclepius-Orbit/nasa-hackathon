@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 from spine_contracts import GravityEnvironment, MissionPhase
-
 from spine_physiology.config import MissionConfig, load_config
 from spine_physiology.curves import PiecewiseLinear
-from spine_physiology.state import LatentModel, MissionTimeline
+from spine_physiology.rng import RngTree
+from spine_physiology.state import LatentModel, MissionTimeline, plan_daily_activity
 
 CONFIG = Path(__file__).parents[1] / "configs" / "example-mission.yaml"
 LATENT_NAMES = ("spine_elongation", "muscle_deconditioning", "rom_motor_control", "pain_stiffness")
@@ -43,7 +43,7 @@ def test_timeline(cfg):
     assert [d.segment_index for d in days] == [0] * 3 + [1] * 8 + [2] * 3
     assert [d.day_in_segment for d in days][:5] == [0, 1, 2, 0, 1]
     assert tl.day(13) is tl.days[13]
-    with pytest.raises(IndexError):
+    with pytest.raises(IndexError, match=r"^day index 14 out of range \[0, 14\)$"):
         tl.day(14)
     with pytest.raises(IndexError):
         tl.day(-1)
@@ -108,3 +108,39 @@ def test_activity_skips(cfg):
     assert act.exercise == () and act.exercise_min == 0.0
     assert act.planned_exercise_min > 0 and act.dose_ratio == 0.0
     assert make(cfg).activity("AST-01", 4).planned_exercise_min == act.planned_exercise_min
+
+
+def single_item_plan(cfg, *, planned_min, sd_min=0.0, adherence=1.0):
+    """Config con un único ejercicio y una única contramedida sin saltos en toda fase, y su miembro."""
+    inflight = MissionPhase.INFLIGHT
+    update = {"planned_min": planned_min, "sd_min": sd_min, "skip_probability": 0.0}
+    exercise = {p: [cfg.daily_context.exercise[inflight][0].model_copy(update=update)] for p in cfg.daily_context.exercise}
+    cms = {p: [cfg.daily_context.countermeasures[inflight][0].model_copy(update=update)] for p in cfg.daily_context.countermeasures}
+    daily = cfg.daily_context.model_copy(update={"exercise": exercise, "countermeasures": cms})
+    member = cfg.crew[0].model_copy(update={"exercise_adherence": adherence})
+    return cfg.model_copy(update={"daily_context": daily}), member
+
+
+def test_a_bout_of_zero_minutes_is_not_recorded_but_a_short_one_is(cfg):
+    day = MissionTimeline(cfg).day(0)
+    rng = RngTree(1).rng("AST-01", 0, "activity")
+    config, member = single_item_plan(cfg, planned_min=30.0, adherence=0.0)
+    none_done = plan_daily_activity(rng, config, member, day)
+    assert none_done.exercise == () and none_done.planned_exercise_min == 30.0
+    config, member = single_item_plan(cfg, planned_min=0.5)
+    short = plan_daily_activity(RngTree(1).rng("AST-01", 0, "activity"), config, member, day)
+    assert [b.duration_min for b in short.exercise] == [0.5]
+    assert [b.duration_min for b in short.countermeasures] == [0.5]
+
+
+def test_activity_is_computed_once_per_astronaut_day(cfg):
+    model = make(cfg)
+    assert model.activity("AST-01", 4) is model.activity("AST-01", 4)
+    assert model.activity("AST-01", 4) is not model.activity("AST-02", 4)
+
+
+def test_state_carries_its_day_and_the_days_dose_ratio(cfg):
+    model = make(cfg)
+    state = model.state("AST-01", 6)
+    assert state.day == 6 and state.astronaut_id == "AST-01"
+    assert state.dose_ratio == model.activity("AST-01", 6).dose_ratio

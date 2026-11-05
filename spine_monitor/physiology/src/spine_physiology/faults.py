@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 from spine_contracts import Quality, QualityFlag, StreamKind
+from spine_contracts.models.common_schema import AssessedBy
 
 from spine_physiology.config import ClockFaultConfig, PacketLossConfig, QualityFaultsConfig, RebootConfig, SignalsConfig
 
@@ -56,7 +57,7 @@ class QualityState:
     def to_contract(self) -> Quality:
         """Quality del contrato, evaluada por el gateway; flags en el orden del enum."""
         flags = [f for f in QualityFlag if f in self.flags]
-        return Quality(score=self.score, flags=flags, assessed_by="gateway")
+        return Quality(score=self.score, flags=flags, assessed_by=AssessedBy.GATEWAY)
 
 
 CLEAN = QualityState(1.0, frozenset())

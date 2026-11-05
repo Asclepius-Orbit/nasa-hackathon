@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from spine_contracts import ClockSync, topics, validation
-
 from spine_physiology.envelope import Envelope, EnvelopeKind
 
 AT = datetime(2026, 11, 1, 7, 0, tzinfo=UTC)

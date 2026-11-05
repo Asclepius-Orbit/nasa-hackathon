@@ -33,3 +33,9 @@ class AppSettings(BaseSettings):
 
     # The Oswestry is due when the last one is older than this many days.
     weekly_odi_interval_days: int = 7
+
+    # Read-only API: data older than this many hours is reported as `stale` in the status.
+    stale_assessment_hours: float = 24.0
+    stale_session_hours: float = 48.0
+    stale_self_report_hours: float = 36.0
+    stale_device_hours: float = 0.25

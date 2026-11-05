@@ -72,7 +72,8 @@ Edita l'schema, afegeix o actualitza el seu exemple, regenera, executa els tests
 - **Polfer:** el mòdul EMG dona el senyal cru o una envolvent? (les features espectrals necessiten cru). Fer servir pins ADC1 de l'ESP32 (l'ADC2 no funciona amb Bluetooth/WiFi). El format wearable→gateway és lliure; el contracte comença a MQTT.
 - **Freqüència de la IMU:** 100 Hz per defecte; 10 Hz es queda curta per a suavitat i velocitat de pic d'una repetició de ~2 s.
 - Sortides de les eines MCP: `compare_periods` té el seu propi schema, `mcp/compare-periods` (el calcula el servidor amb dues crides a `/history`); les altres eines MCP reutilitzen els schemas `app` i `engine`.
-- Encara sense cobrir: informe a Houston (FHIR/DTN), tipus TypeScript per a la UI (es poden generar dels mateixos schemas).
+- Els tipus TypeScript de la UI es generen d'aquests schemas a `app/ui/src/contracts/v1.ts` (`npm run gen:types` a `app/ui`; `npm run check:types` falla si no estan al dia). Regenera'ls després de qualsevol canvi de schema.
+- Encara sense cobrir: informe a Houston (FHIR/DTN).
 - Revisió: Andreea. Validació semàntica: Aguado.
 
 ## Limitacions conegudes

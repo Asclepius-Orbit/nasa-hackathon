@@ -28,7 +28,7 @@ SQLite, envia les comandes que guien el protocol i crida el motor, que no té es
 
 ## API de la UI (`/ui`, `api.py`)
 Costat d'escriptura per a la UI. Separada de l'API de només lectura de `contracts/app-openapi.yaml`
-que fa servir el servidor MCP. L'app omple ids, `schema_version`, instants i `source`, i valida
+que fa servir el servidor MCP (vegeu més avall). L'app omple ids, `schema_version`, instants i `source`, i valida
 l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
 
 | Mètode | Ruta | Què |
@@ -45,6 +45,29 @@ l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu |
 | GET | `/ui/commands/{command_id}` | Estat de la comanda i els seus acks (la UI el consulta per passar al pas següent) |
 | GET | `/health` | Vida, connexió MQTT i comptadors de missatges |
+
+## API de només lectura per al servidor MCP (`readonly.py`)
+`contracts/app-openapi.yaml`, servida per una app FastAPI pròpia al port 8002 (servei `read-api` de
+compose), així el servidor MCP mai no arriba als endpoints d'escriptura `/ui`. Obre la mateixa SQLite amb
+`PRAGMA query_only`: només `GET`, i la connexió no pot escriure.
+
+- `/crew/{astronaut_id}/status` (`get_current_status`): última avaluació, sessió i autoinforme,
+  dispositius, baseline activa i frescor. El que falta és `null` amb `stale: true`; els llindars són
+  `SPINE_APP_STALE_*_HOURS`.
+- `/crew/{astronaut_id}/history?from&to&limit` (`get_history`, i dues vegades per a `compare_periods`):
+  feature sets per l'inici de la seva sessió, avaluacions per `as_of`.
+- `/assessments/{assessment_id}/explanation` (`explain_assessment`): l'avaluació amb les seves entrades de
+  baseline (només dels drivers), feature sets i autoinformes resolts; el que ja no existeix va a
+  `unresolved`.
+- Recursos: una avaluació, sessió (només les que es van executar), feature set d'una sessió, autoinforme o
+  baseline, i llistes d'avaluacions, sessions i autoinformes d'una finestra.
+- Les finestres són inclusives, RFC 3339 amb offset; `to` anterior a `from` és `invalid_range`. Les
+  llistes van de més antic a més recent, acotades per `limit` (1-500, per defecte 100), conservant el més
+  recent i marcant `truncated`.
+- Un astronauta o entitat desconeguts donen `404 not_found`; els errors són problem details d'`app/error`.
+- Es prova contra el contracte amb `openapi_drift` i es fuzzeja amb Schemathesis.
+
+Engegar-la sola: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
 
 ## Engegar-la
 ```

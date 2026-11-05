@@ -21,5 +21,6 @@ Notes:
 - `ui-ux-pro-max` runs a local Python search over its CSV data (no network). Its commands use
   `${CLAUDE_PLUGIN_ROOT}`, which is only set for plugins: as a project skill, run
   `.claude/skills/ui-ux-pro-max/scripts/search.py` from the repository root.
+- `mcp-builder/reference` documenta servidores Node con `npm`/`npx`; este repo usa solo pnpm (`pnpm install`, `pnpm run`, `pnpm dlx`) y su servidor MCP es Python.
 - Trail of Bits skills are CC-BY-SA-4.0: keep the attribution and the licence file, and share changes under the same licence. Only the skill folder was copied; the plugin's hooks (pip/python/uv shims) and evals were not.
 - `modern-python` recommends `ty` and prek; this repo uses pyright, so ignore that advice. `mcp-builder/scripts` needs `anthropic` and `mcp` (not installed by default).

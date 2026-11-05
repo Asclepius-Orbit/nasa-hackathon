@@ -26,6 +26,10 @@ Vendored skills in `.claude/skills/` (provenance and licences in `.claude/skills
 
 The project `.mcp.json` registers Context7 (pinned version) so Claude Code can look up current docs for FastAPI, aiomqtt, the `mcp` SDK, numpy and pydantic. It sends the queries to Upstash.
 
+Project skills for the domain: `physiology-engine`, `contract-first`, `agent-evals`, `mqtt-dev` and `mcp-tool-change`.
+
 `.claude/skills/ROUTING.md` maps each kind of task to the skills that apply. `implement-feature`, `tdd-workflow`, `review-pr` and `receive-review` use it to name those skills in the subagent prompts.
+
+Node tooling uses pnpm only (`pnpm install`, `pnpm run`, `pnpm dlx`); never npm or npx. The lockfile is `app/ui/pnpm-lock.yaml`.
 
 New dependencies: `pint` (units, in `physiology`), `pydantic-evals` (dev, for agent evals), and `vitest` and `uplot` (dev, in `app/ui`).

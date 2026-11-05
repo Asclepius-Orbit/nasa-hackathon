@@ -209,6 +209,7 @@ def test_ports_expose_only_read_or_simulate_methods():
     forbidden = ("write", "update", "delete", "create", "set", "put", "post", "patch", "remove", "insert", "save")
     expected = {AppReader: {"get_status", "get_history", "get_explanation"}, Simulator: {"simulate"}, AssessBaseSource: {"get_base"}}
     for port, names in expected.items():
-        public = {n for n, _ in inspect.getmembers(port, inspect.isfunction) if not n.startswith("_")}
+        # mutmut añade a la clase copias renombradas de cada método (`x…__mutmut_orig`, `__mutmut_1`...): no son parte del puerto.
+        public = {n for n, _ in inspect.getmembers(port, inspect.isfunction) if not n.startswith("_") and "__mutmut" not in n}
         assert public == names
         assert not [n for n in public if n.startswith(forbidden)]

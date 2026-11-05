@@ -17,10 +17,10 @@ uv run pytest mcp_server         # tests
 
 ### Debug with the MCP Inspector
 
-Interactive UI to call the tools and read their schemas. It runs on demand through `npx` and is not a project dependency. Keep it bound to localhost.
+Interactive UI to call the tools and read their schemas. It runs on demand through `pnpm dlx` and is not a project dependency. Keep it bound to localhost.
 
 ```bash
-npx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
+pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 ```
 
 ## Tools

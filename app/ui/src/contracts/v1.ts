@@ -1,7 +1,7 @@
 /* eslint-disable */
 /**
  * Generated from spine_monitor/contracts/schemas/v1 by scripts/generate-contract-types.mjs.
- * Do not edit by hand: run `npm run gen:types`.
+ * Do not edit by hand: run `pnpm run gen:types`.
  */
 
 /**

@@ -17,10 +17,10 @@ uv run pytest mcp_server         # tests
 
 ### Depurar amb MCP Inspector
 
-UI interactiva per cridar les eines i llegir-ne els esquemes. S'executa sota demanda amb `npx` i no és una dependència del projecte. Mantén-la lligada a localhost.
+UI interactiva per cridar les eines i llegir-ne els esquemes. S'executa sota demanda amb `pnpm dlx` i no és una dependència del projecte. Mantén-la lligada a localhost.
 
 ```bash
-npx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
+pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 ```
 
 ## Eines

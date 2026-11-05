@@ -12,5 +12,6 @@
     "typescript": "^5.9.3",
     "uplot": "1.6.32",
     "vitest": "5.1.0"
-  }
+  },
+  "packageManager": "pnpm@11.18.0"
 }

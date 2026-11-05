@@ -105,5 +105,22 @@ services:
       SPINE_REQUIRE_BROKER: "1"
     profiles: ["quality"]
 
+  ui-quality:
+    # Gate of app/ui (pnpm check). The repo is mounted whole: check:types reads spine_monitor/contracts/schemas/v1.
+    # node_modules lives in a named volume so the host's (Windows) one is never reused across platforms.
+    build:
+      context: ..
+      dockerfile: app/ui/quality.Dockerfile
+    image: spine-ui-quality:dev
+    working_dir: /work/app/ui
+    volumes:
+      - ..:/work
+      - ui_node_modules:/work/app/ui/node_modules
+    environment:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    command: ["sh", "-c", "pnpm install --frozen-lockfile && pnpm check"]
+    profiles: ["quality"]
+
 volumes:
   backend_data:
+  ui_node_modules:

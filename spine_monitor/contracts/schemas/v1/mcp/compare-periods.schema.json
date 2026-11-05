@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/mcp/compare-periods.schema.json",
+  "title": "ComparePeriods",
+  "description": "Output of the MCP tool compare_periods. The MCP server calls GET /crew/{astronaut_id}/history twice (period A, period B) and computes this comparison; there is no HTTP endpoint for it. Every delta is B minus A (positive means B is higher than A; whether higher is better or worse depends on the feature). Absence is never good news: a missing value is null, never omitted and never 0. Check warnings before interpreting the numbers.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "period_a": { "$ref": "#/$defs/period" },
+    "period_b": { "$ref": "#/$defs/period" },
+    "features": {
+      "description": "Features present in BOTH periods, one entry per (feature_id, protocol_id, gravity_environment). Only the same protocol and the same gravity are comparable, so they are part of the key.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/feature_comparison" }
+    },
+    "only_in_a": {
+      "description": "Keys with data in period A only: the feature disappeared or was not measured in period B. Not a comparison.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/feature_key" }
+    },
+    "only_in_b": {
+      "description": "Keys with data in period B only: the feature is new or was not measured in period A. Not a comparison.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/feature_key" }
+    },
+    "levels": {
+      "description": "Assessment levels per period.",
+      "type": "object",
+      "properties": {
+        "a": { "$ref": "#/$defs/level_counts" },
+        "b": { "$ref": "#/$defs/level_counts" }
+      },
+      "required": ["a", "b"],
+      "additionalProperties": false
+    },
+    "scores": {
+      "description": "Mean of each assessment score per period, on [0, 1], and delta = b - a. A value is null when the period has no assessments (and delta is null if either side is null).",
+      "type": "object",
+      "properties": {
+        "risk_score": { "$ref": "#/$defs/score_comparison" },
+        "confidence": { "$ref": "#/$defs/score_comparison" },
+        "completeness": { "$ref": "#/$defs/score_comparison" }
+      },
+      "required": ["risk_score", "confidence", "completeness"],
+      "additionalProperties": false
+    },
+    "warnings": {
+      "description": "Reasons the comparison may be incomplete or misleading. period_a_empty / period_b_empty: the period has no data. period_a_truncated / period_b_truncated: the history had more items than the limit and only the most recent were used, so the period is partly missing. unit_mismatch: the same key had different units in the two periods and was left out of features.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["period_a_empty", "period_b_empty", "period_a_truncated", "period_b_truncated", "unit_mismatch"]
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "period_a", "period_b", "features", "only_in_a", "only_in_b", "levels", "scores", "warnings"],
+  "additionalProperties": false,
+  "$defs": {
+    "period": {
+      "description": "One compared time window and how much data it had.",
+      "type": "object",
+      "properties": {
+        "from": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "to": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "assessments_count": { "description": "Assessments found in the window.", "type": "integer", "minimum": 0 },
+        "feature_sets_count": { "description": "Feature sets found in the window.", "type": "integer", "minimum": 0 },
+        "truncated": { "description": "True if the history was cut at its limit and only the most recent items were kept.", "type": "boolean" }
+      },
+      "required": ["from", "to", "assessments_count", "feature_sets_count", "truncated"],
+      "additionalProperties": false
+    },
+    "feature_key": {
+      "description": "Comparison key of a feature: values are comparable only with the same feature, protocol and gravity.",
+      "type": "object",
+      "properties": {
+        "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+        "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+        "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" }
+      },
+      "required": ["feature_id", "protocol_id", "gravity_environment"],
+      "additionalProperties": false
+    },
+    "feature_stats": {
+      "description": "Statistics of one feature in one period, in the unit of the feature.",
+      "type": "object",
+      "properties": {
+        "n": { "description": "Number of feature values aggregated.", "type": "integer", "minimum": 0 },
+        "mean": { "description": "Mean of the values, in the feature unit.", "type": "number" },
+        "median": { "description": "Median of the values, in the feature unit.", "type": "number" }
+      },
+      "required": ["n", "mean", "median"],
+      "additionalProperties": false
+    },
+    "feature_comparison": {
+      "description": "One feature measured in both periods. delta = b - a, in the feature unit.",
+      "type": "object",
+      "properties": {
+        "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+        "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+        "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" },
+        "unit": { "description": "Unit of every number of this entry (e.g. %, deg, mm, Hz).", "type": "string", "maxLength": 16 },
+        "a": { "$ref": "#/$defs/feature_stats" },
+        "b": { "$ref": "#/$defs/feature_stats" },
+        "delta_mean": { "description": "b.mean - a.mean, in the feature unit.", "type": "number" },
+        "delta_median": { "description": "b.median - a.median, in the feature unit.", "type": "number" }
+      },
+      "required": ["feature_id", "protocol_id", "gravity_environment", "unit", "a", "b", "delta_mean", "delta_median"],
+      "additionalProperties": false
+    },
+    "level_counts": {
+      "description": "Number of assessments per level in one period.",
+      "type": "object",
+      "properties": {
+        "green": { "type": "integer", "minimum": 0 },
+        "amber": { "type": "integer", "minimum": 0 },
+        "red": { "type": "integer", "minimum": 0 },
+        "latest": {
+          "description": "Level of the most recent assessment of the period, or null when the period has no assessments.",
+          "oneOf": [{ "$ref": "../common.schema.json#/$defs/level" }, { "type": "null" }]
+        }
+      },
+      "required": ["green", "amber", "red", "latest"],
+      "additionalProperties": false
+    },
+    "score_comparison": {
+      "description": "Mean of a score in each period and delta = b - a. null when a period has no assessments.",
+      "type": "object",
+      "properties": {
+        "a": { "oneOf": [{ "$ref": "../common.schema.json#/$defs/unit_interval" }, { "type": "null" }] },
+        "b": { "oneOf": [{ "$ref": "../common.schema.json#/$defs/unit_interval" }, { "type": "null" }] },
+        "delta": { "description": "b - a, in [-1, 1]; null if a or b is null.", "oneOf": [{ "type": "number", "minimum": -1, "maximum": 1 }, { "type": "null" }] }
+      },
+      "required": ["a", "b", "delta"],
+      "additionalProperties": false
+    }
+  }
+}

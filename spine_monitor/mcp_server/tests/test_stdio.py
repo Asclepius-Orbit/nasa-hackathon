@@ -9,7 +9,7 @@ from mcp.client.client import Client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from spine_contracts.validation import validate
 
-TOOLS = {"get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario"}
+TOOLS = {"get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports"}
 TIMEOUT_SECONDS = 30
 
 
@@ -20,7 +20,7 @@ def anyio_backend() -> str:
 
 @pytest.mark.integration
 @pytest.mark.anyio
-async def test_stdio_server_lists_the_five_tools_and_answers_get_current_status():
+async def test_stdio_server_lists_the_seven_tools_and_answers_get_current_status():
     params = StdioServerParameters(command=sys.executable, args=["-m", "spine_mcp_server"])
     # El stderr del servidor se descarta: el predeterminado (`sys.stderr`) puede estar cerrado bajo la captura de pytest o de mutmut.
     with anyio.fail_after(TIMEOUT_SECONDS), open(os.devnull, "w") as errlog:

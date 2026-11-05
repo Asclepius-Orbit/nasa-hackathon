@@ -1,4 +1,4 @@
-"""Tests del servidor MCP: las 5 herramientas, en proceso (`Client` sobre `MCPServer`), contra puertos falsos y los mocks de ejemplo."""
+"""Tests del servidor MCP: las 7 herramientas, en proceso (`Client` sobre `MCPServer`), contra puertos falsos y los mocks de ejemplo."""
 
 import json
 from datetime import UTC, datetime
@@ -8,7 +8,7 @@ import pytest
 from mcp.client.client import Client
 from mcp.server.mcpserver import MCPServer
 from mcp.types import CallToolResult, TextContent, Tool
-from spine_contracts import SCHEMA_VERSION, AssessRequest, Explanation, History, SimulateRequest, SimulateResponse, Status, dump
+from spine_contracts import SCHEMA_VERSION, AssessRequest, Explanation, History, SelfReportList, SessionList, SimulateRequest, SimulateResponse, Status, dump
 from spine_contracts.validation import validate
 from spine_mcp_server import main
 from spine_mcp_server.errors import UpstreamError
@@ -17,7 +17,7 @@ from spine_mcp_server.server import create_server
 
 AST = "AST-01"
 ASSESSMENT_ID = "a55e55e0-0000-4000-8000-0000000000a1"
-TOOLS = {"get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario"}
+TOOLS = {"get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports"}
 WIDE = {"start": "2027-01-01T00:00:00Z", "end": "2027-03-01T00:00:00Z"}
 WIDE_PERIODS = {"a_start": WIDE["start"], "a_end": WIDE["end"], "b_start": WIDE["start"], "b_end": WIDE["end"]}
 OVERRIDE = {"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "add", "value": 5}
@@ -50,6 +50,14 @@ class RecordingApp:
             return self._second_history
         return history
 
+    def get_sessions(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SessionList:
+        self.calls.append(("get_sessions", (astronaut_id, from_, to, limit)))
+        return self._inner.get_sessions(astronaut_id, from_, to, limit)
+
+    def get_self_reports(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SelfReportList:
+        self.calls.append(("get_self_reports", (astronaut_id, from_, to, limit)))
+        return self._inner.get_self_reports(astronaut_id, from_, to, limit)
+
     def get_explanation(self, assessment_id: str) -> Explanation:
         self.calls.append(("get_explanation", (assessment_id,)))
         return self._inner.get_explanation(assessment_id)
@@ -79,6 +87,12 @@ class FailingApp:
         raise UpstreamError(503, "Boom", "it broke")
 
     def get_history(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> History:
+        raise UpstreamError(503, "Boom", "it broke")
+
+    def get_sessions(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SessionList:
+        raise UpstreamError(503, "Boom", "it broke")
+
+    def get_self_reports(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SelfReportList:
         raise UpstreamError(503, "Boom", "it broke")
 
     def get_explanation(self, assessment_id: str) -> Explanation:
@@ -126,6 +140,8 @@ def _data(result: CallToolResult) -> dict[str, Any]:
 CALLS: list[tuple[str, dict[str, Any], str]] = [
     ("get_current_status", {"astronaut_id": AST}, "app/status"),
     ("get_history", {"astronaut_id": AST} | WIDE, "app/history"),
+    ("get_sessions", {"astronaut_id": AST} | WIDE, "app/session-list"),
+    ("get_self_reports", {"astronaut_id": AST} | WIDE, "app/self-report-list"),
     ("compare_periods", {"astronaut_id": AST} | WIDE_PERIODS, "mcp/compare-periods"),
     ("explain_assessment", {"assessment_id": ASSESSMENT_ID}, "app/explanation"),
     ("simulate_scenario", {"astronaut_id": AST, "overrides": [OVERRIDE], "project_days": 30}, "engine/simulate-response"),
@@ -136,7 +152,7 @@ CALLS: list[tuple[str, dict[str, Any], str]] = [
 
 
 @pytest.mark.anyio
-async def test_lists_exactly_the_five_tools():
+async def test_lists_exactly_the_seven_tools():
     assert set(await _tools(_server())) == TOOLS
 
 
@@ -183,6 +199,8 @@ async def test_parameter_names_and_required_ones():
     expected = {
         "get_current_status": ({"astronaut_id"}, {"astronaut_id"}),
         "get_history": ({"astronaut_id", "start", "end", "limit"}, {"astronaut_id", "start", "end"}),
+        "get_sessions": ({"astronaut_id", "start", "end", "limit"}, {"astronaut_id", "start", "end"}),
+        "get_self_reports": ({"astronaut_id", "start", "end", "limit"}, {"astronaut_id", "start", "end"}),
         "compare_periods": ({"astronaut_id", "a_start", "a_end", "b_start", "b_end"}, {"astronaut_id", "a_start", "a_end", "b_start", "b_end"}),
         "explain_assessment": ({"assessment_id"}, {"assessment_id"}),
         "simulate_scenario": ({"astronaut_id", "overrides", "project_days"}, {"astronaut_id", "overrides"}),
@@ -259,6 +277,58 @@ async def test_get_history_accepts_the_limit_bounds(limit: int):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("name", ["get_sessions", "get_self_reports"])
+async def test_list_tool_limit_schema_is_1_to_500_default_100(name: str):
+    limit = (await _tools(_server()))[name].input_schema["properties"]["limit"]
+    assert (limit["minimum"], limit["maximum"], limit["default"]) == (1, 500, 100)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("name", ["get_sessions", "get_self_reports"])
+async def test_list_tool_passes_the_window_and_limit_to_the_port_and_returns_from_and_to(name: str):
+    app = RecordingApp()
+    data = _data(await _call(_server(app=app), name, {"astronaut_id": AST, "start": WIDE["start"], "end": WIDE["end"], "limit": 7}))
+    assert app.calls == [(name, (AST, datetime(2027, 1, 1, tzinfo=UTC), datetime(2027, 3, 1, tzinfo=UTC), 7))]
+    assert data["from"] == "2027-01-01T00:00:00Z"
+    assert data["to"] == "2027-03-01T00:00:00Z"
+    assert data["limit"] == 7
+    assert "from_" not in data
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("name", ["get_sessions", "get_self_reports"])
+async def test_list_tool_default_limit_is_100(name: str):
+    app = RecordingApp()
+    await _call(_server(app=app), name, {"astronaut_id": AST} | WIDE)
+    assert app.calls[0][1][3] == 100
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("name", ["get_sessions", "get_self_reports"])
+@pytest.mark.parametrize("limit", [1, 500])
+async def test_list_tool_accepts_the_limit_bounds(name: str, limit: int):
+    app = RecordingApp()
+    _data(await _call(_server(app=app), name, {"astronaut_id": AST, "limit": limit} | WIDE))
+    assert app.calls[0][1][3] == limit
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("name", ["get_sessions", "get_self_reports"])
+@pytest.mark.parametrize("limit", [0, 501, -1])
+async def test_list_tool_rejects_a_limit_out_of_range(name: str, limit: int):
+    app = RecordingApp()
+    assert _text(await _call(_server(app=app), name, {"astronaut_id": AST, "limit": limit} | WIDE))
+    assert app.calls == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("name", ["get_sessions", "get_self_reports"])
+async def test_list_tool_end_before_start_is_an_invalid_range_tool_error(name: str):
+    text = _text(await _call(_server(), name, {"astronaut_id": AST, "start": WIDE["end"], "end": WIDE["start"]}))
+    assert "invalid_range" in text
+
+
+@pytest.mark.anyio
 async def test_explain_assessment_returns_the_explanation():
     data = _data(await _call(_server(), "explain_assessment", {"assessment_id": ASSESSMENT_ID}))
     assert data["assessment"]["assessment_id"] == ASSESSMENT_ID
@@ -332,6 +402,8 @@ async def test_compare_periods_is_a_tool_error_when_histories_belong_to_differen
     [
         ("get_current_status", {"astronaut_id": "AST-99"}, "Astronaut not found"),
         ("get_history", {"astronaut_id": "AST-99"} | WIDE, "Astronaut not found"),
+        ("get_sessions", {"astronaut_id": "AST-99"} | WIDE, "Astronaut not found"),
+        ("get_self_reports", {"astronaut_id": "AST-99"} | WIDE, "Astronaut not found"),
         ("explain_assessment", {"assessment_id": "00000000-0000-4000-8000-000000000000"}, "Assessment not found"),
         ("simulate_scenario", {"astronaut_id": "AST-99", "overrides": [OVERRIDE]}, "Astronaut not found"),
         ("compare_periods", {"astronaut_id": "AST-99"} | WIDE_PERIODS, "Astronaut not found"),
@@ -417,6 +489,9 @@ async def test_read_tools_only_call_their_own_read_method():
     assert [name for name, _ in app.calls] == ["get_status", "get_explanation"]
     await _call(server, "get_history", {"astronaut_id": AST} | WIDE)
     assert [name for name, _ in app.calls] == ["get_status", "get_explanation", "get_history"]
+    await _call(server, "get_sessions", {"astronaut_id": AST} | WIDE)
+    await _call(server, "get_self_reports", {"astronaut_id": AST} | WIDE)
+    assert [name for name, _ in app.calls][3:] == ["get_sessions", "get_self_reports"]
 
 
 @pytest.mark.anyio
@@ -430,7 +505,7 @@ async def test_simulate_scenario_does_not_touch_the_app_port():
 
 
 @pytest.mark.anyio
-async def test_main_serves_the_five_tools_over_stdio(monkeypatch: pytest.MonkeyPatch):
+async def test_main_serves_the_seven_tools_over_stdio(monkeypatch: pytest.MonkeyPatch):
     # La frontera es el transporte: se sustituye `run` (que bloquearía leyendo stdin) y se comprueba qué servidor y transporte se arrancan.
     started: list[tuple[MCPServer, str]] = []
     monkeypatch.setattr(MCPServer, "run", lambda self, transport="stdio": started.append((self, transport)))

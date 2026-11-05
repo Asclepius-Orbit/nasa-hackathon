@@ -1,4 +1,4 @@
-"""Servidor MCP de Asclepius Orbit: 5 herramientas de solo lectura sobre la salud lumbar de un astronauta.
+"""Servidor MCP de Asclepius Orbit: 7 herramientas de solo lectura sobre la salud lumbar de un astronauta.
 
 Las descripciones y los nombres de herramientas y parámetros están en inglés a propósito: los lee un LLM pequeño
 local, así que dicen con precisión qué devuelven, que los datos pueden faltar (null) y que nunca diagnostican.
@@ -13,7 +13,18 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import AwareDatetime, BaseModel, Field
-from spine_contracts import SCHEMA_VERSION, ComparePeriods, Explanation, History, SimulateRequest, SimulateResponse, Status, dump
+from spine_contracts import (
+    SCHEMA_VERSION,
+    ComparePeriods,
+    Explanation,
+    History,
+    SelfReportList,
+    SessionList,
+    SimulateRequest,
+    SimulateResponse,
+    Status,
+    dump,
+)
 from spine_contracts.models.engine.simulate_request_schema import Override
 from spine_contracts.validation import errors
 
@@ -59,7 +70,7 @@ def _upstream_as_tool_errors() -> Iterator[None]:
 
 
 def create_server(app: AppReader, simulator: Simulator, base: AssessBaseSource) -> MCPServer:
-    """Servidor MCP con sus 5 herramientas, que solo hablan con el resto del sistema a través de los puertos dados."""
+    """Servidor MCP con sus 7 herramientas, que solo hablan con el resto del sistema a través de los puertos dados."""
     server = MCPServer("spine-mcp-server", instructions=INSTRUCTIONS)
 
     @server.tool(
@@ -94,6 +105,44 @@ def create_server(app: AppReader, simulator: Simulator, base: AssessBaseSource) 
         # `start`/`end` en vez de `from`/`to`: `from` es palabra reservada en Python. La salida conserva `from`/`to` (ver `dump`).
         with _upstream_as_tool_errors():
             return _result(app.get_history(astronaut_id, start, end, limit))
+
+    @server.tool(
+        name="get_sessions",
+        annotations=_READ_ONLY,
+        description=(
+            "List the sessions of one astronaut that started between two instants: exercise or test sessions with their protocol, device, mission context, "
+            "declared load, streams and events, oldest first, at most `limit`. `truncated` is true when more sessions existed than `limit` allowed "
+            "(the oldest are dropped). The window is echoed back as `from` and `to`. The list can be empty and values null or missing when there was no data. "
+            "It is raw monitoring evidence and never diagnoses a medical condition."
+        ),
+    )
+    def get_sessions(
+        astronaut_id: AstronautId,
+        start: Annotated[AwareDatetime, Field(description=_window("Start of the window (inclusive); sessions are matched by their start time"))],
+        end: Annotated[AwareDatetime, Field(description=_window("End of the window (inclusive); must not be before `start`"))],
+        limit: Annotated[int, Field(ge=1, le=MAX_HISTORY_LIMIT, description="Maximum sessions to return, from 1 to 500.")] = 100,
+    ) -> Annotated[CallToolResult, SessionList]:
+        with _upstream_as_tool_errors():
+            return _result(app.get_sessions(astronaut_id, start, end, limit))
+
+    @server.tool(
+        name="get_self_reports",
+        annotations=_READ_ONLY,
+        description=(
+            "List the self-reports of one astronaut (how the astronaut says they feel, for example pain or fatigue) made between two instants, "
+            "oldest first, at most `limit`. `truncated` is true when more self-reports existed than `limit` allowed (the oldest are dropped). "
+            "The window is echoed back as `from` and `to`. The list can be empty and values null or missing when nothing was reported. "
+            "They are subjective reports, not measurements, and this tool never diagnoses a medical condition."
+        ),
+    )
+    def get_self_reports(
+        astronaut_id: AstronautId,
+        start: Annotated[AwareDatetime, Field(description=_window("Start of the window (inclusive)"))],
+        end: Annotated[AwareDatetime, Field(description=_window("End of the window (inclusive); must not be before `start`"))],
+        limit: Annotated[int, Field(ge=1, le=MAX_HISTORY_LIMIT, description="Maximum self-reports to return, from 1 to 500.")] = 100,
+    ) -> Annotated[CallToolResult, SelfReportList]:
+        with _upstream_as_tool_errors():
+            return _result(app.get_self_reports(astronaut_id, start, end, limit))
 
     @server.tool(
         name="compare_periods",

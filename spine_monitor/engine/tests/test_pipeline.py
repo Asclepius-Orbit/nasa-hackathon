@@ -107,6 +107,21 @@ def test_based_on_traces_the_inputs():
     assert based_on.self_report_ids == ["5e1f0e90-0000-4000-8000-000000000001"]
 
 
+def test_based_on_lists_each_input_once():
+    # Regression (found by the Schemathesis fuzz): based_on ids are uniqueItems in the contract, but a
+    # request may repeat a self-report or carry two feature sets of the same session.
+    req = request()
+    assert req.self_reports
+    req.self_reports = [*req.self_reports, req.self_reports[0]]
+    req.feature_sets = [*req.feature_sets, req.feature_sets[0]]
+
+    assessment = stub_pipeline().evaluate(req)
+
+    assert assessment.based_on.session_ids == [INFLIGHT_SESSION]
+    assert assessment.based_on.self_report_ids == ["5e1f0e90-0000-4000-8000-000000000001"]
+    assert validation.errors("domain/assessment", dump(assessment)) == []
+
+
 # Fakes sin herencia: el pipeline solo depende de la forma (Protocol).
 class FakeBaseline:
     def __init__(self):

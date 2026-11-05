@@ -95,8 +95,9 @@ class AssessmentPipeline:
             based_on=BasedOn(
                 baseline_id=request.baseline.baseline_id,
                 baseline_version=request.baseline.version,
-                session_ids=[fs.session_id for fs in request.feature_sets if fs.session_id is not None],
-                self_report_ids=[report.report_id for report in request.self_reports or []],
+                # uniqueItems in the contract: a repeated input is listed once, in its first position.
+                session_ids=list(dict.fromkeys(fs.session_id for fs in request.feature_sets if fs.session_id is not None)),
+                self_report_ids=list(dict.fromkeys(report.report_id for report in request.self_reports or [])),
             ),
         )
         # `dump` emite lo que se fijó: un `mission_day=None` explícito saldría como null y el schema pide un entero.

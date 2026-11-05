@@ -4,7 +4,7 @@
 
 ## Descripció
 
-Servidor MCP (stdio) que exposa 5 eines de només lectura i simulació a l'agent LLM local. Mai no escriu dades, mai no toca la base de dades de l'app i mai no diagnostica. Avui funciona amb mocks construïts a partir dels exemples del contracte (`spine_monitor/contracts/examples/valid/`), darrere de tres Protocols (`AppReader`, `Simulator` i `AssessBaseSource` a `ports.py`) perquè els clients HTTP reals els puguin substituir més endavant.
+Servidor MCP (stdio) que exposa 7 eines de només lectura i simulació a l'agent LLM local. Mai no escriu dades, mai no toca la base de dades de l'app i mai no diagnostica. Avui funciona amb mocks construïts a partir dels exemples del contracte (`spine_monitor/contracts/examples/valid/`), darrere de tres Protocols (`AppReader`, `Simulator` i `AssessBaseSource` a `ports.py`) perquè els clients HTTP reals els puguin substituir més endavant.
 
 ## Execució
 
@@ -21,6 +21,8 @@ uv run pytest mcp_server         # tests
 |---|---|---|
 | `get_current_status` | `astronaut_id` | `app/status` |
 | `get_history` | `astronaut_id`, `start`, `end`, `limit=100` | `app/history` |
+| `get_sessions` | `astronaut_id`, `start`, `end`, `limit=100` | `app/session-list` |
+| `get_self_reports` | `astronaut_id`, `start`, `end`, `limit=100` | `app/self-report-list` |
 | `compare_periods` | `astronaut_id`, `a_start`, `a_end`, `b_start`, `b_end` | `mcp/compare-periods` |
 | `explain_assessment` | `assessment_id` | `app/explanation` |
 | `simulate_scenario` | `astronaut_id`, `overrides`, `project_days=None` | `engine/simulate-response` |
@@ -45,4 +47,3 @@ Una fallada de l'app o del motor (per exemple 404 no trobat o 422 rang no vàlid
 ## Fora de l'abast per ara
 
 - Clients HTTP reals, a l'espera de l'API de l'app (issue #17).
-- Llistat de sessions i autoinformes.

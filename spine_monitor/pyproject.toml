@@ -14,6 +14,7 @@ dev = [
     "pyright",
     "httpx",
     "mutmut>=3.8.1",
+    "pydantic-evals>=2.66.0",
 ]
 
 [tool.pytest.ini_options]

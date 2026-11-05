@@ -97,6 +97,29 @@ CREATE TABLE IF NOT EXISTS rejected_messages (
 );
 """
 
+# Stored in PRAGMA user_version. Bump it with any change to SCHEMA that an existing file would not get
+# from CREATE ... IF NOT EXISTS (new columns, changed tables).
+STORE_SCHEMA_VERSION = 1
+
+
+class IncompatibleDatabaseError(RuntimeError):
+    """The database file was written with another schema; it is refused before anything is changed."""
+
+
+def _expected_columns() -> dict[str, list[str]]:
+    scratch = sqlite3.connect(":memory:")
+    try:
+        scratch.executescript(SCHEMA)
+        return _columns(scratch)
+    finally:
+        scratch.close()
+
+
+def _columns(db: sqlite3.Connection) -> dict[str, list[str]]:
+    tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")]
+    return {table: [row[1] for row in db.execute(f"PRAGMA table_info({table})")] for table in tables}
+
+
 # At most this many invalid messages are kept, to diagnose without filling the disk.
 REJECTED_KEEP = 1000
 _REJECTED_PAYLOAD_MAX = 4096
@@ -144,11 +167,34 @@ class Store:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
+        try:
+            self._check_schema(path)
+        except IncompatibleDatabaseError:
+            self._db.close()
+            raise
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
         self._db.executescript(SCHEMA)
+        self._db.execute(f"PRAGMA user_version = {STORE_SCHEMA_VERSION}")
         if read_only:
             self._db.execute("PRAGMA query_only=ON")
+
+    def _check_schema(self, path: Path | str) -> None:
+        """A file of this schema (or empty) is accepted; anything else is refused untouched."""
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        if version > STORE_SCHEMA_VERSION:
+            raise IncompatibleDatabaseError(f"{path}: schema version {version} is newer than this app ({STORE_SCHEMA_VERSION})")
+        found = _columns(self._db)
+        if version == STORE_SCHEMA_VERSION or not found:
+            return
+        # Version 0 with tables: adopted only when every table is one of ours, with our columns.
+        expected = _expected_columns()
+        wrong = sorted(table for table, columns in found.items() if expected.get(table) != columns)
+        if wrong:
+            raise IncompatibleDatabaseError(
+                f"{path}: written by another version of the app (tables with another schema: {', '.join(wrong)}). "
+                "Move the file away or point SPINE_APP_DB_PATH to another one."
+            )
 
     def close(self) -> None:
         self._db.close()

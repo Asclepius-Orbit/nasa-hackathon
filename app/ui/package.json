@@ -1,0 +1,14 @@
+{
+  "name": "spine-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "gen:types": "node scripts/generate-contract-types.mjs",
+    "check:types": "node scripts/generate-contract-types.mjs --check && tsc --noEmit -p tsconfig.contracts.json"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0",
+    "typescript": "^5.9.3"
+  }
+}

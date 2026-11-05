@@ -71,7 +71,8 @@ Edita l'schema, afegeix o actualitza el seu exemple, regenera, executa els tests
 - **Aguado:** validar el catàleg de features (ids, unitats, `risk_direction`, rangs i les seves fonts); el conjunt reduït d'ítems de l'ODI; el protocol exacte de l'exercici (repeticions, càrrega, procediment de MVC) i la col·locació d'elèctrodes i IMU; el model del cordó (no és lineal i triga a recuperar-se, així que la longitud surt d'una corba mesurada).
 - **Polfer:** el mòdul EMG dona el senyal cru o una envolvent? (les features espectrals necessiten cru). Fer servir pins ADC1 de l'ESP32 (l'ADC2 no funciona amb Bluetooth/WiFi). El format wearable→gateway és lliure; el contracte comença a MQTT.
 - **Freqüència de la IMU:** 100 Hz per defecte; 10 Hz es queda curta per a suavitat i velocitat de pic d'una repetició de ~2 s.
-- Encara sense cobrir: els schemas de sortida de les eines MCP (es defineixen amb el servidor; `compare_periods` es calcula allà amb dues crides a `/history`), informe a Houston (FHIR/DTN), tipus TypeScript per a la UI (es poden generar dels mateixos schemas).
+- Sortides de les eines MCP: `compare_periods` té el seu propi schema, `mcp/compare-periods` (el calcula el servidor amb dues crides a `/history`); les altres eines MCP reutilitzen els schemas `app` i `engine`.
+- Encara sense cobrir: informe a Houston (FHIR/DTN), tipus TypeScript per a la UI (es poden generar dels mateixos schemas).
 - Revisió: Andreea. Validació semàntica: Aguado.
 
 ## Limitacions conegudes

@@ -71,7 +71,8 @@ Edit the schema, add or update its example, regenerate, run the tests, and tell 
 - **Aguado:** validate the feature catalog (ids, units, `risk_direction`, ranges and their sources); the reduced ODI item set; the exact exercise protocol (repetitions, load, MVC procedure) and electrode/IMU placement; the model of the stretch cord (it is non-linear and recovers slowly, so the length comes from a measured curve).
 - **Polfer:** does the EMG module output the raw signal or an envelope (spectral features need raw)? Use ADC1 pins on the ESP32 (ADC2 does not work with Bluetooth/WiFi). The wearable-to-gateway format is free; the contract starts at MQTT.
 - **IMU rate:** 100 Hz by default; 10 Hz is too low for smoothness and peak velocity of a ~2 s repetition.
-- Not covered yet: the output schemas of the MCP tools (defined with the server; `compare_periods` is computed there from two `/history` calls), the report to Houston (FHIR/DTN), TypeScript types for the UI (can be generated from the same schemas).
+- MCP tool outputs: `compare_periods` has its own schema, `mcp/compare-periods` (computed by the server from two `/history` calls); the other MCP tools reuse the `app` and `engine` schemas.
+- Not covered yet: the report to Houston (FHIR/DTN), TypeScript types for the UI (can be generated from the same schemas).
 - Review: Andreea. Semantic validation: Aguado.
 
 ## Known limitations

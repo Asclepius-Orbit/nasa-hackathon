@@ -68,6 +68,7 @@ from spine_contracts.models.engine.error_schema import ErrorResponse
 from spine_contracts.models.engine.features_request_schema import FeaturesRequest
 from spine_contracts.models.engine.simulate_request_schema import SimulateRequest
 from spine_contracts.models.engine.simulate_response_schema import SimulateResponse
+from spine_contracts.models.mcp.compare_periods_schema import ComparePeriods
 from spine_contracts.models.telemetry.clock_sync_schema import ClockSync
 from spine_contracts.models.telemetry.command_ack_schema import CommandAck
 from spine_contracts.models.telemetry.command_schema import (
@@ -97,6 +98,7 @@ __all__ = [
     "ClockSync",
     "Command",
     "CommandAck",
+    "ComparePeriods",
     "Completeness",
     "DailyContext",
     "DailySelfReport",

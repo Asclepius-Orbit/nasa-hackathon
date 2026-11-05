@@ -9,7 +9,16 @@ from datetime import datetime
 from pathlib import Path
 
 import spine_contracts
-from spine_contracts import AssessRequest, Explanation, History, SimulateRequest, SimulateResponse, Status
+from spine_contracts import (
+    AssessRequest,
+    Explanation,
+    History,
+    SelfReportList,
+    SessionList,
+    SimulateRequest,
+    SimulateResponse,
+    Status,
+)
 
 from spine_mcp_server.errors import UpstreamError
 
@@ -25,15 +34,24 @@ def _not_found(what: str, key: str) -> UpstreamError:
 
 
 class ExampleAppReader:
-    """`AppReader` sobre `app/status.json`, `app/history.json` y `app/explanation.json`.
+    """`AppReader` sobre `app/status.json`, `app/history.json`, `app/session-list.json`, `app/self-report-list.json` y `app/explanation.json`.
 
     Acepta datos alternativos (p. ej. un history más largo) para ejercitar el filtrado y el límite.
     """
 
-    def __init__(self, status: Status | None = None, history: History | None = None, explanation: Explanation | None = None) -> None:
+    def __init__(
+        self,
+        status: Status | None = None,
+        history: History | None = None,
+        explanation: Explanation | None = None,
+        sessions: SessionList | None = None,
+        self_reports: SelfReportList | None = None,
+    ) -> None:
         self._status = status or Status.model_validate(_load("app/status.json"))
         self._history = history or History.model_validate(_load("app/history.json"))
         self._explanation = explanation or Explanation.model_validate(_load("app/explanation.json"))
+        self._sessions = sessions or SessionList.model_validate(_load("app/session-list.json"))
+        self._self_reports = self_reports or SelfReportList.model_validate(_load("app/self-report-list.json"))
 
     def get_status(self, astronaut_id: str) -> Status:
         if astronaut_id != self._status.astronaut_id:
@@ -58,6 +76,22 @@ class ExampleAppReader:
                 "assessments": assessments[-limit:],
             }
         )
+
+    def get_sessions(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SessionList:
+        if astronaut_id != self._sessions.astronaut_id:
+            raise _not_found("Astronaut", astronaut_id)
+        if to < from_:
+            raise UpstreamError(422, "invalid_range", f"'to' ({to.isoformat()}) is before 'from' ({from_.isoformat()}).")
+        items = sorted((s for s in self._sessions.items if from_ <= s.started_at <= to), key=lambda s: s.started_at)
+        return self._sessions.model_copy(update={"from_": from_, "to": to, "limit": limit, "truncated": len(items) > limit, "items": items[-limit:]})
+
+    def get_self_reports(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SelfReportList:
+        if astronaut_id != self._self_reports.astronaut_id:
+            raise _not_found("Astronaut", astronaut_id)
+        if to < from_:
+            raise UpstreamError(422, "invalid_range", f"'to' ({to.isoformat()}) is before 'from' ({from_.isoformat()}).")
+        items = sorted((r for r in self._self_reports.items if from_ <= r.timestamp <= to), key=lambda r: r.timestamp)
+        return self._self_reports.model_copy(update={"from_": from_, "to": to, "limit": limit, "truncated": len(items) > limit, "items": items[-limit:]})
 
     def get_explanation(self, assessment_id: str) -> Explanation:
         if assessment_id != self._explanation.assessment.assessment_id:

@@ -4,7 +4,7 @@
 
 ## Description
 
-MCP server (stdio) that exposes 5 read-only and simulation tools to the local LLM agent. It never writes data, never touches the app database and never diagnoses. Today it runs on mocks built from the contract examples (`spine_monitor/contracts/examples/valid/`), behind three Protocols (`AppReader`, `Simulator` and `AssessBaseSource` in `ports.py`) so the real HTTP clients can replace them later.
+MCP server (stdio) that exposes 7 read-only and simulation tools to the local LLM agent. It never writes data, never touches the app database and never diagnoses. Today it runs on mocks built from the contract examples (`spine_monitor/contracts/examples/valid/`), behind three Protocols (`AppReader`, `Simulator` and `AssessBaseSource` in `ports.py`) so the real HTTP clients can replace them later.
 
 ## Run
 
@@ -21,6 +21,8 @@ uv run pytest mcp_server         # tests
 |---|---|---|
 | `get_current_status` | `astronaut_id` | `app/status` |
 | `get_history` | `astronaut_id`, `start`, `end`, `limit=100` | `app/history` |
+| `get_sessions` | `astronaut_id`, `start`, `end`, `limit=100` | `app/session-list` |
+| `get_self_reports` | `astronaut_id`, `start`, `end`, `limit=100` | `app/self-report-list` |
 | `compare_periods` | `astronaut_id`, `a_start`, `a_end`, `b_start`, `b_end` | `mcp/compare-periods` |
 | `explain_assessment` | `assessment_id` | `app/explanation` |
 | `simulate_scenario` | `astronaut_id`, `overrides`, `project_days=None` | `engine/simulate-response` |
@@ -45,4 +47,3 @@ A failure from the app or the engine (for example 404 not found or 422 invalid r
 ## Out of scope for now
 
 - Real HTTP clients, waiting for the app API (issue #17).
-- Listing sessions and self-reports.

@@ -97,6 +97,29 @@ CREATE TABLE IF NOT EXISTS rejected_messages (
 );
 """
 
+# Stored in PRAGMA user_version. Bump it with any change to SCHEMA that an existing file would not get
+# from CREATE ... IF NOT EXISTS (new columns, changed tables).
+STORE_SCHEMA_VERSION = 1
+
+
+class IncompatibleDatabaseError(RuntimeError):
+    """The database file was written with another schema; it is refused before anything is changed."""
+
+
+def _expected_columns() -> dict[str, list[str]]:
+    scratch = sqlite3.connect(":memory:")
+    try:
+        scratch.executescript(SCHEMA)
+        return _columns(scratch)
+    finally:
+        scratch.close()
+
+
+def _columns(db: sqlite3.Connection) -> dict[str, list[str]]:
+    tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")]
+    return {table: [row[1] for row in db.execute(f"PRAGMA table_info({table})")] for table in tables}
+
+
 # At most this many invalid messages are kept, to diagnose without filling the disk.
 REJECTED_KEEP = 1000
 _REJECTED_PAYLOAD_MAX = 4096
@@ -132,18 +155,65 @@ class CommandRow:
         return self.payload["type"]
 
 
+# Sessions that really ran. `starting` never got an ack and `rejected` never started: they are not served
+# by the read-only API.
+SERVED_SESSION_STATES = ("running", "ended", "processing", "processed", "processing_failed")
+
+
 class Store:
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
+        """`read_only`: the connection refuses every write (`PRAGMA query_only`), for the read-only API."""
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
+        try:
+            self._check_schema(path)
+        except IncompatibleDatabaseError:
+            self._db.close()
+            raise
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
         self._db.executescript(SCHEMA)
+        self._db.execute(f"PRAGMA user_version = {STORE_SCHEMA_VERSION}")
+        if read_only:
+            self._db.execute("PRAGMA query_only=ON")
+
+    def _check_schema(self, path: Path | str) -> None:
+        """A file of this schema (or empty) is accepted; anything else is refused untouched."""
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        if version > STORE_SCHEMA_VERSION:
+            raise IncompatibleDatabaseError(f"{path}: schema version {version} is newer than this app ({STORE_SCHEMA_VERSION})")
+        found = _columns(self._db)
+        if version == STORE_SCHEMA_VERSION or not found:
+            return
+        # Version 0 with tables: adopted only when every table is one of ours, with our columns.
+        expected = _expected_columns()
+        wrong = sorted(table for table, columns in found.items() if expected.get(table) != columns)
+        if wrong:
+            raise IncompatibleDatabaseError(
+                f"{path}: written by another version of the app (tables with another schema: {', '.join(wrong)}). "
+                "Move the file away or point SPINE_APP_DB_PATH to another one."
+            )
 
     def close(self) -> None:
         self._db.close()
+
+    def _window(self, table: str, column: str, where: str, args: tuple, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        """Items with `column` in [start, end], oldest first; when more than `limit`, the most recent are kept."""
+        rows = self._db.execute(
+            f"SELECT payload FROM {table} WHERE {where} AND {column} >= ? AND {column} <= ? ORDER BY {column} DESC LIMIT ?",
+            (*args, utc_key(start), utc_key(end), limit + 1),
+        ).fetchall()
+        items = [json.loads(row["payload"]) for row in rows[:limit]]
+        items.reverse()
+        return items, len(rows) > limit
+
+    def astronaut_known(self, astronaut_id: str) -> bool:
+        """True when anything at all was recorded for the astronaut."""
+        tables = ("profiles", "daily_context", "sessions", "self_reports", "assessments", "baselines", "device_status", "feature_sets")
+        query = " UNION ALL ".join(f"SELECT 1 FROM {t} WHERE astronaut_id = ?" for t in tables)
+        return self._db.execute(f"SELECT EXISTS ({query})", (astronaut_id,) * len(tables)).fetchone()[0] == 1
 
     def _one(self, sql: str, *args: object) -> dict[str, Any] | None:
         row = self._db.execute(sql, args).fetchone()
@@ -272,6 +342,22 @@ class Store:
         )
         return cursor.rowcount == 1
 
+    def served_session(self, session_id: str) -> dict[str, Any] | None:
+        marks = ",".join("?" * len(SERVED_SESSION_STATES))
+        return self._one(f"SELECT payload FROM sessions WHERE session_id = ? AND state IN ({marks})", session_id, *SERVED_SESSION_STATES)
+
+    def latest_served_session(self, astronaut_id: str) -> dict[str, Any] | None:
+        marks = ",".join("?" * len(SERVED_SESSION_STATES))
+        return self._one(
+            f"SELECT payload FROM sessions WHERE astronaut_id = ? AND state IN ({marks}) ORDER BY started_at DESC LIMIT 1",
+            astronaut_id,
+            *SERVED_SESSION_STATES,
+        )
+
+    def sessions_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        marks = ",".join("?" * len(SERVED_SESSION_STATES))
+        return self._window("sessions", "started_at", f"astronaut_id = ? AND state IN ({marks})", (astronaut_id, *SERVED_SESSION_STATES), start, end, limit)
+
     def active_session(self, astronaut_id: str, device_id: str) -> SessionRow | None:
         row = self._db.execute(
             "SELECT payload, state, error FROM sessions WHERE astronaut_id = ? AND device_id = ? "
@@ -353,11 +439,17 @@ class Store:
             utc_key(end),
         )
 
+    def feature_sets_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        return self._window("feature_sets", "anchor_at", "astronaut_id = ?", (astronaut_id,), start, end, limit)
+
     def put_baseline(self, baseline: dict[str, Any]) -> None:
         self._db.execute(
             "INSERT INTO baselines VALUES (?, ?, ?, ?, ?)",
             (baseline["baseline_id"], baseline["astronaut_id"], baseline["version"], utc_key(baseline["created_at"]), _dumps(baseline)),
         )
+
+    def baseline(self, baseline_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT payload FROM baselines WHERE baseline_id = ?", baseline_id)
 
     def latest_baseline(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM baselines WHERE astronaut_id = ? ORDER BY version DESC LIMIT 1", astronaut_id)
@@ -367,6 +459,12 @@ class Store:
             "INSERT INTO assessments VALUES (?, ?, ?, ?)",
             (assessment["assessment_id"], assessment["astronaut_id"], utc_key(assessment["as_of"]), _dumps(assessment)),
         )
+
+    def assessment(self, assessment_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT payload FROM assessments WHERE assessment_id = ?", assessment_id)
+
+    def assessments_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        return self._window("assessments", "as_of", "astronaut_id = ?", (astronaut_id,), start, end, limit)
 
     def latest_assessment(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM assessments WHERE astronaut_id = ? ORDER BY as_of DESC LIMIT 1", astronaut_id)
@@ -398,6 +496,12 @@ class Store:
             utc_key(start),
             utc_key(end),
         )
+
+    def self_reports_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        return self._window("self_reports", "timestamp", "astronaut_id = ?", (astronaut_id,), start, end, limit)
+
+    def latest_self_report_of_any_kind(self, astronaut_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT payload FROM self_reports WHERE astronaut_id = ? ORDER BY timestamp DESC LIMIT 1", astronaut_id)
 
     def latest_self_report(self, astronaut_id: str, kind: str) -> dict[str, Any] | None:
         return self._one(

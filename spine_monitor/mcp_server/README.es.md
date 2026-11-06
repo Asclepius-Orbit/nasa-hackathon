@@ -40,6 +40,17 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 - `overrides` es una lista opcional (vacía por defecto) de cambios con `feature_id`, `mode` (`set`, `add` o `scale`) y `value`; vacía u omitida significa sin cambios, así que se proyecta la trayectoria actual tal como está. `project_days` va de 1 a 365.
 - `simulate_scenario` es solo hipotético y nunca cambia datos reales.
 
+## Datasets
+
+`python -m spine_mcp_server` sirve por defecto un **dataset de demo**: los últimos 14 días del astronauta `AST-01`, generados en relación con el reloj para que los datos terminen siempre «ahora». Está en verde los primeros 8 días y en ámbar los últimos 6, con un risk score creciente (de 0,18 a 0,62), una evaluación al día, una sesión de ejercicio cada 2 días más algunos chequeos de columna, un autoinforme diario (dolor NRS de 2 a 5) y un informe ODI semanal. `explain_assessment` funciona para todas las evaluaciones de ese histórico, `compare_periods` tiene datos en las dos semanas y `simulate_scenario` responde a los «¿y si…?» con un modelo lineal simple sobre la elongación lumbar (una aproximación, no el motor). `AST-01` es el único astronauta; cualquier otro id devuelve un error de herramienta «not found».
+
+| Opción | Significado |
+|---|---|
+| `--dataset demo\|examples` | `demo` (por defecto), o `examples`: la foto estática única de `contracts/examples/valid/` que usan los tests de contratos |
+| `--now 2026-11-13T12:00:00Z` | Fija el reloj del demo (ISO 8601 con zona horaria, redondeado a la hora) para demos y tests reproducibles; sin él se usa el reloj de pared |
+
+Los datos del demo se generan de forma determinista: el mismo `--now` da siempre los mismos payloads e ids.
+
 ## Errores
 
 Un fallo de la app o del motor (por ejemplo 404 no encontrado o 422 rango no válido) se convierte en un error de herramienta MCP (`isError: true`) con el mensaje `título: detalle`.

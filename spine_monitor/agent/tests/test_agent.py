@@ -198,9 +198,10 @@ async def test_each_turn_carries_the_time_of_that_turn():
     async with ChatSession(agent, FakeStatusSource(), "AST-01", clock=lambda: next(times)) as session:
         await _collect(session, "first")
         await _collect(session, "second")
-    assert "2026-11-13T12:00:00Z" in seen[0]
-    assert "2026-11-14T12:00:00Z" in seen[1]
-    assert "2026-11-13T12:00:00Z" not in seen[1]
+    # El rango "últimas 24 h" del segundo turno empieza en el instante del primero: se comprueba la frase de la hora actual.
+    assert "Current date and time (UTC): 2026-11-13T12:00:00Z" in seen[0]
+    assert "Current date and time (UTC): 2026-11-14T12:00:00Z" in seen[1]
+    assert "Current date and time (UTC): 2026-11-13T12:00:00Z" not in seen[1]
 
 
 @pytest.mark.unit

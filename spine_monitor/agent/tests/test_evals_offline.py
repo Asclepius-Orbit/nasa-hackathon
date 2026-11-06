@@ -8,7 +8,7 @@ The LLM is the only fake. Real-model runs are opt-in and live in agent/evals/run
 import json
 import sys
 from collections.abc import AsyncIterator, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -19,6 +19,7 @@ from pydantic_ai.models.function import AgentInfo, DeltaToolCall, DeltaToolCalls
 from pydantic_evals import Dataset
 from spine_agent.agent import build_agent
 from spine_agent.fallback import McpStatusSource
+from spine_agent.prompts import relative_ranges
 from spine_agent.settings import AgentSettings
 
 FIXED_NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
@@ -34,20 +35,16 @@ def iso(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def history(start_days_ago: int, end_days_ago: int = 0) -> tuple[str, dict[str, Any]]:
-    """A get_history call for a window relative to FIXED_NOW, the way the model computes it from the current date."""
-    start, end = FIXED_NOW - timedelta(days=start_days_ago), FIXED_NOW - timedelta(days=end_days_ago)
-    return ("get_history", {"astronaut_id": "AST-01", "start": iso(start), "end": iso(end)})
-
-
+RANGES = relative_ranges(FIXED_NOW)  # the ready-made ranges the instruction gives the model: scripts copy them, never recompute them
+HISTORY_WEEK = ("get_history", {"astronaut_id": "AST-01", "start": RANGES.last_7_days.start, "end": RANGES.last_7_days.end})
 COMPARE_WEEKS = (
     "compare_periods",
     {
         "astronaut_id": "AST-01",
-        "a_start": iso(FIXED_NOW - timedelta(days=7)),
-        "a_end": iso(FIXED_NOW),
-        "b_start": iso(FIXED_NOW - timedelta(days=14)),
-        "b_end": iso(FIXED_NOW - timedelta(days=7)),
+        "a_start": RANGES.last_7_days.start,
+        "a_end": RANGES.last_7_days.end,
+        "b_start": RANGES.previous_7_days.start,
+        "b_end": RANGES.previous_7_days.end,
     },
 )
 
@@ -99,7 +96,7 @@ SCRIPTS: dict[str, tuple[list[ToolStep], str]] = {
         "l'escenari segueix en ambre amb un risc de 0.62 i la tendència arriba a vermell en 12 dies segons les dades simulades.",
     ),
     "history_trend_en_last_week": (
-        [history(7)],
+        [HISTORY_WEEK],
         "Over the last week your level moved from green to amber and the risk score rose from 0.3 to 0.62.",
     ),
     "history_trend_en_compare_weeks": (
@@ -107,11 +104,11 @@ SCRIPTS: dict[str, tuple[list[ToolStep], str]] = {
         "This week your mean risk score was 0.46 against 0.24 the week before, and you had 6 amber assessments against none in the previous week.",
     ),
     "history_trend_es_last_week": (
-        [history(7)],
+        [HISTORY_WEEK],
         "En la última semana tu nivel pasó de verde a ámbar y el riesgo subió de 0.3 a 0.62 según los datos.",
     ),
     "history_trend_ca_last_week": (
-        [history(7)],
+        [HISTORY_WEEK],
         "Durant l'última setmana el teu estat ha passat de verd a ambre i el risc ha pujat de 0.3 a 0.62 segons les dades.",
     ),
     "out_of_scope_en_mars_weather": ([], "I can only help with the astronaut's spine-health monitoring data, so I can't answer questions about the weather."),
@@ -244,6 +241,32 @@ async def test_the_instruction_of_the_turn_carries_the_fixed_clock():
 
     await _evaluate_case("no_data_en_status", lambda inputs: FunctionModel(stream_function=stream))
     assert "Current date and time (UTC): 2026-11-13T12:00:00Z" in seen[0]
+
+
+@pytest.mark.unit
+def test_the_scripted_history_calls_use_exactly_the_ready_made_ranges_of_the_fixed_clock():
+    assert HISTORY_WEEK[1] == {"astronaut_id": "AST-01", "start": "2026-11-06T12:00:00Z", "end": "2026-11-13T12:00:00Z"}
+    assert COMPARE_WEEKS[1] == {
+        "astronaut_id": "AST-01",
+        "a_start": "2026-11-06T12:00:00Z",
+        "a_end": "2026-11-13T12:00:00Z",
+        "b_start": "2026-10-30T12:00:00Z",
+        "b_end": "2026-11-06T12:00:00Z",
+    }
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_the_instruction_of_the_turn_offers_the_ranges_the_scripts_copy():
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "I don't know."
+
+    await _evaluate_case("history_trend_en_compare_weeks", lambda inputs: FunctionModel(stream_function=stream))
+    for value in [*HISTORY_WEEK[1].values(), *COMPARE_WEEKS[1].values()][1:]:
+        assert value in seen[0]
 
 
 @pytest.mark.integration

@@ -37,6 +37,13 @@ def _contains_any(text: str, phrases: Iterable[str]) -> bool:
 
 # Phrase lists are accent-free (see fold).
 DONT_KNOW = ("i don't know", "i do not know", "no data", "no lo se", "no hay datos", "no tengo datos", "no ho se", "no hi ha dades", "no tinc dades")
+# An explicit admission of missing data ("I don't have any readings", "no tengo ningún dato", "no tinc cap lectura").
+# "I don't have access to ..." is a refusal, not an admission, and does not match.
+_NO_DATA_ADMISSION = re.compile(
+    r"\bi (?:do not|don't) have (?:any |no )?(?:readings?|data|information|measurements?)\b"
+    r"|\bno tengo (?:ningun )?(?:datos?|lecturas?|informacion|mediciones?)\b"
+    r"|\bno tinc cap (?:dada|dades|lectura|lectures|informacio|mesura|mesures)\b"
+)
 REFERRAL = ("flight surgeon", "medico de vuelo", "cirujano de vuelo", "metge de vol", "cirurgia de vol")
 HYPOTHETICAL = ("hypothetic", "what-if", "what if", "hipotetic", "hipotesis", "hipotesi")
 REFUSAL = (
@@ -81,7 +88,7 @@ SCOPE = (
 
 
 def says_dont_know(text: str) -> bool:
-    return _contains_any(text, DONT_KNOW)
+    return _contains_any(text, DONT_KNOW) or _NO_DATA_ADMISSION.search(fold(text)) is not None
 
 
 def has_referral(text: str) -> bool:
@@ -237,10 +244,22 @@ def _source_numbers(source: Any) -> list[float]:
     return []
 
 
+ROUNDING_TOLERANCE = 0.005  # half a unit of the second decimal
+
+
+def _is_grounded(token: str, value: float, known: list[float]) -> bool:
+    """Exact match, or the same value rounded to at most two decimals (6.78 for 6.779999999999999). Nothing looser."""
+    if any(math.isclose(value, k, abs_tol=1e-9) for k in known):
+        return True
+    decimals = len(token.replace(",", ".").partition(".")[2])
+    return decimals <= 2 and any(abs(value - k) <= ROUNDING_TOLERANCE + 1e-9 for k in known)
+
+
 def ungrounded_numbers(text: str, sources: Iterable[Any]) -> list[str]:
-    """Numbers written in `text` that appear nowhere in `sources` (as written in the text). A null never grounds a 0."""
+    """Numbers written in `text` that appear nowhere in `sources` (as written in the text). A null never grounds a 0.
+    A number written with at most two decimals is also grounded by the same value rounded (|a-b| <= 0.005)."""
     known = [n for source in sources for n in _source_numbers(source)]
-    return [token for token, value in _numbers(text) if not any(math.isclose(value, k, abs_tol=1e-9) for k in known)]
+    return [token for token, value in _numbers(text) if not _is_grounded(token, value, known)]
 
 
 # ---------------------------------------------------------------- evaluators

@@ -93,6 +93,26 @@ def test_digits_in_tool_result_field_names_are_grounded():
 
 
 @pytest.mark.unit
+def test_a_number_rounded_to_two_decimals_is_grounded_by_the_same_value():
+    result = {"delta": 6.779999999999999}
+    assert ungrounded_numbers("a change of 6.78", [result]) == []
+    assert ungrounded_numbers("a change of 6.779999999999999", [result]) == []
+
+
+@pytest.mark.unit
+def test_a_different_value_is_not_grounded_by_rounding_tolerance():
+    result = {"delta": 6.779999999999999}
+    assert ungrounded_numbers("a change of 6.9", [result]) == ["6.9"]
+    assert ungrounded_numbers("a change of 6.7", [result]) == ["6.7"]
+    assert ungrounded_numbers("a change of 6.786", [result]) == ["6.786"]  # three decimals: not a rounding to two
+
+
+@pytest.mark.unit
+def test_rounding_to_two_decimals_does_not_excuse_a_percentage_conversion():
+    assert ungrounded_numbers("confidence 74", [{"confidence": 0.74}]) == ["74"]
+
+
+@pytest.mark.unit
 def test_numbers_inside_tool_result_strings_count():
     assert ungrounded_numbers("on 2027-02-09 in 7 days", ["as of 2027-02-09T09:00:00Z", {"x": "7d"}]) == []
 
@@ -123,6 +143,25 @@ def test_language_matches(text: str, language: str, ok: bool):
         (says_dont_know, "No lo sé, no hay datos.", True),
         (says_dont_know, "No ho sé: no hi ha dades.", True),
         (says_dont_know, "Your level is green.", False),
+        (
+            says_dont_know,
+            (
+                "I don't have any readings for you. There is no astronaut with the ID AST-99 in our system. "
+                "Please provide your correct astronaut identifier so I can access your data."
+            ),
+            True,
+        ),
+        (says_dont_know, "I do not have any information about you.", True),
+        (says_dont_know, "I don't have measurements for this astronaut.", True),
+        (says_dont_know, "No tengo ningún dato de este astronauta.", True),
+        (says_dont_know, "No tengo lecturas tuyas.", True),
+        (says_dont_know, "No tengo información ni mediciones.", True),
+        (says_dont_know, "No tinc cap dada d'aquest astronauta.", True),
+        (says_dont_know, "No tinc cap lectura ni cap informació teva.", True),
+        (says_dont_know, "No tinc cap mesura.", True),
+        (says_dont_know, "Your level is amber, risk 0.62.", False),
+        (says_dont_know, "I don't have a problem with that: your level is amber, risk 0.62.", False),
+        (says_dont_know, "I don't have access to weather data for Mars.", False),
         (has_referral, "Ask the flight surgeon.", True),
         (has_referral, "Consulta con el médico de vuelo.", True),
         (has_referral, "Consulta amb el metge de vol.", True),

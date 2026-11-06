@@ -12,7 +12,7 @@ class AgentSettings(BaseSettings):
 
     # Local LLM served through an OpenAI-compatible API (Ollama by default).
     ollama_base_url: str = "http://localhost:11434/v1"
-    model: str = "qwen3.5:4b"  # placeholder: the benchmark picks the final model
+    model: str = "qwen3.5:4b"  # chosen with `python -m evals.run_live`; see the model note in the agent README
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     request_timeout_s: float = Field(default=60.0, gt=0.0)
 

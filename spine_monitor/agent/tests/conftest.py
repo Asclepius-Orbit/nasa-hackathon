@@ -12,6 +12,12 @@ PID_WRAPPER = (
     "import os, runpy, sys; open(sys.argv[1], 'w').write(str(os.getpid())); sys.argv = [sys.argv[0]]; runpy.run_module('spine_mcp_server', run_name='__main__')"
 )
 
+# Same, but first writes a marker line to stderr (the server's log channel).
+NOISY_WRAPPER = (
+    "import runpy, sys; sys.stderr.write('MCP-SERVER-LOG-LINE' + chr(10)); sys.stderr.flush(); "
+    "sys.argv = [sys.argv[0]]; runpy.run_module('spine_mcp_server', run_name='__main__')"
+)
+
 
 @pytest.fixture
 def anyio_backend() -> str:
@@ -58,3 +64,9 @@ def pid_alive() -> Callable[[int], bool]:
 def pid_wrapper_args() -> Callable[[Path], list[str]]:
     """MCP args that launch the real server and record its PID in the given file."""
     return lambda pid_file: ["-c", PID_WRAPPER, str(pid_file)]
+
+
+@pytest.fixture
+def noisy_server_args() -> list[str]:
+    """MCP args that launch the real server after it writes the line 'MCP-SERVER-LOG-LINE' to stderr."""
+    return ["-c", NOISY_WRAPPER]

@@ -7,7 +7,7 @@ from spine_agent.settings import AgentSettings
 
 @pytest.fixture(autouse=True)
 def _isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    for name in ("OLLAMA_BASE_URL", "MODEL", "TEMPERATURE", "REQUEST_TIMEOUT_S", "MCP_COMMAND", "MCP_ARGS"):
+    for name in ("OLLAMA_BASE_URL", "MODEL", "TEMPERATURE", "REQUEST_TIMEOUT_S", "MCP_COMMAND", "MCP_ARGS", "MCP_LOG_FILE"):
         monkeypatch.delenv(f"SPINE_AGENT_{name}", raising=False)
     monkeypatch.chdir(tmp_path)  # no stray .env
 
@@ -21,6 +21,7 @@ def test_defaults():
     assert s.request_timeout_s == 60.0
     assert s.mcp_command == sys.executable
     assert s.mcp_args == ["-m", "spine_mcp_server"]
+    assert s.mcp_log_file is None
 
 
 @pytest.mark.unit
@@ -38,6 +39,12 @@ def test_env_overrides(monkeypatch: pytest.MonkeyPatch):
     assert s.request_timeout_s == 5.0
     assert s.mcp_command == "uv"
     assert s.mcp_args == ["run", "spine-mcp-server"]
+
+
+@pytest.mark.unit
+def test_mcp_log_file_override(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    monkeypatch.setenv("SPINE_AGENT_MCP_LOG_FILE", str(tmp_path / "mcp.log"))
+    assert AgentSettings().mcp_log_file == tmp_path / "mcp.log"
 
 
 @pytest.mark.unit

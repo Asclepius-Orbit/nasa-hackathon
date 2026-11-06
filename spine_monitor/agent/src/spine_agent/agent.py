@@ -8,6 +8,7 @@ correction notice when the streamed answer sounds like a diagnosis (it cannot un
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
+from pathlib import Path
 from types import TracebackType
 from typing import Any, Literal, Self
 
@@ -65,14 +66,20 @@ def build_agent(
     *,
     model: Model | None = None,
     toolsets: Sequence[AbstractToolset[str]] | None = None,
+    log_file: Path | None = None,
 ) -> SpineAgent:
-    """Agent wired from settings. `model` and `toolsets` replace the Ollama model and the MCP stdio toolset (tests)."""
+    """Agent wired from settings. `model` and `toolsets` replace the Ollama model and the MCP stdio toolset (tests).
+
+    `log_file` is where the MCP server subprocess writes its stderr (None: this process's stderr). It only applies to
+    the default stdio transport.
+    """
     if model is None:
         model = OllamaModel(settings.model, provider=OllamaProvider(base_url=settings.ollama_base_url))
     if toolsets is None:
         transport = StdioTransport(
             command=settings.mcp_command,
             args=list(settings.mcp_args),
+            log_file=log_file,
             keep_alive=False,  # the server subprocess ends when the toolset is exited; nothing outlives the session
         )
         # 'failed': a tool error (e.g. 404 for an unknown astronaut) reaches the model as a failed result it can

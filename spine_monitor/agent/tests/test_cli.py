@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import sys
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
@@ -206,6 +207,30 @@ async def test_amain_prints_the_banner_streams_the_reply_and_exits_0(monkeypatch
     assert "Type /exit to quit." in out.text
     assert "echo: hello\n" in out.text
     assert pydantic_ai.BANNER_ENABLED is False
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_amain_keeps_the_server_log_off_the_console_by_default(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str], noisy_server_args: list[str]
+):
+    monkeypatch.setenv("SPINE_AGENT_MCP_ARGS", json.dumps(noisy_server_args))
+    out = Out()
+    await amain(["--astronaut", "AST-01"], model=_echo_model([]), read_line=lines("hi", "/exit"), write=out)
+    assert "MCP-SERVER-LOG-LINE" not in capfd.readouterr().err
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_amain_writes_the_server_log_to_the_configured_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capfd: pytest.CaptureFixture[str], noisy_server_args: list[str]
+):
+    log = tmp_path / "mcp.log"
+    monkeypatch.setenv("SPINE_AGENT_MCP_ARGS", json.dumps(noisy_server_args))
+    monkeypatch.setenv("SPINE_AGENT_MCP_LOG_FILE", str(log))
+    await amain(["--astronaut", "AST-01"], model=_echo_model([]), read_line=lines("hi", "/exit"), write=Out())
+    assert "MCP-SERVER-LOG-LINE" in log.read_text()
+    assert "MCP-SERVER-LOG-LINE" not in capfd.readouterr().err
 
 
 @pytest.mark.unit

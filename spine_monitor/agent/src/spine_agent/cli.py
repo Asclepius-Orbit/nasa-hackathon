@@ -2,9 +2,11 @@
 
 import argparse
 import asyncio
+import os
 import sys
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from pathlib import Path
 from typing import Protocol
 
 import pydantic_ai
@@ -130,7 +132,8 @@ async def amain(
     settings = AgentSettings()
     if args.model:
         settings.model = args.model
-    agent = build_agent(settings, model=model, toolsets=toolsets)
+    # The server's stderr would interleave with the chat: discard it unless a log file is configured.
+    agent = build_agent(settings, model=model, toolsets=toolsets, log_file=settings.mcp_log_file or Path(os.devnull))
     write(f"Spine assistant for {args.astronaut} (model: {settings.model}). Type /exit to quit.\n")
     async with ChatSession(agent, McpStatusSource(settings), args.astronaut) as session:
         await run_repl(session, read_line, write)

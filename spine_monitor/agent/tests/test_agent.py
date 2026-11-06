@@ -250,6 +250,26 @@ async def test_no_subprocess_is_left_running_after_the_session(tmp_path: Path, p
     assert not pid_alive(pid)
 
 
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_server_stderr_goes_to_the_log_file_not_the_console(tmp_path: Path, capfd: pytest.CaptureFixture[str], noisy_server_args: list[str]):
+    log = tmp_path / "mcp.log"
+    agent = build_agent(_settings(mcp_args=noisy_server_args), model=FunctionModel(stream_function=amber_script()), log_file=log)
+    async with ChatSession(agent, FakeStatusSource(), "AST-01") as session:
+        await _collect(session, "Why am I amber?")
+    assert "MCP-SERVER-LOG-LINE" in log.read_text()
+    assert "MCP-SERVER-LOG-LINE" not in capfd.readouterr().err
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_server_stderr_defaults_to_the_console(capfd: pytest.CaptureFixture[str], noisy_server_args: list[str]):
+    agent = build_agent(_settings(mcp_args=noisy_server_args), model=FunctionModel(stream_function=amber_script()))
+    async with ChatSession(agent, FakeStatusSource(), "AST-01") as session:
+        await _collect(session, "Why am I amber?")
+    assert "MCP-SERVER-LOG-LINE" in capfd.readouterr().err
+
+
 # ---------------------------------------------------------------- degradation (no MCP subprocess: toolsets=[])
 
 

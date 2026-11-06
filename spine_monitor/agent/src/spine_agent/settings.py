@@ -1,6 +1,7 @@
 """Agent settings: local LLM endpoint, sampling and MCP server launch. SPINE_AGENT_* variables or `.env`."""
 
 import sys
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,3 +19,4 @@ class AgentSettings(BaseSettings):
     # How the agent launches the MCP server (stdio).
     mcp_command: str = sys.executable
     mcp_args: list[str] = ["-m", "spine_mcp_server"]
+    mcp_log_file: Path | None = None  # where the server subprocess writes its stderr; None: the chat CLI discards it

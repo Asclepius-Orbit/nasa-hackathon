@@ -1,0 +1,622 @@
+{
+  "2026-11-13T12:00:00Z": {
+    "status": {
+      "schema_version": "1.0.0",
+      "astronaut_id": "AST-01",
+      "generated_at": "2026-11-13T12:00:00Z",
+      "today": {
+        "date": "2026-11-13",
+        "mission_day": 87,
+        "phase": "inflight",
+        "gravity_environment": "microgravity"
+      },
+      "latest_assessment": {
+        "schema_version": "1.0.0",
+        "assessment_id": "727b3991-375f-5c07-8cdd-8c30937f2d19",
+        "astronaut_id": "AST-01",
+        "as_of": "2026-11-13T12:00:00Z",
+        "mission_day": 87,
+        "level": "amber",
+        "risk_score": 0.62,
+        "confidence": 0.74,
+        "completeness": {
+          "score": 0.83,
+          "missing": [
+            {
+              "what": "emg.latissimus_dorsi.right.median_freq_hz",
+              "reason": "sensor_offline"
+            }
+          ]
+        },
+        "domains": [
+          {
+            "domain": "spine_length",
+            "level": "amber",
+            "score": 0.7,
+            "evaluated": true
+          },
+          {
+            "domain": "muscle",
+            "level": "amber",
+            "score": 0.55,
+            "evaluated": true
+          },
+          {
+            "domain": "kinematics",
+            "level": "green",
+            "score": 0.2,
+            "evaluated": true
+          },
+          {
+            "domain": "symptoms",
+            "level": "amber",
+            "score": 0.47,
+            "evaluated": true
+          }
+        ],
+        "drivers": [
+          {
+            "feature_id": "stretch.lumbar.peak_elongation_mm",
+            "value": 9.1,
+            "unit": "mm",
+            "deviation_z": 2.4,
+            "contribution": 0.31
+          },
+          {
+            "feature_id": "symptoms.pain_nrs_7d_mean",
+            "value": 4.1,
+            "unit": "nrs",
+            "deviation_z": 1.7,
+            "contribution": 0.17
+          }
+        ],
+        "trend": {
+          "projected_level": "red",
+          "days_to_threshold": 12.0
+        },
+        "fired_rules": [
+          {
+            "rule_id": "RULE_SYMPTOM_PAIN_TREND",
+            "domain": "symptoms",
+            "level": "amber",
+            "overrides_model": false,
+            "description": "Sustained pain above the alert range over the last 7 days (thresholds owned by the clinical model)."
+          }
+        ],
+        "recommendations": [
+          "REC_LUMBAR_STAB_01",
+          "REC_INCREASE_ARED"
+        ],
+        "escalation": {
+          "required": false,
+          "reasons": []
+        },
+        "based_on": {
+          "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+          "baseline_version": 1,
+          "session_ids": [
+            "0efebe0c-c4df-5d57-88c8-55b7c50a6cc1"
+          ],
+          "self_report_ids": [
+            "bca08ff1-9703-58ae-a4ef-f87ea008ed77"
+          ],
+          "engine_version": "0.1.0"
+        }
+      },
+      "latest_session": {
+        "schema_version": "1.0.0",
+        "session_id": "c1e2dc56-0f5f-5961-b62f-834d2f8de28c",
+        "astronaut_id": "AST-01",
+        "device_id": "wb-01",
+        "session_type": "spine_check",
+        "protocol_id": "spine_length_rest_v1",
+        "source": "simulator",
+        "started_at": "2026-11-13T10:00:00Z",
+        "ended_at": "2026-11-13T10:05:00Z",
+        "end_reason": "completed",
+        "mission_context": {
+          "phase": "inflight",
+          "gravity_environment": "microgravity"
+        },
+        "streams": [
+          {
+            "stream_id": "stretch_lumbar",
+            "stream_kind": "stretch",
+            "placement": {
+              "spine_region": "lumbar",
+              "span": {
+                "from_level": "l1",
+                "to_level": "l5"
+              }
+            },
+            "sample_rate_hz": 20.0
+          }
+        ]
+      },
+      "latest_self_report": {
+        "schema_version": "1.0.0",
+        "report_id": "bca08ff1-9703-58ae-a4ef-f87ea008ed77",
+        "astronaut_id": "AST-01",
+        "timestamp": "2026-11-13T11:30:00Z",
+        "mission_day": 87,
+        "source": "device",
+        "kind": "daily",
+        "pain_nrs": 5,
+        "pain_nrs_worst_24h": 6,
+        "pain_locations": [
+          {
+            "region": "lumbar",
+            "side": "bilateral"
+          }
+        ],
+        "stiffness_nrs": 6,
+        "sleep": {
+          "hours": 5.6,
+          "quality_nrs": 4
+        },
+        "red_flags": []
+      },
+      "devices": [
+        {
+          "schema_version": "1.0.0",
+          "astronaut_id": "AST-01",
+          "device_id": "wb-01",
+          "timestamp": "2026-11-13T10:30:00Z",
+          "status": "ok",
+          "source": "device",
+          "boot_id": 2893746120,
+          "uptime_ms": 183900,
+          "firmware_version": "0.3.1",
+          "battery_pct": 64.0,
+          "link": {
+            "type": "ble",
+            "rssi_dbm": -67
+          },
+          "streams": [
+            {
+              "stream_id": "emg_lat_left",
+              "stream_kind": "emg",
+              "state": "active",
+              "sample_rate_hz": 1000.0,
+              "last_seq": 1840
+            },
+            {
+              "stream_id": "imu_l3",
+              "stream_kind": "imu",
+              "state": "active",
+              "sample_rate_hz": 100.0,
+              "last_seq": 367
+            },
+            {
+              "stream_id": "stretch_lumbar",
+              "stream_kind": "stretch",
+              "state": "active",
+              "sample_rate_hz": 20.0,
+              "last_seq": 88
+            }
+          ]
+        }
+      ],
+      "active_baseline": {
+        "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+        "version": 1,
+        "created_at": "2026-10-29T12:00:00Z"
+      },
+      "freshness": [
+        {
+          "what": "assessment",
+          "last_at": "2026-11-13T12:00:00Z",
+          "age_hours": 0.0,
+          "stale": false
+        },
+        {
+          "what": "session",
+          "last_at": "2026-11-13T10:00:00Z",
+          "age_hours": 2.0,
+          "stale": false
+        },
+        {
+          "what": "self_report",
+          "last_at": "2026-11-13T11:30:00Z",
+          "age_hours": 0.5,
+          "stale": false
+        },
+        {
+          "what": "device",
+          "device_id": "wb-01",
+          "last_at": "2026-11-13T10:30:00Z",
+          "age_hours": 1.5,
+          "stale": false
+        }
+      ]
+    },
+    "history": {
+      "feature_sets": {
+        "count": 7,
+        "sha256": "f12298fa889fa40b759bfa9877fca306655e096c0a071ad749fd916d3dacee60"
+      },
+      "assessments": {
+        "count": 14,
+        "sha256": "adb4fef34a7566a8566a2e9ce31d27e7c3259952c4edfb4b61a6a4ce098779df"
+      },
+      "window": "701ad08ae7d945ee3dc50fd167d0fdb6c8e209ffe7eb006f36ce9201baf58a9b"
+    },
+    "sessions": {
+      "count": 10,
+      "sha256": "3182902014de8f5821975097b784738ca1f77270efd3e14ec7873ac1d15af641"
+    },
+    "self_reports": {
+      "count": 15,
+      "sha256": "dfcefcad9ee15849564248b67cafc048b3875081d7b70cd75d6bb6cd3bac37ac"
+    },
+    "explanations": {
+      "count": 14,
+      "by_assessment_id": {
+        "5026b82f-6a72-5800-8e44-e480136295a0": "952302899c7c5520254f132e05d88d0cbeb27634f1299ddb60aaf13e44df5067",
+        "a2c5f5a0-081d-554e-a11c-252e73d5f551": "c8c21a3a1fc8388d021557492cc073365a2f5793647018200afbe3f884e7dbd4",
+        "3eb8a29e-39bb-5186-a729-8e96659ebad0": "de211e343ebb3dc7590e71f2814f2d1e0b324bffbe501811ea82441ee75fc92f",
+        "9738d719-54c8-53fb-bec3-5b32b12064d4": "dcd0896152d86d7a0c9788923acfad2c82b3076ff23cbbd8bf55643db79dc228",
+        "afdbe69a-c2dd-52c3-b0b5-ae893917196b": "2e60af8a26ff4ce1e146c421cc4bf7e5c2efdd606f39f08a74470c350a3d3132",
+        "48590cae-a400-5966-bddc-6f12431f9d7b": "06f5409d6c6ccce65352b6b332ebc77982189de5f1aa99a7277870e40d5164e2",
+        "b14bdcc6-2fef-52ba-8adc-cc98ad293267": "448a6c8d2ca3a19e9c8cc131d91abf831b75f669fa65e17f07b60f955a728012",
+        "fb043f63-c513-5e55-abd2-91dc0052f5b3": "8bd4ca6e0ec735fada807325bd3ff7e0cdd4b388ebd319f1463a02cad73e57d0",
+        "8d0d37c7-de96-5acf-91bd-8a75994a1458": "b03f28a5edb2d8cafca8af921cd017902079f19ac9d5ab68118789bc241990f6",
+        "810bfda7-61cb-5c87-afbd-ceba0169a841": "a26076880d9fb54d13c18d80a52d5b8c5cbd48d920a5d235f0609beb3ac2a22d",
+        "84d713b9-3301-5793-82d5-20a68b70cc94": "b0507dfd2284c8e27e3f73ba13140d178f2bba95137a2e260d7c394c159c8366",
+        "812d8326-e904-526c-ac94-2bc75493157c": "c05e02445af5774cd0609623846edc0ce1282cb5fc92dc6f0c0c17264594a347",
+        "7bc10739-d3a9-56fb-8885-d145efef5993": "a7942c0a4308c3ba9ccff7f02498da5a4db9671c80341f6f3c61df06508b331a",
+        "727b3991-375f-5c07-8cdd-8c30937f2d19": "dcdc4639523bd56c3463bf064603c77c832b0a4286238a5d40f8bcc7fc44e7c4"
+      }
+    },
+    "assess_base": {
+      "count": 3,
+      "sha256": "7a884ce3f9245ec9835e77083ebba94e2ccaeef538686f3d5225756cd059e2c3"
+    },
+    "freshness": {
+      "count": 4,
+      "sha256": "800eb3ce6319b247716c9bd1801a26b2befbdfd781ac7235f1fb3a9850747903"
+    },
+    "simulations": {
+      "no_overrides": {
+        "risk_score": 0.62,
+        "level": "amber",
+        "sha256": "e8bfe33eb832cd187fbc52ed7b50c597aa139a06ef239c823b26f62a0b8a2367"
+      },
+      "add_1mm": {
+        "risk_score": 0.67,
+        "level": "red",
+        "sha256": "024e390f189ce555ccd831a2d1a26ef1c106b7244e22c17623581ac238037938"
+      },
+      "add_minus_2mm": {
+        "risk_score": 0.52,
+        "level": "amber",
+        "sha256": "351512243b87a87b577ce9e5e45c5aac4d2479ab0ee9ab78781b4e366ada2735"
+      },
+      "set_7_1mm": {
+        "risk_score": 0.52,
+        "level": "amber",
+        "sha256": "351512243b87a87b577ce9e5e45c5aac4d2479ab0ee9ab78781b4e366ada2735"
+      },
+      "scale_half": {
+        "risk_score": 0.38,
+        "level": "amber",
+        "sha256": "1204cce5f4e151fb9de8eea55004ed19bf2b9b9cbda6e781300486205625921b"
+      },
+      "mixed_clamped_high": {
+        "risk_score": 0.99,
+        "level": "red",
+        "sha256": "ba662fb170b5354f543763927001fe8cc59ddfb939448f6724edfa77d5e93ee8"
+      }
+    }
+  },
+  "2026-11-06T09:00:00Z": {
+    "status": {
+      "schema_version": "1.0.0",
+      "astronaut_id": "AST-01",
+      "generated_at": "2026-11-06T09:00:00Z",
+      "today": {
+        "date": "2026-11-06",
+        "mission_day": 87,
+        "phase": "inflight",
+        "gravity_environment": "microgravity"
+      },
+      "latest_assessment": {
+        "schema_version": "1.0.0",
+        "assessment_id": "0bb74465-9791-5843-804d-042fbe6bc80b",
+        "astronaut_id": "AST-01",
+        "as_of": "2026-11-06T09:00:00Z",
+        "mission_day": 87,
+        "level": "amber",
+        "risk_score": 0.62,
+        "confidence": 0.74,
+        "completeness": {
+          "score": 0.83,
+          "missing": [
+            {
+              "what": "emg.latissimus_dorsi.right.median_freq_hz",
+              "reason": "sensor_offline"
+            }
+          ]
+        },
+        "domains": [
+          {
+            "domain": "spine_length",
+            "level": "amber",
+            "score": 0.7,
+            "evaluated": true
+          },
+          {
+            "domain": "muscle",
+            "level": "amber",
+            "score": 0.55,
+            "evaluated": true
+          },
+          {
+            "domain": "kinematics",
+            "level": "green",
+            "score": 0.2,
+            "evaluated": true
+          },
+          {
+            "domain": "symptoms",
+            "level": "amber",
+            "score": 0.47,
+            "evaluated": true
+          }
+        ],
+        "drivers": [
+          {
+            "feature_id": "stretch.lumbar.peak_elongation_mm",
+            "value": 9.1,
+            "unit": "mm",
+            "deviation_z": 2.4,
+            "contribution": 0.31
+          },
+          {
+            "feature_id": "symptoms.pain_nrs_7d_mean",
+            "value": 4.1,
+            "unit": "nrs",
+            "deviation_z": 1.7,
+            "contribution": 0.17
+          }
+        ],
+        "trend": {
+          "projected_level": "red",
+          "days_to_threshold": 12.0
+        },
+        "fired_rules": [
+          {
+            "rule_id": "RULE_SYMPTOM_PAIN_TREND",
+            "domain": "symptoms",
+            "level": "amber",
+            "overrides_model": false,
+            "description": "Sustained pain above the alert range over the last 7 days (thresholds owned by the clinical model)."
+          }
+        ],
+        "recommendations": [
+          "REC_LUMBAR_STAB_01",
+          "REC_INCREASE_ARED"
+        ],
+        "escalation": {
+          "required": false,
+          "reasons": []
+        },
+        "based_on": {
+          "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+          "baseline_version": 1,
+          "session_ids": [
+            "c0a09722-928e-5a82-bdce-195058f5dcd8"
+          ],
+          "self_report_ids": [
+            "8a80a572-f664-5e5d-a22c-c17a698525e1"
+          ],
+          "engine_version": "0.1.0"
+        }
+      },
+      "latest_session": {
+        "schema_version": "1.0.0",
+        "session_id": "f5f4a6ef-0df0-5581-aacd-b21ce18d640e",
+        "astronaut_id": "AST-01",
+        "device_id": "wb-01",
+        "session_type": "spine_check",
+        "protocol_id": "spine_length_rest_v1",
+        "source": "simulator",
+        "started_at": "2026-11-06T07:00:00Z",
+        "ended_at": "2026-11-06T07:05:00Z",
+        "end_reason": "completed",
+        "mission_context": {
+          "phase": "inflight",
+          "gravity_environment": "microgravity"
+        },
+        "streams": [
+          {
+            "stream_id": "stretch_lumbar",
+            "stream_kind": "stretch",
+            "placement": {
+              "spine_region": "lumbar",
+              "span": {
+                "from_level": "l1",
+                "to_level": "l5"
+              }
+            },
+            "sample_rate_hz": 20.0
+          }
+        ]
+      },
+      "latest_self_report": {
+        "schema_version": "1.0.0",
+        "report_id": "8a80a572-f664-5e5d-a22c-c17a698525e1",
+        "astronaut_id": "AST-01",
+        "timestamp": "2026-11-06T08:30:00Z",
+        "mission_day": 87,
+        "source": "device",
+        "kind": "daily",
+        "pain_nrs": 5,
+        "pain_nrs_worst_24h": 6,
+        "pain_locations": [
+          {
+            "region": "lumbar",
+            "side": "bilateral"
+          }
+        ],
+        "stiffness_nrs": 6,
+        "sleep": {
+          "hours": 5.6,
+          "quality_nrs": 4
+        },
+        "red_flags": []
+      },
+      "devices": [
+        {
+          "schema_version": "1.0.0",
+          "astronaut_id": "AST-01",
+          "device_id": "wb-01",
+          "timestamp": "2026-11-06T07:30:00Z",
+          "status": "ok",
+          "source": "device",
+          "boot_id": 2893746120,
+          "uptime_ms": 183900,
+          "firmware_version": "0.3.1",
+          "battery_pct": 64.0,
+          "link": {
+            "type": "ble",
+            "rssi_dbm": -67
+          },
+          "streams": [
+            {
+              "stream_id": "emg_lat_left",
+              "stream_kind": "emg",
+              "state": "active",
+              "sample_rate_hz": 1000.0,
+              "last_seq": 1840
+            },
+            {
+              "stream_id": "imu_l3",
+              "stream_kind": "imu",
+              "state": "active",
+              "sample_rate_hz": 100.0,
+              "last_seq": 367
+            },
+            {
+              "stream_id": "stretch_lumbar",
+              "stream_kind": "stretch",
+              "state": "active",
+              "sample_rate_hz": 20.0,
+              "last_seq": 88
+            }
+          ]
+        }
+      ],
+      "active_baseline": {
+        "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+        "version": 1,
+        "created_at": "2026-10-22T09:00:00Z"
+      },
+      "freshness": [
+        {
+          "what": "assessment",
+          "last_at": "2026-11-06T09:00:00Z",
+          "age_hours": 0.0,
+          "stale": false
+        },
+        {
+          "what": "session",
+          "last_at": "2026-11-06T07:00:00Z",
+          "age_hours": 2.0,
+          "stale": false
+        },
+        {
+          "what": "self_report",
+          "last_at": "2026-11-06T08:30:00Z",
+          "age_hours": 0.5,
+          "stale": false
+        },
+        {
+          "what": "device",
+          "device_id": "wb-01",
+          "last_at": "2026-11-06T07:30:00Z",
+          "age_hours": 1.5,
+          "stale": false
+        }
+      ]
+    },
+    "history": {
+      "feature_sets": {
+        "count": 7,
+        "sha256": "6735b37d78ba1f44048368258e48de77f3c869fa9244bcc2d5fc8e6ee7beaf44"
+      },
+      "assessments": {
+        "count": 14,
+        "sha256": "43f64e15501da0a9a687609f2c3d46cff1bee76f3e872f0f070ddfdd5695f1e2"
+      },
+      "window": "e6b6ce8036708f4f3cdc977b400c88bf6ec5563e1f76e6295b01ab5602d9f3f8"
+    },
+    "sessions": {
+      "count": 10,
+      "sha256": "4d5e119d9c4b500ef3ae6d4efe39438887cdac58fef87060e990ba5da4cc678c"
+    },
+    "self_reports": {
+      "count": 15,
+      "sha256": "955c8a4c3dbd705cf5f6da646822b98b726fc4a7bc4a1c3ff9f96092cbc7e624"
+    },
+    "explanations": {
+      "count": 14,
+      "by_assessment_id": {
+        "11108713-e7a8-56ae-a408-96ba673b8c6f": "23f5544191dc07ccf4f077141f52bc50117a3edb4160832ad100a70f40f5b39c",
+        "b1fad69a-b1d5-528f-9e3c-4f6dfccdfb82": "3e3687970335f74870bc6e1b7f9a87bd10a358ca519c9c885e997c209e6b4928",
+        "6769d285-343a-50e3-85ab-6f27da3a874e": "fb2bdb94c1793b167012f9c582edaf4352371db2b70fe7588b167f8418ba428c",
+        "a75a092a-72cc-5118-8aa8-760ac1afb045": "633d44f68400948b87937908c3fb3924d2c3438aad2c8e901852709cc7b0c856",
+        "7234e5f9-b6d3-5666-9aa2-303dc1c9ae32": "0221f3169f05e29a528223001927a1ca9069dac10049e5197543446936266565",
+        "c4aeead6-419e-5641-b3fa-750f15f41eb3": "cbf909f7db2da26fd70df250ff920789323054e1c36c0c9eae3070508fdcb206",
+        "841c5658-f949-50ca-b577-c61ab1e5aae6": "be62abfbf453c8beea097aa8b770d4eefedf13010c3fac2e6d1119a8789d2f81",
+        "c07f6fc2-c9f1-5d3f-944a-558513e532c3": "3b4dcccc3d8b56d51c4fbf6cae38a1f2dc278b541180890bf4a237fe0fe0631a",
+        "aa1c4fc7-c654-54ea-84ff-a92a1794ff32": "ac56ffa105ffe6924b92e31444608c9e485dc89d4ea92cbaaf50b9eed62a49dc",
+        "0fbb4f2e-f9d3-5a68-93c6-3c37aaadb555": "ccb3225737a3bf078a394fe6a2bfe5def3d778aa87c30d7085fecbe2077adc71",
+        "75894157-5075-5502-af4c-abdf5ed27bea": "acd2eb115b056e1c55a1ea56f29da8a655e165ad54beae93c69742520204fb87",
+        "ef83ddf3-23d7-5b74-9a06-f46fa34284f4": "8e40273294968b3334bbe2ee1de2e2595eeb43dceb71171e88bef1150ba16ffa",
+        "e17d4732-74c8-56c9-b536-c5005ec2ccf1": "890a80d889e1afa1f734c9c083d800f136b2e5412d0933df8cd3d87a10914458",
+        "0bb74465-9791-5843-804d-042fbe6bc80b": "4db37fbfaf8243dc50e6c31d3f7fcf36654d6572b4fcad2cf47aea0d7c010e43"
+      }
+    },
+    "assess_base": {
+      "count": 3,
+      "sha256": "25af8b49b3a401538870b8ae9636d0996f6ea5d1b773f06e3810d7963c04345b"
+    },
+    "freshness": {
+      "count": 4,
+      "sha256": "73048151e5440b92029b36b5cd34258fb8a4326480eda9c34205555bb6f975d5"
+    },
+    "simulations": {
+      "no_overrides": {
+        "risk_score": 0.62,
+        "level": "amber",
+        "sha256": "d7416ac59431fcc26956c1d05904a3bd9ac29d5c29ea5024d5ad11d308cc0f11"
+      },
+      "add_1mm": {
+        "risk_score": 0.67,
+        "level": "red",
+        "sha256": "ebceba0b536f3e869fa16340fb22172c73d0340d779fd5a64d91f79f6014b0d8"
+      },
+      "add_minus_2mm": {
+        "risk_score": 0.52,
+        "level": "amber",
+        "sha256": "d29d4dcc1df9c1448720a35004792eb38e4c4482b90051f10a67daa11dbab903"
+      },
+      "set_7_1mm": {
+        "risk_score": 0.52,
+        "level": "amber",
+        "sha256": "d29d4dcc1df9c1448720a35004792eb38e4c4482b90051f10a67daa11dbab903"
+      },
+      "scale_half": {
+        "risk_score": 0.38,
+        "level": "amber",
+        "sha256": "25ce76feac0764d4c0c9168cd705c6e9a379da5a407a080bd8e65636bdae6a3e"
+      },
+      "mixed_clamped_high": {
+        "risk_score": 0.99,
+        "level": "red",
+        "sha256": "e865dc97f870e4c586bcedd34b8098bbfec257df1bcf96550097819eda0677e9"
+      }
+    }
+  }
+}

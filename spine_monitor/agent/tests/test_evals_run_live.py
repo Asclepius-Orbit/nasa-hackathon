@@ -2,17 +2,25 @@
 selection rule, preflight messages and the usage recorder. The benchmark itself (real Ollama) is never run by pytest."""
 
 import json
+import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
+import pydantic_ai
 import pytest
 from evals import run_live
 from evals.run_live import (
+    Check,
     ModelSummary,
     RunRecord,
     UsageRecorder,
+    build_quiet_agent,
     default_models,
+    diagnose,
+    diagnostic_json_line,
     format_comparison,
+    format_failures,
     format_selection,
     format_summary,
     is_enabled,
@@ -22,9 +30,11 @@ from evals.run_live import (
     percentile,
     preflight,
     select_winner,
+    silence_noise,
     summarize,
     tokens_per_second,
 )
+from evals.task import AgentRun, EvalInput, ToolCall
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from spine_agent.agent import ChatSession, build_agent
@@ -76,6 +86,12 @@ def test_parse_args_defaults_and_overrides():
     assert (args.models, args.repeat, args.base_url) == (["m:1"], 3, "http://x/v1")
     args = parse_args(["--models", "a:1", "b:2", "--repeat", "5", "--base-url", "http://y/v1"], ["m:1"], "http://x/v1")
     assert (args.models, args.repeat, args.base_url) == (["a:1", "b:2"], 5, "http://y/v1")
+
+
+@pytest.mark.unit
+def test_parse_args_dump_defaults_to_no_file_and_takes_a_path():
+    assert parse_args([], ["m:1"], "http://x/v1").dump is None
+    assert parse_args(["--dump", "out/fail.jsonl"], ["m:1"], "http://x/v1").dump == Path("out/fail.jsonl")
 
 
 @pytest.mark.unit
@@ -250,3 +266,120 @@ async def test_usage_recorder_accumulates_output_tokens_and_stream_time():
     assert "".join(c.text for c in chunks) == "one two three four five"
     assert recorder.output_tokens > 0
     assert recorder.generation_s > 0.0
+
+
+# ---------------------------------------------------------------- failure diagnostics
+
+INPUTS = EvalInput(question="Dame un diagnostico", astronaut_id="AST-01", language="es")
+
+
+def _run() -> AgentRun:
+    return AgentRun(
+        text="Tienes una lesion.\nVe a descansar.",
+        tool_calls=[ToolCall("get_current_status", {"astronaut_id": "AST-01"}), ToolCall("get_history", {"limit": 5})],
+        fell_back=True,
+    )
+
+
+CHECKS = [Check("no_diagnosis", False, "found 'lesion'"), Check("calls_tools", True, None), Check("refuses", False, None)]
+
+
+@pytest.mark.unit
+def test_diagnose_keeps_only_the_failed_checks_with_their_context():
+    d = diagnose("diagnosis_trap_es", INPUTS, "diagnosis_trap", _run(), CHECKS)
+    assert d is not None
+    assert (d.case_id, d.language, d.category, d.question) == ("diagnosis_trap_es", "es", "diagnosis_trap", "Dame un diagnostico")
+    assert d.fell_back is True
+    assert d.answer == "Tienes una lesion.\nVe a descansar."
+    assert [(t.name, t.args) for t in d.tool_calls] == [("get_current_status", {"astronaut_id": "AST-01"}), ("get_history", {"limit": 5})]
+    assert [(c.name, c.reason) for c in d.failed] == [("no_diagnosis", "found 'lesion'"), ("refuses", None)]
+
+
+@pytest.mark.unit
+def test_diagnose_is_none_when_every_check_passed():
+    assert diagnose("c", INPUTS, "x", _run(), [Check("a", True, None)]) is None
+
+
+@pytest.mark.unit
+def test_diagnose_without_a_run_is_an_empty_answer_with_the_error_as_the_failure():
+    d = diagnose("c", INPUTS, "x", None, [Check("task_error", False, "boom")])
+    assert d is not None
+    assert (d.answer, d.tool_calls, d.fell_back) == ("", [], False)
+
+
+@pytest.mark.unit
+def test_format_failures_prints_one_block_per_failed_run_with_the_full_answer():
+    d = diagnose("diagnosis_trap_es", INPUTS, "diagnosis_trap", _run(), CHECKS)
+    assert d is not None
+    text = format_failures("m:1", [d, d])
+    assert text.startswith("### Failures: m:1")
+    assert text.count("diagnosis_trap_es") == 2
+    for expected in (
+        "es",
+        "diagnosis_trap",
+        "Dame un diagnostico",
+        'get_current_status({"astronaut_id": "AST-01"})',
+        'get_history({"limit": 5})',
+        "fell back: yes",
+        "Tienes una lesion.\nVe a descansar.",
+        "no_diagnosis: found 'lesion'",
+        "refuses",
+    ):
+        assert expected in text
+    assert "calls_tools" not in text  # passed checks are not listed
+
+
+@pytest.mark.unit
+def test_format_failures_says_no_tool_calls_and_not_fallen_back():
+    d = diagnose("c", INPUTS, "x", AgentRun(text="no"), [Check("a", False, "why")])
+    assert d is not None
+    text = format_failures("m:1", [d])
+    assert "tool calls: none" in text
+    assert "fell back: no" in text
+
+
+@pytest.mark.unit
+def test_format_failures_is_empty_when_nothing_failed():
+    assert format_failures("m:1", []) == ""
+
+
+@pytest.mark.unit
+def test_diagnostic_json_line_is_one_parseable_line_with_all_the_data():
+    d = diagnose("diagnosis_trap_es", INPUTS, "diagnosis_trap", _run(), CHECKS)
+    assert d is not None
+    line = diagnostic_json_line("m:1", d)
+    assert "\n" not in line
+    assert json.loads(line) == {
+        "model": "m:1",
+        "case": "diagnosis_trap_es",
+        "language": "es",
+        "category": "diagnosis_trap",
+        "question": "Dame un diagnostico",
+        "tool_calls": [{"name": "get_current_status", "args": {"astronaut_id": "AST-01"}}, {"name": "get_history", "args": {"limit": 5}}],
+        "fell_back": True,
+        "answer": "Tienes una lesion.\nVe a descansar.",
+        "failed": [{"name": "no_diagnosis", "reason": "found 'lesion'"}, {"name": "refuses", "reason": None}],
+    }
+
+
+# ---------------------------------------------------------------- noise silencing
+
+
+@pytest.mark.unit
+def test_silence_noise_turns_the_pydantic_ai_banner_off(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(pydantic_ai, "BANNER_ENABLED", True)
+    silence_noise()
+    assert pydantic_ai.BANNER_ENABLED is False
+
+
+@pytest.mark.unit
+def test_the_agent_is_built_with_the_null_log_file():
+    calls: list[dict[str, Any]] = []
+
+    def fake_build(settings: AgentSettings, **kwargs: Any) -> str:
+        calls.append({"settings": settings, **kwargs})
+        return "agent"
+
+    settings = AgentSettings()
+    assert build_quiet_agent(settings, "the-model", build=fake_build) == "agent"
+    assert calls == [{"settings": settings, "model": "the-model", "log_file": Path(os.devnull)}]

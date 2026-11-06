@@ -3,6 +3,7 @@
 Run it from spine_monitor/agent (the `evals` package lives there; --no-sync keeps the shared workspace environment):
 
     SPINE_AGENT_EVALS_LIVE=1 uv run --no-sync python -m evals.run_live --models qwen3.5:4b gemma4:e4b --repeat 3
+    ... --dump failures.jsonl   # also write every failed run (question, tool calls, full answer, failed checks) as JSON lines
 
 Without SPINE_AGENT_EVALS_LIVE=1 it prints why and exits 2. Defaults: --models from SPINE_AGENT_LLM_MODELS (env) or the
 .env.example of the repo, --repeat 3, --base-url from AgentSettings (SPINE_AGENT_OLLAMA_BASE_URL).
@@ -36,18 +37,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pydantic_ai
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.settings import ModelSettings
-from spine_agent.agent import build_agent
+from spine_agent.agent import SpineAgent, build_agent
 from spine_agent.fallback import McpStatusSource
 from spine_agent.settings import AgentSettings
 
 from evals.dataset import build_dataset
-from evals.task import AgentRun, EvalInput, run_chat
+from evals.task import AgentRun, EvalInput, ToolCall, run_chat
 
 ENV_FLAG = "SPINE_AGENT_EVALS_LIVE"
 MODELS_VAR = "SPINE_AGENT_LLM_MODELS"
@@ -88,6 +90,9 @@ def parse_args(argv: Sequence[str], models: list[str], base_url: str) -> argpars
     parser.add_argument("--models", nargs="+", default=models, help=f"Ollama tags (default: ${MODELS_VAR} or .env.example)")
     parser.add_argument("--repeat", type=_positive_int, default=3, help="repetitions per case (default 3)")
     parser.add_argument("--base-url", default=base_url, help="OpenAI-compatible endpoint of Ollama (default from AgentSettings)")
+    parser.add_argument(
+        "--dump", type=Path, default=None, help="write the failed runs (question, tool calls, full answer, failed checks) as JSON lines to this file"
+    )
     return parser.parse_args(list(argv))
 
 
@@ -219,6 +224,104 @@ def format_selection(summaries: Sequence[ModelSummary], ttft_limit_s: float) -> 
     return f"{rule}\nwinner: {winner.model} (pass rate {_rate(round(winner.pass_rate * winner.runs), winner.runs)}, median TTFT {_fmt(winner.median_ttft_s)} s)"
 
 
+# ---------------------------------------------------------------- failure diagnostics
+
+
+@dataclass(frozen=True)
+class Check:
+    """One evaluator verdict on one run: its name, whether it passed and, when it said so, why."""
+
+    name: str
+    passed: bool
+    reason: str | None
+
+
+@dataclass(frozen=True)
+class Diagnostic:
+    """Everything needed to judge by hand whether a failed run is a model error or an evaluator that is too strict."""
+
+    case_id: str
+    language: str
+    category: str
+    question: str
+    tool_calls: list[ToolCall]
+    fell_back: bool
+    answer: str
+    failed: list[Check]
+
+
+def diagnose(case_id: str, inputs: EvalInput, category: str, run: AgentRun | None, checks: Sequence[Check]) -> Diagnostic | None:
+    """The diagnostic of a run, or None when every check passed. `run` is None when the task itself raised."""
+    failed = [c for c in checks if not c.passed]
+    if not failed:
+        return None
+    return Diagnostic(
+        case_id=case_id,
+        language=inputs.language,
+        category=category,
+        question=inputs.question,
+        tool_calls=list(run.tool_calls) if run else [],
+        fell_back=run.fell_back if run else False,
+        answer=run.text if run else "",
+        failed=failed,
+    )
+
+
+def _format_call(call: ToolCall) -> str:
+    return f"{call.name}({json.dumps(call.args, ensure_ascii=False)})"
+
+
+def format_failures(model: str, diagnostics: Sequence[Diagnostic]) -> str:
+    """The "### Failures: <model>" section, one block per failed run with the FULL answer; empty when nothing failed."""
+    if not diagnostics:
+        return ""
+    lines = [f"### Failures: {model}", ""]
+    for d in diagnostics:
+        calls = ", ".join(_format_call(c) for c in d.tool_calls) or "none"
+        lines += [
+            f"#### {d.case_id} [{d.language}] ({d.category})",
+            f"question: {d.question}",
+            f"tool calls: {calls}",
+            f"fell back: {'yes' if d.fell_back else 'no'}",
+            "answer:",
+            d.answer,
+            "failed evaluators:",
+            *(f"- {c.name}: {c.reason}" if c.reason else f"- {c.name}" for c in d.failed),
+            "",
+        ]
+    return "\n".join(lines)
+
+
+def diagnostic_json_line(model: str, d: Diagnostic) -> str:
+    return json.dumps(
+        {
+            "model": model,
+            "case": d.case_id,
+            "language": d.language,
+            "category": d.category,
+            "question": d.question,
+            "tool_calls": [{"name": c.name, "args": c.args} for c in d.tool_calls],
+            "fell_back": d.fell_back,
+            "answer": d.answer,
+            "failed": [{"name": c.name, "reason": c.reason} for c in d.failed],
+        },
+        ensure_ascii=False,
+    )
+
+
+# ---------------------------------------------------------------- quiet output
+
+
+def silence_noise() -> None:
+    """Keep the pydantic-ai banner out of the report."""
+    pydantic_ai.BANNER_ENABLED = False
+
+
+def build_quiet_agent(settings: AgentSettings, model: Any, build: Callable[..., SpineAgent] = build_agent) -> SpineAgent:
+    """The agent with the MCP server's stderr sent to the null device, so its INFO logs do not interleave with the report."""
+    return build(settings, model=model, log_file=Path(os.devnull))
+
+
 # ---------------------------------------------------------------- preflight
 
 
@@ -272,56 +375,77 @@ class UsageRecorder(WrapperModel):
 # ---------------------------------------------------------------- the benchmark (needs a real Ollama)
 
 
-async def _benchmark_model(model: str, base_url: str, repeat: int) -> list[RunRecord]:  # pragma: no cover  (real Ollama)
+def _case_id(report_case: Any) -> str:
+    return report_case.source_case_name or report_case.name  # pragma: no cover  (real Ollama)
+
+
+async def _benchmark_model(model: str, base_url: str, repeat: int) -> tuple[list[RunRecord], list[Diagnostic]]:  # pragma: no cover  (real Ollama)
     settings = AgentSettings(model=model, ollama_base_url=base_url)
     fallback = McpStatusSource(settings)
 
     async def task(inputs: EvalInput) -> AgentRun:
         recorder = UsageRecorder(OllamaModel(model, provider=OllamaProvider(base_url=base_url)))
-        run = await run_chat(build_agent(settings, model=recorder), fallback, inputs)
+        run = await run_chat(build_quiet_agent(settings, recorder), fallback, inputs)
         run.output_tokens, run.generation_s = recorder.output_tokens, recorder.generation_s
         return run
 
     report = await build_dataset().evaluate(task, repeat=repeat, max_concurrency=1, progress=False)
-    records = [
-        RunRecord(
-            category=case.metadata.category if case.metadata else "unknown",
-            passed=all(a.value for a in case.assertions.values()) and not case.evaluator_failures,
-            ttft_s=case.output.ttft_s,
-            total_s=case.output.total_s,
-            tokens_per_s=tokens_per_second(case.output.output_tokens, case.output.generation_s),
-            fell_back=case.output.fell_back,
+    records: list[RunRecord] = []
+    diagnostics: list[Diagnostic] = []
+    for case in report.cases:
+        category = case.metadata.category if case.metadata else "unknown"
+        checks = [Check(name, bool(a.value), a.reason) for name, a in case.assertions.items()]
+        checks += [Check(f.name, False, f.error_message) for f in case.evaluator_failures]
+        diagnostic = diagnose(_case_id(case), case.inputs, category, case.output, checks)
+        records.append(
+            RunRecord(
+                category=category,
+                passed=diagnostic is None,
+                ttft_s=case.output.ttft_s,
+                total_s=case.output.total_s,
+                tokens_per_s=tokens_per_second(case.output.output_tokens, case.output.generation_s),
+                fell_back=case.output.fell_back,
+            )
         )
-        for case in report.cases
-    ]
+        if diagnostic:
+            diagnostics.append(diagnostic)
     # A run whose task raised (programming error, MCP server failing to start) counts as a failed run without timings.
-    records += [
-        RunRecord(
-            category=failure.metadata.category if failure.metadata else "unknown", passed=False, ttft_s=None, total_s=0.0, tokens_per_s=None, fell_back=False
-        )
-        for failure in report.failures
-    ]
-    return records
+    for failure in report.failures:
+        category = failure.metadata.category if failure.metadata else "unknown"
+        records.append(RunRecord(category=category, passed=False, ttft_s=None, total_s=0.0, tokens_per_s=None, fell_back=False))
+        diagnostic = diagnose(_case_id(failure), failure.inputs, category, None, [Check("task_error", False, failure.error_message)])
+        if diagnostic:
+            diagnostics.append(diagnostic)
+    return records, diagnostics
 
 
-async def _benchmark(models: Sequence[str], base_url: str, repeat: int) -> list[ModelSummary]:  # pragma: no cover  (real Ollama)
+async def _benchmark(models: Sequence[str], base_url: str, repeat: int, dump: Path | None) -> list[ModelSummary]:  # pragma: no cover  (real Ollama)
     summaries: list[ModelSummary] = []
+    if dump:
+        dump.write_text("", encoding="utf-8")
     for model in models:
         print(f"Running {model} ({repeat} x {len(build_dataset().cases)} runs)...", file=sys.stderr, flush=True)
-        summary = summarize(model, await _benchmark_model(model, base_url, repeat))
+        records, diagnostics = await _benchmark_model(model, base_url, repeat)
+        summary = summarize(model, records)
         summaries.append(summary)
         print(format_summary(summary), "", sep="\n", flush=True)
+        if diagnostics:
+            print(format_failures(model, diagnostics), flush=True)
+        if dump and diagnostics:
+            with dump.open("a", encoding="utf-8") as handle:
+                handle.writelines(diagnostic_json_line(model, d) + "\n" for d in diagnostics)
     return summaries
 
 
 def _run_live(env: Mapping[str, str], argv: Sequence[str]) -> int:  # pragma: no cover  (real file system, Ollama and MCP server)
+    silence_noise()
     example = ENV_EXAMPLE.read_text(encoding="utf-8") if ENV_EXAMPLE.exists() else None
     args = parse_args(argv, default_models(env, example), AgentSettings().ollama_base_url)
     problem = preflight(args.base_url, args.models)
     if problem:
         print(problem, file=sys.stderr)
         return 1
-    summaries = asyncio.run(_benchmark(args.models, args.base_url, args.repeat))
+    summaries = asyncio.run(_benchmark(args.models, args.base_url, args.repeat, args.dump))
     print(format_comparison(summaries), "", format_selection(summaries, TTFT_LIMIT_S), sep="\n")
     return 0
 

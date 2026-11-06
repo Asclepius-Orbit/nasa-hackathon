@@ -108,7 +108,7 @@ def failing_script(error: Exception, *, after: tuple[str, ...] = ()) -> Script:
 
 
 def _settings(**overrides: Any) -> AgentSettings:
-    return AgentSettings(**{"mcp_command": sys.executable, "mcp_args": ["-m", "spine_mcp_server"], **overrides})
+    return AgentSettings(**{"mcp_command": sys.executable, "mcp_args": ["-m", "spine_mcp_server", "--dataset", "examples"], **overrides})
 
 
 async def _collect(session: ChatSession, question: str) -> list[ReplyChunk]:

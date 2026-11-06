@@ -11,7 +11,7 @@ ASSESSMENT_ID = "a55e55e0-0000-4000-8000-0000000000a1"
 
 
 def _settings(command: str = sys.executable, args: list[str] | None = None) -> AgentSettings:
-    return AgentSettings(mcp_command=command, mcp_args=args if args is not None else ["-m", "spine_mcp_server"])
+    return AgentSettings(mcp_command=command, mcp_args=args if args is not None else ["-m", "spine_mcp_server", "--dataset", "examples"])
 
 
 @pytest.mark.integration

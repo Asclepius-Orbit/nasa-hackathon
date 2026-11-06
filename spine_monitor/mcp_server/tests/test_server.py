@@ -527,7 +527,7 @@ async def test_main_serves_the_seven_tools_over_stdio(monkeypatch: pytest.Monkey
     # La frontera es el transporte: se sustituye `run` (que bloquearía leyendo stdin) y se comprueba qué servidor y transporte se arrancan.
     started: list[tuple[MCPServer, str]] = []
     monkeypatch.setattr(MCPServer, "run", lambda self, transport="stdio": started.append((self, transport)))
-    main()
+    main([])  # argv explícito: sin él argparse leería los argumentos de pytest
     ((server, transport),) = started
     assert transport == "stdio"
     assert set(await _tools(server)) == TOOLS

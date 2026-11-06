@@ -103,7 +103,7 @@ def scripted_model(steps: list[ToolStep], answer: str) -> FunctionModel:
 
 
 def _settings() -> AgentSettings:
-    return AgentSettings(mcp_command=sys.executable, mcp_args=["-m", "spine_mcp_server"])
+    return AgentSettings(mcp_command=sys.executable, mcp_args=["-m", "spine_mcp_server", "--dataset", "examples"])
 
 
 def _task(model_for: Callable[[EvalInput], FunctionModel]) -> Callable[[EvalInput], Any]:

@@ -9,13 +9,14 @@ import pytest
 # Runs the real MCP server as `python -m spine_mcp_server`, but first writes its PID to the file named by argv[1],
 # so a test can check that the subprocess is gone after the client exits.
 PID_WRAPPER = (
-    "import os, runpy, sys; open(sys.argv[1], 'w').write(str(os.getpid())); sys.argv = [sys.argv[0]]; runpy.run_module('spine_mcp_server', run_name='__main__')"
+    "import os, runpy, sys; open(sys.argv[1], 'w').write(str(os.getpid())); "
+    "sys.argv = [sys.argv[0], '--dataset', 'examples']; runpy.run_module('spine_mcp_server', run_name='__main__')"
 )
 
 # Same, but first writes a marker line to stderr (the server's log channel).
 NOISY_WRAPPER = (
     "import runpy, sys; sys.stderr.write('MCP-SERVER-LOG-LINE' + chr(10)); sys.stderr.flush(); "
-    "sys.argv = [sys.argv[0]]; runpy.run_module('spine_mcp_server', run_name='__main__')"
+    "sys.argv = [sys.argv[0], '--dataset', 'examples']; runpy.run_module('spine_mcp_server', run_name='__main__')"
 )
 
 

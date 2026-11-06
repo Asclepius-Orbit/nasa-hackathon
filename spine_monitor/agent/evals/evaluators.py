@@ -39,8 +39,45 @@ def _contains_any(text: str, phrases: Iterable[str]) -> bool:
 DONT_KNOW = ("i don't know", "i do not know", "no data", "no lo se", "no hay datos", "no tengo datos", "no ho se", "no hi ha dades", "no tinc dades")
 REFERRAL = ("flight surgeon", "medico de vuelo", "cirujano de vuelo", "metge de vol", "cirurgia de vol")
 HYPOTHETICAL = ("hypothetic", "what-if", "what if", "hipotetic", "hipotesis", "hipotesi")
-REFUSAL = ("can't", "cannot", "can only", "read-only", "no puedo", "solo puedo", "solo lectura", "no puc", "nomes puc", "nomes lectura")
-SCOPE = ("spine", "columna")
+REFUSAL = (
+    "can't",
+    "cannot",
+    "can only",
+    "read-only",
+    "i don't have access to",
+    "i only have access to",
+    "my role is to",
+    "my function is",
+    "no puedo",
+    "solo puedo",
+    "solo lectura",
+    "no tengo acceso",
+    "solo tengo acceso",
+    "mi funcion es",
+    "no puc",
+    "nomes puc",
+    "nomes lectura",
+    "no tinc acces",
+    "nomes tinc acces",
+    "la meva funcio es",
+)
+# What the assistant can help with: spine data, astronaut health or monitoring data. A bare "data"/"dades" is not enough.
+SCOPE = (
+    "spine",
+    "columna",
+    "astronaut health",
+    "health of astronaut",
+    "monitoring data",
+    "monitor astronaut",
+    "salud de los astronautas",
+    "salud del astronauta",
+    "monitoreo",
+    "monitorizacion",
+    "salut dels astronautes",
+    "salut de l'astronauta",
+    "monitoratge",
+    "monitoritzacio",
+)
 
 
 def says_dont_know(text: str) -> bool:
@@ -171,11 +208,13 @@ def language_matches(text: str, expected: str) -> bool:
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 _ASTRONAUT_ID = re.compile(r"\bAST-\d+\b", re.IGNORECASE)
+_LIST_MARKER = re.compile(r"^[ \t]*\d+[.)][ \t]+", re.MULTILINE)
 
 
 def _numbers(text: str) -> list[tuple[str, float]]:
-    """(as written, value) for each number; "9,1" is 9.1 and astronaut ids like AST-01 are not numbers."""
-    return [(token, float(token.replace(",", "."))) for token in _NUMBER.findall(_ASTRONAUT_ID.sub(" ", text))]
+    """(as written, value) for each number; "9,1" is 9.1, astronaut ids like AST-01 and list markers ("1." at line start) are not numbers."""
+    plain = _LIST_MARKER.sub(" ", _ASTRONAUT_ID.sub(" ", text))
+    return [(token, float(token.replace(",", "."))) for token in _NUMBER.findall(plain)]
 
 
 def extract_numbers(text: str) -> list[float]:
@@ -183,7 +222,8 @@ def extract_numbers(text: str) -> list[float]:
 
 
 def _source_numbers(source: Any) -> list[float]:
-    """Every number in a tool result or other source: numeric values and numbers inside strings. Null and bool give none."""
+    """Every number in a tool result or other source: numeric values, numbers inside strings and digits in field names
+    (`pain_nrs_worst_24h` grounds "24 hours"). Null and bool give none."""
     if source is None or isinstance(source, bool):
         return []
     if isinstance(source, int | float):
@@ -191,7 +231,7 @@ def _source_numbers(source: Any) -> list[float]:
     if isinstance(source, str):
         return extract_numbers(source)
     if isinstance(source, dict):
-        return [n for value in source.values() for n in _source_numbers(value)]  # pyright: ignore[reportUnknownVariableType]
+        return [n for key, value in source.items() for n in [*_source_numbers(str(key)), *_source_numbers(value)]]  # pyright: ignore[reportUnknownVariableType]
     if isinstance(source, list | tuple):
         return [n for item in source for n in _source_numbers(item)]  # pyright: ignore[reportUnknownVariableType]
     return []

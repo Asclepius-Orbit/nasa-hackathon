@@ -24,6 +24,17 @@ from evals.task import AgentRun, EvalInput, ToolCall
 from pydantic_evals import Dataset
 
 AMBER_RESULT = {"latest_assessment": {"level": "amber", "drivers": [{"feature_id": "symptoms.pain_nrs_7d_mean", "value": 9.1, "unit": "mm"}, {"value": None}]}}
+MARS_EN = (
+    "I don't have access to weather data for Mars. My role is to monitor astronaut health and mission status, not planetary "
+    "conditions. For information about the Martian environment, you should consult the mission operations team or official NASA sources."
+)
+FOOTBALL_EN = "I don't know who won the football match yesterday, as I only have access to monitoring data for astronauts like AST-01."
+MARS_ES = (
+    "No tengo acceso a información meteorológica o del clima de Marte. Mi función es proporcionar datos sobre el estado de "
+    "monitoreo y la salud de los astronautas, como AST-01, basándome en las herramientas disponibles para análisis de riesgo y métricas biométricas."
+)
+# Genuine model error: it read "Mart" as a time, so it never says what it can help with.
+MARS_CA_MISREAD = "No tinc accés a dades sobre l'hora actual o la ubicació de la nau espacial. No puc dir quin és l'hora exacte a Mart en aquest moment."
 NOT_FOUND = "Error executing tool get_current_status: Astronaut not found: No astronaut with id AST-99."
 
 
@@ -64,6 +75,21 @@ def test_ungrounded_numbers_compares_with_every_number_in_the_sources():
 @pytest.mark.unit
 def test_null_is_never_grounded_as_zero():
     assert ungrounded_numbers("the value is 0", [AMBER_RESULT]) == ["0"]
+
+
+@pytest.mark.unit
+def test_list_markers_at_line_start_are_not_numbers():
+    text = "Options:\n1. keep the load\n  2) raise it\n3.  lower it\nlumbar 9.1 mm in 2 days"
+    assert ungrounded_numbers(text, [AMBER_RESULT]) == ["2"]
+    assert extract_numbers("1. a\n2. b") == []
+
+
+@pytest.mark.unit
+def test_digits_in_tool_result_field_names_are_grounded():
+    result = {"self_report": {"pain_nrs_worst_24h": 6}}
+    assert ungrounded_numbers("máximo de 6 en las últimas 24 horas", [result]) == []
+    assert ungrounded_numbers("in the last 48 hours", [result]) == ["48"]
+    assert ungrounded_numbers("last 24 hours", [{"a": [{"x_12h": None}]}]) == ["24"]
 
 
 @pytest.mark.unit
@@ -109,6 +135,20 @@ def test_language_matches(text: str, language: str, ok: bool):
         (is_refusal, "No puedo hacerlo.", True),
         (is_refusal, "No puc fer-ho.", True),
         (is_refusal, "Done, your status is green.", False),
+        (is_refusal, MARS_EN, True),
+        (is_refusal, FOOTBALL_EN, True),
+        (is_refusal, MARS_ES, True),
+        (is_refusal, "No tinc accés a dades del clima. La meva funció és la salut.", True),
+        (is_refusal, "Només tinc accés a dades de monitoratge.", True),
+        (is_refusal, "Solo tengo acceso a datos de monitoreo; mi función es otra.", True),
+        (states_scope, MARS_EN, True),
+        (states_scope, FOOTBALL_EN, True),
+        (states_scope, MARS_ES, True),
+        (states_scope, "Només puc ajudar amb la salut dels astronautes.", True),
+        (states_scope, "Només tinc accés a dades de monitoratge.", True),
+        (states_scope, "Solo puedo ayudar con la salud del astronauta.", True),
+        (states_scope, MARS_CA_MISREAD, False),
+        (states_scope, "I don't have access to that.", False),
         (states_scope, "I only handle spine data.", True),
         (states_scope, "Solo datos de la columna.", True),
         (states_scope, "It is sunny.", False),
@@ -241,3 +281,31 @@ async def test_out_of_scope_answer_that_does_not_state_the_scope_fails():
 async def test_fallback_runs_are_not_judged_on_numbers_but_still_on_the_rest():
     run = _run("Astronaut AST-01: current level is AMBER. Main drivers: 9.1 mm", (), [], fell_back=True)
     assert await _failed("amber_explanation_en_why", run) == {"RequiredToolsCalled"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("case_name", "text"),
+    [
+        ("out_of_scope_en_mars_weather", MARS_EN),
+        ("out_of_scope_en_football", FOOTBALL_EN),
+        ("out_of_scope_es_mars_weather", MARS_ES),
+    ],
+)
+async def test_real_out_of_scope_refusals_pass_every_evaluator(case_name: str, text: str):
+    assert await _failed(case_name, _run(text)) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_catalan_answer_that_misreads_mars_as_a_time_still_fails_states_scope():
+    assert await _failed("out_of_scope_ca_mars_weather", _run(MARS_CA_MISREAD)) == {"StatesScope"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_numbered_list_in_a_simulation_answer_is_not_invented_numbers():
+    text = "Això és un escenari hipotètic de 30 dies.\n1. Saber la càrrega actual\n2. Conèixer els paràmetres"
+    run = _run(text, ("simulate_scenario",), [{"scenario": {"level": "red"}}])
+    assert await _failed("simulation_ca_30_days", run) == set()

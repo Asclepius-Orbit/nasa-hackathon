@@ -37,7 +37,7 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 
 - `start` and `end` are RFC 3339 timestamps with a UTC offset. `limit` is 1 to 500.
 - `compare_periods` reads both periods with `limit` 500 and computes the comparison in the server. Deltas are B minus A.
-- `overrides` is a list of changes with `feature_id`, `mode` (`set`, `add` or `scale`) and `value`. `project_days` is 1 to 365.
+- `overrides` is an optional list (default empty) of changes with `feature_id`, `mode` (`set`, `add` or `scale`) and `value`; empty or omitted means no changes, so the current trajectory is projected as it is. `project_days` is 1 to 365.
 - `simulate_scenario` is hypothetical only and never changes real data.
 
 ## Errors

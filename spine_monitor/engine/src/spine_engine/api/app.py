@@ -122,7 +122,7 @@ def create_app(
 
     @app.post("/simulate", operation_id="simulate")
     async def simulate(request: Request) -> JSONResponse:
-        """Stub: `overrides` y `project_days` aún no se aplican; reference y scenario son la misma evaluación."""
+        """Stub: `overrides` (puede ir vacía: sin cambios) y `project_days` aún no se aplican; reference y scenario son la misma evaluación."""
         body = await _parse(request, "engine/simulate-request", SimulateRequest)
         reference = pipeline.evaluate(body.base)
         return _json(

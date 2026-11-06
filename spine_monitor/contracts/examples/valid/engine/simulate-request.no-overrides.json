@@ -1,0 +1,255 @@
+{
+  "schema_version": "1.0.0",
+  "base": {
+    "schema_version": "1.0.0",
+    "astronaut_id": "AST-01",
+    "as_of": "2027-02-09T09:00:00Z",
+    "mission_day": 87,
+    "profile": {
+      "schema_version": "1.0.0",
+      "astronaut_id": "AST-01",
+      "updated_at": "2026-11-10T09:00:00Z",
+      "date_of_birth": "1988-04-12",
+      "sex_at_birth": "female",
+      "gender_identity": "woman",
+      "anthropometry": {
+        "height_standing_cm": 172,
+        "height_sitting_cm": 90,
+        "body_mass_kg": 68,
+        "body_mass_measured_at": "2026-11-10T08:30:00Z",
+        "skinfold_mm": [
+          {
+            "muscle": "latissimus_dorsi",
+            "side": "left",
+            "thickness_mm": 11
+          },
+          {
+            "muscle": "latissimus_dorsi",
+            "side": "right",
+            "thickness_mm": 11.5
+          }
+        ]
+      },
+      "spine_history": {
+        "low_back_pain_history": true,
+        "disc_herniation": {
+          "has_history": false
+        },
+        "spine_surgery": {
+          "has_history": false
+        },
+        "scoliosis": {
+          "present": false
+        },
+        "degenerative_discs_on_preflight_mri": {
+          "present": true,
+          "levels": [
+            "l4",
+            "l5"
+          ]
+        },
+        "notes": "Fictional profile used for examples."
+      },
+      "space_history": {
+        "previous_missions": 1,
+        "cumulative_microgravity_days": 186,
+        "last_mission_end_date": "2023-03-05"
+      },
+      "fitness": {
+        "dominant_side": "right",
+        "training_level": "high",
+        "lat_pulldown_reference_load_kg": 45
+      }
+    },
+    "baseline": {
+      "schema_version": "1.0.0",
+      "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+      "astronaut_id": "AST-01",
+      "version": 1,
+      "created_at": "2026-11-13T12:00:00Z",
+      "built_from_session_ids": [
+        "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+        "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a04"
+      ],
+      "entries": [
+        {
+          "feature_id": "emg.latissimus_dorsi.left.rms_pct_mvc",
+          "protocol_id": "lat_pulldown_standing_v1",
+          "gravity_environment": "earth_1g",
+          "n": 2,
+          "mean": 41.0,
+          "std": 0.7,
+          "median": 41.0,
+          "mad": 0.5,
+          "min": 40.5,
+          "max": 41.5
+        },
+        {
+          "feature_id": "emg.latissimus_dorsi.left.median_freq_hz",
+          "protocol_id": "lat_pulldown_standing_v1",
+          "gravity_environment": "earth_1g",
+          "n": 2,
+          "mean": 86.9,
+          "std": 0.6,
+          "median": 86.9,
+          "mad": 0.4
+        },
+        {
+          "feature_id": "imu.l3.sagittal.rom_deg",
+          "protocol_id": "lat_pulldown_standing_v1",
+          "gravity_environment": "earth_1g",
+          "n": 2,
+          "mean": 28.1,
+          "std": 0.4,
+          "median": 28.1,
+          "mad": 0.3
+        },
+        {
+          "feature_id": "stretch.lumbar.peak_elongation_mm",
+          "protocol_id": "lat_pulldown_standing_v1",
+          "gravity_environment": "earth_1g",
+          "n": 2,
+          "mean": 6.5,
+          "std": 0.4,
+          "median": 6.5,
+          "mad": 0.3
+        }
+      ]
+    },
+    "feature_sets": [
+      {
+        "schema_version": "1.0.0",
+        "astronaut_id": "AST-01",
+        "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03",
+        "protocol_id": "lat_pulldown_standing_v1",
+        "gravity_environment": "microgravity",
+        "source": "simulator",
+        "computed_at": "2027-02-09T08:55:00Z",
+        "engine_version": "0.1.0",
+        "window": {
+          "start": "2027-02-09T08:40:00Z",
+          "end": "2027-02-09T08:45:00Z"
+        },
+        "features": [
+          {
+            "feature_id": "emg.latissimus_dorsi.left.rms_pct_mvc",
+            "value": 47.0,
+            "unit": "%",
+            "n": 10,
+            "quality": {
+              "score": 0.88,
+              "flags": [],
+              "assessed_by": "engine"
+            }
+          },
+          {
+            "feature_id": "emg.latissimus_dorsi.left.median_freq_hz",
+            "value": 79.5,
+            "unit": "Hz",
+            "n": 10,
+            "quality": {
+              "score": 0.85,
+              "flags": [
+                "low_snr"
+              ],
+              "assessed_by": "engine"
+            }
+          },
+          {
+            "feature_id": "imu.l3.sagittal.rom_deg",
+            "value": 31.0,
+            "unit": "deg",
+            "n": 10,
+            "quality": {
+              "score": 1.0,
+              "flags": [],
+              "assessed_by": "engine"
+            }
+          },
+          {
+            "feature_id": "stretch.lumbar.peak_elongation_mm",
+            "value": 9.1,
+            "unit": "mm",
+            "n": 10,
+            "quality": {
+              "score": 0.8,
+              "flags": [
+                "band_recovering"
+              ],
+              "assessed_by": "engine"
+            }
+          },
+          {
+            "feature_id": "exercise.rep_count",
+            "value": 10,
+            "unit": "count",
+            "quality": {
+              "score": 1.0,
+              "flags": [],
+              "assessed_by": "engine"
+            }
+          }
+        ],
+        "skipped": []
+      }
+    ],
+    "self_reports": [
+      {
+        "schema_version": "1.0.0",
+        "report_id": "5e1f0e90-0000-4000-8000-000000000001",
+        "astronaut_id": "AST-01",
+        "timestamp": "2027-02-09T08:30:00Z",
+        "mission_day": 87,
+        "source": "device",
+        "kind": "daily",
+        "pain_nrs": 5,
+        "pain_nrs_worst_24h": 6,
+        "pain_locations": [
+          {
+            "region": "lumbar",
+            "side": "bilateral"
+          }
+        ],
+        "stiffness_nrs": 6,
+        "sleep": {
+          "hours": 5.5,
+          "quality_nrs": 4
+        },
+        "red_flags": []
+      }
+    ],
+    "daily_context": [
+      {
+        "schema_version": "1.0.0",
+        "astronaut_id": "AST-01",
+        "date": "2027-02-09",
+        "mission_day": 87,
+        "phase": "inflight",
+        "gravity_environment": "microgravity",
+        "medication": [
+          {
+            "name": "ibuprofen",
+            "category": "anti_inflammatory",
+            "dose_mg": 400,
+            "taken_at": "2027-02-09T07:50:00Z"
+          }
+        ],
+        "exercise": [
+          {
+            "modality": "ared",
+            "duration_min": 45,
+            "load_kg": 60,
+            "rpe": 7
+          }
+        ],
+        "countermeasures": [
+          {
+            "type": "axial_loading_suit",
+            "duration_min": 120
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": []
+}

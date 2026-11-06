@@ -37,7 +37,7 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 
 - `start` y `end` son timestamps RFC 3339 con desfase UTC. `limit` va de 1 a 500.
 - `compare_periods` lee ambos periodos con `limit` 500 y calcula la comparación en el servidor. Los deltas son B menos A.
-- `overrides` es una lista de cambios con `feature_id`, `mode` (`set`, `add` o `scale`) y `value`. `project_days` va de 1 a 365.
+- `overrides` es una lista opcional (vacía por defecto) de cambios con `feature_id`, `mode` (`set`, `add` o `scale`) y `value`; vacía u omitida significa sin cambios, así que se proyecta la trayectoria actual tal como está. `project_days` va de 1 a 365.
 - `simulate_scenario` es solo hipotético y nunca cambia datos reales.
 
 ## Errores

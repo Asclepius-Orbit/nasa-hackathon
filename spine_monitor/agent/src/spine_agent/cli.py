@@ -13,7 +13,7 @@ import pydantic_ai
 from pydantic_ai.models import Model
 from pydantic_ai.toolsets import AbstractToolset
 
-from spine_agent.agent import ChatSession, ReplyChunk, build_agent
+from spine_agent.agent import AgentDeps, ChatSession, ReplyChunk, build_agent
 from spine_agent.fallback import McpStatusSource
 from spine_agent.settings import AgentSettings
 
@@ -119,7 +119,7 @@ async def amain(
     argv: Sequence[str] | None = None,
     *,
     model: Model | None = None,
-    toolsets: Sequence[AbstractToolset[str]] | None = None,
+    toolsets: Sequence[AbstractToolset[AgentDeps]] | None = None,
     read_line: ReadLine = read_stdin_line,
     write: Write = _write_stdout,
 ) -> int:

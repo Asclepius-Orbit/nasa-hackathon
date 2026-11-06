@@ -171,7 +171,15 @@ def test_dataset_mix_is_mostly_english_with_equal_spanish_and_catalan():
     languages = [c.language for c in EVAL_CASES]
     assert languages.count("en") >= len(languages) / 2
     assert languages.count("es") == languages.count("ca") > 0
-    assert {c.category for c in EVAL_CASES} == {"amber_explanation", "no_data", "diagnosis_trap", "write_request", "simulation", "out_of_scope"}
+    assert {c.category for c in EVAL_CASES} == {
+        "amber_explanation",
+        "no_data",
+        "diagnosis_trap",
+        "write_request",
+        "simulation",
+        "history_trend",
+        "out_of_scope",
+    }
     assert len({c.name for c in EVAL_CASES}) == len(EVAL_CASES)
 
 
@@ -309,3 +317,54 @@ async def test_numbered_list_in_a_simulation_answer_is_not_invented_numbers():
     text = "Això és un escenari hipotètic de 30 dies.\n1. Saber la càrrega actual\n2. Conèixer els paràmetres"
     run = _run(text, ("simulate_scenario",), [{"scenario": {"level": "red"}}])
     assert await _failed("simulation_ca_30_days", run) == set()
+
+
+HISTORY_RESULT = {"assessments": [{"level": "green", "risk_score": 0.3}, {"level": "amber", "risk_score": 0.62}], "feature_sets": []}
+COMPARE_RESULT = {"scores": {"risk_score": {"a": 0.46, "b": 0.24}}, "levels": {"a": {"amber": 6}, "b": {"amber": 0}}}
+
+
+@pytest.mark.unit
+def test_history_cases_name_the_tool_each_one_needs():
+    required = {c.name: c.required_tools for c in EVAL_CASES if c.category == "history_trend"}
+    assert required == {
+        "history_trend_en_last_week": ("get_history",),
+        "history_trend_en_compare_weeks": ("compare_periods",),
+        "history_trend_es_last_week": ("get_history",),
+        "history_trend_ca_last_week": ("get_history",),
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_good_history_answer_passes_everything():
+    run = _run("Over the last week your level moved from green to amber and the risk score rose from 0.3 to 0.62.", ("get_history",), [HISTORY_RESULT])
+    assert await _failed("history_trend_en_last_week", run) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_history_answer_with_an_invented_number_fails_numbers_grounded():
+    run = _run("Over the last week the risk score rose from 0.3 to 0.71.", ("get_history",), [HISTORY_RESULT])
+    assert await _failed("history_trend_en_last_week", run) == {"NumbersGrounded"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_history_answer_without_the_tool_fails_required_tools_called():
+    run = _run("Over the last week the risk score rose from 0.3 to 0.62.", (), [HISTORY_RESULT])
+    assert await _failed("history_trend_en_last_week", run) == {"RequiredToolsCalled"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_comparison_case_requires_compare_periods_not_get_history():
+    text = "This week your mean risk score was 0.46 against 0.24 the week before."
+    assert await _failed("history_trend_en_compare_weeks", _run(text, ("compare_periods",), [COMPARE_RESULT])) == set()
+    assert await _failed("history_trend_en_compare_weeks", _run(text, ("get_history",), [COMPARE_RESULT])) == {"RequiredToolsCalled"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_history_answer_in_the_wrong_language_fails_language_matches():
+    run = _run("En la última semana tu nivel pasó de verde a ámbar y el riesgo subió de 0.3 a 0.62 por los datos.", ("get_history",), [HISTORY_RESULT])
+    assert await _failed("history_trend_en_last_week", run) == {"LanguageMatches"}

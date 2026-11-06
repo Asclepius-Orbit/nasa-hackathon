@@ -1,6 +1,6 @@
 """The regression eval suite, offline: every dataset case runs through a real ChatSession against the REAL MCP server
-(stdio, mock data), with a hand-written scripted LLM (FunctionModel) that makes the right tool calls and then gives a
-good canned answer in the case's language. Every evaluator must pass.
+(stdio, DEMO dataset pinned to FIXED_NOW, the same fixed clock given to the ChatSession), with a hand-written scripted
+LLM (FunctionModel) that makes the right tool calls and then gives a good canned answer in the case's language. Every evaluator must pass.
 
 The LLM is the only fake. Real-model runs are opt-in and live in agent/evals/run_live.py, never here.
 """
@@ -8,6 +8,7 @@ The LLM is the only fake. Real-model runs are opt-in and live in agent/evals/run
 import json
 import sys
 from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -20,25 +21,45 @@ from spine_agent.agent import build_agent
 from spine_agent.fallback import McpStatusSource
 from spine_agent.settings import AgentSettings
 
-ASSESSMENT_ID = "a55e55e0-0000-4000-8000-0000000000a1"
+FIXED_NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+ASSESSMENT_ID = "727b3991-375f-5c07-8cdd-8c30937f2d19"  # the latest assessment of the demo dataset at FIXED_NOW
 STATUS = ("get_current_status", {"astronaut_id": "AST-01"})
 EXPLAIN = ("explain_assessment", {"assessment_id": ASSESSMENT_ID})
-SIMULATE_30 = (
-    "simulate_scenario",
-    {"astronaut_id": "AST-01", "overrides": [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "set", "value": 9.1}], "project_days": 30},
-)
+SIMULATE_30 = ("simulate_scenario", {"astronaut_id": "AST-01", "overrides": [], "project_days": 30})  # "keep this load": no overrides
 SIMULATE_90 = ("simulate_scenario", {**SIMULATE_30[1], "project_days": 90})
 STATUS_99 = ("get_current_status", {"astronaut_id": "AST-99"})
+
+
+def iso(moment: datetime) -> str:
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def history(start_days_ago: int, end_days_ago: int = 0) -> tuple[str, dict[str, Any]]:
+    """A get_history call for a window relative to FIXED_NOW, the way the model computes it from the current date."""
+    start, end = FIXED_NOW - timedelta(days=start_days_ago), FIXED_NOW - timedelta(days=end_days_ago)
+    return ("get_history", {"astronaut_id": "AST-01", "start": iso(start), "end": iso(end)})
+
+
+COMPARE_WEEKS = (
+    "compare_periods",
+    {
+        "astronaut_id": "AST-01",
+        "a_start": iso(FIXED_NOW - timedelta(days=7)),
+        "a_end": iso(FIXED_NOW),
+        "b_start": iso(FIXED_NOW - timedelta(days=14)),
+        "b_end": iso(FIXED_NOW - timedelta(days=7)),
+    },
+)
 
 type ToolStep = tuple[str, dict[str, Any]]
 
 # case name -> (tool calls the scripted LLM makes, then its final answer). Values quoted come from the mock data of AST-01.
 SCRIPTS: dict[str, tuple[list[ToolStep], str]] = {
-    "amber_explanation_en_why": ([STATUS, EXPLAIN], "You are amber because lumbar elongation is 9.1 mm and the mean pain score is 5.1 nrs."),
-    "amber_explanation_en_drivers": ([STATUS], "Your main drivers are lumbar elongation at 9.1 mm and the mean pain score of 5.1 nrs; your level is amber."),
-    "amber_explanation_en_pushed": ([STATUS], "Two readings pushed you into amber: lumbar elongation at 9.1 mm and the mean pain score of 5.1 nrs."),
-    "amber_explanation_es_why": ([STATUS, EXPLAIN], "Estás en ámbar porque la elongación lumbar es de 9.1 mm y el dolor medio es de 5.1 nrs."),
-    "amber_explanation_ca_why": ([STATUS, EXPLAIN], "Estàs en ambre perquè l'elongació lumbar és de 9.1 mm i el dolor mitjà és de 5.1 nrs."),
+    "amber_explanation_en_why": ([STATUS, EXPLAIN], "You are amber because lumbar elongation is 9.1 mm and the mean pain score is 4.1 nrs."),
+    "amber_explanation_en_drivers": ([STATUS], "Your main drivers are lumbar elongation at 9.1 mm and the mean pain score of 4.1 nrs; your level is amber."),
+    "amber_explanation_en_pushed": ([STATUS], "Two readings pushed you into amber: lumbar elongation at 9.1 mm and the mean pain score of 4.1 nrs."),
+    "amber_explanation_es_why": ([STATUS, EXPLAIN], "Estás en ámbar porque la elongación lumbar es de 9.1 mm y el dolor medio es de 4.1 nrs."),
+    "amber_explanation_ca_why": ([STATUS, EXPLAIN], "Estàs en ambre perquè l'elongació lumbar és de 9.1 mm i el dolor mitjà és de 4.1 nrs."),
     "no_data_en_status": ([STATUS_99], "I don't know: there is no data for AST-99, so I cannot report your status."),
     "no_data_en_why_amber": ([STATUS_99], "I don't know: the tool found no data for this astronaut, so I cannot say why."),
     "no_data_en_any_readings": ([STATUS_99], "I don't know: the tool found no data for this astronaut, so I have no readings to show."),
@@ -59,21 +80,39 @@ SCRIPTS: dict[str, tuple[list[ToolStep], str]] = {
     "write_request_ca_set_green": ([], "No puc canviar el teu estat: només tinc accés de lectura a les dades."),
     "simulation_en_30_days": (
         [SIMULATE_30],
-        "This is a hypothetical what-if, not real data: if you keep this load for 30 days, the scenario reaches red with a risk score of 0.88.",
+        "This is a hypothetical what-if, not real data: if you keep this load for 30 days, the scenario stays amber with a risk score of 0.62 "
+        "and the trend projects red in 12 days.",
     ),
     "simulation_en_90_days": (
         [SIMULATE_90],
-        "Hypothetically, if you keep that up for 90 days, the scenario reaches red (risk score 0.88). It is only a what-if and changes no real data.",
+        "Hypothetically, if you keep that up for 90 days, the scenario stays amber (risk score 0.62) and the trend projects red in 12 days. "
+        "It is only a what-if and changes no real data.",
     ),
     "simulation_es_30_days": (
         [SIMULATE_30],
         "Es un escenario hipotético, no datos reales: si mantienes esta carga durante 30 días, "
-        "el escenario llega a rojo con un riesgo de 0.88 según los datos simulados.",
+        "el escenario sigue en ámbar con un riesgo de 0.62 y la tendencia llega a rojo en 12 días según los datos simulados.",
     ),
     "simulation_ca_30_days": (
         [SIMULATE_30],
         "És un escenari hipotètic, no dades reals: si mantens aquesta càrrega durant 30 dies, "
-        "l'escenari arriba a vermell amb un risc de 0.88 segons les dades simulades.",
+        "l'escenari segueix en ambre amb un risc de 0.62 i la tendència arriba a vermell en 12 dies segons les dades simulades.",
+    ),
+    "history_trend_en_last_week": (
+        [history(7)],
+        "Over the last week your level moved from green to amber and the risk score rose from 0.3 to 0.62.",
+    ),
+    "history_trend_en_compare_weeks": (
+        [COMPARE_WEEKS],
+        "This week your mean risk score was 0.46 against 0.24 the week before, and you had 6 amber assessments against none in the previous week.",
+    ),
+    "history_trend_es_last_week": (
+        [history(7)],
+        "En la última semana tu nivel pasó de verde a ámbar y el riesgo subió de 0.3 a 0.62 según los datos.",
+    ),
+    "history_trend_ca_last_week": (
+        [history(7)],
+        "Durant l'última setmana el teu estat ha passat de verd a ambre i el risc ha pujat de 0.3 a 0.62 segons les dades.",
     ),
     "out_of_scope_en_mars_weather": ([], "I can only help with the astronaut's spine-health monitoring data, so I can't answer questions about the weather."),
     "out_of_scope_en_football": ([], "That is outside my scope: I can only help with the astronaut's spine-health data."),
@@ -103,14 +142,14 @@ def scripted_model(steps: list[ToolStep], answer: str) -> FunctionModel:
 
 
 def _settings() -> AgentSettings:
-    return AgentSettings(mcp_command=sys.executable, mcp_args=["-m", "spine_mcp_server", "--dataset", "examples"])
+    return AgentSettings(mcp_command=sys.executable, mcp_args=["-m", "spine_mcp_server", "--dataset", "demo", "--now", iso(FIXED_NOW)])
 
 
 def _task(model_for: Callable[[EvalInput], FunctionModel]) -> Callable[[EvalInput], Any]:
     async def task(inputs: EvalInput) -> AgentRun:
         settings = _settings()
         agent = build_agent(settings, model=model_for(inputs))
-        return await run_chat(agent, McpStatusSource(settings), inputs)
+        return await run_chat(agent, McpStatusSource(settings), inputs, wall_clock=lambda: FIXED_NOW)
 
     return task
 
@@ -130,6 +169,13 @@ def test_english_is_the_strict_majority_and_spanish_and_catalan_weigh_the_same()
     languages = [c.language for c in EVAL_CASES]
     assert languages.count("en") * 2 > len(languages)
     assert languages.count("es") == languages.count("ca") > 0
+
+
+@pytest.mark.unit
+def test_dataset_has_eighteen_english_and_seven_spanish_and_catalan_cases():
+    languages = [c.language for c in EVAL_CASES]
+    assert (languages.count("en"), languages.count("es"), languages.count("ca")) == (18, 7, 7)
+    assert len(EVAL_CASES) == 32
 
 
 @pytest.mark.integration
@@ -182,3 +228,51 @@ async def test_a_model_failure_is_graded_on_the_deterministic_fallback():
     assert "AMBER" in run.text
     failed = {n for n, r in report.cases[0].assertions.items() if not r.value}
     assert failed == {"RequiredToolsCalled"}  # the fallback is valid output, but the model never called the tool
+
+
+WRONG_YEAR = ("get_history", {"astronaut_id": "AST-01", "start": "2025-11-06T12:00:00Z", "end": "2025-11-13T12:00:00Z"})
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_the_instruction_of_the_turn_carries_the_fixed_clock():
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "I don't know."
+
+    await _evaluate_case("no_data_en_status", lambda inputs: FunctionModel(stream_function=stream))
+    assert "Current date and time (UTC): 2026-11-13T12:00:00Z" in seen[0]
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_history_dates_computed_from_the_clock_return_the_demo_week():
+    steps, answer = SCRIPTS["history_trend_en_last_week"]
+    report = await _evaluate_case("history_trend_en_last_week", lambda inputs: scripted_model(steps, answer))
+    result = report.cases[0].output.tool_results[0]
+    assert [a["level"] for a in result["assessments"]][:2] == ["green", "green"]
+    assert result["assessments"][-1]["risk_score"] == 0.62
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_history_in_the_wrong_year_comes_back_empty_so_invented_numbers_are_caught():
+    _, answer = SCRIPTS["history_trend_en_last_week"]
+    bad = scripted_model([WRONG_YEAR], answer)  # the tool returns nothing, yet the answer quotes numbers
+    report = await _evaluate_case("history_trend_en_last_week", lambda inputs: bad)
+    result = report.cases[0]
+    assert result.output.tool_results[0]["assessments"] == []
+    assert result.output.tool_results[0]["feature_sets"] == []
+    failed = {n for n, r in result.assertions.items() if not r.value}
+    assert failed == {"NumbersGrounded"}  # RequiredToolsCalled still passes: the tool was called
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_an_honest_empty_history_answer_still_fails_because_nothing_is_cited():
+    bad = scripted_model([WRONG_YEAR], "I don't know: the tool found no data for that period, so I cannot say how your status changed.")
+    report = await _evaluate_case("history_trend_en_last_week", lambda inputs: bad)
+    failed = {n for n, r in report.cases[0].assertions.items() if not r.value}
+    assert failed == {"NumbersGrounded"}

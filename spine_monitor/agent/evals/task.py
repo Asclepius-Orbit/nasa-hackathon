@@ -8,10 +8,11 @@ session history, timing around the stream.
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, RetryPromptPart, ToolReturnPart
-from spine_agent.agent import ChatSession, SpineAgent
+from spine_agent.agent import ChatSession, SpineAgent, utc_now
 from spine_agent.ports import StatusSource
 
 type Language = Literal["en", "es", "ca"]
@@ -65,11 +66,18 @@ def tool_results(history: list[ModelMessage]) -> list[Any]:
     return results
 
 
-async def run_chat(agent: SpineAgent, fallback: StatusSource, inputs: EvalInput, *, clock: Callable[[], float] = time.perf_counter) -> AgentRun:
-    """Ask `inputs.question` in a fresh ChatSession and observe the turn."""
+async def run_chat(
+    agent: SpineAgent,
+    fallback: StatusSource,
+    inputs: EvalInput,
+    *,
+    clock: Callable[[], float] = time.perf_counter,
+    wall_clock: Callable[[], datetime] = utc_now,
+) -> AgentRun:
+    """Ask `inputs.question` in a fresh ChatSession and observe the turn. `clock` times it; `wall_clock` is the date the agent is told."""
     run = AgentRun(text="")
     streamed: list[str] = []
-    async with ChatSession(agent, fallback, inputs.astronaut_id) as session:
+    async with ChatSession(agent, fallback, inputs.astronaut_id, clock=wall_clock) as session:
         start = clock()
         async for chunk in session.ask(inputs.question):
             match chunk.kind:

@@ -5,9 +5,10 @@ Guardrails here are code, not prompt: the empty-answer and failure fallback, and
 correction notice when the streamed answer sounds like a diagnosis (it cannot unsay text already shown).
 """
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Literal, Self
@@ -44,7 +45,15 @@ MODEL_FAILURES: tuple[type[Exception], ...] = (
     TimeoutError,
 )
 
-type SpineAgent = Agent[str, str]  # deps: the astronaut id of the session
+type SpineAgent = Agent[AgentDeps, str]
+
+
+@dataclass(frozen=True)
+class AgentDeps:
+    """Per-run dependencies: the astronaut of the session and the time of the turn (for the dynamic instruction)."""
+
+    astronaut_id: str
+    now: datetime
 
 
 @dataclass(frozen=True)
@@ -57,15 +66,19 @@ class ReplyChunk:
     tool_args: dict[str, Any] | None = None
 
 
-def _astronaut(ctx: RunContext[str]) -> str:
-    return astronaut_instruction(ctx.deps)
+def _astronaut(ctx: RunContext[AgentDeps]) -> str:
+    return astronaut_instruction(ctx.deps.astronaut_id, ctx.deps.now)
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def build_agent(
     settings: AgentSettings,
     *,
     model: Model | None = None,
-    toolsets: Sequence[AbstractToolset[str]] | None = None,
+    toolsets: Sequence[AbstractToolset[AgentDeps]] | None = None,
     log_file: Path | None = None,
 ) -> SpineAgent:
     """Agent wired from settings. `model` and `toolsets` replace the Ollama model and the MCP stdio toolset (tests).
@@ -94,7 +107,7 @@ def build_agent(
     )
     return Agent(
         model,
-        deps_type=str,
+        deps_type=AgentDeps,
         output_type=str,
         instructions=[SYSTEM_PROMPT, _astronaut],
         model_settings=model_settings,
@@ -106,8 +119,9 @@ class ChatSession:
     """A conversation with the agent for one astronaut. Use as `async with ChatSession(...) as session:` so the MCP
     subprocess is started once and stopped on exit (without it, each run starts and stops its own)."""
 
-    def __init__(self, agent: SpineAgent, fallback: StatusSource, astronaut_id: str) -> None:
+    def __init__(self, agent: SpineAgent, fallback: StatusSource, astronaut_id: str, *, clock: Callable[[], datetime] = utc_now) -> None:
         self._agent = agent
+        self._clock = clock
         self._fallback = fallback
         self._astronaut_id = astronaut_id
         self._stack = AsyncExitStack()
@@ -129,7 +143,7 @@ class ChatSession:
         output: str | None = None
         messages: list[ModelMessage] = []
         try:
-            async with self._agent.run_stream_events(question, message_history=self.history, deps=self._astronaut_id) as events:
+            async with self._agent.run_stream_events(question, message_history=self.history, deps=AgentDeps(self._astronaut_id, self._clock())) as events:
                 async for event in events:
                     if isinstance(event, AgentRunResultEvent):
                         output = event.result.output

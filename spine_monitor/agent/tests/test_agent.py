@@ -1,7 +1,9 @@
 import asyncio
 import json
+import re
 import sys
 from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,7 @@ from pydantic_ai.models import override_allow_model_requests
 from pydantic_ai.models.function import AgentInfo, DeltaToolCall, DeltaToolCalls, FunctionModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.providers.ollama import OllamaProvider
-from spine_agent.agent import ChatSession, ReplyChunk, build_agent
+from spine_agent.agent import AgentDeps, ChatSession, ReplyChunk, build_agent
 from spine_agent.fallback import McpStatusSource
 from spine_agent.guards import DISCLAIMER
 from spine_agent.prompts import SYSTEM_PROMPT, astronaut_instruction
@@ -25,6 +27,8 @@ MID_STREAM_NOTICE = "The assistant failed mid-answer; falling back to the automa
 CORRECTION_NOTICE = (
     "Correction: the previous answer contained wording that sounds like a medical diagnosis. This assistant cannot diagnose; please consult the flight surgeon."
 )
+
+NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
 type Script = Callable[[list[ModelMessage], AgentInfo], AsyncIterator[str | DeltaToolCalls]]
 
@@ -156,7 +160,7 @@ async def test_thinking_is_disabled_on_the_wire_for_qwen():
     async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as http_client:
         wire_model = OllamaModel(settings.model, provider=OllamaProvider(base_url="http://ollama.test/v1", http_client=http_client))
         with override_allow_model_requests(True):  # MockTransport: no socket is opened
-            result = await agent.run("hi", model=wire_model, deps="AST-01")
+            result = await agent.run("hi", model=wire_model, deps=AgentDeps("AST-01", NOW))
     assert result.output == "ok"
     assert bodies[0]["reasoning_effort"] == "none"
     assert bodies[0]["temperature"] == 0.3
@@ -173,11 +177,49 @@ async def test_instructions_are_the_static_prompt_plus_the_session_astronaut():
         yield "ok"
 
     agent = build_agent(_settings(), model=FunctionModel(stream_function=stream), toolsets=[])
-    async with ChatSession(agent, FakeStatusSource(), "AST-07") as session:
+    async with ChatSession(agent, FakeStatusSource(), "AST-07", clock=lambda: NOW) as session:
         await _collect(session, "hello")
     assert seen[0].instructions is not None
     assert SYSTEM_PROMPT.strip() in seen[0].instructions
-    assert astronaut_instruction("AST-07") in seen[0].instructions
+    assert astronaut_instruction("AST-07", NOW) in seen[0].instructions
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_each_turn_carries_the_time_of_that_turn():
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "ok"
+
+    times = iter([NOW, NOW + timedelta(days=1)])
+    agent = build_agent(_settings(), model=FunctionModel(stream_function=stream), toolsets=[])
+    async with ChatSession(agent, FakeStatusSource(), "AST-01", clock=lambda: next(times)) as session:
+        await _collect(session, "first")
+        await _collect(session, "second")
+    assert "2026-11-13T12:00:00Z" in seen[0]
+    assert "2026-11-14T12:00:00Z" in seen[1]
+    assert "2026-11-13T12:00:00Z" not in seen[1]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_the_default_clock_is_the_utc_wall_clock():
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "ok"
+
+    agent = build_agent(_settings(), model=FunctionModel(stream_function=stream), toolsets=[])
+    before = datetime.now(UTC).replace(microsecond=0)
+    async with ChatSession(agent, FakeStatusSource(), "AST-01") as session:
+        await _collect(session, "hello")
+    match = re.search(r"Current date and time \(UTC\): (\S+Z)\.", seen[0])
+    assert match is not None
+    stamped = datetime.fromisoformat(match.group(1))
+    assert before <= stamped <= datetime.now(UTC)
 
 
 # ---------------------------------------------------------------- happy path against the real MCP server

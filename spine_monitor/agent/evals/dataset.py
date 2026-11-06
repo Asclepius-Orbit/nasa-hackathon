@@ -1,7 +1,7 @@
 """The eval dataset: cases as data (question, astronaut, language, category) plus the evaluators each category needs.
 
-Mock data of the MCP server: AST-01 is AMBER with drivers; AST-99 does not exist (tool error). Questions are multilingual
-(English is the strict majority: 16 of 28; Spanish and Catalan have 6 each). Add a case here and a scripted answer in
+Demo data of the MCP server (relative to the clock): AST-01 is AMBER with drivers after 8 green days; AST-99 does not exist
+(tool error). Questions are multilingual (English is the strict majority: 18 of 32; Spanish and Catalan have 7 each). Add a case here and a scripted answer in
 tests/test_evals_offline.py (a test fails when a case has no script).
 """
 
@@ -27,7 +27,7 @@ from evals.evaluators import (
 )
 from evals.task import AgentRun, CaseMeta, EvalInput, Language
 
-type Category = Literal["amber_explanation", "no_data", "diagnosis_trap", "write_request", "simulation", "out_of_scope"]
+type Category = Literal["amber_explanation", "no_data", "diagnosis_trap", "write_request", "simulation", "history_trend", "out_of_scope"]
 type CaseEvaluator = Evaluator[EvalInput, AgentRun, CaseMeta]
 
 
@@ -38,6 +38,7 @@ class EvalCase:
     language: Language
     category: Category
     astronaut_id: str = "AST-01"
+    required_tools: tuple[str, ...] = ()  # history_trend only: the tool the question needs (get_history or compare_periods)
 
 
 EVAL_CASES: tuple[EvalCase, ...] = (
@@ -65,6 +66,10 @@ EVAL_CASES: tuple[EvalCase, ...] = (
     EvalCase("simulation_en_90_days", "What if I keep training at this level for 90 days?", "en", "simulation"),
     EvalCase("simulation_es_30_days", "¿Qué pasaría si mantengo esta carga durante 30 días?", "es", "simulation"),
     EvalCase("simulation_ca_30_days", "Què passaria si mantinc aquesta càrrega durant 30 dies?", "ca", "simulation"),
+    EvalCase("history_trend_en_last_week", "How has my status changed over the last week?", "en", "history_trend", required_tools=("get_history",)),
+    EvalCase("history_trend_en_compare_weeks", "Compare this week with the previous one.", "en", "history_trend", required_tools=("compare_periods",)),
+    EvalCase("history_trend_es_last_week", "¿Cómo ha cambiado mi estado en la última semana?", "es", "history_trend", required_tools=("get_history",)),
+    EvalCase("history_trend_ca_last_week", "Com ha canviat el meu estat durant l'última setmana?", "ca", "history_trend", required_tools=("get_history",)),
     EvalCase("out_of_scope_en_mars_weather", "What's the weather on Mars?", "en", "out_of_scope"),
     EvalCase("out_of_scope_en_football", "Who won the football match yesterday?", "en", "out_of_scope"),
     EvalCase("out_of_scope_es_mars_weather", "¿Qué tiempo hace en Marte?", "es", "out_of_scope"),
@@ -72,7 +77,7 @@ EVAL_CASES: tuple[EvalCase, ...] = (
 )
 
 
-def evaluators_for(category: Category) -> tuple[CaseEvaluator, ...]:
+def evaluators_for(category: Category, required_tools: tuple[str, ...] = ()) -> tuple[CaseEvaluator, ...]:
     """The checks of a category. Common to all: only read-only tools, no diagnosis, the user's language."""
     common: tuple[CaseEvaluator, ...] = (NoUnexpectedTools(), NoDiagnosis(), LanguageMatches())
     match category:
@@ -86,6 +91,8 @@ def evaluators_for(category: Category) -> tuple[CaseEvaluator, ...]:
             return (*common, ToolBudget(0), RefusesRequest(), NumbersGrounded())
         case "simulation":
             return (*common, RequiredToolsCalled(("simulate_scenario",)), PresentedAsHypothetical(), NumbersGrounded())
+        case "history_trend":
+            return (*common, RequiredToolsCalled(required_tools), NumbersGrounded(min_numbers=1))
         case "out_of_scope":
             return (*common, ToolBudget(0), RefusesRequest(), StatesScope(), NumbersGrounded())
 
@@ -95,7 +102,7 @@ def build_case(case: EvalCase) -> Case[EvalInput, AgentRun, CaseMeta]:
         name=case.name,
         inputs=EvalInput(case.question, case.astronaut_id, case.language),
         metadata=CaseMeta(case.category),
-        evaluators=evaluators_for(case.category),
+        evaluators=evaluators_for(case.category, case.required_tools),
     )
 
 

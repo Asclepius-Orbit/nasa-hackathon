@@ -271,12 +271,17 @@ def _result(ok: bool, reason: str) -> EvaluationReason:
 
 @dataclass
 class RequiredToolsCalled(Evaluator[EvalInput, AgentRun, CaseMeta]):
-    tools: tuple[str, ...]
+    tools: tuple[str, ...]  # every one of these must be called
+    any_of: tuple[str, ...] = ()  # and, when given, at least one of these (equivalent ways to answer)
 
     def evaluate(self, ctx: Ctx) -> EvaluationReason:
         called = {c.name for c in ctx.output.tool_calls}
         missing = [t for t in self.tools if t not in called]
-        return _result(not missing, f"missing tool calls: {missing}" if missing else "required tools called")
+        if missing:
+            return _result(False, f"missing tool calls: {missing}")
+        if self.any_of and not called.intersection(self.any_of):
+            return _result(False, f"none of the accepted tools was called: {list(self.any_of)}")
+        return _result(True, "required tools called")
 
 
 @dataclass

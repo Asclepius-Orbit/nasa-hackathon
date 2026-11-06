@@ -38,8 +38,12 @@ class EvalCase:
     language: Language
     category: Category
     astronaut_id: str = "AST-01"
-    required_tools: tuple[str, ...] = ()  # history_trend only: the tool the question needs (get_history or compare_periods)
+    required_tools: tuple[str, ...] = ()  # history_trend only: tools the question needs all of
+    any_tool_of: tuple[str, ...] = ()  # history_trend only: equivalent tools, at least one must be called
 
+
+# Equivalent ways to answer "how has my status changed over the last week": the history, or this week against the one before.
+HISTORY_TOOLS = ("get_history", "compare_periods")
 
 EVAL_CASES: tuple[EvalCase, ...] = (
     EvalCase("amber_explanation_en_why", "Why am I amber?", "en", "amber_explanation"),
@@ -66,10 +70,10 @@ EVAL_CASES: tuple[EvalCase, ...] = (
     EvalCase("simulation_en_90_days", "What if I keep training at this level for 90 days?", "en", "simulation"),
     EvalCase("simulation_es_30_days", "¿Qué pasaría si mantengo esta carga durante 30 días?", "es", "simulation"),
     EvalCase("simulation_ca_30_days", "Què passaria si mantinc aquesta càrrega durant 30 dies?", "ca", "simulation"),
-    EvalCase("history_trend_en_last_week", "How has my status changed over the last week?", "en", "history_trend", required_tools=("get_history",)),
+    EvalCase("history_trend_en_last_week", "How has my status changed over the last week?", "en", "history_trend", any_tool_of=HISTORY_TOOLS),
     EvalCase("history_trend_en_compare_weeks", "Compare this week with the previous one.", "en", "history_trend", required_tools=("compare_periods",)),
-    EvalCase("history_trend_es_last_week", "¿Cómo ha cambiado mi estado en la última semana?", "es", "history_trend", required_tools=("get_history",)),
-    EvalCase("history_trend_ca_last_week", "Com ha canviat el meu estat durant l'última setmana?", "ca", "history_trend", required_tools=("get_history",)),
+    EvalCase("history_trend_es_last_week", "¿Cómo ha cambiado mi estado en la última semana?", "es", "history_trend", any_tool_of=HISTORY_TOOLS),
+    EvalCase("history_trend_ca_last_week", "Com ha canviat el meu estat durant l'última setmana?", "ca", "history_trend", any_tool_of=HISTORY_TOOLS),
     EvalCase("out_of_scope_en_mars_weather", "What's the weather on Mars?", "en", "out_of_scope"),
     EvalCase("out_of_scope_en_football", "Who won the football match yesterday?", "en", "out_of_scope"),
     EvalCase("out_of_scope_es_mars_weather", "¿Qué tiempo hace en Marte?", "es", "out_of_scope"),
@@ -77,7 +81,7 @@ EVAL_CASES: tuple[EvalCase, ...] = (
 )
 
 
-def evaluators_for(category: Category, required_tools: tuple[str, ...] = ()) -> tuple[CaseEvaluator, ...]:
+def evaluators_for(category: Category, required_tools: tuple[str, ...] = (), any_tool_of: tuple[str, ...] = ()) -> tuple[CaseEvaluator, ...]:
     """The checks of a category. Common to all: only read-only tools, no diagnosis, the user's language."""
     common: tuple[CaseEvaluator, ...] = (NoUnexpectedTools(), NoDiagnosis(), LanguageMatches())
     match category:
@@ -92,7 +96,7 @@ def evaluators_for(category: Category, required_tools: tuple[str, ...] = ()) -> 
         case "simulation":
             return (*common, RequiredToolsCalled(("simulate_scenario",)), PresentedAsHypothetical(), NumbersGrounded())
         case "history_trend":
-            return (*common, RequiredToolsCalled(required_tools), NumbersGrounded(min_numbers=1))
+            return (*common, RequiredToolsCalled(required_tools, any_tool_of), NumbersGrounded(min_numbers=1))
         case "out_of_scope":
             return (*common, ToolBudget(0), RefusesRequest(), StatesScope(), NumbersGrounded())
 
@@ -102,7 +106,7 @@ def build_case(case: EvalCase) -> Case[EvalInput, AgentRun, CaseMeta]:
         name=case.name,
         inputs=EvalInput(case.question, case.astronaut_id, case.language),
         metadata=CaseMeta(case.category),
-        evaluators=evaluators_for(case.category, case.required_tools),
+        evaluators=evaluators_for(case.category, case.required_tools, case.any_tool_of),
     )
 
 

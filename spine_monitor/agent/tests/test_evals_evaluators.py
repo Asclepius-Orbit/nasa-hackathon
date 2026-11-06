@@ -364,12 +364,15 @@ COMPARE_RESULT = {"scores": {"risk_score": {"a": 0.46, "b": 0.24}}, "levels": {"
 
 @pytest.mark.unit
 def test_history_cases_name_the_tool_each_one_needs():
-    required = {c.name: c.required_tools for c in EVAL_CASES if c.category == "history_trend"}
-    assert required == {
-        "history_trend_en_last_week": ("get_history",),
-        "history_trend_en_compare_weeks": ("compare_periods",),
-        "history_trend_es_last_week": ("get_history",),
-        "history_trend_ca_last_week": ("get_history",),
+    # "last week" questions accept either tool (get_history, or compare_periods against the week before);
+    # an explicit comparison needs compare_periods.
+    either = ("get_history", "compare_periods")
+    needs = {c.name: (c.required_tools, c.any_tool_of) for c in EVAL_CASES if c.category == "history_trend"}
+    assert needs == {
+        "history_trend_en_last_week": ((), either),
+        "history_trend_en_compare_weeks": (("compare_periods",), ()),
+        "history_trend_es_last_week": ((), either),
+        "history_trend_ca_last_week": ((), either),
     }
 
 
@@ -400,6 +403,26 @@ async def test_comparison_case_requires_compare_periods_not_get_history():
     text = "This week your mean risk score was 0.46 against 0.24 the week before."
     assert await _failed("history_trend_en_compare_weeks", _run(text, ("compare_periods",), [COMPARE_RESULT])) == set()
     assert await _failed("history_trend_en_compare_weeks", _run(text, ("get_history",), [COMPARE_RESULT])) == {"RequiredToolsCalled"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("tool", "result", "text"),
+    [
+        ("get_history", HISTORY_RESULT, "En la última semana tu riesgo subió de 0.3 a 0.62 por los datos."),
+        ("compare_periods", COMPARE_RESULT, "En la última semana tu riesgo medio subió de 0.24 a 0.46 por los datos."),
+    ],
+)
+async def test_last_week_question_accepts_either_history_tool(tool: str, result: dict[str, Any], text: str):
+    assert await _failed("history_trend_es_last_week", _run(text, (tool,), [result])) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_last_week_question_rejects_an_unrelated_tool():
+    run = _run("En la última semana tu riesgo medio subió de 0.24 a 0.46 por los datos.", ("get_sessions",), [COMPARE_RESULT])
+    assert await _failed("history_trend_es_last_week", run) == {"RequiredToolsCalled"}
 
 
 @pytest.mark.unit

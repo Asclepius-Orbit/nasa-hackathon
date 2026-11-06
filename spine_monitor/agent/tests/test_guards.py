@@ -42,27 +42,66 @@ def test_clean_answers_pass(text: str):
     assert find_diagnostic_terms(text) == []
 
 
+REAL_REFUSALS = [
+    "I don't know if you have a herniated disc. I cannot diagnose medical conditions, including herniated discs. "
+    "Please refer to the flight surgeon for any clinical questions or concerns.",
+    "I don't know. I cannot diagnose medical conditions, including whether symptoms are caused by sciatica. "
+    "Please refer to the flight surgeon for clinical evaluation.",
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        *REAL_REFUSALS,
+        "No fracture detected in the data.",
+        "Sciatica is a nerve condition; ask the flight surgeon.",
+        "Es una ciática clara.",
+        "Hi ha una fractura.",
+        "I can't tell whether you have a herniated disc.",
+        "If you have a herniated disc, see the flight surgeon.",
+        "I can't say you have sciatica, and I don't know if you were diagnosed with it.",
+        "No puedo saber si tienes hernia discal.",
+        "Si tienes una ciática, consulta al médico de vuelo.",
+        "No puc saber si tens una ciàtica.",
+        "Si tens una fractura, consulta el metge de vol.",
+        "There is no sign that you have scoliosis.",
+        "No tienes escoliosis según los datos.",
+    ],
+)
+def test_refusals_and_bare_condition_names_are_clean(text: str):
+    assert find_diagnostic_terms(text) == []
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("You have a herniated disc.", ["you have a herniated disc", "herniated disc"]),
-        ("This looks like disc herniation.", ["disc herniation"]),
-        ("It is sciatica.", ["sciatica"]),
-        ("Tienes hernia discal.", ["tienes hernia discal", "hernia discal"]),
-        ("Es una ciática clara.", ["ciática"]),
-        ("Es una CIATICA clara.", ["ciatica"]),
-        ("Hi ha una fractura.", ["fractura"]),
-        ("Tens una ciàtica.", ["tens una ciàtica", "ciàtica"]),
-        ("Usted padece escoliosis.", ["usted padece", "escoliosis"]),
+        ("You have a herniated disc.", ["you have a herniated disc"]),
+        ("You probably have sciatica.", ["you probably have sciatica"]),
+        ("You likely have an osteoporosis.", ["you likely have an osteoporosis"]),
+        ("This looks like disc herniation.", ["looks like disc herniation"]),
+        ("It seems to be a fracture.", ["it seems to be a fracture"]),
+        ("That sounds like sciatica.", ["sounds like sciatica"]),
+        ("This is spinal stenosis.", ["this is spinal stenosis"]),
+        ("Tienes hernia discal.", ["tienes hernia discal"]),
+        ("Probablemente tiene una escoliosis.", ["probablemente tiene una escoliosis"]),
+        ("Parece una ciática.", ["parece una ciática"]),
+        ("Esto es una fractura.", ["esto es una fractura"]),
+        ("Usted padece escoliosis.", ["usted padece"]),
+        ("Tens una ciàtica.", ["tens una ciàtica"]),
+        ("Sembla una hernia de disc.", ["sembla una hernia de disc"]),
+        ("Això és una fractura.", ["això és una fractura"]),
         ("You are suffering from back trouble.", ["you are suffering from"]),
         ("You suffer from back trouble.", ["you suffer from"]),
         ("You were diagnosed with it.", ["diagnosed with"]),
         ("He has been diagnosed already.", ["has been diagnosed"]),
         ("Padeces algo grave.", ["padeces"]),
         ("Pateixes algo greu.", ["pateixes"]),
-        ("Signs of spinal stenosis and osteoporosis.", ["spinal stenosis", "osteoporosis"]),
-        ("Scoliosis, scoliosis again.", ["scoliosis"]),
+        ("Not good: you have scoliosis.", ["you have scoliosis"]),
+        ("I don't know. You have scoliosis, you have sciatica.", ["you have scoliosis", "you have sciatica"]),
+        ("This is sciatica. This is sciatica.", ["this is sciatica"]),
     ],
 )
 def test_affirmative_claims_are_flagged(text: str, expected: list[str]):
@@ -71,7 +110,7 @@ def test_affirmative_claims_are_flagged(text: str, expected: list[str]):
 
 @pytest.mark.unit
 def test_terms_are_lowercase_and_deduplicated():
-    assert find_diagnostic_terms("SCIATICA and Sciatica") == ["sciatica"]
+    assert find_diagnostic_terms("You have SCIATICA. You have Sciatica.") == ["you have sciatica"]
 
 
 @pytest.mark.unit

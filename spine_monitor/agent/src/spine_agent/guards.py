@@ -1,6 +1,12 @@
 """Deterministic guardrails of the agent: a post-filter against diagnosis claims and the no-LLM fallback reply.
 
 Pure functions: no I/O, no LLM. Extend the term lists below to cover more conditions or phrasings.
+
+Only AFFIRMATIVE claims about the user are flagged, never a bare condition name: "sciatica is a nerve condition" and a
+refusal that repeats the user's condition ("I cannot diagnose herniated discs") are clean. A claim is a lead-in phrase
+("you have", "it looks like", "tienes", "sembla"...) followed by a condition, or an assertion phrase ("diagnosed with").
+A claim is dropped when a hedge, negation or question word (if, whether, know, tell, no, not, si, saber, puc...) appears
+earlier in the same clause (text since the last . ! ? ; : , or newline): "I don't know if you have X", "si tienes X, consulta".
 """
 
 import re
@@ -9,7 +15,7 @@ from typing import Any
 
 DISCLAIMER = "This is an automatic summary, not a medical diagnosis; please consult the flight surgeon for any clinical decision."
 
-# Named conditions (English, Spanish, Catalan). Matched on their own and after "you have"-style phrases.
+# Named conditions (English, Spanish, Catalan), matched after a lead-in phrase.
 CONDITION_TERMS = (
     "herniated disc",
     "slipped disc",
@@ -31,8 +37,29 @@ CONDITION_TERMS = (
     "osteoporosi",
 )
 
-# Phrases that assert a condition about the user when followed by a condition ("you have a herniated disc").
-POSSESSION_PHRASES = ("you have", "tienes", "tiene", "tens")
+# Lead-in phrases that assert the condition about the user when a condition follows ("you have a herniated disc").
+LEAD_IN_PHRASES = (
+    "you have",
+    "you probably have",
+    "you likely have",
+    "it looks like",
+    "looks like",
+    "it seems to be",
+    "seems to be",
+    "it sounds like",
+    "sounds like",
+    "this is",
+    "tienes",
+    "tiene",
+    "probablemente tienes",
+    "probablemente tiene",
+    "parece",
+    "esto es",
+    "tens",
+    "probablement tens",
+    "sembla",
+    "aixo es",
+)
 ARTICLES = ("a", "an", "una", "un")
 
 # Phrases that are an affirmative claim by themselves.
@@ -46,6 +73,27 @@ ASSERTION_PHRASES = (
     "pateixes",
 )
 
+# Words that, earlier in the same clause, turn a claim into a hedge, a negation or a question (accent-free).
+HEDGE_WORDS = (
+    "if",
+    "whether",
+    "know",
+    "tell",
+    "say",
+    "determine",
+    "no",
+    "not",
+    "never",
+    "si",
+    "saber",
+    "sap",
+    "puc",
+    "puedo",
+    "poder",
+    "nunca",
+    "mai",
+)
+
 
 def _alternatives(terms: tuple[str, ...]) -> str:
     return "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
@@ -54,9 +102,10 @@ def _alternatives(terms: tuple[str, ...]) -> str:
 _CONDITION = _alternatives(CONDITION_TERMS)
 _PATTERNS = (
     re.compile(rf"\b(?:{_alternatives(ASSERTION_PHRASES)})\b"),
-    re.compile(rf"\b(?:{_alternatives(POSSESSION_PHRASES)})\s+(?:(?:{_alternatives(ARTICLES)})\s+)?(?:{_CONDITION})\b"),
-    re.compile(rf"\b(?:{_CONDITION})\b"),
+    re.compile(rf"\b(?:{_alternatives(LEAD_IN_PHRASES)})\s+(?:(?:{_alternatives(ARTICLES)})\s+)?(?:{_CONDITION})\b"),
 )
+_CLAUSE_BREAK = re.compile(r"[.!?;:,\n]")
+_HEDGE = re.compile(rf"\b(?:{_alternatives(HEDGE_WORDS)})\b|n['’]t\b")
 
 
 def _fold(text: str) -> str:
@@ -64,16 +113,23 @@ def _fold(text: str) -> str:
     return "".join(unicodedata.normalize("NFD", ch)[0] for ch in text.lower())
 
 
+def _is_hedged(folded: str, start: int) -> bool:
+    """A hedge, negation or question word precedes `start` in the same clause."""
+    breaks = [m.end() for m in _CLAUSE_BREAK.finditer(folded, 0, start)]
+    return _HEDGE.search(folded, breaks[-1] if breaks else 0, start) is not None
+
+
 def find_diagnostic_terms(text: str) -> list[str]:
     """Affirmative diagnosis claims found in `text` (lowercased, unique, by first appearance); empty means clean.
 
-    The bare words "diagnose"/"diagnosis" are not flagged, so a refusal to diagnose passes.
+    The bare words "diagnose"/"diagnosis" and bare condition names are not flagged (see the module docstring).
     """
     folded = _fold(text)
     found: list[tuple[int, int, str]] = []
     for pattern in _PATTERNS:
         for match in pattern.finditer(folded):
-            found.append((match.start(), -match.end(), text[match.start() : match.end()].lower()))
+            if not _is_hedged(folded, match.start()):
+                found.append((match.start(), -match.end(), text[match.start() : match.end()].lower()))
     terms: list[str] = []
     for _, _, term in sorted(found):
         if term not in terms:

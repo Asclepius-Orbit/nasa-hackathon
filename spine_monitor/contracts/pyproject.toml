@@ -21,6 +21,7 @@ packages = ["src/spine_contracts"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "schemas/v1" = "spine_contracts/schemas/v1"
+"catalog" = "spine_contracts/catalog"
 
 [dependency-groups]
 dev = [

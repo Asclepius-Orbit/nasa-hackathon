@@ -1,5 +1,4 @@
 import json
-from itertools import product
 from pathlib import Path
 from re import fullmatch
 
@@ -8,6 +7,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
+from spine_contracts.catalog import expand_ids, load_catalog, placeholders
 
 CONTRACTS_DIR = Path(__file__).resolve().parents[1]
 SCHEMAS_DIR = CONTRACTS_DIR / "schemas" / "v1"
@@ -342,19 +342,9 @@ def test_chunk_arrays_match_n_samples(path):
 # ---- feature catalog --------------------------------------------------------
 
 
-def placeholders(feature_id: str) -> list[str]:
-    return [part[1:-1] for part in feature_id.split(".") if part.startswith("{")]
-
-
-def expand(feature_id: str, common: dict) -> list[str]:
-    names = placeholders(feature_id)
-    values = [common["$defs"][name]["enum"] for name in names]
-    return [feature_id.format(**dict(zip(names, combo, strict=True))) for combo in product(*values)]
-
-
 @pytest.fixture(scope="module")
 def catalog():
-    return load_json(CATALOG_DIR / "feature-catalog.json")
+    return load_catalog()
 
 
 @pytest.fixture(scope="module")
@@ -376,7 +366,7 @@ def test_catalog_placeholders_resolve_and_expand_to_valid_ids(catalog, common):
     for entry in catalog["entries"]:
         for name in placeholders(entry["feature_id"]):
             assert name in common["$defs"], f"{entry['feature_id']}: unknown placeholder {name}"
-        for expanded in expand(entry["feature_id"], common):
+        for expanded in expand_ids(entry):
             assert fullmatch(pattern, expanded), expanded
 
 
@@ -388,7 +378,7 @@ def test_catalog_has_no_invented_ranges(catalog):
 
 
 def test_example_feature_ids_exist_in_catalog(catalog, common):
-    known = {expanded for entry in catalog["entries"] for expanded in expand(entry["feature_id"], common)}
+    known = {expanded for entry in catalog["entries"] for expanded in expand_ids(entry)}
 
     def walk(node):
         if isinstance(node, dict):

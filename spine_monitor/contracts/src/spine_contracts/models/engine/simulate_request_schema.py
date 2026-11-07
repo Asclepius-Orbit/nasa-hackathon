@@ -45,7 +45,10 @@ class SimulateRequest(BaseModel):
         examples=['1.0.0'],
     )
     base: assess_request_schema.AssessRequest
-    overrides: list[Override] = Field(..., min_length=1)
+    overrides: list[Override] = Field(
+        ...,
+        description='Feature changes to apply. Required, but may be empty: an empty array means no changes, so the base trajectory is projected as it is.',
+    )
     project_days: conint(ge=1, le=365) | None = Field(
         None, description='Optional horizon for the trend of the scenario.'
     )

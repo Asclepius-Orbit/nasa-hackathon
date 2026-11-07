@@ -1902,7 +1902,7 @@ export interface ClockSync {
   method: "round_trip" | "gateway_receive_time" | "simulated";
 }
 /**
- * POST /simulate. A what-if: take a normal assess request, change some features, and see how the assessment would move. Read-only: nothing is stored and no real assessment is produced. Backs the MCP tool simulate_scenario.
+ * POST /simulate. A what-if: take a normal assess request, change some features (or none: an empty overrides array projects the base trajectory as it is), and see how the assessment would move. Read-only: nothing is stored and no real assessment is produced. Backs the MCP tool simulate_scenario.
  */
 export interface SimulateRequest {
   /**
@@ -1911,32 +1911,19 @@ export interface SimulateRequest {
   schema_version: string;
   base: AssessRequest;
   /**
-   * @minItems 1
+   * Feature changes to apply. Required, but may be empty: an empty array means no changes, so the base trajectory is projected as it is.
    */
-  overrides: [
-    {
-      /**
-       * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
-       */
-      feature_id: string;
-      /**
-       * set: replace the value. add: add value to it. scale: multiply it by value.
-       */
-      mode: "set" | "add" | "scale";
-      value: number;
-    },
-    ...{
-      /**
-       * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
-       */
-      feature_id: string;
-      /**
-       * set: replace the value. add: add value to it. scale: multiply it by value.
-       */
-      mode: "set" | "add" | "scale";
-      value: number;
-    }[]
-  ];
+  overrides: {
+    /**
+     * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
+     */
+    feature_id: string;
+    /**
+     * set: replace the value. add: add value to it. scale: multiply it by value.
+     */
+    mode: "set" | "add" | "scale";
+    value: number;
+  }[];
   /**
    * Optional horizon for the trend of the scenario.
    */

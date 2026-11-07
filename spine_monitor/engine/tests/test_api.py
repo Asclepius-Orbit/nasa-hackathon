@@ -106,6 +106,16 @@ def test_simulate_returns_a_hypothetical_pair(client):
     assert body["hypothetical"] is True
 
 
+def test_simulate_without_overrides_projects_the_base_unchanged(client):
+    response = client.post("/simulate", json=example("simulate-request.no-overrides"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert validation.errors("engine/simulate-response", body) == []
+    assert body["hypothetical"] is True
+    assert body["scenario"] == body["reference"]
+
+
 def test_assess_and_baseline_chain_without_the_caller_touching_the_data(client):
     baseline = client.post("/baseline", json=example("baseline-request")).json()
     request = example("assess-request") | {"baseline": baseline}

@@ -19,6 +19,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "contracts/tests", "engine/tests", "physiology/tests", "backend/tests", "mcp_server/tests", "agent/tests"]
+pythonpath = ["agent"]  # agent/evals is imported as the package `evals` (it lives outside src on purpose)
 addopts = "--import-mode=importlib --strict-markers --timeout=120"
 markers = [
     "unit: isolated logic, no I/O",
@@ -48,6 +49,6 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pyright]
 pythonVersion = "3.14"
-include = ["contracts/src", "engine/src", "physiology/src", "backend/src", "mcp_server/src", "agent/src"]
+include = ["contracts/src", "engine/src", "physiology/src", "backend/src", "mcp_server/src", "agent/src", "agent/evals"]
 exclude = ["contracts/src/spine_contracts/models"]
 typeCheckingMode = "standard"

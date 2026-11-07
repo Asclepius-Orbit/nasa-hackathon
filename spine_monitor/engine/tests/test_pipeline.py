@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from spine_contracts import (
     AssessmentDomain,
     AssessRequest,
@@ -15,7 +16,7 @@ from spine_contracts import (
     dump,
     validation,
 )
-from spine_contracts.models.domain.feature_set_schema import SkippedItem
+from spine_contracts.models.domain.feature_set_schema import Reason, SkippedItem
 from spine_engine import (
     AssessmentPipeline,
     Deviation,
@@ -79,6 +80,26 @@ def test_skipped_features_count_as_missing():
 
     assert MissingItem(what="emg.latissimus_dorsi.right.rms_pct_mvc", reason=MissingReason.SENSOR_OFFLINE) in completeness.missing
     assert completeness.score < 0.8
+
+
+@pytest.mark.parametrize("reason", [r.value for r in Reason])
+def test_every_skip_reason_of_the_contract_maps_to_a_missing_reason(reason):
+    # A new contract reason must never reach the pipeline as a KeyError.
+    req = request()
+    req.feature_sets[0].skipped = [SkippedItem(feature_id="emg.latissimus_dorsi.right.rms_pct_mvc", reason=reason)]
+
+    completeness = stub_pipeline().evaluate(req).completeness
+
+    assert any(item.what == "emg.latissimus_dorsi.right.rms_pct_mvc" for item in completeness.missing)
+
+
+def test_calibration_expired_counts_as_missing_data():
+    req = request()
+    req.feature_sets[0].skipped = [SkippedItem(feature_id="emg.latissimus_dorsi.right.rms_pct_mvc", reason="calibration_expired")]
+
+    completeness = stub_pipeline().evaluate(req).completeness
+
+    assert MissingItem(what="emg.latissimus_dorsi.right.rms_pct_mvc", reason=MissingReason.NO_DATA) in completeness.missing
 
 
 def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():

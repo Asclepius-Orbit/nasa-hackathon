@@ -1,0 +1,18 @@
+/* Bone and sensor colours are the ones of the mock's figure; they carry no clinical meaning. */
+.figure { --bone: #D3DBE0; --bone-line: #A9B6BE; --lumbar-fill: #C9D7EA; margin: 0; padding: 12px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l); }
+.figure svg { display: block; width: 100%; height: auto; }
+.figure figcaption { font-size: 0.9375rem; color: var(--muted); margin: 4px 10px 0; }
+.today { fill: none; stroke: var(--ink); stroke-width: 4; }
+.preflight { fill: none; stroke: var(--muted); stroke-width: 3; stroke-dasharray: 7 6; }
+.thoracic { fill: var(--bone); stroke: var(--bone-line); stroke-width: 1.5; }
+.lumbar { fill: var(--lumbar-fill); stroke: var(--action); stroke-width: 2; }
+.sacrum { fill: none; stroke: var(--bone-line); stroke-width: 14; stroke-linecap: round; }
+.cord { fill: none; stroke: var(--action); stroke-width: 6; stroke-linecap: round; }
+.imu { fill: var(--ink); }
+.emg { fill: var(--surface); stroke: var(--ink); stroke-width: 3; }
+.leader path { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.labels { font-size: 14px; fill: var(--ink); }
+.strong { font-weight: 700; }
+.muted { fill: var(--muted); }
+.value { fill: var(--action); font-weight: 700; }
+.legend { font-size: 14px; fill: var(--muted); }

@@ -1,0 +1,21 @@
+/** Copy of the settings screen, taken from the mock. */
+export const settingsText = {
+  title: 'Settings',
+  length: 'Length',
+  mm: 'mm',
+  inches: 'inches',
+  time: 'Time',
+  gmt: 'GMT, 24 h',
+  gmtMet: 'GMT and mission elapsed time',
+  textSize: 'Text size',
+  standard: 'Standard',
+  large: 'Large',
+  voice: 'Voice commands',
+  voiceNote: '“stop, pain” always asks to confirm',
+  on: 'On',
+  off: 'Off',
+  footPedal: 'Foot pedal',
+  paired: 'Paired',
+  notPaired: 'Not paired',
+  saveError: 'That setting could not be saved. Try again.',
+} as const;

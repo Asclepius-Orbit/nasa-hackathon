@@ -34,3 +34,24 @@ jobs:
         run: >
           docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
           sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'
+
+  ui-quality:
+    # Native (not compose): the bind-mounted repo is owned by the runner uid, which the image's non-root user cannot write.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app/ui
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Enable corepack (pnpm version comes from package.json packageManager)
+        run: corepack enable
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: UI quality gate (lint, types, contract types, tests+coverage, audit)
+        run: pnpm check

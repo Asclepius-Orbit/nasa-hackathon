@@ -1,0 +1,10 @@
+.settings { max-width: 1100px; }
+.row { display: grid; grid-template-columns: 260px 1fr; gap: 18px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.note { display: block; color: var(--muted); font-size: 0.9375rem; }
+.picks { display: flex; gap: 8px; flex-wrap: wrap; max-width: 960px; }
+.pick { min-width: 84px; padding: 0 14px; font-size: 1.1875rem; }
+.pick:focus-visible { outline: 4px solid var(--focus); outline-offset: 2px; }
+.error { min-height: 1.5em; color: var(--urgent); font-weight: 700; margin: 12px 0 0; }
+@media (max-width: 900px) {
+  .row { grid-template-columns: 1fr; gap: 8px; }
+}

@@ -1,0 +1,14 @@
+.backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(27, 39, 48, .55); }
+.dialog { background: var(--surface); border-radius: var(--radius-l); padding: 24px 28px; max-width: 820px; width: 94vw; max-height: 92vh; overflow: auto; }
+.dialog:focus { outline: none; }
+.dialog h2 { margin: 0 0 6px; font-size: 1.625rem; }
+.crew { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; align-items: center; }
+.crewLabel { font-weight: 700; }
+.crew button { font-size: 1.125rem; padding: 0 18px; }
+.intro { margin: 0; color: var(--muted); }
+.flags { margin: 12px 0 16px; }
+.pending { font-size: .9375rem; color: var(--muted); margin: -8px 0 14px; }
+.tag { display: inline-block; font-size: .8125rem; font-weight: 700; color: var(--rail); border: 1px dashed var(--rail); border-radius: 4px; padding: 1px 6px; vertical-align: middle; }
+.delivery { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius-s); background: var(--action-soft); margin: 0 0 16px; font-size: 1.0625rem; }
+.delivery svg { width: 26px; height: 26px; flex: none; }
+.actions { display: flex; gap: 14px; }

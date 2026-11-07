@@ -1,0 +1,10 @@
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+.steps li::before { content: counter(s); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; border: 2px solid var(--line); }
+.steps li[data-status="done"] { color: var(--ink); }
+.steps li[data-status="done"]::before { content: "\2713"; background: var(--ink); border-color: var(--ink); color: #fff; }
+.steps li[data-status="now"] { color: var(--ink); font-weight: 800; }
+.steps li[data-status="now"]::before { background: var(--action); border-color: var(--action); color: #fff; }
+.steps button { all: unset; cursor: pointer; display: block; min-height: 44px; line-height: 44px; }
+.steps button:focus-visible { outline: 4px solid var(--focus); }
+.steps li[data-viewing="true"] button { text-decoration: underline; text-underline-offset: 5px; text-decoration-thickness: 3px; }

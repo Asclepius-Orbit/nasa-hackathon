@@ -1,0 +1,13 @@
+.toggle { border: 2px solid var(--action); border-radius: var(--radius-l); background: #fff; }
+.toggle summary { list-style: none; cursor: pointer; min-height: var(--target); display: flex; align-items: center; gap: 14px; padding: 0 18px; font-weight: 800; font-size: 1.125rem; color: var(--action); border-radius: var(--radius-l); }
+.toggle summary::-webkit-details-marker { display: none; }
+.toggle summary::after { content: ""; margin-left: auto; width: 12px; height: 12px; border-right: 3px solid currentColor; border-bottom: 3px solid currentColor; transform: rotate(45deg); transition: transform .15s; }
+.toggle[open] summary::after { transform: rotate(-135deg); }
+.toggle summary:hover { background: var(--action-soft); }
+.toggle[open] summary { background: var(--action); color: #fff; border-radius: 11px 11px 0 0; }
+.body { padding: 12px 18px 16px; }
+.toggle[data-tone="urgent"] { border-color: var(--urgent); }
+.toggle[data-tone="urgent"] summary { color: var(--urgent); }
+.toggle[data-tone="urgent"] summary:hover { background: var(--urgent-soft); }
+.toggle[data-tone="urgent"][open] summary { background: var(--urgent); color: #fff; }
+.ico { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 1.0625rem; border: 2px solid currentColor; flex: none; }

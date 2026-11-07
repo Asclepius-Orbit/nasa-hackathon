@@ -38,7 +38,7 @@ def test_health(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_features_returns_an_honest_empty_feature_set(client):
+def test_features_returns_an_honest_empty_feature_set_while_no_family_is_registered(client):
     request = example("features-request")
 
     response = client.post("/features", json=request)
@@ -47,6 +47,8 @@ def test_features_returns_an_honest_empty_feature_set(client):
     body = response.json()
     assert validation.errors("domain/feature-set", body) == []
     assert body["features"] == []
+    assert body["engine_version"] == "0.1.0"  # lo rellena el extractor compuesto, no el nulo
+    assert "window" in body
     assert body["session_id"] == request["session"]["session_id"]
     assert body["protocol_id"] == request["session"]["protocol_id"]
     assert body["gravity_environment"] == request["session"]["mission_context"]["gravity_environment"]

@@ -47,9 +47,22 @@ Los ejemplos de `contracts/examples/valid/engine/` son peticiones válidas de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | cambio sostenido sobre el histórico (mismo protocolo y gravedad); un pico aislado nunca cuenta |
 | `VotePolicy` | `AllAgreeVote` | los detectores deben coincidir (AND), en el mismo sentido |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construye la baseline |
-| `FeatureExtractor` | `NullFeatureExtractor` | datos crudos a features (la real llega en #15) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (el registro está vacío hasta #41-#45) |
 
 Los detectores solo ven una serie de z-scores: no saben qué métrica es, así que no dependen del modelo teórico. `Deviation` lleva el z-score, la gravedad de referencia y si el cambio es sostenido y en qué sentido; el modelo de riesgo lo lee de ahí.
+
+## Extracción de features
+
+`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). El registro por defecto está vacío, así que hoy la respuesta es un `FeatureSet` vacío y honesto; las métricas llegan familia a familia. `NullFeatureExtractor` sigue en `stubs.py` para los tests.
+
+Antes de ejecutar las familias, el motor prepara una sola vez un `ExtractionContext`:
+
+- **Chunks:** solo se usan los de la sesión y de streams declarados. Se ordenan por (stream, `boot_id`, `seq`); de un duplicado gana la primera copia; cada `boot_id` es un segmento independiente (nunca se unen muestras de dos arranques) y un reinicio se reporta como hueco. Los chunks perdidos (saltos de `seq`) y los `dropped_samples` cuentan como muestras ausentes.
+- **Reloj:** `device_ms` pasa a UTC por `boot_id` con una recta de mínimos cuadrados sobre sus `clock_syncs` (con una sola ancla, un desfase fijo). Un arranque sin anclas no tiene UTC: sus datos no alimentan ninguna feature (`no_data`). `window` es el rango UTC de los chunks mapeados y se omite si no hay reloj.
+- **Calibración:** el `calibration_id` del chunk manda sobre el de la sesión; se busca en `calibrations` por `stream_id` (y tipo). Sin coincidencia: `no_calibration`; `valid_until` anterior al final de la ventana: `calibration_expired`. Nunca un 422.
+- **Calidad:** `score = cobertura x (1 - fracción saturada)`, `assessed_by = "engine"`, con flags de huecos (`packet_gap`), saturación (`saturated_adc`, `clipping`), calibración caducada (`out_of_calibration`) y, si se configura `clock_uncertain_ms`, `clock_uncertain`. La saturación solo se juzga donde los datos lo permiten (bits del ADC, rangos de la IMU); no hay umbrales clínicos.
+
+El compuesto rellena `unit` desde el catálogo de features y la calidad sobre los streams que cada feature declaró usar. Un id fuera del catálogo es un error de programación de la familia y lanza `UnknownFeatureIdError`. Lo que no se puede calcular va a `skipped` con motivo: `stream_missing` (stream declarado sin chunks), `no_calibration`, `calibration_expired` y `no_data` (cobertura 0, sin UTC o valor no finito), entre otros; la petición nunca se rechaza por incoherente. `features` y `skipped` salen ordenadas, así que el resultado no depende del orden de registro.
 
 ## Configuración
 

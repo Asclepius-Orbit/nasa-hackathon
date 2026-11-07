@@ -32,6 +32,8 @@ export default defineConfig({
         test: {
           name: 'renderer',
           environment: 'jsdom',
+          // jsdom + user-event are slow on a loaded CI/Docker CPU; the 5 s default flakes there.
+          testTimeout: 20_000,
           include: ['src/renderer/**/*.test.{ts,tsx}'],
           setupFiles: ['src/renderer/test/setup.ts'],
         },

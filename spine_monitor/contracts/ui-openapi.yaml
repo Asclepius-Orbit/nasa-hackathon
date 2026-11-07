@@ -1,0 +1,187 @@
+openapi: 3.1.0
+info:
+  title: Spine app UI view API
+  version: 1.0.0
+  license:
+    name: GNU General Public License v3.0
+  description: |
+    Local, read-only HTTP API of the on-board app that backs the desktop UI. Each endpoint returns one
+    screen already chewed: the backend computes the view from the stored assessments, sessions,
+    self-reports, baseline, device status and the protocol catalog (`catalog/protocol-catalog.json`).
+    Only GET: no endpoint modifies data.
+
+    Views carry codes and data, never prose: recommendation codes (`REC_*`), task codes (`TASK_*`),
+    feature ids, missing reasons, red-flag codes and protocol fit-item ids. The UI writes the words.
+    Missing data is an explicit `null` or level `nodata`, never a default.
+
+    Response bodies are the JSON Schemas in `schemas/v1/app/ui-*.schema.json`, which are the source of
+    truth. Errors are RFC 9457 problem details with the same `app/error` schema as the read-only API
+    (`app-openapi.yaml`). Served by the same local app process, on localhost only.
+security: []
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local app process (write and view API, /ui)
+paths:
+  /ui/crew/{astronaut_id}/views/strip:
+    get:
+      operationId: getStripView
+      summary: Always-visible strip
+      description: Mission day and phase, paired harness, ground link and reports still due today.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The strip view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-strip.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/views/today:
+    get:
+      operationId: getTodayView
+      summary: Today screen
+      description: Level, reasons, recommendations and trust of the latest assessment, lumbar change, session in progress and other tasks of the day. Level `nodata` without an assessment.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The today view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-today.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/views/history:
+    get:
+      operationId: getHistoryView
+      summary: History screen, one row per day
+      description: Days of the window, oldest first. Without `from`/`to` the app picks the default window.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: The history view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-history.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/views/baseline:
+    get:
+      operationId: getBaselineView
+      summary: Baseline screen
+      description: Pre-flight reference sessions, recorded and planned, and the active baseline built from them.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The baseline view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-baseline.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/views/first-day:
+    get:
+      operationId: getFirstDayView
+      summary: First-day screen
+      description: Set-up tasks still to do and baseline progress. Carries no name of the astronaut.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The first-day view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-first-day.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/sessions/{session_id}/view:
+    get:
+      operationId: getSessionView
+      summary: Guided session screen
+      description: Protocol facts, step progress, sensor checks and calibration of one session.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: The session view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-session.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  parameters:
+    AstronautId:
+      name: astronaut_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/astronaut_id'
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+    FromDate:
+      name: from
+      in: query
+      required: false
+      description: First day of the window, inclusive (ISO 8601 date).
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/date'
+    ToDate:
+      name: to
+      in: query
+      required: false
+      description: Last day of the window, inclusive (ISO 8601 date). Not before `from`, otherwise `invalid_range`.
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/date'
+  responses:
+    NotFound:
+      description: The astronaut or the session does not exist (problem details, type `not_found`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Error:
+      description: Problem details (invalid parameter, invalid range, internal error).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'

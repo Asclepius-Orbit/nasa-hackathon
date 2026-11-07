@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0.0",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+  "state": "running",
+  "protocol_id": "lat_pulldown_standing_v1",
+  "band": { "color": "blue", "nominal_kg": 15 },
+  "total_reps": 10,
+  "rest_seconds": 120,
+  "fit_items": ["skin", "emg", "imu", "cord"],
+  "started_at": "2026-11-13T10:02:31Z",
+  "steps": [
+    { "id": "fit", "status": "done" },
+    { "id": "check", "status": "done" },
+    { "id": "mvc", "status": "done" },
+    { "id": "reps", "status": "now" },
+    { "id": "finish", "status": "todo" }
+  ],
+  "sensor_checks": [
+    { "stream": "emg_lat_left", "status": "good", "state": "active" },
+    { "stream": "imu_l3", "status": "good", "state": "active" },
+    { "stream": "stretch_lumbar", "status": "weak", "state": "stalled" }
+  ],
+  "calibration": {
+    "command_id": "c0ffee00-0000-4000-8000-000000000004",
+    "acked": true,
+    "acked_at": "2026-11-13T10:00:06.400Z"
+  },
+  "stretched_cm": null,
+  "planned_at": null
+}

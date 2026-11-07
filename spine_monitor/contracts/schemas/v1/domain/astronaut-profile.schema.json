@@ -19,6 +19,14 @@
       "type": "string",
       "maxLength": 50
     },
+    "launch_date": {
+      "description": "Launch date of the current mission; the mission day and phase are derived from it. Null or absent when not planned yet.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/date" }, { "type": "null" }]
+    },
+    "landing_date": {
+      "description": "Landing date of the current mission; postflight starts on it. Null or absent while not known.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/date" }, { "type": "null" }]
+    },
     "anthropometry": {
       "type": "object",
       "properties": {

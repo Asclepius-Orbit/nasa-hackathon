@@ -12,11 +12,13 @@ Contratos de datos compartidos por todos los componentes: gateway del wearable, 
 | `schemas/v1/telemetry/` | Mensajes MQTT: chunk de stream, estado del dispositivo, comando, ack de comando, sincronización de reloj. La entidad `domain/calibration` también se publica en el bus (ver Convenciones) |
 | `schemas/v1/domain/` | Entidades: sesión, calibración, perfil del astronauta, autoinforme, contexto diario, conjunto de features, baseline, evaluación |
 | `schemas/v1/engine/` | Cuerpos HTTP del motor: `/features`, `/baseline`, `/assess`, `/simulate`, errores |
-| `schemas/v1/app/` | Cuerpos HTTP de la API de solo lectura de la app: estado, histórico, explicación, listas de evaluaciones, sesiones y autoinformes, errores |
+| `schemas/v1/app/` | Cuerpos HTTP de la API de solo lectura de la app: estado, histórico, explicación, listas de evaluaciones, sesiones y autoinformes, errores; y las vistas de la UI de `ui-openapi.yaml` (`ui-*`) |
 | `catalog/feature-catalog.json` | Cada métrica derivada (feature) con unidad, entradas y requisitos; los rangos son de Aguado |
+| `catalog/protocol-catalog.json` | Datos fijos de cada protocolo (banda, repeticiones, descanso, ids de colocación) que citan las vistas de la UI |
 | `asyncapi.yaml` | Topics MQTT, dirección, QoS y retain (desde el punto de vista del gateway) |
 | `openapi.yaml` | API HTTP del motor |
 | `app-openapi.yaml` | API HTTP de solo lectura de la app (solo GET), la usa el servidor MCP |
+| `ui-openapi.yaml` | API de vistas de la app para la UI de escritorio (solo GET): una pantalla por endpoint, códigos y datos, sin prosa |
 | `examples/valid/` | Un ejemplo válido por mensaje; son los mocks para todos |
 | `src/spine_contracts/` | Paquete Python: `models/` generados, `messages` (uniones), `topics`, `validation`, `openapi_drift` |
 

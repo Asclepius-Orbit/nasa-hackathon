@@ -12,11 +12,13 @@ Contractes de dades compartits per tots els components: gateway del wearable, br
 | `schemas/v1/telemetry/` | Missatges MQTT: chunk d'stream, estat del dispositiu, comanda, ack de comanda, sincronització de rellotge. L'entitat `domain/calibration` també es publica al bus (vegeu Convencions) |
 | `schemas/v1/domain/` | Entitats: sessió, calibratge, perfil de l'astronauta, autoinforme, context diari, conjunt de features, baseline, avaluació |
 | `schemas/v1/engine/` | Cossos HTTP del motor: `/features`, `/baseline`, `/assess`, `/simulate`, errors |
-| `schemas/v1/app/` | Cossos HTTP de l'API de només lectura de l'app: estat, històric, explicació, llistes d'avaluacions, sessions i autoinformes, errors |
+| `schemas/v1/app/` | Cossos HTTP de l'API de només lectura de l'app: estat, històric, explicació, llistes d'avaluacions, sessions i autoinformes, errors; i les vistes de la UI de `ui-openapi.yaml` (`ui-*`) |
 | `catalog/feature-catalog.json` | Cada mètrica derivada (feature) amb unitat, entrades i requisits; els rangs són d'Aguado |
+| `catalog/protocol-catalog.json` | Dades fixes de cada protocol (banda, repeticions, descans, ids de col·locació) que citen les vistes de la UI |
 | `asyncapi.yaml` | Topics MQTT, direcció, QoS i retain (des del punt de vista del gateway) |
 | `openapi.yaml` | API HTTP del motor |
 | `app-openapi.yaml` | API HTTP de només lectura de l'app (només GET), la fa servir el servidor MCP |
+| `ui-openapi.yaml` | API de vistes de l'app per a la UI d'escriptori (només GET): una pantalla per endpoint, codis i dades, sense prosa |
 | `examples/valid/` | Un exemple vàlid per missatge; són els mocks per a tothom |
 | `src/spine_contracts/` | Paquet Python: `models/` generats, `messages` (unions), `topics`, `validation`, `openapi_drift` |
 

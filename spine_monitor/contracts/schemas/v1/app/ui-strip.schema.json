@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-strip.schema.json",
+  "title": "StripView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/views/strip: facts of the always-visible strip of the desktop UI (mission day, harness, ground link, reports due). Codes and data only; every unknown is an explicit null.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "mission": {
+      "title": "StripMission",
+      "description": "Where the astronaut is in the mission, derived from launch_date and landing_date of the astronaut profile. Each field is null when it cannot be derived.",
+      "type": "object",
+      "properties": {
+        "day": {
+          "description": "Mission day counted from the launch date (same numbering as mission_day of the daily context). Null without a launch date.",
+          "type": ["integer", "null"]
+        },
+        "start": {
+          "description": "Launch date of the astronaut profile; the UI measures mission elapsed time from it.",
+          "oneOf": [{ "$ref": "../common.schema.json#/$defs/date" }, { "type": "null" }]
+        },
+        "phase": {
+          "oneOf": [{ "$ref": "../common.schema.json#/$defs/mission_phase" }, { "type": "null" }]
+        }
+      },
+      "required": ["day", "start", "phase"],
+      "additionalProperties": false
+    },
+    "harness": {
+      "description": "Last known status of the paired harness; null while no harness is paired.",
+      "oneOf": [
+        {
+          "title": "StripHarness",
+          "type": "object",
+          "properties": {
+            "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+            "battery_pct": {
+              "description": "Null when the device did not report it.",
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 100
+            },
+            "weak_streams": {
+              "description": "Streams that are not sending (device-status stream state stalled or disabled). Empty when every stream is active.",
+              "type": "array",
+              "items": {
+                "title": "WeakStream",
+                "type": "object",
+                "properties": {
+                  "stream": { "$ref": "../common.schema.json#/$defs/stream_id" },
+                  "state": { "type": "string", "enum": ["stalled", "disabled"] }
+                },
+                "required": ["stream", "state"],
+                "additionalProperties": false
+              }
+            },
+            "degraded": {
+              "description": "True when the device status is degraded.",
+              "type": "boolean"
+            }
+          },
+          "required": ["device_id", "battery_pct", "weak_streams", "degraded"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "ground_link": {
+      "description": "State of the link with the ground station. Reserved: always null until the ground link is modelled (issue #62).",
+      "type": "null"
+    },
+    "last_contact_min_ago": {
+      "description": "Minutes since the last contact with the ground station; null when unknown (always null until issue #62).",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "reports_due": {
+      "title": "ReportsDue",
+      "description": "Self-reports still due today.",
+      "type": "object",
+      "properties": {
+        "daily": { "type": "boolean" },
+        "weekly_odi": { "type": "boolean" }
+      },
+      "required": ["daily", "weekly_odi"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "mission", "harness", "ground_link", "last_contact_min_ago", "reports_due"],
+  "additionalProperties": false
+}

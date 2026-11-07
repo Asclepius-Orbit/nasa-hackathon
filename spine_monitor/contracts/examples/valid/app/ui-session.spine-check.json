@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02",
+  "state": "starting",
+  "protocol_id": "spine_length_rest_v1",
+  "band": null,
+  "total_reps": null,
+  "rest_seconds": null,
+  "fit_items": ["cord"],
+  "started_at": null,
+  "steps": [
+    { "id": "fit", "status": "now" },
+    { "id": "check", "status": "todo" },
+    { "id": "mvc", "status": "todo" },
+    { "id": "reps", "status": "todo" },
+    { "id": "finish", "status": "todo" }
+  ],
+  "sensor_checks": [],
+  "calibration": null,
+  "stretched_cm": null,
+  "planned_at": null
+}

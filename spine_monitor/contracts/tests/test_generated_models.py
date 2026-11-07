@@ -13,6 +13,7 @@ from spine_contracts import (
     AstronautProfile,
     Baseline,
     BaselineRequest,
+    BaselineView,
     ClockSync,
     CommandAck,
     ComparePeriods,
@@ -22,13 +23,18 @@ from spine_contracts import (
     Explanation,
     FeatureSet,
     FeaturesRequest,
+    FirstDayView,
     History,
+    HistoryView,
     SelfReportList,
     Session,
     SessionList,
+    SessionView,
     SimulateRequest,
     SimulateResponse,
     Status,
+    StripView,
+    TodayView,
     calibration_adapter,
     command_adapter,
     dump,
@@ -69,6 +75,12 @@ PARSERS = {
     "app/session-list": SessionList.model_validate,
     "app/self-report-list": SelfReportList.model_validate,
     "app/error": AppErrorResponse.model_validate,
+    "app/ui-strip": StripView.model_validate,
+    "app/ui-today": TodayView.model_validate,
+    "app/ui-history": HistoryView.model_validate,
+    "app/ui-baseline": BaselineView.model_validate,
+    "app/ui-first-day": FirstDayView.model_validate,
+    "app/ui-session": SessionView.model_validate,
     "mcp/compare-periods": ComparePeriods.model_validate,
 }
 
@@ -167,3 +179,17 @@ def test_feature_set_skip_reason_includes_calibration_expired():
     example["skipped"].append({"feature_id": "stretch.lumbar.peak_elongation_mm", "reason": "calibration_expired"})
     parsed = FeatureSet.model_validate(example)
     assert parsed.skipped[-1].reason.value == "calibration_expired"
+
+
+def test_view_models_keep_explicit_nulls():
+    # Absence travels as an explicit null: dumping a view must not drop a null field.
+    payload = load(EXAMPLES_DIR / "app" / "ui-today.nodata.json")
+    dumped = dump(TodayView.model_validate(payload))
+    assert dumped["assessment_id"] is None and dumped["trust"] is None and dumped["lumbar_delta_mm"] is None
+
+
+def test_astronaut_profile_model_reads_mission_dates():
+    payload = load(EXAMPLES_DIR / "domain" / "astronaut-profile.json")
+    profile = AstronautProfile.model_validate(payload | {"launch_date": "2026-12-01", "landing_date": None})
+    assert str(profile.launch_date) == "2026-12-01"
+    assert profile.landing_date is None

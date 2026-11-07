@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-history.schema.json",
+  "title": "HistoryView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/views/history: one row per day of a window, for the History screen of the desktop UI. Days are ordered oldest first. A day without data has level 'nodata' and null values, never a green or a 0 by default.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "from": {
+      "description": "First day of the window, inclusive.",
+      "$ref": "../common.schema.json#/$defs/date"
+    },
+    "to": {
+      "description": "Last day of the window, inclusive; not before from.",
+      "$ref": "../common.schema.json#/$defs/date"
+    },
+    "today_day": {
+      "description": "Mission day of today; null without a launch date.",
+      "type": ["integer", "null"]
+    },
+    "preflight_range_mm": {
+      "description": "Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.elongation_mm baseline entry. Null without that entry.",
+      "oneOf": [
+        {
+          "title": "LengthRange",
+          "type": "object",
+          "properties": {
+            "lo": { "type": "number" },
+            "hi": { "type": "number" }
+          },
+          "required": ["lo", "hi"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "days": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/day" }
+    }
+  },
+  "required": ["schema_version", "from", "to", "today_day", "preflight_range_mm", "days"],
+  "additionalProperties": false,
+  "$defs": {
+    "day": {
+      "title": "HistoryDay",
+      "type": "object",
+      "properties": {
+        "date": { "$ref": "../common.schema.json#/$defs/date" },
+        "mission_day": { "type": ["integer", "null"] },
+        "level": {
+          "description": "Level of the latest assessment of the day; 'nodata' when there is none.",
+          "$ref": "ui-common.schema.json#/$defs/day_level"
+        },
+        "length_delta_mm": {
+          "description": "Lumbar elongation of the day minus its baseline mean, in mm; null without data (never 0).",
+          "type": ["number", "null"]
+        },
+        "pain_nrs": {
+          "description": "pain_nrs of the daily self-report of the day; null without a report.",
+          "oneOf": [{ "$ref": "../common.schema.json#/$defs/nrs" }, { "type": "null" }]
+        },
+        "session": {
+          "description": "Session of the day; null when there was none.",
+          "oneOf": [
+            {
+              "title": "HistoryDaySession",
+              "type": "object",
+              "properties": {
+                "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+                "state": { "$ref": "ui-common.schema.json#/$defs/session_state" },
+                "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" }
+              },
+              "required": ["session_id", "state", "protocol_id"],
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "report": {
+          "description": "Self-report of the day; null when there was none.",
+          "oneOf": [
+            {
+              "title": "HistoryDayReport",
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "enum": ["daily", "weekly_odi", "red_flag"] },
+                "red_flags": {
+                  "description": "Red flags reported that day; empty when none.",
+                  "type": "array",
+                  "items": { "$ref": "../domain/self-report.schema.json#/$defs/red_flag" },
+                  "uniqueItems": true
+                }
+              },
+              "required": ["kind", "red_flags"],
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        }
+      },
+      "required": ["date", "mission_day", "level", "length_delta_mm", "pain_nrs", "session", "report"],
+      "additionalProperties": false
+    }
+  }
+}

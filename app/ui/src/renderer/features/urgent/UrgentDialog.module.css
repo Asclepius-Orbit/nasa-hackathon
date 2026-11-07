@@ -8,7 +8,7 @@
 .intro { margin: 0; color: var(--muted); }
 .flags { margin: 12px 0 16px; }
 .pending { font-size: .9375rem; color: var(--muted); margin: -8px 0 14px; }
-.tag { display: inline-block; font-size: .8125rem; font-weight: 800; padding: 2px 8px; border-radius: var(--radius-s); background: #FFF4D6; border: 1px solid #E5D29A; color: var(--ink); margin-right: 6px; }
+.tag { display: inline-block; font-size: .8125rem; font-weight: 700; color: var(--rail); border: 1px dashed var(--rail); border-radius: 4px; padding: 1px 6px; vertical-align: middle; }
 .delivery { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius-s); background: var(--action-soft); margin: 0 0 16px; font-size: 1.0625rem; }
 .delivery svg { width: 26px; height: 26px; flex: none; }
 .actions { display: flex; gap: 14px; }

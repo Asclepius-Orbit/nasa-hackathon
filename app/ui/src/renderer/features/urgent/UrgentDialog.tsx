@@ -96,6 +96,11 @@ function Panel(): React.JSX.Element {
     };
   }, [opener]);
 
+  // Send disables itself once sent; a focused disabled button drops keyboard events, so keep focus on the dialog (Escape must still close it).
+  useEffect(() => {
+    if (sent) dialogRef.current?.focus();
+  }, [sent]);
+
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === 'Escape') {

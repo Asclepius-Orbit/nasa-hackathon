@@ -1,5 +1,7 @@
-.pending { display: inline-block; font-size: .8125rem; font-weight: 800; padding: 2px 8px; border-radius: var(--radius-s); background: #FFF4D6; border: 1px solid #E5D29A; color: var(--ink); margin-left: 6px; }
-.item { padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); margin: 0; min-width: 0; }
+.pending { display: inline-block; font-size: .8125rem; font-weight: 700; color: var(--rail); border: 1px dashed var(--rail); border-radius: 4px; padding: 1px 6px; vertical-align: middle; }
+.item { padding: 7px 0; border: 0; border-bottom: 1px solid var(--line); margin: 0; min-width: 0; }
+.item:first-child { margin-top: -8px; }
+.item > p { margin-bottom: 20px; }
 .item legend { font-size: 1.25rem; font-weight: 800; padding: 0; }
 .opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 8px; }
 .opt { position: relative; display: block; }

@@ -1,8 +1,10 @@
 .lede { color: var(--muted); margin: 0 0 22px; max-width: 66ch; }
 .panel { max-width: 820px; }
 .progress { margin: 14px 0; }
+.progress > div { height: 16px; border-radius: 8px; }
+.progress > div > span { background: var(--action); border-radius: 8px; }
 .kv + .kv { margin-top: 6px; }
-.kv { display: grid; grid-template-columns: 7rem 1fr; gap: 6px 16px; font-size: 1.0625rem; margin: 0; padding: 0; list-style: none; }
+.kv { display: grid; grid-template-columns: 4.75rem 1fr; gap: 6px 16px; font-size: 1.0625rem; margin: 0; padding: 0; list-style: none; }
 .kv li { display: contents; }
 .kv .term { color: var(--muted); }
 .kv .desc { font-weight: 700; }

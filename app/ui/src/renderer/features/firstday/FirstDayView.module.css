@@ -1,3 +1,4 @@
 .lede { color: var(--muted); margin: 0 0 22px; max-width: 66ch; }
 .panel { max-width: 760px; }
 .chip { display: inline-block; margin: 0 0 12px; }
+.chip > span { display: inline-block; }

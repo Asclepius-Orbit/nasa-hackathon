@@ -157,3 +157,15 @@ it('wraps Shift+Tab from the dialog itself to the last control, and leaves Tab a
   expect(document.activeElement).not.toBe(within(dialog).getByRole('button', { name: 'Close' }));
   expect(dialog).toContainElement(document.activeElement as HTMLElement);
 });
+
+it('keeps keyboard focus inside the dialog after Send disables itself, so Escape still closes', async () => {
+  renderInWorld(<Opener />, { withRouter: false });
+  const dialog = await openDialog();
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Leg weakness' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  const active = document.activeElement as HTMLElement;
+  expect(dialog).toContainElement(active);
+  expect(active).not.toBeDisabled();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});

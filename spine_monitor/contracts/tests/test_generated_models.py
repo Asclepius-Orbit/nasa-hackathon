@@ -160,3 +160,10 @@ def test_conditional_rules_are_enforced_by_the_json_schema_not_by_pydantic():
 
     Session.model_validate(payload)
     assert validation.errors("domain/session", payload) != []
+
+
+def test_feature_set_skip_reason_includes_calibration_expired():
+    example = json.loads((EXAMPLES_DIR / "domain" / "feature-set.preflight.json").read_text(encoding="utf-8"))
+    example["skipped"].append({"feature_id": "stretch.lumbar.peak_elongation_mm", "reason": "calibration_expired"})
+    parsed = FeatureSet.model_validate(example)
+    assert parsed.skipped[-1].reason.value == "calibration_expired"

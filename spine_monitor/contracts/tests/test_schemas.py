@@ -210,6 +210,14 @@ def test_mutated_example_is_rejected(case, validator_for):
     assert not validator.is_valid(document)
 
 
+def test_feature_set_accepts_calibration_expired_as_skip_reason(validator_for):
+    document = load_json(EXAMPLES_DIR / "valid" / "domain" / "feature-set.preflight.json")
+    document["skipped"].append({"feature_id": "stretch.lumbar.peak_elongation_mm", "reason": "calibration_expired"})
+    assert validator_for("domain/feature-set").is_valid(document)
+    document["skipped"][-1]["reason"] = "calibration_stale"
+    assert not validator_for("domain/feature-set").is_valid(document)
+
+
 def test_spine_check_needs_no_declared_load(validator_for):
     # exercise sessions require a declared load; passive spine checks do not
     document = load_json(EXAMPLES_DIR / "valid" / "domain" / "session.spine-check.json")

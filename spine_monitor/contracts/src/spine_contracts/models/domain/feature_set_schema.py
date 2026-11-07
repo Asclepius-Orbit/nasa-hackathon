@@ -50,6 +50,7 @@ class Reason(str, Enum):
     NO_DATA = 'no_data'
     LOW_QUALITY = 'low_quality'
     NO_CALIBRATION = 'no_calibration'
+    CALIBRATION_EXPIRED = 'calibration_expired'
     SIGNAL_NOT_RAW = 'signal_not_raw'
     TOO_FEW_REPETITIONS = 'too_few_repetitions'
     STREAM_MISSING = 'stream_missing'

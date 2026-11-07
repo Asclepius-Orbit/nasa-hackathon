@@ -58,6 +58,7 @@
               "no_data",
               "low_quality",
               "no_calibration",
+              "calibration_expired",
               "signal_not_raw",
               "too_few_repetitions",
               "stream_missing"

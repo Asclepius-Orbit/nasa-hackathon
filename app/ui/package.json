@@ -9,6 +9,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "start": "pnpm install --frozen-lockfile && node scripts/ensure-electron.mjs && electron-vite dev",
+    "postinstall": "node scripts/ensure-electron.mjs",
     "gen:types": "node scripts/generate-contract-types.mjs",
     "check:types": "node scripts/generate-contract-types.mjs --check && tsc --noEmit -p tsconfig.contracts.json",
     "dev": "electron-vite dev",

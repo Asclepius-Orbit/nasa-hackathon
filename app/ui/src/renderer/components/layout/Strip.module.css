@@ -1,0 +1,10 @@
+.strip { grid-column: 1 / -1; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: var(--ink); color: #E8ECEE; }
+.who { font-weight: 800; font-size: 1.25rem; }
+.fact { display: flex; flex-direction: column; line-height: 1.15; }
+.fact span:first-child { font-size: .8125rem; color: #9FB0BA; }
+.fact span:last-child { font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.grow { flex: 1; }
+.status { display: flex; align-items: center; gap: 10px; }
+.status svg { width: 26px; height: 26px; flex: none; }
+.urgent { min-height: 52px; padding: 0 22px; border: 3px solid #FFB4AB; background: var(--urgent); color: #fff; border-radius: var(--radius-s); font-weight: 800; font-size: 1.125rem; cursor: pointer; }
+@media (max-width: 900px) { .strip { flex-wrap: wrap; padding: 10px 16px; gap: 14px; } }

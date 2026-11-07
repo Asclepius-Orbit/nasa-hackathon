@@ -5,12 +5,15 @@
   background: var(--panel);
 }
 * { box-sizing: border-box; }
-body { margin: 0; font-size: 18px; line-height: 1.45; }
+/* Text size setting: Large is the mock's own sizing (rem = 16px); Standard is one step smaller. Set on <html> by SettingsProvider. */
+html[data-text-size="standard"] { font-size: 87.5%; }
+body { margin: 0; font-size: 1.125rem; line-height: 1.45; }
+#root { min-height: 100vh; }
 button { font: inherit; color: inherit; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 :focus-visible { outline: 4px solid var(--focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
-h1 { font-size: 34px; line-height: 1.15; margin: 0 0 6px; font-weight: 800; }
-h2 { font-size: 22px; margin: 0 0 12px; font-weight: 800; }
-h3 { font-size: 18px; margin: 0 0 6px; }
+h1 { font-size: 2.125rem; line-height: 1.15; margin: 0 0 6px; font-weight: 800; }
+h2 { font-size: 1.375rem; margin: 0 0 12px; font-weight: 800; }
+h3 { font-size: 1.125rem; margin: 0 0 6px; }

@@ -1,0 +1,6 @@
+.app { display: grid; grid-template-columns: 132px 1fr; grid-template-rows: 72px auto 1fr; min-height: 100vh; }
+.main { grid-column: 2; grid-row: 3; padding: 26px 36px 40px; overflow: auto; }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr auto; }
+  .main { grid-column: 1; padding: 18px 16px 28px; }
+}

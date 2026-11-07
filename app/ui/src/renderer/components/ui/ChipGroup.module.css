@@ -1,0 +1,4 @@
+.chips { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 8px; max-width: 960px; }
+.chip { font-size: 1.0625rem; font-weight: 700; text-align: left; justify-items: start; padding: 8px 16px; line-height: 1.25; }
+.chips[data-tone="flag"] .chip[aria-pressed="true"] { background: var(--urgent-soft); border-color: var(--urgent); color: var(--urgent); }
+@media (max-width: 900px) { .chips { grid-template-columns: 1fr; } }

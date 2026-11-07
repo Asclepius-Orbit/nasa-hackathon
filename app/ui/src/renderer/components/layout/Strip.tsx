@@ -7,7 +7,7 @@ import type { DataSource } from '../../data/DataSource';
 import { useLoad } from '../../data/useLoad';
 import { useUrgent } from '../../features/urgent/UrgentContext';
 import { useSettings } from '../../settings/SettingsProvider';
-import { groundLinkValue, harnessValue, strip, urgentButton } from '../../strings/common';
+import { groundLinkValue, harnessValue, lockButton, strip, urgentButton } from '../../strings/common';
 import { BatteryIcon, GroundLinkIcon } from './icons';
 import styles from './Strip.module.css';
 
@@ -46,7 +46,7 @@ function useCrewName(crewId: string | null): string | null {
 
 /** Always-visible top strip: who, mission day, GMT clock, phase, harness, ground link and the red Urgent button. */
 export function Strip(): React.JSX.Element {
-  const { crewId } = useAuth();
+  const { crewId, lock } = useAuth();
   const name = useCrewName(crewId);
   const { data } = useLoad(selectStrip);
   const now = useNow();
@@ -73,6 +73,15 @@ export function Strip(): React.JSX.Element {
         </>
       )}
       {data === null && <span className={styles.grow} />}
+      <button
+        type="button"
+        className={styles.lock}
+        onClick={() => {
+          void lock();
+        }}
+      >
+        {lockButton}
+      </button>
       <button
         type="button"
         className={styles.urgent}

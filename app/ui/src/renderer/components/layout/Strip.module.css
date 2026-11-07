@@ -7,4 +7,5 @@
 .status { display: flex; align-items: center; gap: 10px; }
 .status svg { width: 26px; height: 26px; flex: none; }
 .urgent { min-height: 52px; padding: 0 22px; border: 3px solid #FFB4AB; background: var(--urgent); color: #fff; border-radius: var(--radius-s); font-weight: 800; font-size: 1.125rem; cursor: pointer; }
+.lock { min-height: 52px; padding: 0 18px; border: 2px solid var(--muted); background: transparent; color: var(--surface); border-radius: var(--radius-s); font-weight: 700; font-size: 1.125rem; cursor: pointer; }
 @media (max-width: 900px) { .strip { flex-wrap: wrap; padding: 10px 16px; gap: 14px; } }

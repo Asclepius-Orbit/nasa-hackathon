@@ -76,3 +76,10 @@ it('keeps the Urgent button even if the crew list cannot be read', async () => {
   expect(screen.getByRole('button', { name: 'Urgent symptom' })).toBeInTheDocument();
   expect(await screen.findByText('AST-01')).toBeInTheDocument();
 });
+
+it('locks the tablet from the strip, hiding health data behind the PIN', async () => {
+  const api = new FakeAsclepiusApi();
+  renderInWorld(<Strip />, { api });
+  await userEvent.click(await screen.findByRole('button', { name: 'Lock' }));
+  expect(await api.auth.current()).toMatchObject({ locked: true });
+});

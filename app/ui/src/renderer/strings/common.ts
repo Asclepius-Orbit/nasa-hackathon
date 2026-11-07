@@ -15,6 +15,8 @@ export const strip = {
 
 export const urgentButton = 'Urgent symptom';
 
+export const lockButton = 'Lock';
+
 export const nav = {
   label: 'Sections',
   today: 'Today',

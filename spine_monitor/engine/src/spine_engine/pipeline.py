@@ -29,6 +29,7 @@ _MISSING_REASON_BY_SKIP = {
     "no_data": MissingReason.NO_DATA,
     "low_quality": MissingReason.LOW_QUALITY,
     "no_calibration": MissingReason.NO_DATA,
+    "calibration_expired": MissingReason.NO_DATA,
     "signal_not_raw": MissingReason.SIGNAL_NOT_RAW,
     "too_few_repetitions": MissingReason.NO_DATA,
     "stream_missing": MissingReason.SENSOR_OFFLINE,

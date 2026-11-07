@@ -47,9 +47,22 @@ The examples in `contracts/examples/valid/engine/` are valid requests for every 
 | `ChangeDetector` | `CompositeDetector` of `CusumDetector` + `KalmanDetector` | sustained change over the history (same protocol and gravity); a single spike never counts |
 | `VotePolicy` | `AllAgreeVote` | the detectors must agree (AND), in the same direction |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | builds the baseline |
-| `FeatureExtractor` | `NullFeatureExtractor` | raw data to features (real one in #15) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | raw data to features: runs the registered feature families (the registry is empty until #41-#45) |
 
 The detectors see only a series of z-scores: they do not know which metric it is, so they do not depend on the theoretical model. `Deviation` carries the z-score, the reference gravity and whether the change is sustained and in which direction; the risk model reads it from there.
+
+## Feature extraction
+
+`POST /features` runs `CompositeFeatureExtractor` over an `ExtractorRegistry` of feature families (`FeatureFamilyExtractor`: a `family` name, the catalog `feature_ids` it declares and `extract(context) -> FamilyResult` with `computed` and `skipped` features). The default registry is empty, so today the answer is an honest empty `FeatureSet`; the metrics arrive family by family. `NullFeatureExtractor` stays in `stubs.py` for tests.
+
+Before the families run, the engine prepares an `ExtractionContext` once:
+
+- **Chunks:** only chunks of the session and of declared streams are used. They are ordered by (stream, `boot_id`, `seq`); the first copy of a duplicate wins; each `boot_id` is an independent segment (samples of two boots are never joined) and a restart is reported as a gap. Lost chunks (`seq` jumps) and `dropped_samples` count as missing samples.
+- **Clock:** `device_ms` becomes UTC per `boot_id` with a least-squares line over its `clock_syncs` (one anchor means a fixed offset). A boot without anchors has no UTC: its data does not feed any feature (`no_data`). `window` is the UTC span of the mapped chunks, omitted when there is no clock.
+- **Calibration:** the chunk's `calibration_id` wins over the session's; it is looked up in `calibrations` by `stream_id` (and kind). No match: `no_calibration`; `valid_until` before the end of the window: `calibration_expired`. Never a 422.
+- **Quality:** `score = coverage x (1 - saturated fraction)`, `assessed_by = "engine"`, with flags for gaps (`packet_gap`), saturation (`saturated_adc`, `clipping`), an expired calibration (`out_of_calibration`) and, if `clock_uncertain_ms` is configured, `clock_uncertain`. Saturation is only judged where the data allows it (ADC bits, IMU ranges); there are no clinical thresholds.
+
+The composite fills `unit` from the feature catalog and the quality over the streams each feature declared using. A feature id outside the catalog is a programming error of the family and raises `UnknownFeatureIdError`. What cannot be computed goes to `skipped` with a reason: `stream_missing` (declared stream without chunks), `no_calibration`, `calibration_expired` and `no_data` (coverage 0, no UTC or a non-finite value) among others; the request is never rejected for being incoherent. `features` and `skipped` are sorted, so the output does not depend on the registration order.
 
 ## Configuration
 

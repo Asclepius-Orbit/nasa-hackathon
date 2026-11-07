@@ -27,10 +27,11 @@ from spine_contracts.models.engine.error_schema import Error, Type
 from spine_engine.api.problems import problem, to_errors
 from spine_engine.errors import InsufficientDataError
 from spine_engine.factory import default_baseline_builder, default_pipeline
+from spine_engine.features.composite import CompositeFeatureExtractor
+from spine_engine.features.registry import default_registry
 from spine_engine.interfaces import BaselineBuilder, FeatureExtractor
 from spine_engine.pipeline import AssessmentPipeline
 from spine_engine.settings import EngineSettings
-from spine_engine.stubs import NullFeatureExtractor
 
 TITLES = {
     Type.INVALID_REQUEST: "Invalid request",
@@ -142,5 +143,5 @@ def create_default_app(settings: EngineSettings | None = None) -> FastAPI:
     return create_app(
         pipeline=default_pipeline(settings),
         baseline_builder=default_baseline_builder(),
-        feature_extractor=NullFeatureExtractor(),
+        feature_extractor=CompositeFeatureExtractor(default_registry()),
     )

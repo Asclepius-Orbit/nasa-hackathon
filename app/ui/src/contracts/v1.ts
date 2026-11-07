@@ -1108,7 +1108,14 @@ export interface FeatureSet {
      * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
      */
     feature_id: string;
-    reason: "no_data" | "low_quality" | "no_calibration" | "signal_not_raw" | "too_few_repetitions" | "stream_missing";
+    reason:
+      | "no_data"
+      | "low_quality"
+      | "no_calibration"
+      | "calibration_expired"
+      | "signal_not_raw"
+      | "too_few_repetitions"
+      | "stream_missing";
   }[];
 }
 /**

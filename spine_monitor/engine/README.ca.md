@@ -47,9 +47,22 @@ Els exemples de `contracts/examples/valid/engine/` són peticions vàlides de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | canvi sostingut sobre l'històric (mateix protocol i gravetat); un pic aïllat mai compta |
 | `VotePolicy` | `AllAgreeVote` | els detectors han de coincidir (AND), en el mateix sentit |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construeix la baseline |
-| `FeatureExtractor` | `NullFeatureExtractor` | dades crues a features (la real arriba a #15) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (el registre és buit fins a #41-#45) |
 
 Els detectors només veuen una sèrie de z-scores: no saben quina mètrica és, així que no depenen del model teòric. `Deviation` porta el z-score, la gravetat de referència i si el canvi és sostingut i en quin sentit; el model de risc ho llegeix d'allà.
+
+## Extracció de features
+
+`POST /features` executa `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de famílies de features (`FeatureFamilyExtractor`: un nom `family`, els `feature_ids` del catàleg que declara i `extract(context) -> FamilyResult` amb features `computed` i `skipped`). El registre per defecte és buit, així que avui la resposta és un `FeatureSet` buit i honest; les mètriques arriben família a família. `NullFeatureExtractor` es manté a `stubs.py` per als tests.
+
+Abans d'executar les famílies, el motor prepara una sola vegada un `ExtractionContext`:
+
+- **Chunks:** només s'usen els de la sessió i de streams declarats. S'ordenen per (stream, `boot_id`, `seq`); d'un duplicat guanya la primera còpia; cada `boot_id` és un segment independent (mai s'uneixen mostres de dues arrencades) i un reinici es reporta com a forat. Els chunks perduts (salts de `seq`) i els `dropped_samples` compten com a mostres absents.
+- **Rellotge:** `device_ms` passa a UTC per `boot_id` amb una recta de mínims quadrats sobre els seus `clock_syncs` (amb una sola àncora, un desfasament fix). Una arrencada sense àncores no té UTC: les seves dades no alimenten cap feature (`no_data`). `window` és el rang UTC dels chunks mapats i s'omet si no hi ha rellotge.
+- **Calibratge:** el `calibration_id` del chunk mana sobre el de la sessió; es busca a `calibrations` per `stream_id` (i tipus). Sense coincidència: `no_calibration`; `valid_until` anterior al final de la finestra: `calibration_expired`. Mai un 422.
+- **Qualitat:** `score = cobertura x (1 - fracció saturada)`, `assessed_by = "engine"`, amb flags de forats (`packet_gap`), saturació (`saturated_adc`, `clipping`), calibratge caducat (`out_of_calibration`) i, si es configura `clock_uncertain_ms`, `clock_uncertain`. La saturació només es jutja on les dades ho permeten (bits de l'ADC, rangs de la IMU); no hi ha llindars clínics.
+
+El compost omple `unit` des del catàleg de features i la qualitat sobre els streams que cada feature ha declarat usar. Un id fora del catàleg és un error de programació de la família i llança `UnknownFeatureIdError`. El que no es pot calcular va a `skipped` amb motiu: `stream_missing` (stream declarat sense chunks), `no_calibration`, `calibration_expired` i `no_data` (cobertura 0, sense UTC o valor no finit), entre d'altres; la petició mai es rebutja per incoherent. `features` i `skipped` surten ordenades, així que el resultat no depèn de l'ordre de registre.
 
 ## Configuració
 

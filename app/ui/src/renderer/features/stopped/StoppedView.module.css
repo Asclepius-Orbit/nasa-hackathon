@@ -1,0 +1,6 @@
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-bottom: 22px; }
+.info { margin: 0 0 12px; color: var(--muted); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.log { margin: 12px 0 0; padding: 0; list-style: none; font-size: 1rem; }
+.log li { padding: 6px 0; border-top: 1px solid var(--line); }
+@media (max-width: 900px) { .two { grid-template-columns: 1fr; } }

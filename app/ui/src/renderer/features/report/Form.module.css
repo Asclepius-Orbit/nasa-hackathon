@@ -1,0 +1,18 @@
+.lede { color: var(--muted); margin: 0 0 22px; max-width: 66ch; }
+.q { margin: 0 0 22px; }
+.legend { font-size: 1.3125rem; font-weight: 800; margin: 0 0 4px; padding: 0; }
+.opt { font-weight: 500; color: var(--muted); font-size: 1rem; }
+.hint { color: var(--muted); font-size: 1rem; margin: 0 0 10px; }
+.rowPicks { display: flex; gap: 8px; flex-wrap: wrap; max-width: 960px; }
+.rowPicks > button { min-width: 84px; padding: 0 14px; font-size: 1.1875rem; }
+.rowPicks + .rowPicks { margin-top: 8px; }
+.where { margin-top: 18px; }
+.backMap { display: grid; grid-template-columns: 140px repeat(4, minmax(86px, 1fr)); gap: 8px; max-width: 900px; align-items: center; }
+.backMap .lbl { font-weight: 700; color: var(--muted); font-size: 1rem; }
+.backMap .head { font-size: .9375rem; color: var(--muted); text-align: center; }
+.backMap button { min-height: 56px; }
+.saveBar { position: sticky; bottom: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 20px; padding: 14px 0; background: var(--panel); border-top: 1px solid var(--line); }
+.saveBar small { color: var(--muted); font-size: 1rem; }
+.confirm { margin-top: 12px; }
+.alertSlot { margin-top: 12px; }
+@media (max-width: 900px) { .backMap { grid-template-columns: 1fr; } }

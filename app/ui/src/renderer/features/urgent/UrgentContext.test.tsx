@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
 
+import { renderInWorld } from '../../test/providers';
 import { UrgentProvider, useUrgent } from './UrgentContext';
-import { UrgentDialog } from './UrgentDialog';
 
 function Opener(): React.JSX.Element {
   const { open, isOpen } = useUrgent();
@@ -20,12 +20,7 @@ function Opener(): React.JSX.Element {
 }
 
 const setup = (): void => {
-  render(
-    <UrgentProvider>
-      <Opener />
-      <UrgentDialog />
-    </UrgentProvider>,
-  );
+  renderInWorld(<Opener />, { withRouter: false });
 };
 
 it('opens and closes the dialog from anywhere, with no session needed', async () => {

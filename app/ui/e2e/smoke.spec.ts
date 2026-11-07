@@ -34,7 +34,8 @@ test.afterAll(async () => {
 test('app window loads the renderer', async () => {
   // The renderer UI is still changing; the document title is stable.
   await expect(page).toHaveTitle('Asclepius Orbit');
-  await expect(page.getByRole('heading', { name: /Asclepius Orbit/ }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Who is using this tablet?' })).toBeVisible();
+  await expect(page.getByText('Asclepius Orbit, on-board spine monitoring')).toBeVisible();
 });
 
 test('runs on a throwaway profile, never the real one', async () => {

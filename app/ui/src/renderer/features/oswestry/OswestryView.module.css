@@ -1,0 +1,9 @@
+.pending { display: inline-block; font-size: .8125rem; font-weight: 800; padding: 2px 8px; border-radius: var(--radius-s); background: #FFF4D6; border: 1px solid #E5D29A; color: var(--ink); margin-left: 6px; }
+.item { padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); margin: 0; min-width: 0; }
+.item legend { font-size: 1.25rem; font-weight: 800; padding: 0; }
+.opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 8px; }
+.opt { position: relative; display: block; }
+.opt > span:first-of-type { height: 100%; font-size: .9375rem; font-weight: 700; padding: 6px 8px; line-height: 1.2; min-height: 72px; }
+.opt input:checked + span { background: var(--ink); border-color: var(--ink); color: #fff; }
+.opt input:focus-visible + span { outline: 4px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 900px) { .opts { grid-template-columns: repeat(2, 1fr); } }

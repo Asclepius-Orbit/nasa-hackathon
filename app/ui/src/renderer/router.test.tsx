@@ -46,7 +46,7 @@ it('signed-out users see the login without strip or rail, and Urgent still works
   setup('/today', null);
   expect(await screen.findByTestId('login-view')).toBeInTheDocument();
   expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: /Asclepius Orbit/ })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Who is using this tablet?' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Urgent symptom, no login needed' }));
   expect(screen.getByRole('dialog', { name: 'What do you have now?' })).toBeInTheDocument();
 });

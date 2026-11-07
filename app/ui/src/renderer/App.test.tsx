@@ -13,7 +13,8 @@ afterEach(() => {
 it('mounts every provider: a signed-out launch shows the login with the product name', async () => {
   const router = createMemoryRouter(routes, { initialEntries: ['/'] });
   render(<App api={new FakeAsclepiusApi()} router={router} />);
-  expect(await screen.findByRole('heading', { name: /Asclepius Orbit/ })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Who is using this tablet?' })).toBeInTheDocument();
+  expect(screen.getByText('Asclepius Orbit, on-board spine monitoring')).toBeInTheDocument();
   expect(screen.getByTestId('login-view')).toBeInTheDocument();
 });
 

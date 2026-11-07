@@ -79,8 +79,8 @@ La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQT
 (`/data/spine_monitor.db`).
 
 ## Tipos TypeScript para la UI
-`app/ui/src/contracts/v1.ts` se genera desde `contracts/schemas/v1`. Ejecuta `npm run gen:types` en
-`app/ui` después de cualquier cambio de schema; `npm run check:types` falla si el fichero está
+`app/ui/src/contracts/v1.ts` se genera desde `contracts/schemas/v1`. Ejecuta `pnpm run gen:types` en
+`app/ui` después de cualquier cambio de schema; `pnpm run check:types` falla si el fichero está
 desactualizado.
 
 ## Tests

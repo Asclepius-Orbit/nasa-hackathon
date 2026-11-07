@@ -192,13 +192,18 @@ def create_server(app: AppReader, simulator: Simulator, base: AssessBaseSource) 
         description=(
             "Run a hypothetical what-if for one astronaut: apply overrides to the astronaut's current inputs and return the baseline assessment next "
             "to the assessment of the scenario, so the difference is visible. Each override changes one feature (`feature_id`) with mode 'set' "
-            "(replace the value), 'add' (add to it) or 'scale' (multiply it). `project_days` optionally projects the trend of the scenario. "
+            "(replace the value), 'add' (add to it) or 'scale' (multiply it). With no overrides (empty or omitted) nothing is changed and it "
+            "projects the astronaut's current situation as it is, for questions like 'what if I keep this load?'. "
+            "`project_days` optionally projects the trend of the scenario. "
             "Purely hypothetical: it never changes any real data. Values can be null or missing in the result. It never diagnoses a medical condition."
         ),
     )
     def simulate_scenario(
         astronaut_id: AstronautId,
-        overrides: Annotated[list[Override], Field(min_length=1, description="Feature changes to apply, at least one. Each has feature_id, mode and value.")],
+        overrides: Annotated[
+            list[Override],
+            Field(default_factory=list, description="Feature changes to apply. Empty or omitted means no changes: the trajectory is projected as it is."),
+        ],
         project_days: Annotated[int | None, Field(ge=1, le=365, description="Optional horizon in days (1 to 365) for the trend of the scenario.")] = None,
     ) -> Annotated[CallToolResult, SimulateResponse]:
         with _upstream_as_tool_errors():

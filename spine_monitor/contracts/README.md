@@ -72,7 +72,7 @@ Edit the schema, add or update its example, regenerate, run the tests, and tell 
 - **Polfer:** does the EMG module output the raw signal or an envelope (spectral features need raw)? Use ADC1 pins on the ESP32 (ADC2 does not work with Bluetooth/WiFi). The wearable-to-gateway format is free; the contract starts at MQTT.
 - **IMU rate:** 100 Hz by default; 10 Hz is too low for smoothness and peak velocity of a ~2 s repetition.
 - MCP tool outputs: `compare_periods` has its own schema, `mcp/compare-periods` (computed by the server from two `/history` calls); the other MCP tools reuse the `app` and `engine` schemas.
-- TypeScript types for the UI are generated from these schemas into `app/ui/src/contracts/v1.ts` (`npm run gen:types` in `app/ui`; `npm run check:types` fails when they are stale). Regenerate them after any schema change.
+- TypeScript types for the UI are generated from these schemas into `app/ui/src/contracts/v1.ts` (`pnpm run gen:types` in `app/ui`; `pnpm run check:types` fails when they are stale). Regenerate them after any schema change.
 - Not covered yet: the report to Houston (FHIR/DTN).
 - Review: Andreea. Semantic validation: Aguado.
 

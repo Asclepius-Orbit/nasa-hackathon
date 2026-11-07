@@ -79,8 +79,8 @@ La configuració són variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQT
 (`/data/spine_monitor.db`).
 
 ## Tipus TypeScript per a la UI
-`app/ui/src/contracts/v1.ts` es genera des de `contracts/schemas/v1`. Executa `npm run gen:types` a
-`app/ui` després de qualsevol canvi de schema; `npm run check:types` falla si el fitxer no està al dia.
+`app/ui/src/contracts/v1.ts` es genera des de `contracts/schemas/v1`. Executa `pnpm run gen:types` a
+`app/ui` després de qualsevol canvi de schema; `pnpm run check:types` falla si el fitxer no està al dia.
 
 ## Tests
 `uv run pytest backend/tests` (des de `spine_monitor`). Executen l'app contra un broker MQTT en memòria

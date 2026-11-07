@@ -203,7 +203,7 @@ async def test_parameter_names_and_required_ones():
         "get_self_reports": ({"astronaut_id", "start", "end", "limit"}, {"astronaut_id", "start", "end"}),
         "compare_periods": ({"astronaut_id", "a_start", "a_end", "b_start", "b_end"}, {"astronaut_id", "a_start", "a_end", "b_start", "b_end"}),
         "explain_assessment": ({"assessment_id"}, {"assessment_id"}),
-        "simulate_scenario": ({"astronaut_id", "overrides", "project_days"}, {"astronaut_id", "overrides"}),
+        "simulate_scenario": ({"astronaut_id", "overrides", "project_days"}, {"astronaut_id"}),
     }
     for name, (properties, required) in expected.items():
         schema = tools[name].input_schema
@@ -355,6 +355,25 @@ async def test_simulate_scenario_project_days_is_optional():
     assert "project_days" not in dump(simulator.requests[0])
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("arguments", [{"overrides": []}, {}], ids=["empty list", "omitted"])
+async def test_simulate_scenario_without_overrides_projects_the_trajectory_unchanged(arguments: dict[str, Any]):
+    simulator = RecordingSimulator()
+    data = _data(await _call(_server(simulator=simulator), "simulate_scenario", {"astronaut_id": AST, "project_days": 30} | arguments))
+    (request,) = simulator.requests
+    assert request.overrides == []
+    assert dump(request)["overrides"] == []
+    assert validate("engine/simulate-response", data) is None
+
+
+@pytest.mark.anyio
+async def test_simulate_scenario_overrides_schema_is_optional_without_min_items():
+    schema = (await _tools(_server()))["simulate_scenario"].input_schema
+    assert "overrides" not in schema["required"]
+    assert "minItems" not in schema["properties"]["overrides"]
+    assert "no changes" in schema["properties"]["overrides"]["description"]
+
+
 # --- compare_periods ---
 
 
@@ -452,7 +471,6 @@ async def test_naive_datetimes_are_rejected():
 @pytest.mark.parametrize(
     "arguments",
     [
-        {"overrides": []},
         {"overrides": [{"feature_id": "NotAFeature", "mode": "set", "value": 1}]},
         {"overrides": [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "multiply", "value": 1}]},
         {"overrides": [OVERRIDE], "project_days": 0},
@@ -509,7 +527,7 @@ async def test_main_serves_the_seven_tools_over_stdio(monkeypatch: pytest.Monkey
     # La frontera es el transporte: se sustituye `run` (que bloquearía leyendo stdin) y se comprueba qué servidor y transporte se arrancan.
     started: list[tuple[MCPServer, str]] = []
     monkeypatch.setattr(MCPServer, "run", lambda self, transport="stdio": started.append((self, transport)))
-    main()
+    main([])  # argv explícito: sin él argparse leería los argumentos de pytest
     ((server, transport),) = started
     assert transport == "stdio"
     assert set(await _tools(server)) == TOOLS

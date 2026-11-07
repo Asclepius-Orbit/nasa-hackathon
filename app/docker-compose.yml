@@ -82,6 +82,50 @@ services:
     profiles: ["sim"]
     restart: unless-stopped
 
+  ollama:
+    # Local LLM runtime for the spine agent (profile "llm": docker compose --profile llm up -d).
+    # Model cache: the ollama-models volume survives `down`/`up`, so models are downloaded once.
+    # `down -v` deletes it and forces a re-download.
+    image: ollama/ollama:0.40.14
+    environment:
+      # Ollama truncates silently at 4k tokens by default, which breaks tool calling.
+      OLLAMA_CONTEXT_LENGTH: "16384"
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
+    profiles: ["llm"]
+    restart: unless-stopped
+
+  ollama-pull:
+    # One-shot: pulls only the models missing from the cache (SPINE_AGENT_LLM_MODELS, space-separated).
+    # Exits non-zero if any pull fails; fully cached models need no network.
+    image: ollama/ollama:0.40.14
+    environment:
+      OLLAMA_HOST: ollama:11434
+      SPINE_AGENT_LLM_MODELS: "${SPINE_AGENT_LLM_MODELS:-qwen3.5:4b}"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rc=0
+        for m in $$SPINE_AGENT_LLM_MODELS; do
+          ollama show "$$m" >/dev/null 2>&1 || ollama pull "$$m" || rc=1
+        done
+        exit $$rc
+    depends_on:
+      ollama:
+        condition: service_healthy
+    profiles: ["llm"]
+    restart: "no"
+
   quality:
     build:
       context: ..
@@ -124,3 +168,4 @@ services:
 volumes:
   backend_data:
   ui_node_modules:
+  ollama-models:

@@ -75,8 +75,8 @@ Settings are `SPINE_APP_*` variables (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, 
 Docker Compose the database lives in the `backend_data` volume (`/data/spine_monitor.db`).
 
 ## TypeScript types for the UI
-`app/ui/src/contracts/v1.ts` is generated from `contracts/schemas/v1`. Run `npm run gen:types` in
-`app/ui` after any schema change; `npm run check:types` fails if the file is stale.
+`app/ui/src/contracts/v1.ts` is generated from `contracts/schemas/v1`. Run `pnpm run gen:types` in
+`app/ui` after any schema change; `pnpm run check:types` fails if the file is stale.
 
 ## Tests
 `uv run pytest backend/tests` (from `spine_monitor`). They run the app against an in-memory MQTT broker

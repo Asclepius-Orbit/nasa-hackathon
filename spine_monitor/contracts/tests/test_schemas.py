@@ -170,7 +170,8 @@ MUTATIONS = [
     ("engine/features-request", "no chunks", lambda d: d.update(chunks=[])),
     ("engine/baseline-request", "no reference sessions", lambda d: d.update(feature_sets=[])),
     ("engine/assess-request", "no baseline", lambda d: d.pop("baseline")),
-    ("engine/simulate-request", "no overrides", lambda d: d.update(overrides=[])),
+    ("engine/simulate-request", "no overrides property", lambda d: d.pop("overrides")),
+    ("engine/simulate-request", "override that is not an object", lambda d: d.update(overrides=[1])),
     ("engine/simulate-request", "unknown override mode", lambda d: d["overrides"][0].update(mode="multiply")),
     ("engine/simulate-response", "scenario not flagged hypothetical", lambda d: d.update(hypothetical=False)),
     ("engine/error", "error status below 400", lambda d: d.update(status=200)),
@@ -240,6 +241,9 @@ def test_engine_examples_embed_the_standalone_examples():
     assert assess["daily_context"] == [valid_example("domain/daily-context")]
 
     assert valid_example("engine/simulate-request")["base"] == assess
+    no_overrides = valid_example("engine/simulate-request.no-overrides")
+    assert no_overrides["base"] == assess
+    assert no_overrides["overrides"] == []
     assert valid_example("engine/simulate-response")["reference"] == valid_example("domain/assessment.amber")
 
 
@@ -266,9 +270,7 @@ def test_app_examples_embed_the_standalone_examples():
     assert explanation["assessment"] == assessment
     assert explanation["feature_sets"] == [featureset]
     assert explanation["self_reports"] == [report]
-    assert explanation["baseline_entries"] == [
-        e for e in baseline["entries"] if e["feature_id"] in {d["feature_id"] for d in assessment["drivers"]}
-    ]
+    assert explanation["baseline_entries"] == [e for e in baseline["entries"] if e["feature_id"] in {d["feature_id"] for d in assessment["drivers"]}]
 
     assert valid_example("app/assessment-list")["items"] == [assessment]
     assert valid_example("app/session-list")["items"] == [session]
@@ -295,9 +297,7 @@ def test_status_freshness_is_consistent():
 
 def test_session_streams_and_calibrations_are_consistent():
     session = valid_example("domain/session.exercise")
-    calibrations = {
-        c["calibration_id"]: c for c in (valid_example(f"domain/calibration.{kind}") for kind in ("stretch", "emg-mvc", "imu"))
-    }
+    calibrations = {c["calibration_id"]: c for c in (valid_example(f"domain/calibration.{kind}") for kind in ("stretch", "emg-mvc", "imu"))}
     for stream in session["streams"]:
         assert calibrations[stream["calibration_id"]]["stream_id"] == stream["stream_id"]
     chunk_streams = {valid_example(f"telemetry/stream-chunk.{kind}")["stream_id"] for kind in ("emg", "imu", "stretch")}

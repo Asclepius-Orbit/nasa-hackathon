@@ -1,26 +1,33 @@
 // Electron entry: wiring only. Logic lives in tested modules (window, ipc, auth, store, security).
+//
+// Dev-only behaviour (dev server URL, relaxed CSP, DevTools, default menu, demo crew) is gated on build-time
+// constants (`import.meta.env`), never on Electron's "is packaged" flag, which only reflects the exe name. Production
+// bundles therefore do not contain that code at all; `pnpm check:bundle` verifies it.
 import { join } from 'node:path';
 
-import { app, BrowserWindow, ipcMain, Menu, safeStorage, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, protocol, safeStorage, session } from 'electron';
 
 import { authStateSchema, createAuthService } from './auth/auth-service';
 import { createPinHasher } from './auth/pin';
 import { registerIpc } from './ipc';
-import { createAppUrlPolicy, createSenderGuard } from './security/app-url';
-import { cspFor } from './security/csp';
+import { APP_SCHEME_PRIVILEGES, createAppProtocolHandler } from './security/app-protocol';
+import { APP_SCHEME, createAppUrlPolicy, createSenderGuard } from './security/app-url';
+import { devCsp, PROD_CSP } from './security/csp';
 import { createCrewStore, crewFileSchema } from './store/crew-store';
+import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
 import { createMainWindow, hardenSession, installWebContentsGuard } from './window';
 
-const devServerUrl = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
-const policy = createAppUrlPolicy({
-  devServerUrl,
-  rendererFile: join(import.meta.dirname, '../renderer/index.html'),
-});
+const devServerUrl = import.meta.env.DEV ? process.env['ELECTRON_RENDERER_URL'] : undefined;
+const csp = import.meta.env.DEV ? devCsp() : PROD_CSP;
+const seedDemoCrew = import.meta.env.DEV || import.meta.env.MODE === 'e2e';
+const policy = createAppUrlPolicy({ devServerUrl });
 const preloadPath = join(import.meta.dirname, '../preload/index.cjs');
+const rendererRoot = join(import.meta.dirname, '../renderer');
 
 app.enableSandbox();
+protocol.registerSchemesAsPrivileged([...APP_SCHEME_PRIVILEGES]);
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -28,7 +35,7 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow: BrowserWindow | null = null;
 
   const openWindow = (): void => {
-    mainWindow = createMainWindow(BrowserWindow, { preloadPath, policy, devTools: !app.isPackaged });
+    mainWindow = createMainWindow(BrowserWindow, { preloadPath, policy, devTools: import.meta.env.DEV });
     mainWindow.on('closed', () => {
       mainWindow = null;
     });
@@ -43,15 +50,17 @@ if (!app.requestSingleInstanceLock()) {
   installWebContentsGuard(app, policy);
 
   void app.whenReady().then(() => {
-    if (app.isPackaged) Menu.setApplicationMenu(null);
-    hardenSession(session.defaultSession, cspFor(devServerUrl !== undefined && devServerUrl !== ''));
+    if (!import.meta.env.DEV) Menu.setApplicationMenu(null);
+    hardenSession(session.defaultSession, csp);
+    // The handler sets the CSP header itself: custom-protocol responses may bypass session.webRequest.
+    session.defaultSession.protocol.handle(APP_SCHEME, createAppProtocolHandler({ root: rendererRoot, csp }));
 
     const userData = app.getPath('userData');
     const hasher = createPinHasher();
     const crew = createCrewStore({
       file: createEncryptedJsonFile({ path: join(userData, 'crew.bin'), schema: crewFileSchema, safeStorage }),
       hasher,
-      seed: !app.isPackaged,
+      seed: seedDemoCrew ? DEMO_CREW : null,
     });
     const auth = createAuthService({
       crew,

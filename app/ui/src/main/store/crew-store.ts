@@ -32,18 +32,19 @@ export interface CrewStore {
   findCredentials(crewId: string): Promise<Credentials>;
 }
 
+/** Members written into an empty store, all with the same PIN (see demo-crew.ts). */
+export interface DemoCrew {
+  readonly pin: string;
+  readonly members: readonly CrewMember[];
+}
+
 export interface CrewStoreOptions {
   file: EncryptedJsonFile<CrewFile>;
   hasher: PinHasher;
-  /** Dev/e2e only (`!app.isPackaged`): seed the two mock crew members when the store is empty. */
-  seed: boolean;
+  /** Dev and e2e builds only: seed these members when the store is empty. Production passes null. */
+  seed: DemoCrew | null;
 }
 
-const SEED_PIN = '1234';
-const SEED_MEMBERS = [
-  { id: 'AST-01', name: 'Elena Ruiz', harnessId: 'wb-01' },
-  { id: 'AST-02', name: 'Marc Dubois', harnessId: 'wb-02' },
-] as const;
 const MAX_CREW_NUMBER = 99;
 const MIN_NAME_CHARS = 2;
 
@@ -78,12 +79,12 @@ export function createCrewStore({ file, hasher, seed }: CrewStoreOptions): CrewS
     const read = await file.read();
     if (read.status === 'unavailable') return null;
     const stored = read.status === 'ok' ? read.value.members : [];
-    if (stored.length > 0 || !seed) {
+    if (stored.length > 0 || seed === null) {
       members = stored;
       return members;
     }
     // Each seed gets its own salt.
-    const seeded = await Promise.all(SEED_MEMBERS.map(async (m) => ({ ...m, pinHash: await hasher.hash(SEED_PIN) })));
+    const seeded = await Promise.all(seed.members.map(async (m) => ({ ...m, pinHash: await hasher.hash(seed.pin) })));
     return (await persist(seeded)) ? members : null;
   }
 

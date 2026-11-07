@@ -39,6 +39,12 @@ export class FakeSafeStorage implements SafeStorageLike {
 export class FlakyFs implements FileSystemLike {
   failRename = false;
   failWrite = false;
+  private renamesBeforeFailure: number | null = null;
+
+  /** Lets the next `count` renames succeed, then fails every rename until `failRename` is set to false. */
+  failRenamesAfter(count: number): void {
+    this.renamesBeforeFailure = count;
+  }
 
   readFile(path: string): Promise<Buffer> {
     return nodeFs.readFile(path);
@@ -50,6 +56,14 @@ export class FlakyFs implements FileSystemLike {
   }
 
   rename(from: string, to: string): Promise<void> {
+    if (this.renamesBeforeFailure !== null) {
+      if (this.renamesBeforeFailure === 0) {
+        this.renamesBeforeFailure = null;
+        this.failRename = true;
+      } else {
+        this.renamesBeforeFailure -= 1;
+      }
+    }
     if (this.failRename) return Promise.reject(new Error('EPERM: operation not permitted, rename'));
     return nodeFs.rename(from, to);
   }

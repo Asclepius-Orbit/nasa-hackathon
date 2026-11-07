@@ -1,9 +1,12 @@
 /**
- * Which URLs are "the app". Built app: exactly the renderer's index.html (any #hash, no ?query).
- * Dev: the electron-vite dev server origin. Used for navigation guards and IPC sender checks.
+ * Which URLs are "the app". Built app: exactly app://asclepius/index.html (any #hash, no ?query), served by the
+ * privileged `app:` scheme (see app-protocol.ts). Dev: the electron-vite dev server origin.
+ * Used for navigation guards and IPC sender checks.
  */
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+
+export const APP_SCHEME = 'app';
+export const APP_HOST = 'asclepius';
+export const APP_ENTRY_URL = `${APP_SCHEME}://${APP_HOST}/index.html`;
 
 export interface AppUrlPolicy {
   /** What the main window loads. */
@@ -12,13 +15,11 @@ export interface AppUrlPolicy {
 }
 
 export interface AppUrlPolicyOptions {
-  /** `ELECTRON_RENDERER_URL`; only pass it when the app is not packaged. */
+  /** `ELECTRON_RENDERER_URL`; only ever passed by dev builds (`import.meta.env.DEV`). */
   devServerUrl?: string | undefined;
-  rendererFile: string;
-  platform?: NodeJS.Platform;
 }
 
-function parse(url: string): URL | null {
+export function parseUrl(url: string): URL | null {
   try {
     return new URL(url);
   } catch {
@@ -26,35 +27,26 @@ function parse(url: string): URL | null {
   }
 }
 
-export function createAppUrlPolicy({
-  devServerUrl,
-  rendererFile,
-  platform = process.platform,
-}: AppUrlPolicyOptions): AppUrlPolicy {
+/**
+ * True for `app://asclepius/...` with no credentials or port. `app:` is not a WHATWG special scheme, so Node
+ * keeps the host as written (no lowercasing) and reports origin "null"; compare the parts instead.
+ */
+export function isAppOrigin(url: URL): boolean {
+  return (
+    url.protocol === `${APP_SCHEME}:` && url.host === APP_HOST && url.username === '' && url.password === ''
+  );
+}
+
+export function createAppUrlPolicy({ devServerUrl }: AppUrlPolicyOptions): AppUrlPolicy {
   if (devServerUrl !== undefined && devServerUrl !== '') {
     const origin = new URL(devServerUrl).origin;
-    return { entryUrl: devServerUrl, isAppUrl: (url) => parse(url)?.origin === origin };
+    return { entryUrl: devServerUrl, isAppUrl: (url) => parseUrl(url)?.origin === origin };
   }
-
-  const windows = platform === 'win32';
-  const paths = windows ? path.win32 : path.posix;
-  // NTFS paths are case-insensitive; POSIX ones are not.
-  const canonical = (filePath: string): string => {
-    const normalized = paths.normalize(filePath);
-    return windows ? normalized.toLowerCase() : normalized;
-  };
-  const expected = canonical(rendererFile);
-
   return {
-    entryUrl: pathToFileURL(rendererFile, { windows }).href,
+    entryUrl: APP_ENTRY_URL,
     isAppUrl(url) {
-      const parsed = parse(url);
-      if (parsed?.protocol !== 'file:' || parsed.search !== '') return false;
-      try {
-        return canonical(fileURLToPath(parsed, { windows })) === expected;
-      } catch {
-        return false; // e.g. encoded path separators; a host turns into a UNC path, which never matches
-      }
+      const parsed = parseUrl(url);
+      return parsed !== null && isAppOrigin(parsed) && parsed.pathname === '/index.html' && parsed.search === '';
     },
   };
 }

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPinHasher } from '../auth/pin';
 import { createCrewStore, crewFileSchema, type CrewFile } from './crew-store';
+import { DEMO_CREW } from './demo-crew';
 import { createEncryptedJsonFile } from './encrypted-file';
 import { FakeSafeStorage, FlakyFs, makeTempDir } from './test-fakes';
 
@@ -26,7 +27,7 @@ afterEach(async () => {
 
 const crewPath = (): string => join(dir, 'crew.bin');
 const crewFile = () => createEncryptedJsonFile({ path: crewPath(), schema: crewFileSchema, safeStorage, fs });
-const store = (seed = false) => createCrewStore({ file: crewFile(), hasher, seed });
+const store = (seed = false) => createCrewStore({ file: crewFile(), hasher, seed: seed ? DEMO_CREW : null });
 
 async function writeMembers(ids: string[]): Promise<void> {
   const pinHash = await hasher.hash('1111');
@@ -38,14 +39,14 @@ async function writeMembers(ids: string[]): Promise<void> {
 }
 
 describe('seeding', () => {
-  it('starts empty without the seed flag (packaged builds) and writes nothing until a member is created', async () => {
+  it('starts empty without a seed (production builds) and writes nothing until a member is created', async () => {
     const crew = store(false);
     expect(await crew.list()).toEqual([]);
     expect(await crew.nextId()).toBe('AST-01');
     expect(await crewFile().read()).toEqual({ status: 'missing' });
   });
 
-  it('seeds Elena Ruiz and Marc Dubois with hashed PIN 1234 when the flag is set and the store is empty', async () => {
+  it('seeds Elena Ruiz and Marc Dubois with hashed PIN 1234 when seeded and the store is empty', async () => {
     const crew = store(true);
     expect(await crew.list()).toEqual([
       { id: 'AST-01', name: 'Elena Ruiz', harnessId: 'wb-01' },

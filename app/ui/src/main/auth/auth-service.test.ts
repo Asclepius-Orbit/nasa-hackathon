@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createCrewStore, crewFileSchema } from '../store/crew-store';
+import { DEMO_CREW } from '../store/demo-crew';
 import { createEncryptedJsonFile } from '../store/encrypted-file';
 import { FakeClock, FakeSafeStorage, FlakyFs, makeTempDir } from '../store/test-fakes';
 import { authStateSchema, createAuthService, LOCKOUT_MS } from './auth-service';
@@ -34,10 +35,33 @@ function boot() {
   const crew = createCrewStore({
     file: createEncryptedJsonFile({ path: join(dir, 'crew.bin'), schema: crewFileSchema, safeStorage, fs }),
     hasher,
-    seed: true,
+    seed: DEMO_CREW,
   });
   const stateFile = createEncryptedJsonFile({ path: statePath(), schema: authStateSchema, safeStorage, fs });
   return createAuthService({ crew, hasher, stateFile, now: clock.now });
+}
+
+/** Real scrypt underneath; only records which derivations ran (scrypt is the boundary being observed). */
+function countingHasher() {
+  const calls = { verify: 0, dummy: 0 };
+  const counted: PinHasher = {
+    hash: (pin) => hasher.hash(pin),
+    verify: (pin, encoded) => {
+      calls.verify += 1;
+      return hasher.verify(pin, encoded);
+    },
+    dummyVerify: (pin) => {
+      calls.dummy += 1;
+      return hasher.dummyVerify(pin);
+    },
+  };
+  const crew = createCrewStore({
+    file: createEncryptedJsonFile({ path: join(dir, 'crew.bin'), schema: crewFileSchema, safeStorage, fs }),
+    hasher: counted,
+    seed: DEMO_CREW,
+  });
+  const stateFile = createEncryptedJsonFile({ path: statePath(), schema: authStateSchema, safeStorage, fs });
+  return { calls, auth: createAuthService({ crew, hasher: counted, stateFile, now: clock.now }) };
 }
 
 const elena = (pin: string) => ({ crewId: 'AST-01', pin });
@@ -92,29 +116,6 @@ describe('sign in', () => {
 });
 
 describe('timing', () => {
-  /** Real scrypt underneath; only records which derivations ran (scrypt is the boundary being observed). */
-  function countingHasher() {
-    const calls = { verify: 0, dummy: 0 };
-    const counted: PinHasher = {
-      hash: (pin) => hasher.hash(pin),
-      verify: (pin, encoded) => {
-        calls.verify += 1;
-        return hasher.verify(pin, encoded);
-      },
-      dummyVerify: (pin) => {
-        calls.dummy += 1;
-        return hasher.dummyVerify(pin);
-      },
-    };
-    const crew = createCrewStore({
-      file: createEncryptedJsonFile({ path: join(dir, 'crew.bin'), schema: crewFileSchema, safeStorage, fs }),
-      hasher: counted,
-      seed: true,
-    });
-    const stateFile = createEncryptedJsonFile({ path: statePath(), schema: authStateSchema, safeStorage, fs });
-    return { calls, auth: createAuthService({ crew, hasher: counted, stateFile, now: clock.now }) };
-  }
-
   it('spends one scrypt derivation on an unknown crew id, like a real check would', async () => {
     const { calls, auth } = countingHasher();
     await auth.verifyPin({ crewId: 'AST-42', pin: '1234' });
@@ -243,21 +244,48 @@ describe('fail closed', () => {
     expect(await readFile(statePath(), 'utf8')).toBe('corrupt');
   });
 
-  it('is unavailable when a wrong attempt cannot be persisted, and does not count it', async () => {
-    const auth = boot();
-    await auth.verifyPin(elena('1234')); // crew seeded and state loaded
+  it('records the attempt before checking the PIN: no guessing while the attempt state cannot be saved', async () => {
+    const { calls, auth } = countingHasher();
+    await auth.verifyPin(marc('1234')); // crew seeded and attempt state loaded; Elena has no failures on record
+    calls.verify = 0;
     fs.failRename = true;
+    for (let i = 0; i < 5; i += 1) {
+      expect(await auth.verifyPin(elena('9999'))).toEqual({ ok: false, reason: 'unavailable' });
+    }
+    expect(await auth.verifyPin(elena('1234'))).toEqual({ ok: false, reason: 'unavailable' });
+    expect(auth.current()).toEqual({ crewId: 'AST-02', locked: false });
+    expect(calls.verify).toBe(0);
+  });
+
+  it('wrong PINs keep counting across save failures: an unrecorded attempt neither resets nor skips the counter', async () => {
+    const auth = boot();
+    await auth.verifyPin(elena('0000'));
+    expect(await auth.verifyPin(elena('0000'))).toEqual({ ok: false, reason: 'wrong_pin', attemptsLeft: 1 });
+    fs.failRename = true;
+    expect(await auth.verifyPin(elena('1234'))).toEqual({ ok: false, reason: 'unavailable' });
     expect(await auth.verifyPin(elena('0000'))).toEqual({ ok: false, reason: 'unavailable' });
+    fs.failRename = false;
+    expect(await auth.verifyPin(elena('0000'))).toEqual({ ok: false, reason: 'locked', retryAfterMs: LOCKOUT_MS });
+    expect(await boot().verifyPin(elena('1234'))).toEqual({ ok: false, reason: 'locked', retryAfterMs: LOCKOUT_MS });
+  });
+
+  it('signs in on the right PIN even if clearing the counter cannot be saved; the counter restarts in memory', async () => {
+    const auth = boot();
+    await auth.verifyPin(elena('0000'));
+    fs.failRenamesAfter(1); // the attempt is recorded, clearing it afterwards fails
+    expect(await auth.verifyPin(elena('1234'))).toEqual({ ok: true, crewId: 'AST-01' });
+    expect(auth.current()).toEqual({ crewId: 'AST-01', locked: false });
     fs.failRename = false;
     expect(await auth.verifyPin(elena('0000'))).toEqual({ ok: false, reason: 'wrong_pin', attemptsLeft: 2 });
   });
 
-  it('does not sign in when the counter reset cannot be persisted', async () => {
+  it('a stale counter left on disk by a failed clear only errs on the strict side after a restart', async () => {
     const auth = boot();
     await auth.verifyPin(elena('0000'));
-    fs.failRename = true;
-    expect(await auth.verifyPin(elena('1234'))).toEqual({ ok: false, reason: 'unavailable' });
-    expect(auth.current()).toBeNull();
+    fs.failRenamesAfter(1);
+    await auth.verifyPin(elena('1234')); // signed in; disk still holds 2 counted attempts
+    fs.failRename = false;
+    expect(await boot().verifyPin(elena('0000'))).toEqual({ ok: false, reason: 'locked', retryAfterMs: LOCKOUT_MS });
   });
 
   it('is unavailable when the crew store is unavailable', async () => {

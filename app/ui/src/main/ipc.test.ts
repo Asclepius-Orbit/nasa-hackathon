@@ -8,6 +8,7 @@ import { createPinHasher } from './auth/pin';
 import { registerIpc, type IpcMainLike, type IpcServices } from './ipc';
 import { createAppUrlPolicy, createSenderGuard, type IpcEventLike } from './security/app-url';
 import { createCrewStore, crewFileSchema } from './store/crew-store';
+import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
 import { FakeClock, FakeSafeStorage, FlakyFs, makeTempDir } from './store/test-fakes';
@@ -28,7 +29,7 @@ class FakeIpcMain implements IpcMainLike {
   }
 }
 
-const APP_URL = 'file:///app/out/renderer/index.html';
+const APP_URL = 'app://asclepius/index.html';
 const trusted: IpcEventLike = { senderFrame: { url: `${APP_URL}#/login`, parent: null } };
 const untrustedEvents: [string, IpcEventLike][] = [
   ['no frame', { senderFrame: null }],
@@ -52,7 +53,7 @@ beforeEach(async () => {
   const crew = createCrewStore({
     file: createEncryptedJsonFile({ path: join(dir, 'crew.bin'), schema: crewFileSchema, safeStorage, fs }),
     hasher,
-    seed: true,
+    seed: DEMO_CREW,
   });
   const auth = createAuthService({
     crew,
@@ -64,7 +65,7 @@ beforeEach(async () => {
   services = { crew, auth, settings };
   ipc = new FakeIpcMain();
   logged = [];
-  const policy = createAppUrlPolicy({ rendererFile: '/app/out/renderer/index.html', platform: 'linux' });
+  const policy = createAppUrlPolicy({});
   registerIpc(ipc, services, createSenderGuard(policy), (error) => logged.push(error));
 });
 afterEach(async () => {

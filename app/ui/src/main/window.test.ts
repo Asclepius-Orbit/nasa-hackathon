@@ -11,8 +11,8 @@ import {
   type NavigationEventLike,
 } from './window';
 
-const policy = createAppUrlPolicy({ rendererFile: '/app/out/renderer/index.html', platform: 'linux' });
-const APP = 'file:///app/out/renderer/index.html';
+const policy = createAppUrlPolicy({});
+const APP = 'app://asclepius/index.html';
 
 class FakeEvent implements NavigationEventLike {
   defaultPrevented = false;
@@ -54,6 +54,8 @@ describe('hardenWebContents', () => {
     hardenWebContents(wc, policy);
     expect(wc.fire(name, 'https://example.com/').defaultPrevented).toBe(true);
     expect(wc.fire(name, 'file:///etc/passwd').defaultPrevented).toBe(true);
+    expect(wc.fire(name, 'app://asclepius/other.html').defaultPrevented).toBe(true);
+    expect(wc.fire(name, 'app://evil/index.html').defaultPrevented).toBe(true);
     expect(wc.fire(name, `${APP}#/settings`).defaultPrevented).toBe(false);
   });
 
@@ -175,7 +177,7 @@ describe('createMainWindow', () => {
     expect(win.shown).toBe(true);
   });
 
-  it('enables devtools only when asked (unpackaged builds)', () => {
+  it('enables devtools only when asked (dev builds)', () => {
     const win = createMainWindow(FakeBrowserWindow, { preloadPath: '/p.cjs', policy, devTools: true });
     expect(win.options.webPreferences?.devTools).toBe(true);
   });

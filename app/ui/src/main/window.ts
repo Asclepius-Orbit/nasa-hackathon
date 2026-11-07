@@ -79,7 +79,7 @@ export interface BrowserWindowLike {
 export interface MainWindowOptions {
   preloadPath: string;
   policy: AppUrlPolicy;
-  /** Only for unpackaged builds. */
+  /** Dev builds only (`import.meta.env.DEV`). */
   devTools: boolean;
 }
 

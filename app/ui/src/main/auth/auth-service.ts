@@ -2,6 +2,12 @@
  * PIN sign-in and the lock screen. Three wrong PINs lock that crew member for five minutes; counters and
  * lockouts are persisted (encrypted) so a restart does not reset them. The session itself is in memory only.
  *
+ * Each attempt is counted (on disk) *before* the PIN is compared: if it cannot be recorded the answer is
+ * `unavailable` and no comparison runs, so an unwritable state file never allows unlimited guessing. The
+ * in-memory counters are authoritative and only advance once the disk agrees. A right PIN then clears the
+ * member's counter; if that clear cannot be saved the member is still signed in (the PIN was right) and the
+ * in-memory counter is cleared, while the stale count on disk can only make the next restart stricter.
+ *
  * While the session is locked, only its own crew member can unlock it: a PIN for anyone else returns
  * `unknown_crew` and is not counted against them (it would let one member lock another out from the lock screen).
  */
@@ -99,16 +105,18 @@ export function createAuthService({ crew, hasher, stateFile, now }: AuthServiceO
       entry = undefined; // lockout over: fresh counter
     }
 
+    const failures = (entry?.failures ?? 0) + 1;
+    const lockedOut = failures >= MAX_ATTEMPTS;
+    const counted = { ...current, [crewId]: { failures, lockedUntil: lockedOut ? time + LOCKOUT_MS : null } };
+    if (!(await persist(counted))) return UNAVAILABLE;
+
     if (await hasher.verify(pin, credentials.pinHash)) {
-      if (crewId in current && !(await persist(without(current, crewId)))) return UNAVAILABLE;
+      const cleared = without(counted, crewId);
+      attempts = cleared; // even if saving it fails (see the header comment)
+      await persist(cleared);
       session = { crewId, locked: false };
       return { ok: true, crewId };
     }
-
-    const failures = (entry?.failures ?? 0) + 1;
-    const lockedOut = failures >= MAX_ATTEMPTS;
-    const next: Attempt = { failures, lockedUntil: lockedOut ? time + LOCKOUT_MS : null };
-    if (!(await persist({ ...current, [crewId]: next }))) return UNAVAILABLE;
     return lockedOut
       ? { ok: false, reason: 'locked', retryAfterMs: LOCKOUT_MS }
       : { ok: false, reason: 'wrong_pin', attemptsLeft: MAX_ATTEMPTS - failures };

@@ -257,3 +257,26 @@ def test_routes_match_the_openapi_contract():
     contract = yaml.safe_load((CONTRACTS / "openapi.yaml").read_text(encoding="utf-8"))
 
     assert openapi_drift.diff(contract, create_default_app().openapi()) == []
+
+
+def test_app_metadata_matches_the_contract_info():
+    info = create_default_app().openapi()["info"]
+    contract = yaml.safe_load((CONTRACTS / "openapi.yaml").read_text(encoding="utf-8"))["info"]
+
+    assert info["title"] == contract["title"] == "Spine engine API"
+    assert info["version"] == contract["version"] == "1.0.0"
+    assert info["description"] == "Local HTTP API of the stateless prediction engine. Contract: contracts/openapi.yaml."
+
+
+def test_simulate_problems_carry_title_and_detail(client):
+    request = example("simulate-request")
+    request["overrides"] = [{"feature_id": "stretch.not.in_catalog", "mode": "set", "value": 1}]
+    unknown = assert_problem(client.post("/simulate", json=request), 422, "unknown_feature")
+
+    request["overrides"] = [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "scale", "value": 1e308}] * 2
+    invalid = assert_problem(client.post("/simulate", json=request), 422, "invalid_request")
+
+    assert (unknown["title"], unknown["status"]) == ("Unknown feature", 422)
+    assert unknown["detail"] == "The feature 'stretch.not.in_catalog' is not in the catalog."
+    assert (invalid["title"], invalid["status"]) == ("Invalid request", 422)
+    assert invalid["detail"] == "The override on 'stretch.lumbar.peak_elongation_mm' does not give a finite value."

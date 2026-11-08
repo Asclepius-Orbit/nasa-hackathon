@@ -90,3 +90,9 @@ def test_rejects_invalid_parameters(bad):
 def test_rejects_negative_domain_weights():
     with pytest.raises(ValueError):
         DeviationRiskModel({**WEIGHTS, AssessmentDomain.MUSCLE: -0.1}, persistence_points=4, saturation=2.0)
+
+
+def test_a_domain_left_out_of_the_weights_adds_no_risk():
+    partial = DeviationRiskModel({AssessmentDomain.MUSCLE: 1.0}, persistence_points=4, saturation=2.0)
+
+    assert partial.score([dev(STRETCH)], 1.0).score == 0.0

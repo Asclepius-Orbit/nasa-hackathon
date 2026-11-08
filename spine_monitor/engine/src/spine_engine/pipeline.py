@@ -66,7 +66,8 @@ class AssessmentPipeline:
 
     def evaluate(self, request: AssessRequest) -> Assessment:
         deviations = self._baseline_strategy.deviations(request.baseline, request.feature_sets)
-        risk = self._risk_model.score(deviations)
+        completeness = _completeness(request.feature_sets, deviations)
+        risk = self._risk_model.score(deviations, completeness.score)
         triage = self._triage_policy.decide(risk, deviations)
 
         evaluated = {domain for d in deviations if (domain := _domain_of(d.feature_id)) is not None}
@@ -87,7 +88,7 @@ class AssessmentPipeline:
             level=triage.level,
             risk_score=risk.score,
             confidence=risk.confidence,
-            completeness=_completeness(request.feature_sets, deviations),
+            completeness=completeness,
             domains=domains,
             drivers=risk.drivers,
             fired_rules=triage.fired_rules,

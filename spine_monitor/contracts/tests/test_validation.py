@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -60,3 +62,10 @@ def test_unknown_schema_name():
 def test_schemas_dir_is_found_and_has_every_schema():
     assert (validation.SCHEMAS_DIR / "common.schema.json").is_file()
     assert (validation.SCHEMAS_DIR / "engine" / "assess-request.schema.json").is_file()
+
+
+def test_importing_the_package_does_not_load_jsonschema():
+    # jsonschema pulls rfc3987_syntax (~1.4 s); the MCP server imports spine_contracts but never validates at startup.
+    code = "import sys, spine_contracts; print(sorted(m for m in ('jsonschema', 'rfc3987_syntax', 'referencing') if m in sys.modules))"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
+    assert out == "[]"

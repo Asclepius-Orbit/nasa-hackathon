@@ -395,6 +395,33 @@ class RangesMatch(Evaluator[EvalInput, AgentRun, CaseMeta]):
         return _result(not bad, f"calls outside the ready-made ranges: {bad}" if bad else "history calls use the ready-made ranges")
 
 
+def swapped_comparisons(calls: Iterable[ToolCall], now: datetime) -> int:
+    """How many compare_periods calls have the two ready-made weeks the wrong way round: a = previous_7_days, b = last_7_days."""
+    ranges = relative_ranges(now)
+    this_week, week_before = _as_instants(ranges.last_7_days), _as_instants(ranges.previous_7_days)
+    return sum(1 for c in calls if c.name == "compare_periods" and _span(c, "a_start", "a_end") == week_before and _span(c, "b_start", "b_end") == this_week)
+
+
+@dataclass
+class ComparisonDirection(Evaluator[EvalInput, AgentRun, CaseMeta]):
+    """No compare_periods call swaps the weeks: period A must be this week (last_7_days), period B the one before (previous_7_days).
+
+    Judges the arguments only, not the answer text. It fails specifically on the swap (a = previous_7_days and b = last_7_days,
+    compared as instants like RangesMatch); any other bad range is RangesMatch's, so a swap fails both. Every call is judged: a retry in
+    the right order does not excuse an earlier swap. A run with no compare_periods call passes (RequiredToolsCalled's job), and so does
+    a fallback run.
+    """
+
+    def evaluate(self, ctx: Ctx) -> EvaluationReason:
+        run = ctx.output
+        if run.fell_back:
+            return _result(True, "fallback summary (deterministic), not judged")
+        swapped = swapped_comparisons(run.tool_calls, run.now)
+        return _result(
+            not swapped, f"{swapped} compare_periods call(s) with period A = the previous week; A must be this week" if swapped else "no swapped comparison"
+        )
+
+
 @dataclass
 class LanguageMatches(Evaluator[EvalInput, AgentRun, CaseMeta]):
     def evaluate(self, ctx: Ctx) -> EvaluationReason:

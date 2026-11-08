@@ -47,6 +47,16 @@ COMPARE_WEEKS = (
         "b_end": RANGES.previous_7_days.end,
     },
 )
+COMPARE_WEEKS_SWAPPED = (
+    "compare_periods",
+    {
+        "astronaut_id": "AST-01",
+        "a_start": RANGES.previous_7_days.start,
+        "a_end": RANGES.previous_7_days.end,
+        "b_start": RANGES.last_7_days.start,
+        "b_end": RANGES.last_7_days.end,
+    },
+)
 
 type ToolStep = tuple[str, dict[str, Any]]
 
@@ -225,6 +235,16 @@ async def test_a_model_failure_is_graded_on_the_deterministic_fallback():
     assert "AMBER" in run.text
     failed = {n for n, r in report.cases[0].assertions.items() if not r.value}
     assert failed == {"RequiredToolsCalled"}  # the fallback is valid output, but the model never called the tool
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_a_comparison_with_the_weeks_swapped_is_caught_end_to_end():
+    _, answer = SCRIPTS["history_trend_en_compare_weeks"]
+    bad = scripted_model([COMPARE_WEEKS_SWAPPED], answer)
+    report = await _evaluate_case("history_trend_en_compare_weeks", lambda inputs: bad)
+    failed = {n for n, r in report.cases[0].assertions.items() if not r.value}
+    assert failed == {"RangesMatch", "ComparisonDirection"}
 
 
 WRONG_YEAR = ("get_history", {"astronaut_id": "AST-01", "start": "2025-11-06T12:00:00Z", "end": "2025-11-13T12:00:00Z"})

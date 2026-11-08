@@ -12,6 +12,7 @@ from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import Evaluator
 
 from evals.evaluators import (
+    ComparisonDirection,
     LanguageMatches,
     LevelCited,
     NoDiagnosis,
@@ -97,7 +98,8 @@ def evaluators_for(category: Category, required_tools: tuple[str, ...] = (), any
         case "simulation":
             return (*common, RequiredToolsCalled(("simulate_scenario",)), PresentedAsHypothetical(), NumbersGrounded())
         case "history_trend":
-            return (*common, RequiredToolsCalled(required_tools, any_tool_of), RangesMatch(), NumbersGrounded(min_numbers=1))
+            direction = (ComparisonDirection(),) if "compare_periods" in required_tools else ()
+            return (*common, RequiredToolsCalled(required_tools, any_tool_of), RangesMatch(), *direction, NumbersGrounded(min_numbers=1))
         case "out_of_scope":
             return (*common, ToolBudget(0), RefusesRequest(), StatesScope(), NumbersGrounded())
 

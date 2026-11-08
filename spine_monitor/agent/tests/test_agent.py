@@ -11,12 +11,13 @@ import httpx2
 import pytest
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ModelConnectionError, ModelHTTPError, ModelTimeoutError, UnexpectedModelBehavior
+from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart, UserPromptPart
 from pydantic_ai.models import override_allow_model_requests
 from pydantic_ai.models.function import AgentInfo, DeltaToolCall, DeltaToolCalls, FunctionModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.providers.ollama import OllamaProvider
-from spine_agent.agent import AgentDeps, ChatSession, ReplyChunk, build_agent
+from spine_agent.agent import MCP_INIT_TIMEOUT_S, AgentDeps, ChatSession, ReplyChunk, build_agent
 from spine_agent.fallback import McpStatusSource
 from spine_agent.guards import DISCLAIMER
 from spine_agent.prompts import SYSTEM_PROMPT, astronaut_instruction
@@ -311,6 +312,24 @@ async def test_server_stderr_defaults_to_the_console(capfd: pytest.CaptureFixtur
     async with ChatSession(agent, FakeStatusSource(), "AST-01") as session:
         await _collect(session, "Why am I amber?")
     assert "MCP-SERVER-LOG-LINE" in capfd.readouterr().err
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_a_cold_server_start_slower_than_pydantic_ais_default_still_connects(slow_server_args: list[str]):
+    agent = build_agent(_settings(mcp_args=slow_server_args), model=FunctionModel(stream_function=amber_script()))
+    async with ChatSession(agent, FakeStatusSource(), "AST-01") as session:
+        chunks = await _collect(session, "Why am I amber?")
+    assert _text(chunks) == "You are amber because lumbar elongation is 9.1 mm."
+
+
+@pytest.mark.unit
+def test_default_mcp_toolset_waits_mcp_init_timeout_for_the_handshake():
+    toolsets = [t for t in build_agent(_settings()).toolsets if isinstance(t, MCPToolset)]
+    assert len(toolsets) == 1
+    options = toolsets[0]._client_options  # pyright: ignore[reportPrivateUsage]  # no public accessor
+    assert options is not None
+    assert options["init_timeout"] == MCP_INIT_TIMEOUT_S
 
 
 # ---------------------------------------------------------------- degradation (no MCP subprocess: toolsets=[])

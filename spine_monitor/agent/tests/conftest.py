@@ -19,6 +19,11 @@ NOISY_WRAPPER = (
     "sys.argv = [sys.argv[0], '--dataset', 'examples']; runpy.run_module('spine_mcp_server', run_name='__main__')"
 )
 
+# Same, but first sleeps: a cold server start that is slower than pydantic-ai's 5 s default handshake timeout.
+SLOW_WRAPPER = (
+    "import runpy, sys, time; time.sleep(6); sys.argv = [sys.argv[0], '--dataset', 'examples']; runpy.run_module('spine_mcp_server', run_name='__main__')"
+)
+
 
 @pytest.fixture
 def anyio_backend() -> str:
@@ -71,3 +76,9 @@ def pid_wrapper_args() -> Callable[[Path], list[str]]:
 def noisy_server_args() -> list[str]:
     """MCP args that launch the real server after it writes the line 'MCP-SERVER-LOG-LINE' to stderr."""
     return ["-c", NOISY_WRAPPER]
+
+
+@pytest.fixture
+def slow_server_args() -> list[str]:
+    """MCP args that launch the real server after a 6 s delay (longer than pydantic-ai's default 5 s init timeout)."""
+    return ["-c", SLOW_WRAPPER]

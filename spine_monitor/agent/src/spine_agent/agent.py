@@ -45,6 +45,10 @@ MODEL_FAILURES: tuple[type[Exception], ...] = (
     TimeoutError,
 )
 
+# Handshake timeout for the MCP server subprocess. A cold start in the gate takes 5-8.5 s, over pydantic-ai's 5 s
+# default; same margin as fallback.DEFAULT_TIMEOUT_S.
+MCP_INIT_TIMEOUT_S = 30.0
+
 type SpineAgent = Agent[AgentDeps, str]
 
 
@@ -97,7 +101,7 @@ def build_agent(
         )
         # 'failed': a tool error (e.g. 404 for an unknown astronaut) reaches the model as a failed result it can
         # report ("I don't know"), instead of a retry loop that would end in UnexpectedModelBehavior.
-        toolsets = [MCPToolset(transport, tool_error_behavior="failed")]
+        toolsets = [MCPToolset(transport, tool_error_behavior="failed", init_timeout=MCP_INIT_TIMEOUT_S)]
     model_settings = OpenAIChatModelSettings(
         temperature=settings.temperature,
         timeout=settings.request_timeout_s,

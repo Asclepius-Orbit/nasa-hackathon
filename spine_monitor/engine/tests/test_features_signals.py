@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import numpy as np
-from spine_contracts import ClockSync, ImuChunk
+from spine_contracts import ClockSync, EmgChunk, ImuChunk
 from spine_engine.features.clock import DeviceClock
 from spine_engine.features.ordering import Segment
 from spine_engine.features.signals import SegmentSamples, segment_samples
@@ -161,3 +161,32 @@ def test_non_finite_values_are_kept_as_they_come():
     values = segment_samples(CLOCK, segment, ("gyro_x",)).channels["gyro_x"]
     assert np.isnan(values[1])
     assert values[[0, 2]].tolist() == [1.0, 3.0]
+
+
+def test_an_emg_chunk_whose_channel_is_a_plain_list_gives_its_values():
+    # el canal ``emg`` del contrato es una lista simple (los del IMU son RootModel): ambos deben funcionar
+    raw: dict[str, Any] = {
+        "schema_version": "1.0.0",
+        "astronaut_id": "AST-01",
+        "device_id": "wb-01",
+        "stream_id": "emg_lat_left",
+        "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+        "source": "device",
+        "boot_id": BOOT,
+        "seq": 0,
+        "t0_device_ms": 1000,
+        "received_at": T0.isoformat(),
+        "sample_rate_hz": 10.0,
+        "n_samples": 3,
+        "stream_kind": "emg",
+        "signal_kind": "raw",
+        "units": {"emg": "mV"},
+        "data": {"emg": [1.0, -2.0, 3.0]},
+        "quality": {"emg": {"score": 1.0, "flags": [], "assessed_by": "gateway"}},
+    }
+    segment = Segment("emg_lat_left", BOOT, (EmgChunk.model_validate(raw),), 3, 0)
+
+    got = segment_samples(CLOCK, segment, ("emg",))
+
+    assert got.times == (ms(0), ms(100), ms(200))
+    assert got.channels["emg"].tolist() == [1.0, -2.0, 3.0]

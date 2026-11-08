@@ -1,6 +1,8 @@
 """Punto de entrada del servidor: opciones (`parse_args`), conversión de `--now` y elección de dataset/reloj en `build_server`."""
 
 import argparse
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
@@ -182,3 +184,10 @@ async def test_demo_server_wires_the_demo_simulator_and_assess_base():
     scenario = result.structured_content["scenario"]
     assert (scenario["risk_score"], scenario["level"]) == (0.88, "red")
     assert result.structured_content["reference"]["risk_score"] == 0.62
+
+
+def test_building_the_server_does_not_import_jsonschema():
+    # Cold start: jsonschema (via rfc3987_syntax) costs ~1.4 s and nothing validates against schemas until a tool runs.
+    code = "import sys, spine_mcp_server; spine_mcp_server.build_server(['--dataset', 'examples']); print('jsonschema' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
+    assert out == "False"

@@ -12,11 +12,14 @@ and from the copy bundled in the wheel (`spine_contracts/schemas/v1`) when insta
 import json
 from functools import cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from jsonschema import Draft202012Validator, FormatChecker
-from jsonschema.exceptions import ValidationError
-from referencing import Registry, Resource
-from referencing.jsonschema import DRAFT202012
+# jsonschema and referencing are imported inside the functions that use them, not here: importing jsonschema pulls
+# rfc3987_syntax (~1.4 s), which would slow the cold start of every consumer of `spine_contracts` (the MCP server
+# among them) that never validates. The first call to `validator`/`validate` pays that cost instead.
+if TYPE_CHECKING:
+    from jsonschema import Draft202012Validator
+    from referencing import Registry
 
 _BUNDLED_DIR = Path(__file__).resolve().parent / "schemas" / "v1"
 _REPO_DIR = Path(__file__).resolve().parents[2] / "schemas" / "v1"
@@ -25,6 +28,9 @@ SCHEMAS_DIR = _BUNDLED_DIR if _BUNDLED_DIR.is_dir() else _REPO_DIR
 
 @cache
 def _registry() -> Registry:
+    from referencing import Registry, Resource  # noqa: PLC0415 -- deferred on purpose, see the module header
+    from referencing.jsonschema import DRAFT202012  # noqa: PLC0415
+
     if not SCHEMAS_DIR.is_dir():
         raise FileNotFoundError(f"JSON Schemas not found at {SCHEMAS_DIR}; run from the repository workspace or install the wheel")
     registry = Registry()
@@ -37,6 +43,8 @@ def _registry() -> Registry:
 @cache
 def validator(name: str) -> Draft202012Validator:
     """Validator for a schema name such as 'telemetry/stream-chunk' or 'domain/assessment'."""
+    from jsonschema import Draft202012Validator, FormatChecker  # noqa: PLC0415 -- deferred on purpose, see the module header
+
     path = SCHEMAS_DIR / f"{name}.schema.json"
     if not path.is_file():
         raise KeyError(f"unknown schema: {name!r}")
@@ -53,6 +61,8 @@ def errors(name: str, payload: object) -> list[str]:
 
 def validate(name: str, payload: object) -> None:
     """Raise jsonschema.ValidationError if the payload violates the schema."""
+    from jsonschema.exceptions import ValidationError  # noqa: PLC0415 -- deferred on purpose, see the module header
+
     error = next(iter(validator(name).iter_errors(payload)), None)  # pyright: ignore[reportArgumentType]  # ver `errors`
     if error is not None:
         raise ValidationError(f"{name}: {error.message}", path=error.absolute_path, schema_path=error.absolute_schema_path)

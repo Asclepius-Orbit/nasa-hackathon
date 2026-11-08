@@ -1,6 +1,8 @@
 """Configuración del motor: ventanas, umbrales y arranque. Variables SPINE_ENGINE_* o `.env`."""
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from spine_contracts import AssessmentDomain
 
 
 class EngineSettings(BaseSettings):
@@ -24,3 +26,9 @@ class EngineSettings(BaseSettings):
     kalman_threshold: float = 1.0
     kalman_persist: int = 3
     kalman_min_points: int = 3
+
+    # Modelo de riesgo genérico (sin rangos clínicos): peso de cada dominio, puntos de la serie a
+    # partir de los que una desviación cuenta entera y escala de la saturación 1 - exp(-suma / escala).
+    risk_domain_weights: dict[AssessmentDomain, float] = Field(default_factory=lambda: dict.fromkeys(AssessmentDomain, 1.0))
+    risk_persistence_points: int = 3
+    risk_saturation: float = 3.0

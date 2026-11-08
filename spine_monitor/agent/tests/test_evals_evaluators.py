@@ -118,6 +118,70 @@ def test_numbers_inside_tool_result_strings_count():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("text", ["1.2", "-1.2", "−1,2", "-1,2", "+1.2"])
+def test_a_number_is_grounded_by_a_negative_tool_value_with_or_without_sign(text: str):
+    assert ungrounded_numbers(f"a change of {text}", [{"delta": -1.2}]) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("text", ["1.2", "-1.2", "0.22", "-0.22"])
+def test_a_signed_text_number_is_grounded_by_a_positive_tool_value(text: str):
+    assert ungrounded_numbers(f"a change of {text}", [{"delta": 1.2, "other": 0.22}]) == []
+
+
+@pytest.mark.unit
+def test_sign_does_not_loosen_the_magnitude():
+    result = {"delta": -0.22}
+    assert ungrounded_numbers("a change of 0.23", [result]) == ["0.23"]
+    assert ungrounded_numbers("a change of -0.23", [result]) == ["0.23"]
+    assert ungrounded_numbers("a change of 0.21", [result]) == ["0.21"]
+    assert ungrounded_numbers("a change of 22", [result]) == ["22"]
+
+
+@pytest.mark.unit
+def test_tolerance_applies_to_the_magnitude_of_a_negative_value_at_both_edges():
+    result = {"delta": -1.205}
+    assert ungrounded_numbers("1.20 and 1.21", [result]) == []  # 0.005 away, on the edge
+    assert ungrounded_numbers("-1.20 and -1.21", [result]) == []
+    assert ungrounded_numbers("1.19 and 1.22", [result]) == ["1.19", "1.22"]
+    assert ungrounded_numbers("1.205", [result]) == []  # exact
+
+
+@pytest.mark.unit
+def test_tolerance_still_needs_at_most_two_decimals_for_a_negative_value():
+    assert ungrounded_numbers("-1.201", [{"delta": -1.2}]) == ["1.201"]
+
+
+@pytest.mark.unit
+def test_zero_is_grounded_by_zero_and_not_by_a_negative_value():
+    assert ungrounded_numbers("0", [{"delta": 0.0}]) == []
+    assert ungrounded_numbers("0", [{"delta": -0.22}]) == ["0"]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_comparison_answer_quoting_a_negative_delta_with_or_without_sign_passes():
+    for quoted in ("0.22", "-0.22", "−0.22", "0,22"):
+        text = f"This week your risk score was 0.46 against 0.24 the week before, a change of {quoted}."
+        assert await _failed("history_trend_en_compare_weeks", _run(text, ("compare_periods",), [COMPARE_RESULT])) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_comparison_answer_with_the_wrong_delta_magnitude_fails_numbers_grounded():
+    text = "This week your risk score was 0.46 against 0.24 the week before, a change of -0.23."
+    assert await _failed("history_trend_en_compare_weeks", _run(text, ("compare_periods",), [COMPARE_RESULT])) == {"NumbersGrounded"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_comparison_delta_is_not_grounded_when_the_tool_result_has_none():
+    text = "This week your risk score was 0.46 against 0.24 the week before, a change of -0.22."
+    no_delta = {"scores": {"risk_score": {"a": 0.46, "b": 0.24}}}
+    assert await _failed("history_trend_en_compare_weeks", _run(text, ("compare_periods",), [no_delta])) == {"NumbersGrounded"}
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("text", "language", "ok"),
     [
@@ -359,7 +423,11 @@ async def test_numbered_list_in_a_simulation_answer_is_not_invented_numbers():
 
 
 HISTORY_RESULT = {"assessments": [{"level": "green", "risk_score": 0.3}, {"level": "amber", "risk_score": 0.62}], "feature_sets": []}
-COMPARE_RESULT = {"scores": {"risk_score": {"a": 0.46, "b": 0.24}}, "levels": {"a": {"amber": 6}, "b": {"amber": 0}}}
+COMPARE_RESULT = {
+    "scores": {"risk_score": {"a": 0.46, "b": 0.24}},
+    "delta": {"risk_score": -0.22},
+    "levels": {"a": {"amber": 6}, "b": {"amber": 0}},
+}
 
 
 @pytest.mark.unit

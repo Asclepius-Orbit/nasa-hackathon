@@ -257,8 +257,9 @@ def _is_grounded(token: str, value: float, known: list[float]) -> bool:
 
 def ungrounded_numbers(text: str, sources: Iterable[Any]) -> list[str]:
     """Numbers written in `text` that appear nowhere in `sources` (as written in the text). A null never grounds a 0.
-    A number written with at most two decimals is also grounded by the same value rounded (|a-b| <= 0.005)."""
-    known = [n for source in sources for n in _source_numbers(source)]
+    A number written with at most two decimals is also grounded by the same value rounded (|a-b| <= 0.005).
+    Sign is ignored: a number in the text is compared with the absolute value of each source number."""
+    known = [abs(n) for source in sources for n in _source_numbers(source)]  # the parser is unsigned: "1.2" and "-1.2" both quote -1.2
     return [token for token, value in _numbers(text) if not _is_grounded(token, value, known)]
 
 

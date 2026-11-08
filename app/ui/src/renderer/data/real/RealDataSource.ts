@@ -1,6 +1,6 @@
 import type { AsclepiusApi } from '../../../shared/api';
 import type { DataSource } from '../DataSource';
-import { MockDataSource } from '../mock/MockDataSource';
+import { CATALOG, REPORT_FORM } from '../form-data';
 import type {
   BaselineData,
   ContactEntry,
@@ -17,19 +17,22 @@ import type {
 } from '../types';
 import { toBaseline, toFirstDay, toHistory, toSession, toStrip, toToday } from './map-views';
 
+/** Rejection of a view whose backend does not exist yet: `not_built`, so the screen says so instead of "no connection". */
+const notBuilt = (): Promise<never> => Promise.reject(new Error('not_built'));
+/** Rejection of an action that cannot be recorded: callers treat any rejection as "not recorded". */
+const unavailable = (): Promise<never> => Promise.reject(new Error('unavailable'));
+
 /**
  * DataSource on the backend views (`window.asclepius.views`). A view that cannot be had rejects with the bridge error
  * (`locked`, `not_found`, `unavailable`): nothing is cached and nothing is invented.
  *
- * The rest of the interface (report form, Stop screen, Oswestry, Houston summary, catalogue, live reps, stop for pain,
- * call log) is NOT on the backend yet. It delegates to MockDataSource until issues #61 to #63 land; each of those
- * issues replaces its methods here and this delegation shrinks.
+ * The Stop screen, Oswestry, the Houston summary, stop for pain and the call log are NOT on the backend yet (issues
+ * #61 to #63). The three views reject `not_built` and the two actions `unavailable`, rather than answer with the mock: no invented health data or false "recorded"
+ * in real mode. Each of those issues replaces its methods here. The report form and the symptom catalogue are static
+ * choices of the UI, not crew data, so they are served from `form-data`.
  */
 export class RealDataSource implements DataSource {
-  constructor(
-    private readonly views: AsclepiusApi['views'],
-    private readonly pending: DataSource = new MockDataSource(),
-  ) {}
+  constructor(private readonly views: AsclepiusApi['views']) {}
 
   async getStrip(): Promise<StripData> {
     return toStrip(await this.views.strip());
@@ -58,26 +61,28 @@ export class RealDataSource implements DataSource {
     return toSession(await this.views.session(running.sessionId));
   }
 
-  // --- Not on the backend yet (#61 to #63): the mock answers. ---
+  // --- Static choices of the forms (not crew data). ---
 
   getReportForm(): Promise<ReportFormData> {
-    return this.pending.getReportForm();
-  }
-
-  getStopped(): Promise<StoppedData> {
-    return this.pending.getStopped();
-  }
-
-  getOswestry(): Promise<OswestryData> {
-    return this.pending.getOswestry();
-  }
-
-  getHouston(): Promise<HoustonData> {
-    return this.pending.getHouston();
+    return Promise.resolve(REPORT_FORM);
   }
 
   getCatalog(): Promise<SymptomCatalog> {
-    return this.pending.getCatalog();
+    return Promise.resolve(CATALOG);
+  }
+
+  // --- Not on the backend yet (#61 to #63): not_built / unavailable, never the mock. ---
+
+  getStopped(): Promise<StoppedData> {
+    return notBuilt();
+  }
+
+  getOswestry(): Promise<OswestryData> {
+    return notBuilt();
+  }
+
+  getHouston(): Promise<HoustonData> {
+    return notBuilt();
   }
 
   /**
@@ -88,11 +93,12 @@ export class RealDataSource implements DataSource {
     return () => undefined;
   }
 
+  /** Not recorded anywhere yet: the caller must say so and must not behave as if the stop was saved. */
   stopSessionForPain(): Promise<void> {
-    return this.pending.stopSessionForPain();
+    return unavailable();
   }
 
   logCrewMedicalOfficerCall(): Promise<ContactEntry> {
-    return this.pending.logCrewMedicalOfficerCall();
+    return unavailable();
   }
 }

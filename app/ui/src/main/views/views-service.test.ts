@@ -24,7 +24,7 @@ function fakeClient(): { client: ViewsClient; calls: string[] } {
     history: (id, range) => view('history', id, range),
     baseline: (id) => view('baseline', id),
     firstDay: (id) => view('first-day', id),
-    session: (id) => view('session', id),
+    session: (astronautId, id) => view('session', astronautId, id),
   };
   return { client, calls };
 }
@@ -64,7 +64,7 @@ describe('createViewsService', () => {
       'today:"AST-01"',
       'history:"AST-01",{"from":"2026-11-01"}',
       'baseline:"AST-01"',
-      `session:"${SESSION}"`,
+      `session:"AST-01","${SESSION}"`,
     ]);
   });
 

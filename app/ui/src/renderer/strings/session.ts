@@ -11,10 +11,18 @@ export const session = {
   none: 'No session is in progress.',
   noneHint: 'When one starts it appears here, with its steps.',
   started: (started: string): string => `Started ${started} GMT.`,
-  late: (started: string, minutes: number, planned: string): string =>
-    `Started ${started} GMT, ${String(minutes)} min before the planned ${planned}.`,
+  /** `minutes` is signed: positive when it started after the planned time, negative when before. */
+  late: (started: string, minutes: number, planned: string): string => {
+    if (minutes === 0) return `Started ${started} GMT, at the planned ${planned}.`;
+    return `Started ${started} GMT, ${String(Math.abs(minutes))} min ${minutes > 0 ? 'after' : 'before'} the planned ${planned}.`;
+  },
   stopPain: 'Stop: pain',
   stopPainHint: 'or say “stop, pain”',
+  stopNotRecorded: {
+    title: 'The stop was not recorded.',
+    body: 'Stop the exercise now and tell the crew medical officer. Press Urgent symptom to alert the flight surgeon.',
+    retry: 'Try to record the stop again',
+  },
   stepsLabel: 'Protocol steps',
   stepLabels: {
     fit: 'Fit electrodes, IMU and cord',

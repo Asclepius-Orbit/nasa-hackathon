@@ -121,6 +121,9 @@ describe('historyInputSchema', () => {
     { from: '2026-11-01', to: '2026-11-07' },
     { from: '2026-11-01', to: '2026-11-01' },
     { from: '2028-02-29' },
+    // 366 days inclusive: a leap year, and the longest window allowed.
+    { from: '2028-01-01', to: '2028-12-31' },
+    { from: '2027-01-01', to: '2028-01-01' },
   ])('accepts %j', (range) => {
     expect(historyInputSchema.safeParse(range).success).toBe(true);
   });
@@ -136,6 +139,8 @@ describe('historyInputSchema', () => {
     ['a number', { from: 20261101 }],
     ['an explicit undefined', { from: undefined }],
     ['an inverted range', { from: '2026-11-08', to: '2026-11-01' }],
+    ['a window of 367 days', { from: '2027-01-01', to: '2028-01-02' }],
+    ['a window of many years', { from: '2000-01-01', to: '2026-11-01' }],
   ])('rejects %s', (_label, range) => {
     expect(historyInputSchema.safeParse(range).success).toBe(false);
   });

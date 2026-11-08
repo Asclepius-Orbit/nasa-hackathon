@@ -1,5 +1,6 @@
 import { realScheduler, type Scheduler } from '../../clock/scheduler';
 import type { DataSource } from '../DataSource';
+import { CATALOG, REPORT_FORM } from '../form-data';
 import type {
   BaselineData,
   ContactEntry,
@@ -15,12 +16,13 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { BASELINE, buildDays, CATALOG, FIRST_DAY, ODI, REPORT_FORM, SESSION, todayData } from './mock-data';
+import { BASELINE, buildDays, FIRST_DAY, ODI, SESSION, todayData } from './mock-data';
 
 const REP_TICK_MS = 450;
 const CYCLE_TICKS = 10;
 const MISSION_DAY = 87;
 const MS_PER_DAY = 86_400_000;
+const MS_PER_MINUTE = 60_000;
 const OFFICER_CALL_GMT = '13:52';
 
 export interface MockDataSourceOptions {
@@ -53,7 +55,7 @@ export class MockDataSource implements DataSource {
       missionDay: MISSION_DAY,
       missionStart: new Date(midnight - (MISSION_DAY - 1) * MS_PER_DAY).toISOString().slice(0, 10),
       flightPhase: 'inflight',
-      harness: { id: 'wb-01', batteryPct: 64, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }], degraded: false },
+      harness: { id: 'wb-01', batteryPct: 64, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }], degraded: false, stale: false, lastSeenAt: new Date(today.getTime() - MS_PER_MINUTE).toISOString() },
       groundLink: { state: 'down', backInMin: 12 },
       lastContactMinAgo: 4,
       reportsDue: 1,

@@ -42,6 +42,10 @@ export interface HarnessStatus {
   /** Streams that are not sending; empty when every stream is active. */
   weakStreams: readonly WeakStream[];
   degraded: boolean;
+  /** The last status is older than the app's threshold: every other field is then the last known one, not the current state. */
+  stale: boolean;
+  /** ISO time of the last status received. */
+  lastSeenAt: string;
 }
 
 /** Facts shown in the always-visible strip and the offline banner. Every unknown is `null`, never a default. */
@@ -88,6 +92,8 @@ export interface TodayData {
   alsoToday: readonly TaskCode[];
   /** Lumbar length change vs the astronaut reference; `null` = no data (never 0). */
   lumbarLengthMm: number | null;
+  /** ISO time of the measure behind `lumbarLengthMm`; `null` exactly when that is `null`. */
+  lumbarMeasuredAt: string | null;
   /** A session in progress, if any (live rep count comes from `subscribeReps`). */
   sessionInProgress: { sessionId: string; protocolId: string; startedAt: string; totalReps: number | null } | null;
 }

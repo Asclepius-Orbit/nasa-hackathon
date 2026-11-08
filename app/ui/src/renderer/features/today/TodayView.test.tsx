@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocation } from 'react-router';
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { MockDataSource } from '../../data/mock/MockDataSource';
 import { todayData } from '../../data/mock/mock-data';
@@ -171,6 +171,7 @@ it('shows a real amber day from the backend example: plan from codes, an unknown
   expect(screen.getByText('REC_FUTURE_99')).toBeInTheDocument();
   expect(screen.getByText('Confidence').parentElement).toHaveTextContent('74 %');
   expect(screen.getByRole('img', { name: /\+6\.4 mm/ })).toBeInTheDocument();
+  expect(screen.getByText('Lumbar length measured 9 Feb.')).toBeInTheDocument();
 });
 
 it('shows no data explicitly: no level colour word, no confidence, no length, no plan, and says nothing is assessed', async () => {
@@ -219,4 +220,65 @@ it('with the backend it never shows a simulated rep count: only the title, start
   expect(row).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
   expect(row).not.toHaveTextContent(/rep \d+ of/);
   expect(scheduler.active).toBe(0);
+});
+
+describe('when the lumbar length was measured', () => {
+  const withMeasuredAt = (lumbarMeasuredAt: string | null): ReturnType<typeof renderInWorld> =>
+    setup({ data: new WithToday({ ...TODAY, lumbarMeasuredAt }) });
+
+  it('says the day when the measure is not from today', async () => {
+    withMeasuredAt('2026-11-03T08:00:00Z');
+    expect(await screen.findByText('Lumbar length measured 3 Nov.')).toBeInTheDocument();
+  });
+
+  it('says nothing when it was measured today in GMT', async () => {
+    withMeasuredAt('2026-11-05T01:00:00Z');
+    await screen.findByRole('img', { name: /Side view of the spine/ });
+    expect(screen.queryByText(/Lumbar length measured/)).not.toBeInTheDocument();
+  });
+
+  it('says nothing when there is no length at all', async () => {
+    setup({ data: new WithToday({ ...TODAY, lumbarLengthMm: null, lumbarMeasuredAt: null }) });
+    await screen.findByRole('img', { name: /Lumbar length No data/ });
+    expect(screen.queryByText(/Lumbar length measured/)).not.toBeInTheDocument();
+  });
+});
+
+describe('what to do today', () => {
+  const todo = async (today: Partial<TodayData>): Promise<string | null | undefined> => {
+    setup({ data: new WithToday({ ...TODAY, ...today }) });
+    return (await screen.findByText('What to do today:')).parentElement?.textContent;
+  };
+  const plan = (n: number): string[] => ['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01', 'REC_INCREASE_ARED'].slice(0, n);
+
+  it('amber counts one plan item in the singular', async () => {
+    expect(await todo({ recommendations: plan(1) })).toBe('What to do today: the one plan item below, and your daily report.');
+  });
+
+  it('amber counts three plan items in digits', async () => {
+    expect(await todo({ recommendations: plan(3) })).toBe('What to do today: the 3 plan items below, and your daily report.');
+  });
+
+  it('amber does not mention the daily report once it is done', async () => {
+    expect(await todo({ recommendations: plan(2), alsoToday: ['TASK_ODI'] })).toBe('What to do today: the two plan items below.');
+  });
+
+  it('amber with one plan item and nothing else due ends after the item', async () => {
+    expect(await todo({ recommendations: plan(1), alsoToday: [] })).toBe('What to do today: the one plan item below.');
+  });
+
+  it('amber with no plan and no report due says so without inventing a task', async () => {
+    const text = await todo({ recommendations: [], alsoToday: [] });
+    expect(text).toBe('What to do today: nothing is listed in the plan yet.');
+  });
+
+  it('green keeps the routine and adds the daily report only while it is due', async () => {
+    expect(await todo({ level: 'green', recommendations: [], alsoToday: ['TASK_DAILY_REPORT'] })).toBe(
+      'What to do today: your usual routine and your daily report.',
+    );
+  });
+
+  it('green does not mention the daily report once it is done', async () => {
+    expect(await todo({ level: 'green', recommendations: [], alsoToday: [] })).toBe('What to do today: your usual routine.');
+  });
 });

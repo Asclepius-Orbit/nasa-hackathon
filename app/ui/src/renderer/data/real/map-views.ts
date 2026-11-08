@@ -18,6 +18,8 @@ export function toStrip(view: StripView): StripData {
             batteryPct: harness.battery_pct,
             weakStreams: harness.weak_streams.map((w) => ({ stream: w.stream, state: w.state })),
             degraded: harness.degraded,
+            stale: harness.stale,
+            lastSeenAt: harness.last_seen_at,
           },
     // Reserved by the backend (issue #62): the ground link is unknown, never "up" by default.
     groundLink: null,
@@ -44,6 +46,7 @@ export function toToday(view: TodayView): TodayData {
           },
     alsoToday: view.also_today,
     lumbarLengthMm: view.lumbar_delta_mm,
+    lumbarMeasuredAt: view.lumbar_measured_at,
     sessionInProgress:
       running === null
         ? null

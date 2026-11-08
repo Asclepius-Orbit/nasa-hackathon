@@ -38,7 +38,8 @@ export interface ViewsClient {
   history(astronautId: string, range: ViewRange): Promise<HistoryView>;
   baseline(astronautId: string): Promise<BaselineView>;
   firstDay(astronautId: string): Promise<FirstDayView>;
-  session(sessionId: string): Promise<SessionView>;
+  /** The session view, but only if it belongs to `astronautId`: someone else's session is `not_found`. */
+  session(astronautId: string, sessionId: string): Promise<SessionView>;
 }
 
 export interface ViewsClientOptions {
@@ -67,7 +68,9 @@ const SCHEMAS = {
   history: () => view({ from: z.string(), to: z.string(), days: z.array(object) }),
   baseline: () => view(baselineShape),
   firstDay: () => view({ todo: z.array(z.string()), baseline: view(baselineShape) }),
-  session: (sessionId: string) => view({ session_id: z.literal(sessionId), state: z.string(), protocol_id: z.string() }),
+  // `astronaut_id` is compared by the client (a mismatch is not_found, not a malformed body).
+  session: (sessionId: string) =>
+    view({ session_id: z.literal(sessionId), astronaut_id: z.string(), state: z.string(), protocol_id: z.string() }),
 };
 
 export function createViewsClient({
@@ -117,6 +120,11 @@ export function createViewsClient({
     },
     baseline: (id) => get(crewPath(id, 'baseline'), SCHEMAS.baseline()),
     firstDay: (id) => get(crewPath(id, 'first-day'), SCHEMAS.firstDay()),
-    session: (id) => get(`/ui/sessions/${encodeURIComponent(id)}/view`, SCHEMAS.session(id)),
+    async session(astronautId, sessionId) {
+      const body = await get<SessionView>(`/ui/sessions/${encodeURIComponent(sessionId)}/view`, SCHEMAS.session(sessionId));
+      // A session of another crew member must look like one that does not exist, never leak across astronauts.
+      if (body.astronaut_id !== astronautId) throw new ViewsError('not_found');
+      return body;
+    },
   };
 }

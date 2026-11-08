@@ -22,10 +22,23 @@ export const verifyPinInputSchema = z.strictObject({ crewId: crewIdSchema, pin: 
 
 const isoDateSchema = z.iso.date();
 
-/** Optional inclusive window of the History view. Dates are real calendar days; `from` may not be after `to`. */
+const MS_PER_DAY = 86_400_000;
+/** Longest History window (inclusive days) the renderer may ask for: one leap year. */
+export const MAX_HISTORY_DAYS = 366;
+
+/** Inclusive days from `from` to `to`; both are valid ISO dates (checked by `isoDateSchema` before this runs). */
+function inclusiveDays(from: string, to: string): number {
+  return (Date.parse(to) - Date.parse(from)) / MS_PER_DAY + 1;
+}
+
+/**
+ * Optional inclusive window of the History view. Dates are real calendar days; `from` may not be after `to` and a
+ * window with both ends is at most `MAX_HISTORY_DAYS` long, so a compromised renderer cannot ask for years of rows.
+ */
 export const historyInputSchema: z.ZodType<ViewRange> = z
   .strictObject({ from: isoDateSchema.exactOptional(), to: isoDateSchema.exactOptional() })
-  .refine(({ from, to }) => from === undefined || to === undefined || from <= to);
+  .refine(({ from, to }) => from === undefined || to === undefined || from <= to)
+  .refine(({ from, to }) => from === undefined || to === undefined || inclusiveDays(from, to) <= MAX_HISTORY_DAYS);
 
 /** Lowercase UUID, as the contract defines `session_id`. */
 export const sessionInputSchema = z.strictObject({

@@ -21,7 +21,13 @@ const BODIES = {
   history: { schema_version: '1.1.0', from: '2026-11-01', to: '2026-11-07', days: [] },
   baseline,
   firstDay: { schema_version: '1.0.0', todo: ['pair_harness'], baseline },
-  session: { schema_version: '1.0.0', session_id: SESSION, state: 'created', protocol_id: 'stretch.lumbar' },
+  session: {
+    schema_version: '1.0.0',
+    session_id: SESSION,
+    astronaut_id: ASTRONAUT,
+    state: 'created',
+    protocol_id: 'stretch.lumbar',
+  },
 };
 
 interface Call {
@@ -64,7 +70,7 @@ describe('createViewsClient requests', () => {
     ['today', (c) => c.today(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/today`, BODIES.today],
     ['baseline', (c) => c.baseline(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/baseline`, BODIES.baseline],
     ['first-day', (c) => c.firstDay(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/first-day`, BODIES.firstDay],
-    ['session', (c) => c.session(SESSION), `/ui/sessions/${SESSION}/view`, BODIES.session],
+    ['session', (c) => c.session(ASTRONAUT, SESSION), `/ui/sessions/${SESSION}/view`, BODIES.session],
     ['history without range', (c) => c.history(ASTRONAUT, {}), `/ui/crew/${ASTRONAUT}/views/history`, BODIES.history],
   ];
 
@@ -93,7 +99,7 @@ describe('createViewsClient requests', () => {
     const { fetch, calls } = fakeFetch(() => json({}));
     const client = createViewsClient({ baseUrl: BASE, fetch });
     await codeOf(client.strip('AST-01/../x?y=1#z'));
-    await codeOf(client.session('a/b?c'));
+    await codeOf(client.session(ASTRONAUT, 'a/b?c'));
     expect(calls[0]?.url).toBe(`${BASE}/ui/crew/AST-01%2F..%2Fx%3Fy%3D1%23z/views/strip`);
     expect(calls[1]?.url).toBe(`${BASE}/ui/sessions/a%2Fb%3Fc/view`);
   });
@@ -110,7 +116,7 @@ describe('createViewsClient errors', () => {
 
   it('maps 404 (problem+json) to not_found', async () => {
     expect(await codeOf(client(() => problem(404, 'not_found')).strip(ASTRONAUT))).toBe('not_found');
-    expect(await codeOf(client(() => problem(404, 'not_found')).session(SESSION))).toBe('not_found');
+    expect(await codeOf(client(() => problem(404, 'not_found')).session(ASTRONAUT, SESSION))).toBe('not_found');
   });
 
   it.each([400, 401, 403, 422, 500, 502, 503])('maps HTTP %i to unavailable', async (status) => {
@@ -183,9 +189,19 @@ describe('createViewsClient errors', () => {
     expect(await codeOf(client(() => json({ ...BODIES.strip, astronaut_id: 'AST-02' })).strip(ASTRONAUT))).toBe(
       'unavailable',
     );
-    expect(await codeOf(client(() => json({ ...BODIES.session, session_id: 'other' })).session(SESSION))).toBe(
+    expect(await codeOf(client(() => json({ ...BODIES.session, session_id: 'other' })).session(ASTRONAUT, SESSION))).toBe(
       'unavailable',
     );
+  });
+
+  it('answers not_found for a session that belongs to another astronaut', async () => {
+    const foreign = client(() => json({ ...BODIES.session, astronaut_id: 'AST-02' }));
+    expect(await codeOf(foreign.session(ASTRONAUT, SESSION))).toBe('not_found');
+  });
+
+  it('rejects a session view that names no astronaut as unavailable', async () => {
+    const { astronaut_id: _omitted, ...anonymous } = BODIES.session;
+    expect(await codeOf(client(() => json(anonymous)).session(ASTRONAUT, SESSION))).toBe('unavailable');
   });
 
   const onlyVersion = json({ schema_version: '1.0.0' });
@@ -194,7 +210,7 @@ describe('createViewsClient errors', () => {
     ['history', (c) => c.history(ASTRONAUT, {})],
     ['baseline', (c) => c.baseline(ASTRONAUT)],
     ['first-day', (c) => c.firstDay(ASTRONAUT)],
-    ['session', (c) => c.session(SESSION)],
+    ['session', (c) => c.session(ASTRONAUT, SESSION)],
   ])('validates the %s shape', async (_name, call) => {
     expect(await codeOf(call(client(() => onlyVersion.clone())))).toBe('unavailable');
   });

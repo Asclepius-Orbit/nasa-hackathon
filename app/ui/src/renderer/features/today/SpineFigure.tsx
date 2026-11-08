@@ -30,7 +30,7 @@ const n = (value: number): string => String(Math.round(value));
 
 /** Side view of the spine, drawn from the lumbar length: the lumbar vertebrae and the stretch cord stretch with it. */
 /** `lumbarLengthMm` null = no measurement: the column is drawn at the preflight spacing and the length reads No data. */
-export function SpineFigure({ lumbarLengthMm }: { lumbarLengthMm: number | null }): React.JSX.Element {
+export function SpineFigure({ lumbarLengthMm, measuredNote = null }: { lumbarLengthMm: number | null; measuredNote?: string | null }): React.JSX.Element {
   const { formatLength } = useSettings();
   const length = lumbarLengthMm === null ? spine.noLength : formatLength(lumbarLengthMm);
   const y = lumbarCentres(lumbarLengthMm ?? 0);
@@ -116,7 +116,10 @@ export function SpineFigure({ lumbarLengthMm }: { lumbarLengthMm: number | null 
           )}
         </g>
       </svg>
-      <figcaption>{spine.caption}</figcaption>
+      <figcaption>
+        {spine.caption}
+        {measuredNote !== null && <span className={styles.measured}>{measuredNote}</span>}
+      </figcaption>
     </figure>
   );
 }

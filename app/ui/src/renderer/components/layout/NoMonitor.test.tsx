@@ -30,6 +30,15 @@ it('shows the no-monitor state for unavailable and the screen text for another f
   expect(screen.queryByTestId('no-monitor')).not.toBeInTheDocument();
 });
 
+it('shows the not-built state, not the monitor outage, for a screen that is not connected yet', () => {
+  renderInWorld(<LoadFailure error={new Error('not_built')} fallback="Could not load." />);
+  expect(screen.getByTestId('not-built')).toHaveTextContent('Not available yet');
+  expect(screen.getByTestId('not-built')).toHaveTextContent('This screen is not connected to the monitor yet.');
+  expect(screen.queryByTestId('no-monitor')).not.toBeInTheDocument();
+  expect(screen.queryByText('Could not load.')).not.toBeInTheDocument();
+  expect(isNoMonitor(new Error('not_built'))).toBe(false);
+});
+
 it('on locked it never says the monitor is down: it re-reads the session so the lock flow takes over', async () => {
   const api = new FakeAsclepiusApi();
   let reads = 0;

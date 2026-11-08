@@ -20,7 +20,7 @@ describe('getStrip', () => {
       missionDay: 87,
       missionStart: '2026-11-15',
       flightPhase: 'inflight',
-      harness: { id: 'wb-01', batteryPct: 18, weakStreams: [{ stream: 'stretch_lumbar', state: 'stalled' }], degraded: true },
+      harness: { id: 'wb-01', batteryPct: 18, weakStreams: [{ stream: 'stretch_lumbar', state: 'stalled' }], degraded: true, stale: false, lastSeenAt: '2026-11-15T09:58:00Z' },
       groundLink: null,
       lastContactMinAgo: null,
       reportsDue: 1,
@@ -55,6 +55,14 @@ describe('getStrip', () => {
   });
 });
 
+describe('stale harness', () => {
+  it('maps a harness whose last status is old: stale and when it was last seen', async () => {
+    const strip = example<StripView>('ui-strip');
+    api.viewData.strip = { ...strip, harness: strip.harness && { ...strip.harness, stale: true, last_seen_at: '2026-11-03T07:15:00Z' } };
+    expect((await data.getStrip()).harness).toMatchObject({ id: 'wb-01', stale: true, lastSeenAt: '2026-11-03T07:15:00Z' });
+  });
+});
+
 describe('getToday', () => {
   it('maps the today example to codes and facts, with the confidence as a percentage', async () => {
     api.viewData.today = example<TodayView>('ui-today');
@@ -74,6 +82,7 @@ describe('getToday', () => {
       },
       alsoToday: ['TASK_DAILY_REPORT'],
       lumbarLengthMm: 6.4,
+      lumbarMeasuredAt: '2027-02-09T08:00:00Z',
       sessionInProgress: null,
     });
   });
@@ -87,6 +96,7 @@ describe('getToday', () => {
       trust: null,
       alsoToday: ['TASK_DAILY_REPORT', 'TASK_ODI'],
       lumbarLengthMm: null,
+      lumbarMeasuredAt: null,
       sessionInProgress: {
         sessionId: '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01',
         protocolId: 'lat_pulldown_standing_v1',
@@ -229,18 +239,30 @@ describe('errors', () => {
 });
 
 describe('what #61 to #63 still own', () => {
-  it('serves the catalogue, the report form and the Oswestry items from the mock', async () => {
+  it('serves the static form data of the UI: the symptom catalogue and the report form', async () => {
     expect((await data.getCatalog()).flags).toHaveLength(8);
     expect((await data.getReportForm()).painRegions.length).toBeGreaterThan(0);
-    expect((await data.getOswestry()).items.length).toBeGreaterThan(0);
-    expect((await data.getHouston()).crewCode).toBe('AST-01');
-    expect((await data.getStopped()).contacts).toEqual([]);
   });
 
-  it('logs the call to the crew medical officer and the stop for pain through the mock', async () => {
-    await data.stopSessionForPain();
-    const entry = await data.logCrewMedicalOfficerCall();
-    expect((await data.getStopped()).contacts).toEqual([entry]);
+  it.each([
+    ['getStopped', () => data.getStopped()],
+    ['getOswestry', () => data.getOswestry()],
+    ['getHouston', () => data.getHouston()],
+  ])('%s rejects not_built (not "unavailable": the monitor is fine, the feature is not connected yet)', async (_name, call) => {
+    await expect(call()).rejects.toThrow(/^not_built$/);
+  });
+
+  it.each([
+    ['stopSessionForPain', () => data.stopSessionForPain()],
+    ['logCrewMedicalOfficerCall', () => data.logCrewMedicalOfficerCall()],
+  ])('%s rejects unavailable: the mock never records for the backend', async (_name, call) => {
+    await expect(call()).rejects.toThrow(/^unavailable$/);
+  });
+
+  it('does not touch the bridge for them', async () => {
+    await data.getStopped().catch(() => undefined);
+    await data.stopSessionForPain().catch(() => undefined);
+    expect(api.calls).toEqual([]);
   });
 
   it('never emits reps: the backend has no live rep signal yet, and a simulated one must not reach the crew', () => {

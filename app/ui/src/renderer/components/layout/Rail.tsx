@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router';
 
 import type { DataSource } from '../../data/DataSource';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { dueLabel, nav } from '../../strings/common';
 import { HistoryIcon, ReportIcon, SessionIcon, SettingsIcon, TodayIcon } from './icons';
 import { MockScreensMenu } from './MockScreensMenu';
@@ -19,7 +19,7 @@ const TABS = [
 
 /** Left rail (bottom tab bar under 900 px) with the five tabs; the Report tab carries the "due" badge. */
 export function Rail(): React.JSX.Element {
-  const { data } = useLoad(selectStrip);
+  const { data } = useLoad(selectStrip, { refreshMs: REFRESH_MS });
   const due = data?.reportsDue ?? 0;
   return (
     <nav aria-label={nav.label} className={styles.rail}>

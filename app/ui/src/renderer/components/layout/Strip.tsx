@@ -4,8 +4,9 @@ import { useApi } from '../../api/ApiContext';
 import { useAuth } from '../../auth/AuthProvider';
 import { useNow } from '../../clock/Clock';
 import type { DataSource } from '../../data/DataSource';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { useUrgent } from '../../features/urgent/UrgentContext';
+import { gmtStamp } from '../../features/today/gmt';
 import { useSettings } from '../../settings/SettingsProvider';
 import { groundLinkValue, harnessValue, lockButton, noData, noMonitor, strip, urgentButton } from '../../strings/common';
 import { phaseText } from '../../strings/codes';
@@ -50,7 +51,7 @@ function useCrewName(crewId: string | null): string | null {
 export function Strip(): React.JSX.Element {
   const { crewId, lock } = useAuth();
   const name = useCrewName(crewId);
-  const { data, error } = useLoad(selectStrip);
+  const { data, error } = useLoad(selectStrip, { refreshMs: REFRESH_MS });
   useSessionRecheck(error);
   const now = useNow();
   const { formatTime } = useSettings();
@@ -67,7 +68,7 @@ export function Strip(): React.JSX.Element {
           <span className={styles.grow} />
           <span className={styles.status}>
             <BatteryIcon />
-            <Fact label={data.harness ? strip.harness(data.harness.id) : strip.harnessNone} value={harnessValue(data.harness)} />
+            <Fact label={data.harness ? strip.harness(data.harness.id) : strip.harnessNone} value={harnessValue(data.harness, data.harness ? gmtStamp(data.harness.lastSeenAt, now) : '')} />
           </span>
           <span className={styles.status}>
             <GroundLinkIcon />

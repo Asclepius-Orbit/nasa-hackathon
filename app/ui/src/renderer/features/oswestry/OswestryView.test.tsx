@@ -2,6 +2,8 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
 
+import { RealDataSource } from '../../data/real/RealDataSource';
+import { FakeAsclepiusApi } from '../../test/fake-api';
 import { renderInWorld } from '../../test/providers';
 import { OswestryView } from './OswestryView';
 
@@ -41,4 +43,14 @@ it('allows changing an answer (one option per item)', async () => {
   expect(within(group).getByRole('radio', { name: '1. Very mild' })).not.toBeChecked();
   expect(within(group).getByRole('radio', { name: '4. Very severe' })).toBeChecked();
   expect(screen.getByText('5 of 6 still to answer.')).toBeInTheDocument();
+});
+
+it('with the backend (real mode) says it is not available and offers no questionnaire to save', async () => {
+  const api = new FakeAsclepiusApi();
+  renderInWorld(<OswestryView />, { api, data: new RealDataSource(api.views), route: '/oswestry' });
+  expect(await screen.findByTestId('not-built')).toBeInTheDocument();
+  expect(screen.getByText('Not available yet.')).toBeInTheDocument();
+  expect(screen.queryByText(/did not answer/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Save questionnaire' })).not.toBeInTheDocument();
 });

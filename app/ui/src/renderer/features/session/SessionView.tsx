@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
+import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Stepper } from '../../components/ui/Stepper';
 import type { DataSource } from '../../data/DataSource';
 import { useData } from '../../data/DataContext';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { LoadFailure } from '../../components/layout/NoMonitor';
 import { protocolTitle } from '../../strings/codes';
-import { gmtClock, minutesSince } from '../today/gmt';
+import { gmtClock, minutesBetween } from '../today/gmt';
 import { session as copy, voiceUndo } from '../../strings/session';
 import { CalibrateStage, CheckStage, FinishStage, FitStage, RepsStage, STAGE_IDS, type StageId } from './Stages';
 import styles from './SessionView.module.css';
@@ -22,19 +23,27 @@ function isStageId(value: string | null): value is StageId {
 }
 
 export function SessionView(): React.JSX.Element {
-  const { data: loaded, error } = useLoad(selectSession);
+  const { data: loaded, error } = useLoad(selectSession, { refreshMs: REFRESH_MS });
   const session = loaded === null ? undefined : loaded.session;
   const data = useData();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [chosen, setChosen] = useState<StageId | null>(null);
 
-  // Stopping must always lead to the "after stop" screen, even if the record call fails.
+  const [stopFailed, setStopFailed] = useState(false);
+
+  // The "after stop" screen is only for a stop that was recorded. If recording fails the crew stays here and is told so,
+  // never shown a screen that says the session was saved as stopped for pain when it was not.
   const stopForPain = (): void => {
-    const go = (): void => {
-      void navigate('/stopped');
-    };
-    data.stopSessionForPain().then(go, go);
+    setStopFailed(false);
+    data.stopSessionForPain().then(
+      () => {
+        void navigate('/stopped');
+      },
+      () => {
+        setStopFailed(true);
+      },
+    );
   };
   const undo = useVoiceUndo(stopForPain);
 
@@ -69,7 +78,7 @@ export function SessionView(): React.JSX.Element {
                 <p className={styles.late}>
                   {session.plannedAt === null
                     ? copy.started(gmtClock(session.startedAt))
-                    : copy.late(gmtClock(session.startedAt), minutesSince(session.startedAt, new Date(session.plannedAt)), gmtClock(session.plannedAt))}
+                    : copy.late(gmtClock(session.startedAt), minutesBetween(session.plannedAt, session.startedAt), gmtClock(session.plannedAt))}
                 </p>
               )}
               <p className={styles.lede}>{copy.lede}</p>
@@ -79,6 +88,18 @@ export function SessionView(): React.JSX.Element {
               <small>{copy.stopPainHint}</small>
             </button>
           </div>
+          {stopFailed && (
+            <Alert
+              title={copy.stopNotRecorded.title}
+              action={
+                <Button variant="quiet" onClick={stopForPain}>
+                  {copy.stopNotRecorded.retry}
+                </Button>
+              }
+            >
+              {copy.stopNotRecorded.body}
+            </Alert>
+          )}
           {undo.remaining !== null && <VoiceUndoAlert remaining={undo.remaining} onKeepGoing={undo.cancel} onStopNow={stopForPain} />}
           <div className={styles.proc}>
             <div>

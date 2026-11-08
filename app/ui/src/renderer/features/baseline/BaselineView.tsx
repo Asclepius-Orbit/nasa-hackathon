@@ -1,7 +1,7 @@
 import { Meter } from '../../components/ui/Meter';
 import { Panel } from '../../components/ui/Panel';
 import type { DataSource } from '../../data/DataSource';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { LoadFailure } from '../../components/layout/NoMonitor';
 import { baseline, recordedHeading, referenceLine, sessionLine, sessionName } from '../../strings/baseline';
 import styles from './BaselineView.module.css';
@@ -10,7 +10,7 @@ const selectBaseline = (d: DataSource): ReturnType<DataSource['getBaseline']> =>
 
 /** The preflight reference: how many 1 g sessions are recorded and which reference version the assessments use. */
 export function BaselineView(): React.JSX.Element {
-  const { data, error } = useLoad(selectBaseline);
+  const { data, error } = useLoad(selectBaseline, { refreshMs: REFRESH_MS });
   return (
     <section aria-labelledby="baseline-title" data-testid="baseline-view">
       <h1 id="baseline-title">{baseline.title}</h1>

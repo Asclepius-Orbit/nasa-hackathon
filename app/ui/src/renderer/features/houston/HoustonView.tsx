@@ -1,5 +1,5 @@
 import { useAuth } from '../../auth/AuthProvider';
-import { Alert } from '../../components/ui/Alert';
+import { LoadFailure } from '../../components/layout/NoMonitor';
 import { Panel } from '../../components/ui/Panel';
 import type { DataSource } from '../../data/DataSource';
 import { useLoad } from '../../data/useLoad';
@@ -18,7 +18,7 @@ export function HoustonView(): React.JSX.Element {
   return (
     <section aria-labelledby="houston-title" data-testid="houston-view">
       <h1 id="houston-title">{houston.title}</h1>
-      {error !== null && <Alert variant="warning" role="alert">{houston.loadError}</Alert>}
+      {error !== null && <LoadFailure error={error} fallback={houston.loadError} />}
       {data !== null && (
         <>
           <p className={styles.lede}>{houston.lede(crewCode)}</p>

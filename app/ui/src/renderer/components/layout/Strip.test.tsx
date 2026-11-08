@@ -131,3 +131,21 @@ it('on a locked bridge the strip does not claim the monitor is down', async () =
   });
   expect(screen.queryByText('No connection to the monitor')).not.toBeInTheDocument();
 });
+
+it('shows a harness that has gone quiet as last seen, and does not present its battery as current', async () => {
+  const api = new FakeAsclepiusApi();
+  const strip = example<StripView>('ui-strip');
+  api.viewData.strip = { ...strip, harness: strip.harness && { ...strip.harness, stale: true, last_seen_at: '2026-11-03T07:15:00Z' } };
+  renderInWorld(<Strip />, { api, data: new RealDataSource(api.views) });
+  expect(await screen.findByText('Last seen 3 Nov 07:15 GMT')).toBeInTheDocument();
+  expect(screen.queryByText(/18 %/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/degraded/)).not.toBeInTheDocument();
+});
+
+it('writes only the time for a harness last seen today', async () => {
+  const api = new FakeAsclepiusApi();
+  const strip = example<StripView>('ui-strip');
+  api.viewData.strip = { ...strip, harness: strip.harness && { ...strip.harness, stale: true, last_seen_at: '2026-11-05T07:15:00Z' } };
+  renderInWorld(<Strip />, { api, data: new RealDataSource(api.views) });
+  expect(await screen.findByText('Last seen 07:15 GMT')).toBeInTheDocument();
+});

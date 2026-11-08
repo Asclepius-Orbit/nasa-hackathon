@@ -38,7 +38,7 @@ describe('strip', () => {
     expect(strip).toMatchObject({
       missionDay: 87,
       flightPhase: 'inflight',
-      harness: { id: 'wb-01', batteryPct: 64, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }], degraded: false },
+      harness: { id: 'wb-01', batteryPct: 64, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }], degraded: false, stale: false, lastSeenAt: '2026-11-05T13:39:00.000Z' },
       groundLink: { state: 'down', backInMin: 12 },
       lastContactMinAgo: 4,
       reportsDue: 1,
@@ -106,6 +106,7 @@ describe('today, report, session, baseline, oswestry, first day', () => {
     ]);
     expect(today.trust).toMatchObject({ confidencePct: 70, dataAvailable: 8, dataTotal: 10, assessedAt: '2026-11-05T12:58:00.000Z' });
     expect(today.lumbarLengthMm).toBe(2.1);
+    expect(today.lumbarMeasuredAt).toBe('2026-11-05T13:20:00.000Z');
     expect(today.sessionInProgress).toMatchObject({ protocolId: 'lat_pulldown_standing_v1', startedAt: '2026-11-05T13:38:00.000Z', totalReps: 10 });
     expect(today.alsoToday).toEqual(['TASK_DAILY_REPORT', 'TASK_ODI']);
   });

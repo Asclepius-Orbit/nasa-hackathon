@@ -1,6 +1,8 @@
 import type { DisplayLevel } from './common';
 import { levelLabel } from './common';
 
+const PLAN_COUNT_WORDS: Record<number, string> = { 1: 'one', 2: 'two' };
+
 /** Copy of the Today screen. Texts that come from the engine (meaning, plan, reasons) live in the data. */
 export const today = {
   title: 'Today',
@@ -28,8 +30,13 @@ export const today = {
     nodata: 'No data means nothing has been assessed. It does not mean everything is fine.',
   },
   todoNow: {
-    green: 'your usual routine and your daily report.',
-    amber: (plan: number): string => plan === 0 ? 'your daily report.' : `the ${plan === 2 ? 'two' : String(plan)} plan items below, and your daily report.`,
+    // The daily report is named only while it is still due today (TASK_DAILY_REPORT in also_today).
+    green: (dailyReportDue: boolean): string => (dailyReportDue ? 'your usual routine and your daily report.' : 'your usual routine.'),
+    amber: (plan: number, dailyReportDue: boolean): string => {
+      const items = plan === 0 ? null : `the ${PLAN_COUNT_WORDS[plan] ?? String(plan)} plan ${plan === 1 ? 'item' : 'items'} below`;
+      if (items === null) return dailyReportDue ? 'your daily report.' : 'nothing is listed in the plan yet.';
+      return dailyReportDue ? `${items}, and your daily report.` : `${items}.`;
+    },
     red: 'stop the protocol exercise and call the crew medical officer.',
     nodata: 'the things listed under Also today. Until something is measured there is no assessment.',
   },
@@ -61,6 +68,7 @@ export const spine = {
     `Side view of the spine. Lumbar length ${length} against the preflight profile. EMG over the latissimus dorsi on both sides, IMU at L3, stretch cord from L1 to L5.`,
   caption: 'Side view, back to the right. The cord measures length from L1 to L5; the curve comes from the IMU at L3.',
   noLength: 'No data',
+  measured: (day: string): string => `Lumbar length measured ${day}.`,
   cervical: 'Cervical',
   lumbar: 'Lumbar',
   emg: 'EMG',

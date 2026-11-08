@@ -17,11 +17,15 @@ it('describes the ground link, never hiding that it is down', () => {
   expect(groundLinkValue(null)).toBe('Not known');
 });
 it('describes the harness battery and its weak channels', () => {
-  const ok = { batteryPct: 64, degraded: false, weakStreams: [] };
-  expect(harnessValue({ ...ok, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }] })).toBe('64 %, EMG right latissimus stalled');
-  expect(harnessValue(ok)).toBe('64 %');
-  expect(harnessValue({ ...ok, batteryPct: null, degraded: true })).toBe('Battery not reported, degraded');
-  expect(harnessValue(null)).toBe('Not paired yet');
+  const ok = { batteryPct: 64, degraded: false, weakStreams: [], stale: false };
+  expect(harnessValue({ ...ok, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }] }, '09:58')).toBe('64 %, EMG right latissimus stalled');
+  expect(harnessValue(ok, '09:58')).toBe('64 %');
+  expect(harnessValue({ ...ok, batteryPct: null, degraded: true }, '09:58')).toBe('Battery not reported, degraded');
+  expect(harnessValue(null, '')).toBe('Not paired yet');
+});
+it('shows a stale harness as last seen, never its old battery, degraded flag or streams as current', () => {
+  const stale = { batteryPct: 18, degraded: true, weakStreams: [{ stream: 'stretch_lumbar', state: 'stalled' }], stale: true };
+  expect(harnessValue(stale, '3 Nov 09:58')).toBe('Last seen 3 Nov 09:58 GMT');
 });
 it('labels levels, with no-data explicit', () => {
   expect(levelLabel('amber')).toBe('Amber');

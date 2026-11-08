@@ -50,6 +50,59 @@ describe('Stop: pain', () => {
   });
 });
 
+describe('Stop: pain when the stop cannot be recorded', () => {
+  it('stays on the session, says it was not recorded and what to do, and never goes to /stopped', async () => {
+    const user = userEvent.setup();
+    const { data } = setup();
+    vi.spyOn(data, 'stopSessionForPain').mockRejectedValue(new Error('unavailable'));
+    await user.click(await screen.findByRole('button', { name: /Stop: pain/ }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The stop was not recorded.');
+    expect(alert).toHaveTextContent('Stop the exercise now and tell the crew medical officer. Press Urgent symptom to alert the flight surgeon.');
+    expect(screen.queryByTestId('where')).not.toBeInTheDocument();
+  });
+
+  it('lets the crew try again, and goes to /stopped once it is recorded', async () => {
+    const user = userEvent.setup();
+    const { data } = setup();
+    const spy = vi.spyOn(data, 'stopSessionForPain').mockRejectedValueOnce(new Error('unavailable'));
+    await user.click(await screen.findByRole('button', { name: /Stop: pain/ }));
+    await user.click(await screen.findByRole('button', { name: 'Try to record the stop again' }));
+    expect(await screen.findByTestId('where')).toHaveTextContent('/stopped');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('The stop was not recorded.')).not.toBeInTheDocument();
+  });
+
+  it('does the same when the voice countdown ends and the stop cannot be recorded', async () => {
+    const user = userEvent.setup();
+    const { clock, data } = setup();
+    vi.spyOn(data, 'stopSessionForPain').mockRejectedValue(new Error('unavailable'));
+    await user.click(await screen.findByRole('button', { name: 'Mock: hear “stop, pain”' }));
+    act(() => {
+      clock.advance(5000);
+    });
+    expect(await screen.findByText(/The stop was not recorded\./)).toBeInTheDocument();
+    expect(screen.queryByTestId('where')).not.toBeInTheDocument();
+  });
+
+  it('in real mode never navigates as if the stop had happened', async () => {
+    const user = userEvent.setup();
+    const api = new FakeAsclepiusApi();
+    api.viewData.today = example<TodayView>('ui-today.nodata');
+    api.viewData.sessions = { [SESSION_ID]: example<SessionPayload>('ui-session') };
+    renderInWorld(
+      <Routes>
+        <Route path="/session" element={<SessionView />} />
+        <Route path="/stopped" element={<Where />} />
+      </Routes>,
+      { api, data: new RealDataSource(api.views), route: '/session' },
+    );
+    await user.click(await screen.findByRole('button', { name: /Stop: pain/ }));
+    expect(await screen.findByText(/The stop was not recorded\./)).toBeInTheDocument();
+    expect(screen.queryByTestId('where')).not.toBeInTheDocument();
+  });
+});
+
 describe('voice undo', () => {
   it('counts down 5 s with the clock and then stops for pain', async () => {
     const user = userEvent.setup();
@@ -222,5 +275,26 @@ describe('with the backend views', () => {
     realSetup();
     expect(await screen.findByTestId('no-monitor')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Stop: pain/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('start against the planned time', () => {
+  const sessionPlannedAt = (planned_at: string): SessionPayload => ({ ...example<SessionPayload>('ui-session'), planned_at });
+  const withPlan = (planned_at: string): ReturnType<typeof renderInWorld> =>
+    realSetup({ today: example<TodayView>('ui-today.nodata'), session: sessionPlannedAt(planned_at) });
+
+  it('says how many minutes after the planned time it started', async () => {
+    withPlan('2026-11-13T09:55:00Z');
+    expect(await screen.findByText('Started 10:02 GMT, 7 min after the planned 09:55.')).toBeInTheDocument();
+  });
+
+  it('says how many minutes before the planned time it started', async () => {
+    withPlan('2026-11-13T10:10:00Z');
+    expect(await screen.findByText('Started 10:02 GMT, 7 min before the planned 10:10.')).toBeInTheDocument();
+  });
+
+  it('says it started at the planned time when the difference is under a minute', async () => {
+    withPlan('2026-11-13T10:02:10Z');
+    expect(await screen.findByText('Started 10:02 GMT, at the planned 10:02.')).toBeInTheDocument();
   });
 });

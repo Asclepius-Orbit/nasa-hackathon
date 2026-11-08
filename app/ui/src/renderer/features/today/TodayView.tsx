@@ -7,7 +7,7 @@ import { Collapsible } from '../../components/ui/Collapsible';
 import { useData } from '../../data/DataContext';
 import type { DataSource } from '../../data/DataSource';
 import type { TodayData } from '../../data/types';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { useNow } from '../../clock/Clock';
 import { LoadFailure } from '../../components/layout/NoMonitor';
 import { recommendationText, missingReasonText, reasonText, type PlanText } from '../../strings/codes';
@@ -17,10 +17,11 @@ import {
   inProgressLine,
   inProgressSince,
   minutesAgo,
+  spine,
   today as copy,
 } from '../../strings/today';
 import { useUrgent } from '../urgent/UrgentContext';
-import { gmtClock, minutesSince } from './gmt';
+import { gmtClock, gmtDay, isSameGmtDay, minutesSince } from './gmt';
 import { SpineFigure } from './SpineFigure';
 import styles from './TodayView.module.css';
 import { TodoRows } from './TodoRows';
@@ -76,7 +77,8 @@ function Verdict({ today, liveRep }: { today: TodayData; liveRep: number | null 
       : liveRep === null
         ? inProgressSince(gmtClock(running.startedAt), running.totalReps)
         : inProgressLine(gmtClock(running.startedAt), liveRep, running.totalReps);
-  const todoNow = today.level === 'amber' ? copy.todoNow.amber(plan.length) : copy.todoNow[today.level];
+  const reportDue = today.alsoToday.includes('TASK_DAILY_REPORT');
+  const todoNow = today.level === 'amber' ? copy.todoNow.amber(plan.length, reportDue) : today.level === 'green' ? copy.todoNow.green(reportDue) : copy.todoNow[today.level];
   return (
     <div className={styles.verdict}>
       <h1 id="today-title" className={styles.level} data-level={today.level}>
@@ -181,10 +183,17 @@ function Why({ today }: { today: TodayData }): React.JSX.Element {
   );
 }
 
+/** Which day the lumbar length was measured, but only when it is not today: an old measure must not pass for a fresh one. */
+function measuredNote(today: TodayData, now: Date): string | null {
+  const at = today.lumbarMeasuredAt;
+  return today.lumbarLengthMm === null || at === null || isSameGmtDay(at, now) ? null : spine.measured(gmtDay(at));
+}
+
 /** Today: the spine figure, the verdict with its plan, why, and what else is due. */
 export function TodayView(): React.JSX.Element {
-  const { data, error } = useLoad(selectToday);
+  const { data, error } = useLoad(selectToday, { refreshMs: REFRESH_MS });
   const liveRep = useLiveRep(data?.sessionInProgress != null);
+  const now = useNow();
   return (
     <section aria-labelledby="today-title" data-testid="today-view">
       {data === null ? (
@@ -194,7 +203,7 @@ export function TodayView(): React.JSX.Element {
         </>
       ) : (
         <div className={styles.today}>
-          <SpineFigure lumbarLengthMm={data.lumbarLengthMm} />
+          <SpineFigure lumbarLengthMm={data.lumbarLengthMm} measuredNote={measuredNote(data, now)} />
           <div>
             <Verdict today={data} liveRep={liveRep} />
             <Toggles />

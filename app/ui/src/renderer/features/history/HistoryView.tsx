@@ -5,7 +5,7 @@ import { Panel } from '../../components/ui/Panel';
 import { cx } from '../../components/ui/cx';
 import type { DataSource } from '../../data/DataSource';
 import type { DayLevel, DayRecord, HistoryData } from '../../data/types';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { levelLabel } from '../../strings/common';
 import { changeWhen, dayNote, daysSummary, history, showDayLabel } from '../../strings/history';
 import { LoadFailure } from '../../components/layout/NoMonitor';
@@ -114,7 +114,7 @@ function HistoryBody({ data }: { data: HistoryData }): React.JSX.Element {
 }
 
 export function HistoryView(): React.JSX.Element {
-  const { data, error } = useLoad(selectHistory);
+  const { data, error } = useLoad(selectHistory, { refreshMs: REFRESH_MS });
   return (
     <section aria-labelledby="history-title" data-testid="history-view">
       <h1 id="history-title">{history.title}</h1>

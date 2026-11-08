@@ -48,8 +48,7 @@ export function createViewsService({ auth, crew, client }: ViewsServiceOptions):
       return { ...view, crewFirstName };
     },
     async session(sessionId) {
-      await astronaut();
-      return client.session(sessionId);
+      return client.session(await astronaut(), sessionId);
     },
   };
 }

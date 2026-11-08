@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type { AsclepiusApi } from '../shared/api';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
+import { viewsCall } from '../shared/views-errors';
 
 const api: AsclepiusApi = Object.freeze({
   crew: Object.freeze({
@@ -23,14 +24,15 @@ const api: AsclepiusApi = Object.freeze({
     get: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
     update: (patch) => ipcRenderer.invoke(IPC_CHANNELS.settingsUpdate, patch),
   } satisfies AsclepiusApi['settings']),
+  // Every view call rejects with an Error whose message is exactly a ViewsErrorCode (see shared/views-errors).
   views: Object.freeze({
-    strip: () => ipcRenderer.invoke(IPC_CHANNELS.viewsStrip),
-    today: () => ipcRenderer.invoke(IPC_CHANNELS.viewsToday),
+    strip: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsStrip)),
+    today: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsToday)),
     // Always exactly one argument: the main process rejects a missing or extra one.
-    history: (range = {}) => ipcRenderer.invoke(IPC_CHANNELS.viewsHistory, range),
-    baseline: () => ipcRenderer.invoke(IPC_CHANNELS.viewsBaseline),
-    firstDay: () => ipcRenderer.invoke(IPC_CHANNELS.viewsFirstDay),
-    session: (sessionId) => ipcRenderer.invoke(IPC_CHANNELS.viewsSession, { sessionId }),
+    history: (range = {}) => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsHistory, range)),
+    baseline: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsBaseline)),
+    firstDay: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsFirstDay)),
+    session: (sessionId) => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsSession, { sessionId })),
   } satisfies AsclepiusApi['views']),
 });
 

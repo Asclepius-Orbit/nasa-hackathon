@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { LoadFailure } from '../../components/layout/NoMonitor';
 import pick from '../../components/ui/Pick.module.css';
 import type { DataSource } from '../../data/DataSource';
 import type { OdiItem } from '../../data/types';
@@ -47,7 +48,7 @@ export function OswestryView(): React.JSX.Element {
       <p className={form.lede}>
         {copy.lede} <span className={styles.pending}>{copy.pending}</span>
       </p>
-      {error !== null && <p role="alert">{copy.failed}</p>}
+      {error !== null && <LoadFailure error={error} fallback={copy.failed} />}
       {data === null && error === null && <p role="status">{copy.loading}</p>}
       {data !== null && (
         <>

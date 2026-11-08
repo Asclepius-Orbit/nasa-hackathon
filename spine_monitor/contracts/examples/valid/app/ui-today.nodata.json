@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "level": "nodata",
+  "assessment_id": null,
+  "assessed_at": null,
+  "recommendations": [],
+  "reasons": [],
+  "trust": null,
+  "lumbar_delta_mm": null,
+  "lumbar_measured_at": null,
+  "session_in_progress": {
+    "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+    "protocol_id": "lat_pulldown_standing_v1",
+    "started_at": "2026-11-13T10:02:31Z",
+    "total_reps": 10
+  },
+  "also_today": ["TASK_DAILY_REPORT", "TASK_ODI"]
+}

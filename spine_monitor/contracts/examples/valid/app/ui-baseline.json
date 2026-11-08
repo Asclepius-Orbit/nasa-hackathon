@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0.0",
+  "recorded": 2,
+  "required": 3,
+  "reference_version": 1,
+  "built_from_sessions": 2,
+  "sessions": [
+    {
+      "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1b01",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "status": "complete",
+      "offset_days": -30,
+      "date": "2026-10-16"
+    },
+    {
+      "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1b02",
+      "protocol_id": "lat_pulldown_standing_v1",
+      "status": "complete",
+      "offset_days": -23,
+      "date": "2026-10-23"
+    },
+    {
+      "session_id": null,
+      "protocol_id": "lat_pulldown_standing_v1",
+      "status": "planned",
+      "offset_days": -16,
+      "date": "2026-10-30"
+    }
+  ]
+}

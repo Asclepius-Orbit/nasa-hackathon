@@ -1,0 +1,20 @@
+{
+  "$schema": "./protocol-catalog.schema.json",
+  "catalog_version": "0.1.0",
+  "entries": [
+    {
+      "protocol_id": "lat_pulldown_standing_v1",
+      "band": { "color": "blue", "nominal_kg": 15 },
+      "total_reps": 10,
+      "rest_seconds": 120,
+      "fit_items": [{ "id": "skin" }, { "id": "emg" }, { "id": "imu" }, { "id": "cord" }]
+    },
+    {
+      "protocol_id": "spine_length_rest_v1",
+      "band": null,
+      "total_reps": null,
+      "rest_seconds": null,
+      "fit_items": [{ "id": "cord" }]
+    }
+  ]
+}

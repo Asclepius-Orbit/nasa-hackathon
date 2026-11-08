@@ -3,7 +3,7 @@ import { cx } from '../../components/ui/cx';
 import type { DayLevel, DayRecord } from '../../data/types';
 import { useSettings } from '../../settings/SettingsProvider';
 import { levelLabel } from '../../strings/common';
-import { dayHeading, deltaText, history, lengthGauge, painOfTen } from '../../strings/history';
+import { dayHeading, dayNote, deltaText, history, lengthGauge, painOfTen, reportLine, sessionLine } from '../../strings/history';
 import styles from './History.module.css';
 import { deltaBetween, spotPosition } from './scales';
 
@@ -46,8 +46,9 @@ export interface DayDetailProps {
   day: DayRecord;
   /** Previous day that has data, to compare with. */
   previous: DayRecord | null;
-  todayDay: number;
-  preflightRangeMm: { lo: number; hi: number };
+  todayDay: number | null;
+  /** `null` without a preflight reference: the gauge then shows the value alone. */
+  preflightRangeMm: { lo: number; hi: number } | null;
 }
 
 export function DayDetail({ day, previous, todayDay, preflightRangeMm }: DayDetailProps): React.JSX.Element {
@@ -61,8 +62,8 @@ export function DayDetail({ day, previous, todayDay, preflightRangeMm }: DayDeta
     <div className={styles.dayDetail} data-testid="day-detail" aria-live="polite">
       <div>
         <div className={styles.big}>
-          {dayHeading(day.day)}
-          {day.day === todayDay ? <span className={styles.todayNote}> {history.today}</span> : null}
+          {dayHeading(day)}
+          {day.day !== null && day.day === todayDay ? <span className={styles.todayNote}> {history.today}</span> : null}
         </div>
         <div className={cx(styles.lvl, styles.tag, LEVEL_CLASS[day.level])}>{noData ? <NoData /> : levelLabel(day.level)}</div>
       </div>
@@ -78,7 +79,7 @@ export function DayDetail({ day, previous, todayDay, preflightRangeMm }: DayDeta
                 <Spot value={day.lengthMm} lo={lengthGauge.lo} hi={lengthGauge.hi} band={preflightRangeMm} loLabel={formatLength(lengthGauge.lo)} hiLabel={formatLength(lengthGauge.hi)} />
                 {lengthDelta && previous ? (
                   <span className={styles.delta}>
-                    {deltaText(lengthDelta.direction, unsigned(formatLength(lengthDelta.amount)), previous.day)}
+                    {deltaText(lengthDelta.direction, unsigned(formatLength(lengthDelta.amount)), previous)}
                   </span>
                 ) : null}
               </>
@@ -93,18 +94,18 @@ export function DayDetail({ day, previous, todayDay, preflightRangeMm }: DayDeta
                 <b>{painOfTen(day.pain)}</b>
                 <Spot value={day.pain} lo={0} hi={10} band={null} loLabel="0" hiLabel="10" />
                 {painDelta && previous ? (
-                  <span className={styles.delta}>{deltaText(painDelta.direction, String(painDelta.amount), previous.day)}</span>
+                  <span className={styles.delta}>{deltaText(painDelta.direction, String(painDelta.amount), previous)}</span>
                 ) : null}
               </>
             )}
           </div>
           <div>
             {history.dailyReport}
-            <b>{day.report}</b>
+            <b>{reportLine(day.report)}</b>
           </div>
         </div>
         <p>
-          <b>{history.session}</b> {day.session}. {day.note}
+          <b>{history.session}</b> {sessionLine(day.session)}. {dayNote(day.level)}
         </p>
       </div>
     </div>

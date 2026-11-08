@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-today.schema.json",
+  "title": "TodayView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/views/today: the Today screen of the desktop UI, built from the latest assessment. Codes and data only (recommendation codes, feature ids, missing reasons, task codes); the UI writes the words. Without an assessment the level is 'nodata' and every assessment field is null or empty, never a reassuring default.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "level": { "$ref": "ui-common.schema.json#/$defs/day_level" },
+    "assessment_id": {
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/uuid" }, { "type": "null" }]
+    },
+    "assessed_at": {
+      "description": "as_of of the assessment.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    },
+    "recommendations": {
+      "description": "recommendations of the assessment, in order.",
+      "type": "array",
+      "items": { "$ref": "../common.schema.json#/$defs/recommendation_code" },
+      "uniqueItems": true
+    },
+    "reasons": {
+      "description": "drivers of the assessment, most influential first.",
+      "type": "array",
+      "items": {
+        "title": "TodayReason",
+        "type": "object",
+        "properties": {
+          "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+          "deviation_z": { "type": ["number", "null"] },
+          "contribution": { "type": ["number", "null"] }
+        },
+        "required": ["feature_id", "deviation_z", "contribution"],
+        "additionalProperties": false
+      }
+    },
+    "trust": {
+      "description": "How much to trust the level: confidence and completeness of the assessment. Null without an assessment.",
+      "oneOf": [
+        {
+          "title": "TrustFacts",
+          "type": "object",
+          "properties": {
+            "confidence": { "$ref": "../common.schema.json#/$defs/unit_interval" },
+            "data_available": {
+              "description": "Expected inputs that were available.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "data_total": {
+              "description": "Expected inputs; data_available is never above it.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing": {
+              "description": "completeness.missing of the assessment.",
+              "type": "array",
+              "items": {
+                "title": "TrustMissing",
+                "type": "object",
+                "properties": {
+                  "what": {
+                    "description": "A feature_id, a domain name, or one of: self_report, daily_context, baseline.",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": { "$ref": "../domain/assessment.schema.json#/properties/completeness/properties/missing/items/properties/reason" }
+                },
+                "required": ["what", "reason"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["confidence", "data_available", "data_total", "missing"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "lumbar_delta_mm": {
+      "description": "Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.",
+      "type": ["number", "null"]
+    },
+    "lumbar_measured_at": {
+      "description": "Instant of the measure behind lumbar_delta_mm: start of the window of the feature set (computed_at when it has none). Null exactly when lumbar_delta_mm is null.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    },
+    "session_in_progress": {
+      "description": "Session currently starting or running; null when there is none or the latest one is older than the staleness threshold (settings stale_session_hours), so a session that never ended is not shown as live.",
+      "oneOf": [
+        {
+          "title": "SessionInProgress",
+          "type": "object",
+          "properties": {
+            "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+            "started_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+            "total_reps": {
+              "description": "Planned repetitions; null for protocols without them.",
+              "type": ["integer", "null"],
+              "minimum": 1
+            }
+          },
+          "required": ["session_id", "protocol_id", "started_at", "total_reps"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "also_today": {
+      "description": "Other things still to do today.",
+      "type": "array",
+      "items": { "$ref": "ui-common.schema.json#/$defs/task_code" },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema_version", "level", "assessment_id", "assessed_at", "recommendations", "reasons", "trust",
+    "lumbar_delta_mm", "lumbar_measured_at", "session_in_progress", "also_today"
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "lumbar_delta_mm": { "type": "null" } }, "required": ["lumbar_delta_mm"] },
+      "then": { "properties": { "lumbar_measured_at": { "type": "null" } } },
+      "else": { "properties": { "lumbar_measured_at": { "type": "string" } } }
+    }
+  ],
+  "if": { "properties": { "level": { "const": "nodata" } }, "required": ["level"] },
+  "then": {
+    "properties": {
+      "assessment_id": { "type": "null" },
+      "assessed_at": { "type": "null" },
+      "trust": { "type": "null" },
+      "recommendations": { "maxItems": 0 },
+      "reasons": { "maxItems": 0 }
+    }
+  },
+  "else": {
+    "properties": {
+      "assessment_id": { "type": "string" },
+      "assessed_at": { "type": "string" },
+      "trust": { "type": "object" }
+    }
+  },
+  "additionalProperties": false
+}

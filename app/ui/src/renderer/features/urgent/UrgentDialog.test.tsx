@@ -169,3 +169,13 @@ it('keeps keyboard focus inside the dialog after Send disables itself, so Escape
   await userEvent.keyboard('{Escape}');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
+
+it('treats an unknown ground link as no link: the report is queued, never promised as sent', async () => {
+  const data = mockData();
+  const real = data.getStrip.bind(data);
+  data.getStrip = async () => ({ ...(await real()), groundLink: null });
+  renderInWorld(<Opener />, { withRouter: false, data });
+  const dialog = await openDialog();
+  expect(await within(dialog).findByText(/No link to the ground\./)).toBeInTheDocument();
+  expect(within(dialog).queryByText(/Link to the ground is up\./)).not.toBeInTheDocument();
+});

@@ -4,7 +4,9 @@ import { Button } from '../../components/ui/Button';
 import { Panel } from '../../components/ui/Panel';
 import { useData } from '../../data/DataContext';
 import type { RepState, SessionData } from '../../data/types';
-import { stages } from '../../strings/session';
+import { checkDetail, fitItemText, streamLabel } from '../../strings/codes';
+import { session as sessionCopy, stages } from '../../strings/session';
+import { gmtClock } from '../today/gmt';
 import styles from './SessionView.module.css';
 
 export type StageId = SessionData['steps'][number]['id'];
@@ -18,66 +20,65 @@ export function FitStage({ session }: { session: SessionData }): React.JSX.Eleme
       <h2>{copy.title}</h2>
       <p className={styles.stageLede}>{copy.lede}</p>
       <ul className={styles.rows}>
-        {session.fit.items.map((item) => (
-          <li key={item.id} className={styles.fitRow}>
-            <span className={styles.tick} aria-hidden="true">
-              ✓
-            </span>
-            <span>
-              <b>{item.label}</b> {item.detail}
-            </span>
-          </li>
-        ))}
+        {session.fitItems.map((id) => {
+          const item = fitItemText(id);
+          return (
+            <li key={id} className={styles.fitRow}>
+              <span className={styles.tick} aria-hidden="true">
+                ✓
+              </span>
+              <span>
+                <b>{item.label}</b> {item.detail}
+              </span>
+            </li>
+          );
+        })}
       </ul>
-      <p className={styles.doneNote}>{copy.done(session.fit.fittedGmt)}</p>
     </Panel>
   );
 }
 
 export function CheckStage({ session }: { session: SessionData }): React.JSX.Element {
   const copy = stages.check;
-  const { continuedWithoutGmt } = session.checks;
   return (
     <Panel className={styles.stage}>
       <h2>{copy.title}</h2>
       <p className={styles.stageLede}>{copy.lede}</p>
       <ul className={styles.rows}>
-        {session.checks.items.map((check) => (
-          <li key={check.sensor} className={styles.checkRow}>
+        {session.sensorChecks.map((check) => (
+          <li key={check.stream} className={styles.checkRow}>
             <span className={styles.badge} data-status={check.status}>
               {check.status === 'good' ? copy.good : copy.weak}
             </span>
-            <b>{check.sensor}</b>
-            <span className={styles.muted}>{check.detail}</span>
+            <b>{streamLabel(check.stream)}</b>
+            <span className={styles.muted}>{checkDetail(check.status, check.state)}</span>
           </li>
         ))}
       </ul>
+      {session.sensorChecks.length === 0 && <p className={styles.hint}>{copy.none}</p>}
       <div className={styles.actions}>
         <Button variant="quiet">{copy.again}</Button>
         <Button variant="quiet">{copy.without}</Button>
       </div>
       <p className={styles.hint}>{copy.hint}</p>
-      {continuedWithoutGmt !== null && <p className={styles.doneNote}>{copy.done(continuedWithoutGmt)}</p>}
     </Panel>
   );
 }
 
 export function CalibrateStage({ session }: { session: SessionData }): React.JSX.Element {
   const copy = stages.mvc;
-  const pulls = Array.from({ length: session.calibration.pulls }, (_, i) => i + 1);
+  const { calibration } = session;
   return (
     <Panel className={styles.stage}>
       <h2>{copy.title}</h2>
       <p className={styles.stageLede}>{copy.lede}</p>
-      <ol className={styles.rows}>
-        {pulls.map((n) => (
-          <li key={n} className={styles.trialRow}>
-            <b>{copy.pull(n)}</b>
-            <span className={styles.muted}>{copy.recorded}</span>
-          </li>
-        ))}
-      </ol>
-      <p className={styles.doneNote}>{copy.done(session.calibration.savedGmt, session.calibration.note)}</p>
+      <p className={styles.doneNote}>
+        {calibration === null
+          ? copy.notSent
+          : calibration.acked && calibration.ackedAt !== null
+            ? copy.saved(gmtClock(calibration.ackedAt))
+            : copy.waiting}
+      </p>
     </Panel>
   );
 }
@@ -85,34 +86,54 @@ export function CalibrateStage({ session }: { session: SessionData }): React.JSX
 /** Live rep counter fed by the DataSource (the harness IMU, 450 ms); unsubscribes on unmount. */
 export function RepsStage({ session }: { session: SessionData }): React.JSX.Element {
   const copy = stages.reps;
+  if (session.totalReps === null) {
+    return (
+      <Panel className={styles.stage}>
+        <p>{copy.noReps}</p>
+      </Panel>
+    );
+  }
+  return <CountedReps />;
+}
+
+function CountedReps(): React.JSX.Element {
+  const copy = stages.reps;
   const data = useData();
   const [state, setState] = useState<RepState | null>(null);
   useEffect(() => data.subscribeReps(setState), [data]);
+  // No state means no live signal (real mode until issue #61): say so instead of drawing a counter.
+  if (state === null) {
+    return (
+      <Panel className={styles.stage} aria-live="polite">
+        <p>{copy.noSignal}</p>
+      </Panel>
+    );
+  }
   return (
     <Panel className={styles.stage} aria-live="polite">
       <div className={styles.repLine}>
         <span className={styles.repCount}>
-          {state?.rep} <small>{copy.of(state?.total ?? session.totalReps)}</small>
+          {state.rep} <small>{copy.of(state.total)}</small>
         </span>
-        <span className={styles.phase}>{state?.phase === 'letting_up' ? copy.lettingUp : copy.pulling}</span>
+        <span className={styles.phase}>{state.phase === 'letting_up' ? copy.lettingUp : copy.pulling}</span>
       </div>
       <div
         role="progressbar"
         aria-label={copy.progress}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={state?.barPercent ?? 0}
+        aria-valuenow={state.barPercent}
         className={styles.bar}
       >
-        <span style={{ width: `${String(state?.barPercent ?? 0)}%` }} />
+        <span style={{ width: `${String(state.barPercent)}%` }} />
       </div>
       <dl className={styles.detect}>
         <dt>{copy.countingBy}</dt>
-        <dd>{session.countingBy}</dd>
+        <dd>{sessionCopy.countingBy}</dd>
         <dt>{copy.lastRep}</dt>
-        <dd>{state?.last ? copy.last(state.last.rep, state.last.seconds) : copy.noLast}</dd>
+        <dd>{state.last ? copy.last(state.last.rep, state.last.seconds) : copy.noLast}</dd>
         <dt>{copy.backup}</dt>
-        <dd>{session.backup}</dd>
+        <dd>{sessionCopy.backup}</dd>
       </dl>
       <div className={styles.minor}>
         <Button variant="quiet">{copy.artefact}</Button>
@@ -132,12 +153,16 @@ export function FinishStage({ session }: { session: SessionData }): React.JSX.El
     <Panel className={styles.stage}>
       <h2>{copy.title}</h2>
       <p className={styles.stageLede}>{copy.lede}</p>
-      <div className={styles.repLine}>
-        <span className={styles.repCount} data-size="small">
-          {formatRest(session.restSeconds)}
-        </span>
-        <span className={styles.phase}>{copy.resting}</span>
-      </div>
+      {session.restSeconds === null ? (
+        <p className={styles.hint}>{copy.noRest}</p>
+      ) : (
+        <div className={styles.repLine}>
+          <span className={styles.repCount} data-size="small">
+            {formatRest(session.restSeconds)}
+          </span>
+          <span className={styles.phase}>{copy.resting}</span>
+        </div>
+      )}
       <div className={styles.actions}>
         <Button disabled>{copy.finish}</Button>
       </div>

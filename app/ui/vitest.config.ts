@@ -29,6 +29,7 @@ export default defineConfig({
       },
       {
         plugins: [react()],
+      server: { fs: { allow: ['../..'] } },
         test: {
           name: 'renderer',
           environment: 'jsdom',

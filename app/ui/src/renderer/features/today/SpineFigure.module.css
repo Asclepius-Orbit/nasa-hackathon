@@ -16,3 +16,4 @@
 .muted { fill: var(--muted); }
 .value { fill: var(--action); font-weight: 700; }
 .legend { font-size: 14px; fill: var(--muted); }
+.figure figcaption .measured { display: block; margin-top: 4px; font-weight: 600; }

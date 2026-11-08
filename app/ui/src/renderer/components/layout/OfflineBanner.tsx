@@ -1,5 +1,5 @@
 import type { DataSource } from '../../data/DataSource';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { useOffline } from '../../offline/OfflineContext';
 import { banner } from '../../strings/common';
 import { Button } from '../ui/Button';
@@ -11,7 +11,7 @@ const selectStrip = (data: DataSource): ReturnType<DataSource['getStrip']> => da
 /** Shown while the data service cannot be reached: what happens to input, that Urgent still works, and when contact was last made. */
 export function OfflineBanner(): React.JSX.Element | null {
   const { offline, retry } = useOffline();
-  const { data } = useLoad(selectStrip);
+  const { data } = useLoad(selectStrip, { refreshMs: REFRESH_MS });
   if (!offline) return null;
   return (
     <div role="status" className={styles.banner}>

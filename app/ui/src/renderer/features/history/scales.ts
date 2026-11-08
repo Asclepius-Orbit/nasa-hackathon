@@ -14,10 +14,13 @@ const BAR_WIDTH = 20;
 const TICK_CLEARANCE = 110;
 const LENGTH_TOP_TICK_MM = 3;
 
+/** Mission day as text; a day without a launch date is named by its calendar date. */
+export const dayName = (d: Pick<DayRecord, 'day' | 'date'>): string => (d.day === null ? d.date : String(d.day));
+
 export interface Point {
   x: number;
   y: number;
-  day: number;
+  date: string;
 }
 export interface Gap {
   x: number;
@@ -34,13 +37,13 @@ export interface XTick {
 export interface LengthChart {
   segments: { points: Point[] }[];
   gaps: Gap[];
-  band: { y: number; height: number };
+  band: { y: number; height: number } | null;
   yTicks: { mm: number; y: number }[];
   xTicks: XTick[];
   baselineY: number;
 }
 export interface PainChart {
-  bars: { day: number; x: number; y: number; height: number; width: number }[];
+  bars: { date: string; x: number; y: number; height: number; width: number }[];
   gaps: Gap[];
   xTicks: XTick[];
   baselineY: number;
@@ -71,13 +74,15 @@ function runs(days: readonly DayRecord[], missing: (d: DayRecord) => boolean): [
 function gapsOf(days: readonly DayRecord[], missing: (d: DayRecord) => boolean): Gap[] {
   const slot = slotWidth(days.length);
   return runs(days, missing).map(([from, to]) => {
-    const first = days[from]?.day ?? 0;
-    const last = days[to]?.day ?? 0;
+    const first = dayName(days[from] ?? { day: 0, date: '' });
+    const last = dayName(days[to] ?? { day: 0, date: '' });
     const x = PLOT_LEFT + from * slot;
     const width = (to - from + 1) * slot;
-    return { x, width, label: first === last ? String(first) : `${String(first)} to ${String(last)}`, labelX: x + width / 2 };
+    return { x, width, label: first === last ? first : `${first} to ${last}`, labelX: x + width / 2 };
   });
 }
+
+const dayTick = (d: DayRecord | undefined): string => (d === undefined ? 'Day 0' : d.day === null ? d.date : `Day ${String(d.day)}`);
 
 function xTicksOf(days: readonly DayRecord[], gaps: readonly Gap[]): XTick[] {
   if (days.length === 0) return [];
@@ -85,7 +90,7 @@ function xTicksOf(days: readonly DayRecord[], gaps: readonly Gap[]): XTick[] {
   const picks = [...new Set([0, Math.floor(last / 2), last])];
   return picks
     .map((i): XTick => ({
-      label: `Day ${String(days[i]?.day ?? 0)}`,
+      label: dayTick(days[i]),
       x: i === 0 ? PLOT_LEFT : i === last ? PLOT_LEFT + PLOT_WIDTH : centreX(i, days.length),
       anchor: i === 0 ? 'start' : i === last ? 'end' : 'middle',
     }))
@@ -93,7 +98,7 @@ function xTicksOf(days: readonly DayRecord[], gaps: readonly Gap[]): XTick[] {
 }
 
 /** Lumbar length: one line segment per run of measured days; days with `null` are gaps, never joined or zeroed. */
-export function buildLengthChart(days: readonly DayRecord[], range: { lo: number; hi: number }): LengthChart {
+export function buildLengthChart(days: readonly DayRecord[], range: { lo: number; hi: number } | null): LengthChart {
   const segments: { points: Point[] }[] = [];
   let current: Point[] | null = null;
   days.forEach((d, i) => {
@@ -105,14 +110,14 @@ export function buildLengthChart(days: readonly DayRecord[], range: { lo: number
       current = [];
       segments.push({ points: current });
     }
-    current.push({ x: centreX(i, days.length), y: lengthY(d.lengthMm), day: d.day });
+    current.push({ x: centreX(i, days.length), y: lengthY(d.lengthMm), date: d.date });
   });
   const gaps = gapsOf(days, (d) => d.lengthMm === null);
   return {
     segments,
     gaps,
-    band: { y: lengthY(range.hi), height: lengthY(range.lo) - lengthY(range.hi) },
-    yTicks: [LENGTH_TOP_TICK_MM, range.hi, range.lo].map((mm) => ({ mm, y: lengthY(mm) })),
+    band: range === null ? null : { y: lengthY(range.hi), height: lengthY(range.lo) - lengthY(range.hi) },
+    yTicks: (range === null ? [LENGTH_TOP_TICK_MM, 0] : [LENGTH_TOP_TICK_MM, range.hi, range.lo]).map((mm) => ({ mm, y: lengthY(mm) })),
     xTicks: xTicksOf(days, gaps),
     baselineY: LENGTH_BOTTOM,
   };
@@ -123,7 +128,7 @@ export function buildPainChart(days: readonly DayRecord[]): PainChart {
   const bars = days.flatMap((d, i) =>
     d.pain === null
       ? []
-      : [{ day: d.day, x: centreX(i, days.length) - BAR_WIDTH / 2, y: PAIN_BASELINE - d.pain * PAIN_UNIT, height: d.pain * PAIN_UNIT, width: BAR_WIDTH }],
+      : [{ date: d.date, x: centreX(i, days.length) - BAR_WIDTH / 2, y: PAIN_BASELINE - d.pain * PAIN_UNIT, height: d.pain * PAIN_UNIT, width: BAR_WIDTH }],
   );
   const gaps = gapsOf(days, (d) => d.pain === null);
   return {
@@ -139,13 +144,13 @@ export const PAIN_PLOT = { top: PAIN_TOP, bottom: PAIN_BASELINE };
 export const LENGTH_PLOT = { top: PLOT_TOP, bottom: LENGTH_BOTTOM };
 
 /** Day-strip axis: the first day, every seventh day and the last one ("Today, 87" when it is today). */
-export function dayAxisTicks(days: readonly DayRecord[], todayDay: number): { label: string; percent: number; isToday: boolean }[] {
+export function dayAxisTicks(days: readonly DayRecord[], todayDay: number | null): { label: string; percent: number; isToday: boolean }[] {
   const last = days.length - 1;
   return days.flatMap((d, i) => {
     if (i % 7 !== 0 && i !== last) return [];
     if (i !== last && last - i < 3) return [];
-    const isToday = i === last && d.day === todayDay;
-    return [{ label: isToday ? `Today, ${String(d.day)}` : `Day ${String(d.day)}`, percent: ((i + 0.5) / days.length) * 100, isToday }];
+    const isToday = i === last && d.day !== null && d.day === todayDay;
+    return [{ label: isToday ? `Today, ${dayName(d)}` : dayTick(d), percent: ((i + 0.5) / days.length) * 100, isToday }];
   });
 }
 

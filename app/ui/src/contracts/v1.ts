@@ -461,6 +461,66 @@ export type Placement = (
   description?: string;
 };
 /**
+ * Something the astronaut still has to do. TASK_DAILY_REPORT: daily self-report. TASK_ODI: weekly Oswestry report. TASK_BASELINE_SESSION: a pre-flight reference session. TASK_SESSION: the planned exercise session.
+ */
+export type TaskCode = "TASK_DAILY_REPORT" | "TASK_ODI" | "TASK_BASELINE_SESSION" | "TASK_SESSION";
+/**
+ * Traffic-light level of a day or of today, or 'nodata' when there is no assessment. Never a green by default.
+ */
+export type DayLevel = "green" | "amber" | "red" | "nodata";
+/**
+ * Lifecycle of a session in the app: starting (start command sent), running (acked by the gateway), rejected (refused, timed out or bus down), ended, processing (features and assessment being computed), processed, processing_failed.
+ */
+export type SessionState =
+  "starting" | "running" | "rejected" | "ended" | "processing" | "processed" | "processing_failed";
+/**
+ * Id of a fit item of a protocol, as in catalog/protocol-catalog.json.
+ */
+export type FitItemId = string;
+/**
+ * Response of GET /ui/crew/{astronaut_id}/views/today: the Today screen of the desktop UI, built from the latest assessment. Codes and data only (recommendation codes, feature ids, missing reasons, task codes); the UI writes the words. Without an assessment the level is 'nodata' and every assessment field is null or empty, never a reassuring default.
+ */
+export type TodayView = {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  level: DayLevel;
+  assessment_id: string | null;
+  /**
+   * as_of of the assessment.
+   */
+  assessed_at: string | null;
+  /**
+   * recommendations of the assessment, in order.
+   */
+  recommendations: string[];
+  /**
+   * drivers of the assessment, most influential first.
+   */
+  reasons: TodayReason[];
+  /**
+   * How much to trust the level: confidence and completeness of the assessment. Null without an assessment.
+   */
+  trust: TrustFacts | null;
+  /**
+   * Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.
+   */
+  lumbar_delta_mm: number | null;
+  /**
+   * Instant of the measure behind lumbar_delta_mm: start of the window of the feature set (computed_at when it has none). Null exactly when lumbar_delta_mm is null.
+   */
+  lumbar_measured_at: string | null;
+  /**
+   * Session currently starting or running; null when there is none or the latest one is older than the staleness threshold (settings stale_session_hours), so a session that never ended is not shown as live.
+   */
+  session_in_progress: SessionInProgress | null;
+  /**
+   * Other things still to do today.
+   */
+  also_today: TaskCode[];
+};
+/**
  * A calibration is an entity with its own id and date; sessions and chunks reference it by calibration_id. Three kinds: stretch (cord rest resistance and resistance->length curve), emg_mvc (maximum voluntary contraction, to express EMG as %MVC and compare days/sessions despite electrode re-placement and skin changes) and imu (bias, configured ranges and mounting on the body).
  */
 export type Calibration = StretchCalibration | EmgMvcCalibration | ImuCalibration;
@@ -781,6 +841,13 @@ export interface ContractsV1 {
   "app/self-report-list"?: SelfReportList;
   "app/session-list"?: SessionList;
   "app/status"?: Status;
+  "app/ui-baseline"?: BaselineView;
+  "app/ui-common"?: UIViewDefinitions;
+  "app/ui-first-day"?: FirstDayView;
+  "app/ui-history"?: HistoryView;
+  "app/ui-session"?: SessionView;
+  "app/ui-strip"?: StripView;
+  "app/ui-today"?: TodayView;
   common?: CommonDefinitions;
   "domain/assessment"?: Assessment;
   "domain/astronaut-profile"?: AstronautProfile;
@@ -1454,6 +1521,384 @@ export interface DeviceStatus {
   }[];
 }
 /**
+ * Response of GET /ui/crew/{astronaut_id}/views/baseline: progress of the pre-flight reference sessions and of the baseline built from them, for the Baseline screen of the desktop UI.
+ */
+export interface BaselineView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Reference sessions already recorded.
+   */
+  recorded: number;
+  /**
+   * Reference sessions the baseline needs.
+   */
+  required: number;
+  /**
+   * version of the active baseline; null while none was built.
+   */
+  reference_version: number | null;
+  /**
+   * Number of sessions in built_from_session_ids of the active baseline; 0 while none was built.
+   */
+  built_from_sessions: number;
+  /**
+   * Reference sessions, recorded and planned, in date order.
+   */
+  sessions: BaselineViewSession[];
+}
+export interface BaselineViewSession {
+  /**
+   * Null for a planned session.
+   */
+  session_id: string | null;
+  /**
+   * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
+   */
+  protocol_id: string;
+  status: "complete" | "planned";
+  /**
+   * Days relative to launch: L-30 is -30.
+   */
+  offset_days: number;
+  /**
+   * Calendar date; null when it cannot be derived (no launch date).
+   */
+  date: string | null;
+}
+/**
+ * Building blocks shared by the UI view schemas (app/ui-*.schema.json). Nothing here is a message by itself. The views carry codes and data, never prose: the desktop UI writes the words. Absence is an explicit null or 'nodata', never a default.
+ */
+export interface UIViewDefinitions {
+  [k: string]: unknown | undefined;
+}
+/**
+ * Response of GET /ui/crew/{astronaut_id}/views/first-day: what is left to set up before the first assessment, for the first-day screen of the desktop UI. Carries no name of the astronaut: the desktop app adds it locally.
+ */
+export interface FirstDayView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Tasks still to do, in the order the UI shows them.
+   */
+  todo: TaskCode[];
+  baseline: BaselineView;
+}
+/**
+ * Response of GET /ui/crew/{astronaut_id}/views/history: one row per day of a window, for the History screen of the desktop UI. Days are ordered oldest first. A day without data has level 'nodata' and null values, never a green or a 0 by default.
+ */
+export interface HistoryView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Calendar date, ISO 8601.
+   */
+  from: string;
+  /**
+   * Calendar date, ISO 8601.
+   */
+  to: string;
+  /**
+   * Mission day of today; null without a launch date.
+   */
+  today_day: number | null;
+  /**
+   * Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.peak_elongation_mm baseline entry. Null without that entry.
+   */
+  preflight_range_mm: LengthRange | null;
+  days: HistoryDay[];
+}
+export interface LengthRange {
+  lo: number;
+  hi: number;
+}
+export interface HistoryDay {
+  /**
+   * Calendar date, ISO 8601.
+   */
+  date: string;
+  mission_day: number | null;
+  level: DayLevel;
+  /**
+   * Lumbar elongation of the day minus its baseline mean, in mm; null without data (never 0).
+   */
+  length_delta_mm: number | null;
+  /**
+   * pain_nrs of the daily self-report of the day; null without a report.
+   */
+  pain_nrs: number | null;
+  /**
+   * Session of the day; null when there was none.
+   */
+  session: HistoryDaySession | null;
+  /**
+   * Self-report of the day; null when there was none.
+   */
+  report: HistoryDayReport | null;
+}
+export interface HistoryDaySession {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  state: SessionState;
+  /**
+   * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
+   */
+  protocol_id: string;
+}
+export interface HistoryDayReport {
+  kind: "daily" | "weekly_odi" | "red_flag";
+  /**
+   * Red flags reported that day; empty when none.
+   *
+   * Items: Symptoms that suggest nerve involvement or an emergency. Any one of them escalates, regardless of the model.
+   */
+  red_flags: (
+    | "radiating_leg_pain"
+    | "numbness_or_tingling"
+    | "leg_weakness"
+    | "bladder_or_bowel_dysfunction"
+    | "saddle_numbness"
+    | "severe_night_pain"
+    | "fever_with_back_pain"
+    | "trauma_event"
+  )[];
+}
+/**
+ * Response of GET /ui/sessions/{session_id}/view: the guided session screen of the desktop UI. Protocol facts (band, reps, rest, fit items) come from catalog/protocol-catalog.json; the UI writes the instructions. Live repetitions are not part of this view.
+ */
+export interface SessionView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  state: SessionState;
+  /**
+   * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
+   */
+  protocol_id: string;
+  /**
+   * Band of the protocol; null when it uses none.
+   */
+  band: Band | null;
+  /**
+   * Repetitions of the protocol; null when it has none.
+   */
+  total_reps: number | null;
+  /**
+   * Rest of the protocol; null when it has none.
+   */
+  rest_seconds: number | null;
+  /**
+   * Ids of the fit items of the protocol, in order.
+   */
+  fit_items: FitItemId[];
+  /**
+   * started_at of the session; null before the gateway started it.
+   */
+  started_at: string | null;
+  /**
+   * The five steps of a guided session, always in this order: fit, check, mvc, reps, finish.
+   *
+   * @minItems 5
+   * @maxItems 5
+   */
+  steps: [SessionStep, SessionStep, SessionStep, SessionStep, SessionStep];
+  /**
+   * Latest check of each stream of the session.
+   */
+  sensor_checks: SensorCheck[];
+  /**
+   * Latest calibrate command of the session; null when none was sent.
+   */
+  calibration: SessionCalibration | null;
+  /**
+   * Band stretch at the start position. Reserved: always null for now.
+   */
+  stretched_cm: number | null;
+  /**
+   * When the session was planned. Reserved: always null for now.
+   */
+  planned_at: string | null;
+}
+/**
+ * Elastic band of a protocol, as in catalog/protocol-catalog.json.
+ */
+export interface Band {
+  color: string;
+  nominal_kg: number;
+}
+export interface SessionStep {
+  id: "fit" | "check" | "mvc" | "reps" | "finish";
+  status: "done" | "now" | "todo";
+}
+export interface SensorCheck {
+  /**
+   * Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.
+   */
+  stream: string;
+  status: "good" | "weak";
+  state: "active" | "stalled" | "disabled";
+}
+export interface SessionCalibration {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  command_id: string;
+  /**
+   * True when the gateway acknowledged the command as completed.
+   */
+  acked: boolean;
+  acked_at: string | null;
+}
+/**
+ * Response of GET /ui/crew/{astronaut_id}/views/strip: facts of the always-visible strip of the desktop UI (mission day, harness, ground link, reports due). Codes and data only; every unknown is an explicit null.
+ */
+export interface StripView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  mission: StripMission;
+  /**
+   * Last known status of the paired harness; null while no harness is paired or its last status is offline. A device whose last status is old is still listed, with stale true.
+   */
+  harness: StripHarness | null;
+  /**
+   * State of the link with the ground station. Reserved: always null until the ground link is modelled (issue #62).
+   */
+  ground_link: null;
+  /**
+   * Minutes since the last contact with the ground station; null when unknown (always null until issue #62).
+   */
+  last_contact_min_ago: number | null;
+  reports_due: ReportsDue;
+}
+/**
+ * Where the astronaut is in the mission, derived from launch_date and landing_date of the astronaut profile. Each field is null when it cannot be derived.
+ */
+export interface StripMission {
+  /**
+   * Mission day counted from the launch date (same numbering as mission_day of the daily context). Null without a launch date.
+   */
+  day: number | null;
+  /**
+   * Launch date of the astronaut profile; the UI measures mission elapsed time from it.
+   */
+  start: string | null;
+  phase: ("preflight" | "inflight" | "postflight") | null;
+}
+export interface StripHarness {
+  /**
+   * Wearable or simulator identifier, unique per physical device.
+   */
+  device_id: string;
+  /**
+   * Null when the device did not report it.
+   */
+  battery_pct: number | null;
+  /**
+   * Streams that are not sending (device-status stream state stalled or disabled). Empty when every stream is active.
+   */
+  weak_streams: WeakStream[];
+  /**
+   * True when the device status is degraded.
+   */
+  degraded: boolean;
+  /**
+   * True when the last device status is older than the app's staleness threshold (settings stale_device_hours): the other fields are then the last known ones, not the current state.
+   */
+  stale: boolean;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  last_seen_at: string;
+}
+export interface WeakStream {
+  /**
+   * Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.
+   */
+  stream: string;
+  state: "stalled" | "disabled";
+}
+/**
+ * Self-reports still due today.
+ */
+export interface ReportsDue {
+  daily: boolean;
+  weekly_odi: boolean;
+}
+export interface TodayReason {
+  /**
+   * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
+   */
+  feature_id: string;
+  deviation_z: number | null;
+  contribution: number | null;
+}
+export interface TrustFacts {
+  /**
+   * Number in [0, 1].
+   */
+  confidence: number;
+  /**
+   * Expected inputs that were available.
+   */
+  data_available: number;
+  /**
+   * Expected inputs; data_available is never above it.
+   */
+  data_total: number;
+  /**
+   * completeness.missing of the assessment.
+   */
+  missing: TrustMissing[];
+}
+export interface TrustMissing {
+  /**
+   * A feature_id, a domain name, or one of: self_report, daily_context, baseline.
+   */
+  what: string;
+  reason: "no_data" | "low_quality" | "no_baseline" | "stale" | "sensor_offline" | "signal_not_raw";
+}
+export interface SessionInProgress {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  /**
+   * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
+   */
+  protocol_id: string;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  started_at: string;
+  /**
+   * Planned repetitions; null for protocols without them.
+   */
+  total_reps: number | null;
+}
+/**
  * Shared building blocks for every Asclepius Orbit contract. Nothing here is a message by itself: other schemas $ref these definitions. Canonical units are fixed per channel type and never converted on reception: g (standard gravity), deg/s, mV, ohm, mm, cm, kg, Hz, ms, s.
  */
 export interface CommonDefinitions {
@@ -1487,6 +1932,14 @@ export interface AstronautProfile {
    * Optional, free text, only for how the UI addresses the person. Never used by the engine.
    */
   gender_identity?: string;
+  /**
+   * Launch date of the current mission; the mission day and phase are derived from it. Null or absent when not planned yet.
+   */
+  launch_date?: string | null;
+  /**
+   * Landing date of the current mission; postflight starts on it. Null or absent while not known.
+   */
+  landing_date?: string | null;
   anthropometry: {
     height_standing_cm: number;
     /**

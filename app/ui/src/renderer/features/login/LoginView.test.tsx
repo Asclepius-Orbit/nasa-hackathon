@@ -198,3 +198,25 @@ describe('LoginView', () => {
     });
   });
 });
+
+describe('LoginView without a launch date or ground link', () => {
+  it('shows the time without a mission day and the ground link as not known', async () => {
+    const api = new FakeAsclepiusApi();
+    const world = setup(api);
+    world.data.getStrip = () =>
+      Promise.resolve({
+      missionDay: null,
+      missionStart: null,
+      flightPhase: null,
+      harness: null,
+      groundLink: null,
+      lastContactMinAgo: null,
+      reportsDue: 0,
+    });
+    world.unmount();
+    renderInWorld(<LoginView />, { api, route: '/login', signedIn: false, data: world.data });
+    expect(await screen.findByText('13:40')).toBeInTheDocument();
+    expect(screen.queryByText(/mission day/)).not.toBeInTheDocument();
+    expect(screen.getByText('Not known')).toBeInTheDocument();
+  });
+});

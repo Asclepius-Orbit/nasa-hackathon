@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "level": "amber",
+  "assessment_id": "a55e55e0-0000-4000-8000-0000000000a1",
+  "assessed_at": "2027-02-09T09:00:00Z",
+  "recommendations": ["REC_LUMBAR_STAB_01", "REC_INCREASE_ARED"],
+  "reasons": [
+    { "feature_id": "stretch.lumbar.peak_elongation_mm", "deviation_z": 2.4, "contribution": 0.31 },
+    { "feature_id": "symptoms.pain_nrs_7d_mean", "deviation_z": 1.8, "contribution": 0.18 }
+  ],
+  "trust": {
+    "confidence": 0.74,
+    "data_available": 5,
+    "data_total": 6,
+    "missing": [{ "what": "emg.latissimus_dorsi.right.median_freq_hz", "reason": "sensor_offline" }]
+  },
+  "lumbar_delta_mm": 6.4,
+  "lumbar_measured_at": "2027-02-09T08:00:00Z",
+  "session_in_progress": null,
+  "also_today": ["TASK_DAILY_REPORT"]
+}

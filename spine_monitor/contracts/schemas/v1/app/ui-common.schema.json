@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-common.schema.json",
+  "title": "UI view definitions",
+  "description": "Building blocks shared by the UI view schemas (app/ui-*.schema.json). Nothing here is a message by itself. The views carry codes and data, never prose: the desktop UI writes the words. Absence is an explicit null or 'nodata', never a default.",
+  "$defs": {
+    "day_level": {
+      "title": "DayLevel",
+      "description": "Traffic-light level of a day or of today, or 'nodata' when there is no assessment. Never a green by default.",
+      "type": "string",
+      "enum": ["green", "amber", "red", "nodata"]
+    },
+    "task_code": {
+      "title": "TaskCode",
+      "description": "Something the astronaut still has to do. TASK_DAILY_REPORT: daily self-report. TASK_ODI: weekly Oswestry report. TASK_BASELINE_SESSION: a pre-flight reference session. TASK_SESSION: the planned exercise session.",
+      "type": "string",
+      "enum": ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION", "TASK_SESSION"]
+    },
+    "session_state": {
+      "title": "SessionState",
+      "description": "Lifecycle of a session in the app: starting (start command sent), running (acked by the gateway), rejected (refused, timed out or bus down), ended, processing (features and assessment being computed), processed, processing_failed.",
+      "type": "string",
+      "enum": ["starting", "running", "rejected", "ended", "processing", "processed", "processing_failed"]
+    },
+    "band": {
+      "title": "Band",
+      "description": "Elastic band of a protocol, as in catalog/protocol-catalog.json.",
+      "type": "object",
+      "properties": {
+        "color": { "type": "string", "pattern": "^[a-z][a-z_]{0,31}$" },
+        "nominal_kg": { "type": "number", "minimum": 0 }
+      },
+      "required": ["color", "nominal_kg"],
+      "additionalProperties": false
+    },
+    "fit_item_id": {
+      "title": "FitItemId",
+      "description": "Id of a fit item of a protocol, as in catalog/protocol-catalog.json.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$"
+    }
+  }
+}

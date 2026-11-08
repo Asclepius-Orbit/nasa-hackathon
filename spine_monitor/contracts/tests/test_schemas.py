@@ -197,6 +197,68 @@ MUTATIONS = [
     ("app/self-report-list", "limit not an integer", lambda d: d.update(limit=10.5)),
     ("app/error.not-found", "unknown problem type", lambda d: d.update(type="teapot")),
     ("app/error.not-found", "error status below 400", lambda d: d.update(status=200)),
+    ("domain/astronaut-profile", "launch date that is not a date", lambda d: d.update(launch_date="L-30")),
+    ("domain/astronaut-profile", "landing date with a time", lambda d: d.update(landing_date="2027-05-20T10:00:00Z")),
+    # UI views: codes and data only, absence is null or 'nodata', never omitted or defaulted.
+    ("app/ui-strip", "mission omitted instead of nulls", lambda d: d.pop("mission")),
+    ("app/ui-strip", "unknown mission phase", lambda d: d["mission"].update(phase="cruise")),
+    ("app/ui-strip", "mission day omitted instead of null", lambda d: d["mission"].pop("day")),
+    ("app/ui-strip", "battery above 100", lambda d: d["harness"].update(battery_pct=101)),
+    ("app/ui-strip", "active stream listed as weak", lambda d: d["harness"]["weak_streams"][0].update(state="active")),
+    ("app/ui-strip", "prose note instead of codes", lambda d: d["harness"].update(note="EMG right weak")),
+    ("app/ui-strip", "ground link omitted instead of null", lambda d: d.pop("ground_link")),
+    ("app/ui-strip", "negative minutes since contact", lambda d: d.update(last_contact_min_ago=-1)),
+    ("app/ui-strip", "reports due as a count", lambda d: d.update(reports_due=1)),
+    ("app/ui-strip", "harness without stale flag", lambda d: d["harness"].pop("stale")),
+    ("app/ui-strip", "harness stale as a string", lambda d: d["harness"].update(stale="no")),
+    ("app/ui-strip", "harness without last seen instant", lambda d: d["harness"].pop("last_seen_at")),
+    ("app/ui-strip", "harness last seen without offset", lambda d: d["harness"].update(last_seen_at="2026-11-13T10:00:00")),
+    ("app/ui-strip.unpaired", "harness omitted instead of null", lambda d: d.pop("harness")),
+    ("app/ui-today", "unknown level", lambda d: d.update(level="yellow")),
+    ("app/ui-today", "prose recommendation", lambda d: d.update(recommendations=["Do the stabilisation set"])),
+    ("app/ui-today", "reason without feature id", lambda d: d["reasons"][0].pop("feature_id")),
+    ("app/ui-today", "confidence above 1", lambda d: d["trust"].update(confidence=1.2)),
+    ("app/ui-today", "unknown missing reason", lambda d: d["trust"]["missing"][0].update(reason="forgot")),
+    ("app/ui-today", "unknown task code", lambda d: d.update(also_today=["TASK_DANCE"])),
+    ("app/ui-today", "assessed level without assessment id", lambda d: d.update(assessment_id=None)),
+    ("app/ui-today", "assessed level without trust facts", lambda d: d.update(trust=None)),
+    ("app/ui-today", "lumbar delta omitted instead of null", lambda d: d.pop("lumbar_delta_mm")),
+    ("app/ui-today", "lumbar measured_at omitted instead of null", lambda d: d.pop("lumbar_measured_at")),
+    ("app/ui-today", "lumbar delta without its measure instant", lambda d: d.update(lumbar_measured_at=None)),
+    ("app/ui-today", "measure instant without a lumbar delta", lambda d: d.update(lumbar_delta_mm=None)),
+    ("app/ui-today", "measure instant without offset", lambda d: d.update(lumbar_measured_at="2027-02-09T08:00:00")),
+    ("app/ui-today.nodata", "measure instant with a null lumbar delta", lambda d: d.update(lumbar_measured_at="2026-11-13T09:00:00Z")),
+    ("app/ui-today.nodata", "nodata with an assessment id", lambda d: d.update(assessment_id="a55e55e0-0000-4000-8000-0000000000a1")),
+    ("app/ui-today.nodata", "nodata with trust facts", lambda d: d.update(trust={"confidence": 1, "data_available": 0, "data_total": 0, "missing": []})),
+    ("app/ui-today.nodata", "nodata with recommendations", lambda d: d.update(recommendations=["REC_LUMBAR_STAB_01"])),
+    ("app/ui-today.nodata", "session in progress without started_at", lambda d: d["session_in_progress"].pop("started_at")),
+    ("app/ui-history", "window end that is a timestamp", lambda d: d.update(to="2027-02-09T00:00:00Z")),
+    ("app/ui-history", "day level green by default", lambda d: d["days"][0].pop("level")),
+    ("app/ui-history", "pain above 10", lambda d: d["days"][0].update(pain_nrs=11)),
+    ("app/ui-history", "length omitted instead of null", lambda d: d["days"][0].pop("length_delta_mm")),
+    ("app/ui-history", "unknown session state", lambda d: d["days"][1]["session"].update(state="paused")),
+    ("app/ui-history", "unknown report kind", lambda d: d["days"][1]["report"].update(kind="monthly")),
+    ("app/ui-history", "unknown red flag", lambda d: d["days"][1]["report"].update(red_flags=["sad"])),
+    ("app/ui-history", "range without upper bound", lambda d: d["preflight_range_mm"].pop("hi")),
+    ("app/ui-baseline", "zero sessions required", lambda d: d.update(required=0)),
+    ("app/ui-baseline", "reference version zero", lambda d: d.update(reference_version=0)),
+    ("app/ui-baseline", "unknown session status", lambda d: d["sessions"][0].update(status="skipped")),
+    ("app/ui-baseline", "complete session without id", lambda d: d["sessions"][0].update(session_id=None)),
+    ("app/ui-baseline", "offset as a label", lambda d: d["sessions"][0].update(offset_days="L-30")),
+    ("app/ui-first-day", "unknown task code", lambda d: d.update(todo=["TASK_PROFILE_NAME"])),
+    ("app/ui-first-day", "crew name in the view", lambda d: d.update(crew_first_name="Ana")),
+    ("app/ui-first-day", "baseline progress omitted", lambda d: d.pop("baseline")),
+    ("app/ui-session", "astronaut id omitted", lambda d: d.pop("astronaut_id")),
+    ("app/ui-session", "astronaut id that is not a pseudonym", lambda d: d.update(astronaut_id="Ana")),
+    ("app/ui-session", "four steps", lambda d: d.update(steps=d["steps"][:4])),
+    ("app/ui-session", "steps out of order", lambda d: d.update(steps=[d["steps"][1], d["steps"][0], *d["steps"][2:]])),
+    ("app/ui-session", "unknown step status", lambda d: d["steps"][0].update(status="skipped")),
+    ("app/ui-session", "unknown sensor check status", lambda d: d["sensor_checks"][0].update(status="ok")),
+    ("app/ui-session", "unknown stream state", lambda d: d["sensor_checks"][0].update(state="sleeping")),
+    ("app/ui-session", "band without load", lambda d: d["band"].pop("nominal_kg")),
+    ("app/ui-session", "fit item that is prose", lambda d: d.update(fit_items=["Clean the skin"])),
+    ("app/ui-session", "unacked calibration with an ack time", lambda d: d["calibration"].update(acked=False)),
+    ("app/ui-session", "unknown session state", lambda d: d.update(state="paused")),
 ]
 
 
@@ -216,6 +278,16 @@ def test_feature_set_accepts_calibration_expired_as_skip_reason(validator_for):
     assert validator_for("domain/feature-set").is_valid(document)
     document["skipped"][-1]["reason"] = "calibration_stale"
     assert not validator_for("domain/feature-set").is_valid(document)
+
+
+def test_astronaut_profile_accepts_optional_mission_dates(validator_for):
+    # launch/landing dates are optional and nullable: profiles written before they existed stay valid.
+    validator = validator_for("domain/astronaut-profile")
+    document = load_json(EXAMPLES_DIR / "valid" / "domain" / "astronaut-profile.json")
+    assert "launch_date" not in document and "landing_date" not in document
+    assert validator.is_valid(document)
+    assert validator.is_valid(document | {"launch_date": "2026-12-01", "landing_date": "2027-05-20"})
+    assert validator.is_valid(document | {"launch_date": None, "landing_date": None})
 
 
 def test_spine_check_needs_no_declared_load(validator_for):
@@ -312,10 +384,72 @@ def test_session_streams_and_calibrations_are_consistent():
     assert chunk_streams == {stream["stream_id"] for stream in session["streams"]}
 
 
+def test_ui_views_are_derived_from_the_standalone_examples():
+    # The views carry codes and data taken from the domain objects, never a reworded copy.
+    assessment = valid_example("domain/assessment.amber")
+    today = valid_example("app/ui-today")
+    assert today["level"] == assessment["level"]
+    assert today["assessment_id"] == assessment["assessment_id"]
+    assert today["assessed_at"] == assessment["as_of"]
+    assert today["recommendations"] == assessment["recommendations"]
+    assert today["reasons"] == [
+        {"feature_id": d["feature_id"], "deviation_z": d.get("deviation_z"), "contribution": d["contribution"]} for d in assessment["drivers"]
+    ]
+    assert today["trust"]["confidence"] == assessment["confidence"]
+    assert today["trust"]["missing"] == assessment["completeness"]["missing"]
+    assert 0 <= today["trust"]["data_available"] <= today["trust"]["data_total"]
+
+    device = valid_example("telemetry/device-status.degraded")
+    strip = valid_example("app/ui-strip")
+    assert strip["harness"]["device_id"] == device["device_id"]
+    assert strip["harness"]["battery_pct"] == device["battery_pct"]
+    assert strip["harness"]["degraded"] == (device["status"] == "degraded")
+    assert strip["harness"]["weak_streams"] == [
+        {"stream": s["stream_id"], "state": s["state"]} for s in device["streams"] if s["state"] in ("stalled", "disabled")
+    ]
+
+    assert valid_example("app/ui-first-day")["baseline"] == valid_example("app/ui-baseline")
+
+
+def test_ui_nodata_views_carry_no_assessment():
+    today = valid_example("app/ui-today.nodata")
+    assert today["level"] == "nodata"
+    assert today["assessment_id"] is None and today["trust"] is None
+    assert today["recommendations"] == [] and today["reasons"] == []
+    assert today["lumbar_delta_mm"] is None
+
+
+def test_ui_history_days_are_ordered_and_inside_the_window():
+    for name in ("app/ui-history", "app/ui-history.empty"):
+        history = valid_example(name)
+        dates = [day["date"] for day in history["days"]]
+        assert dates == sorted(dates), name
+        assert all(history["from"] <= d <= history["to"] for d in dates), name
+        range_mm = history["preflight_range_mm"]
+        assert range_mm is None or range_mm["lo"] <= range_mm["hi"], name
+
+
+def test_ui_baseline_counts_are_consistent():
+    for name in ("app/ui-baseline", "app/ui-baseline.empty"):
+        baseline = valid_example(name)
+        assert baseline["recorded"] == sum(s["status"] == "complete" for s in baseline["sessions"]), name
+        assert (baseline["reference_version"] is None) == (baseline["built_from_sessions"] == 0), name
+
+
+# Schemas that only hold shared $defs; they are never a message by themselves.
+DEFINITIONS_ONLY = {"common.schema.json", "app/ui-common.schema.json"}
+
+
 def test_every_schema_has_a_valid_example():
     covered = {schema_name(path, "valid") for path in example_files("valid")}
-    missing = [rel for rel in SCHEMA_IDS if rel.removesuffix(".schema.json") not in covered and rel != "common.schema.json"]
+    missing = [rel for rel in SCHEMA_IDS if rel.removesuffix(".schema.json") not in covered and rel not in DEFINITIONS_ONLY]
     assert not missing, f"no valid example for: {missing}"
+
+
+def test_definitions_only_schemas_have_no_root_type():
+    for rel in DEFINITIONS_ONLY:
+        schema = load_json(SCHEMAS_DIR / rel)
+        assert "$defs" in schema and not {"type", "oneOf", "anyOf", "allOf", "properties"} & schema.keys(), rel
 
 
 # ---- semantic checks the schema language cannot express ---------------------

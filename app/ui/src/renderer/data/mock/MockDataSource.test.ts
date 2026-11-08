@@ -37,13 +37,13 @@ describe('strip', () => {
     const strip = await data.getStrip();
     expect(strip).toMatchObject({
       missionDay: 87,
-      flightPhase: 'In flight, microgravity',
-      harness: { id: 'wb-01', batteryPct: 64, note: 'EMG right weak' },
+      flightPhase: 'inflight',
+      harness: { id: 'wb-01', batteryPct: 64, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }], degraded: false, stale: false, lastSeenAt: '2026-11-05T13:39:00.000Z' },
       groundLink: { state: 'down', backInMin: 12 },
       lastContactMinAgo: 4,
       reportsDue: 1,
     });
-    expect(strip.missionStart).toBe('2026-08-11T00:00:00.000Z');
+    expect(strip.missionStart).toBe('2026-08-11');
   });
 });
 
@@ -72,9 +72,8 @@ describe('history', () => {
     for (const d of empty) {
       expect(d.lengthMm).toBeNull();
       expect(d.pain).toBeNull();
-      expect(d.report).toBe('Not done');
-      expect(d.session).toBe('None');
-      expect(d.note).toBe('No session and no report: not assessed. No data is not the same as fine.');
+      expect(d.report).toBeNull();
+      expect(d.session).toBeNull();
     }
   });
 
@@ -88,12 +87,10 @@ describe('history', () => {
     expect(days.find((d) => d.day === 71)?.pain).toBe(2);
     expect(days.find((d) => d.day === 79)?.pain).toBe(3);
     expect(days.find((d) => d.day === 87)?.pain).toBe(4);
-    expect(days.find((d) => d.day === 59)?.session).toBe('Standing lat pulldown, complete');
-    expect(days.find((d) => d.day === 60)?.session).toBe('Spine check, complete');
-    expect(days.find((d) => d.day === 83)?.note).toBe('Lumbar length above your reference for the first time.');
-    expect(days.find((d) => d.day === 84)?.note).toBe('Lumbar length above your reference; 7-day pain mean steady.');
-    expect(days.find((d) => d.day === 86)?.note).toBe('Lumbar length above your reference; 7-day pain mean rising.');
-    expect(days.find((d) => d.day === 70)?.note).toBe('Everything inside your reference.');
+    expect(days.find((d) => d.day === 59)?.session).toMatchObject({ protocolId: 'lat_pulldown_standing_v1', state: 'processed' });
+    expect(days.find((d) => d.day === 60)?.session).toMatchObject({ protocolId: 'spine_length_rest_v1' });
+    expect(days.find((d) => d.day === 87)).toMatchObject({ date: '2026-11-05', report: { kind: 'daily', redFlags: [] } });
+    expect(days.find((d) => d.day === 58)?.date).toBe('2026-10-07');
   });
 });
 
@@ -101,33 +98,36 @@ describe('today, report, session, baseline, oswestry, first day', () => {
   it('gives the amber verdict with its plan, reasons and trust numbers', async () => {
     const today = await data.getToday();
     expect(today.level).toBe('amber');
-    expect(today.plan.map((p) => p.recommendation)).toEqual(['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01']);
-    expect(today.reasons.map((r) => r.label)).toEqual(['Lumbar length', 'Lumbar curve', 'Pain, 7-day mean']);
-    expect(today.trust).toMatchObject({ confidencePct: 70, dataAvailable: 8, dataTotal: 10, assessedMinAgo: 42 });
+    expect(today.recommendations).toEqual(['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01']);
+    expect(today.reasons.map((r) => r.featureId)).toEqual([
+      'stretch.lumbar.peak_elongation_mm',
+      'imu.l3.sagittal.rom_deg',
+      'symptoms.pain_nrs_7d_mean',
+    ]);
+    expect(today.trust).toMatchObject({ confidencePct: 70, dataAvailable: 8, dataTotal: 10, assessedAt: '2026-11-05T12:58:00.000Z' });
     expect(today.lumbarLengthMm).toBe(2.1);
-    expect(today.sessionInProgress).toEqual({ title: 'Standing lat pulldown', sinceGmt: '13:38', totalReps: 10 });
-    expect(today.alsoToday.map((t) => t.id)).toEqual(['daily-report', 'oswestry']);
+    expect(today.lumbarMeasuredAt).toBe('2026-11-05T13:20:00.000Z');
+    expect(today.sessionInProgress).toMatchObject({ protocolId: 'lat_pulldown_standing_v1', startedAt: '2026-11-05T13:38:00.000Z', totalReps: 10 });
+    expect(today.alsoToday).toEqual(['TASK_DAILY_REPORT', 'TASK_ODI']);
   });
 
   it('gives the session protocol', async () => {
     const s = await data.getSession();
     expect(s).toMatchObject({
-      title: 'Standing lat pulldown with band',
+      protocolId: 'lat_pulldown_standing_v1',
       band: { color: 'blue', nominalKg: 15 },
-      stretchedCm: 40,
+      stretchedCm: null,
       totalReps: 10,
-      startedGmt: '13:38',
-      plannedGmt: '14:00',
-      minutesBeforePlan: 22,
+      plannedAt: null,
     });
-    expect(s.steps.map((x) => x.status)).toEqual(['done', 'done', 'done', 'now', 'todo']);
-    expect(s.checks.items.find((c) => c.status === 'weak')?.sensor).toBe('EMG right latissimus');
+    expect(s?.steps.map((x) => x.status)).toEqual(['done', 'done', 'done', 'now', 'todo']);
+    expect(s?.sensorChecks.find((c) => c.status === 'weak')?.stream).toBe('emg_lat_right');
   });
 
   it('gives the baseline, 2 of 3', async () => {
     const b = await data.getBaseline();
     expect(b).toMatchObject({ recorded: 2, required: 3, referenceVersion: 2, builtFromSessions: 2 });
-    expect(b.sessions.map((s) => s.when)).toEqual(['L-30', 'L-23', 'L-16']);
+    expect(b.sessions.map((s) => s.offsetDays)).toEqual([-30, -23, -16]);
     expect(b.sessions.map((s) => s.status)).toEqual(['complete', 'complete', 'planned']);
   });
 
@@ -150,7 +150,8 @@ describe('today, report, session, baseline, oswestry, first day', () => {
   it('gives the first-day checklist', async () => {
     const f = await data.getFirstDay();
     expect(f.crewFirstName).toBe('Elena');
-    expect(f.todo).toHaveLength(3);
+    expect(f.todo).toEqual(['TASK_BASELINE_SESSION', 'TASK_DAILY_REPORT']);
+    expect(f.baseline.recorded).toBe(2);
   });
 });
 

@@ -24,7 +24,8 @@ export interface DataSource {
   getFirstDay(): Promise<FirstDayData>;
   getHistory(): Promise<HistoryData>;
   getReportForm(): Promise<ReportFormData>;
-  getSession(): Promise<SessionData>;
+  /** The session in progress with its protocol facts, or `null` when there is none (never an invented one). */
+  getSession(): Promise<SessionData | null>;
   getStopped(): Promise<StoppedData>;
   getBaseline(): Promise<BaselineData>;
   getOswestry(): Promise<OswestryData>;

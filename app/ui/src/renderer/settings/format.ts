@@ -18,9 +18,10 @@ export function formatLength(mm: number, unit: Settings['lengthUnit']): string {
 }
 
 /** Clock time in GMT (`13:40`); `gmt_met` appends mission elapsed time since `missionStart` (`, MET 86 d 13:40`). */
-export function formatTime(date: Date, timeFormat: Settings['timeFormat'], missionStart: Date): string {
+export function formatTime(date: Date, timeFormat: Settings['timeFormat'], missionStart: Date | null): string {
   const gmt = `${two(date.getUTCHours())}:${two(date.getUTCMinutes())}`;
   if (timeFormat === 'gmt') return gmt;
+  if (missionStart === null) return `${gmt}, MET not known`;
   const elapsed = Math.floor((date.getTime() - missionStart.getTime()) / MS_PER_MINUTE);
   const sign = elapsed < 0 ? MINUS : '';
   const total = Math.abs(elapsed);

@@ -165,6 +165,14 @@ class AstronautProfile(BaseModel):
         None,
         description='Optional, free text, only for how the UI addresses the person. Never used by the engine.',
     )
+    launch_date: date_aliased | None = Field(
+        None,
+        description='Launch date of the current mission; the mission day and phase are derived from it. Null or absent when not planned yet.',
+    )
+    landing_date: date_aliased | None = Field(
+        None,
+        description='Landing date of the current mission; postflight starts on it. Null or absent while not known.',
+    )
     anthropometry: Anthropometry
     spine_history: SpineHistory | None = Field(
         None,

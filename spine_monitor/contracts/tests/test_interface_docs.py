@@ -1,11 +1,13 @@
+import json
 from pathlib import Path
 
 import pytest
 import yaml
-from spine_contracts import openapi_drift, topics
+from spine_contracts import openapi_drift, topics, validation
 
 CONTRACTS_DIR = Path(__file__).resolve().parents[1]
-DOCS = ["asyncapi.yaml", "openapi.yaml", "app-openapi.yaml"]
+DOCS = ["asyncapi.yaml", "openapi.yaml", "app-openapi.yaml", "ui-openapi.yaml"]
+EXAMPLES_DIR = CONTRACTS_DIR / "examples" / "valid"
 
 
 def load(name: str):
@@ -138,3 +140,93 @@ def test_openapi_drift_reports_missing_unexpected_and_renamed_operations():
     assert "missing: GET /sessions/{session_id}" in problems
     assert "operationId of GET /crew/{astronaut_id}/status: expected 'getStatus', got 'status'" in problems
     assert not any("getHistory" in problem for problem in problems)
+
+
+# ---- UI view API (ui-openapi.yaml) --------------------------------------------
+
+# path -> view schema it answers with
+UI_VIEWS = {
+    "/ui/crew/{astronaut_id}/views/strip": "app/ui-strip",
+    "/ui/crew/{astronaut_id}/views/today": "app/ui-today",
+    "/ui/crew/{astronaut_id}/views/history": "app/ui-history",
+    "/ui/crew/{astronaut_id}/views/baseline": "app/ui-baseline",
+    "/ui/crew/{astronaut_id}/views/first-day": "app/ui-first-day",
+    "/ui/sessions/{session_id}/view": "app/ui-session",
+}
+
+
+def test_ui_openapi_is_openapi_3_1():
+    assert load("ui-openapi.yaml")["openapi"] == "3.1.0"
+
+
+def test_ui_openapi_paths_are_the_view_endpoints():
+    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS)
+
+
+def test_ui_openapi_is_read_only():
+    methods = {method for item in load("ui-openapi.yaml")["paths"].values() for method in item}
+    assert methods == {"get"}
+
+
+def test_ui_openapi_operation_ids_are_unique_and_not_shared_with_the_read_api():
+    ui = [op["operationId"] for item in load("ui-openapi.yaml")["paths"].values() for op in item.values()]
+    app = {op["operationId"] for item in load("app-openapi.yaml")["paths"].values() for op in item.values()}
+    assert len(ui) == len(set(ui))
+    assert not set(ui) & app
+
+
+def test_ui_openapi_path_parameters_are_declared():
+    document = load("ui-openapi.yaml")
+    for path, item in document["paths"].items():
+        params = [document["components"]["parameters"][p["$ref"].rsplit("/", 1)[1]] for p in item["get"].get("parameters", [])]
+        declared = {p["name"] for p in params if p["in"] == "path"}
+        in_path = {part[1:-1] for part in path.split("/") if part.startswith("{")}
+        assert in_path == declared, f"{path}: path parameters {in_path} declared as {declared}"
+
+
+def test_ui_history_window_is_optional_dates():
+    document = load("ui-openapi.yaml")
+    item = document["paths"]["/ui/crew/{astronaut_id}/views/history"]["get"]
+    params = {p["name"]: p for p in (document["components"]["parameters"][r["$ref"].rsplit("/", 1)[1]] for r in item["parameters"])}
+    for name in ("from", "to"):
+        assert params[name]["in"] == "query"
+        assert params[name]["required"] is False
+        assert params[name]["schema"] == {"$ref": "schemas/v1/common.schema.json#/$defs/date"}
+
+
+def test_ui_errors_are_problem_details_with_the_app_error_schema():
+    document = load("ui-openapi.yaml")
+    for name, response in document["components"]["responses"].items():
+        assert list(response["content"]) == ["application/problem+json"], name
+        assert response["content"]["application/problem+json"]["schema"] == {"$ref": "schemas/v1/app/error.schema.json"}, name
+    for path, item in document["paths"].items():
+        responses = item["get"]["responses"]
+        assert {"200", "422"} <= set(responses), path
+        assert all(responses[code]["$ref"].startswith("#/components/responses/") for code in responses if code != "200"), path
+
+
+def test_ui_only_the_session_view_answers_404():
+    """The crew views answer 200 with `nodata`/nulls for an astronaut without data; only an unknown session is a 404."""
+    for path, item in load("ui-openapi.yaml")["paths"].items():
+        assert ("404" in item["get"]["responses"]) == (path == "/ui/sessions/{session_id}/view"), path
+
+
+def test_ui_history_documents_invalid_range_with_the_366_day_cap():
+    document = load("ui-openapi.yaml")
+    item = document["paths"]["/ui/crew/{astronaut_id}/views/history"]["get"]
+    assert item["responses"]["422"] == {"$ref": "#/components/responses/InvalidRange"}
+    description = document["components"]["responses"]["InvalidRange"]["description"]
+    assert "invalid_range" in description and "366" in description
+
+
+@pytest.mark.parametrize("path", sorted(UI_VIEWS))
+def test_ui_view_answers_with_its_schema_and_its_examples_validate(path):
+    view = UI_VIEWS[path]
+    content = load("ui-openapi.yaml")["paths"][path]["get"]["responses"]["200"]["content"]
+    assert content["application/json"]["schema"] == {"$ref": f"schemas/v1/{view}.schema.json"}
+
+    folder, stem = view.split("/")
+    examples = sorted((EXAMPLES_DIR / folder).glob(f"{stem}.json")) + sorted((EXAMPLES_DIR / folder).glob(f"{stem}.*.json"))
+    assert examples, f"{view}: no valid example"
+    for example in examples:
+        assert validation.errors(view, json.loads(example.read_text(encoding="utf-8"))) == [], example.name

@@ -19,7 +19,7 @@ import httpx
 from fastapi import FastAPI
 
 from monitor.analysis import Analysis
-from monitor.api import build_router, install_problem_handlers
+from monitor.api import ViewSettings, build_router, install_problem_handlers
 from monitor.control import Control
 from monitor.db import Store
 from monitor.engine import EngineClient
@@ -80,7 +80,9 @@ def create_app(
     app = FastAPI(title="Spine Monitor app", version="0.1.0", lifespan=lifespan)
     app.state.runtime = runtime
     install_problem_handlers(app)
-    app.include_router(build_router(store, control, analysis, odi_interval_days=settings.weekly_odi_interval_days, clock=clock))
+    app.include_router(
+        build_router(store, control, analysis, odi_interval_days=settings.weekly_odi_interval_days, views=ViewSettings.from_app(settings), clock=clock)
+    )
 
     @app.get("/health")
     async def health() -> dict[str, Any]:

@@ -1,7 +1,9 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
+import { RealDataSource } from '../../data/real/RealDataSource';
+import { FakeAsclepiusApi } from '../../test/fake-api';
 import { renderInWorld } from '../../test/providers';
 import { StoppedView } from './StoppedView';
 
@@ -54,4 +56,22 @@ it('"Message the flight surgeon" opens Urgent with nothing marked', async () => 
   await userEvent.click(screen.getByRole('button', { name: 'Message the flight surgeon' }));
   const dialog = await screen.findByRole('dialog');
   expect(await within(dialog).findByRole('button', { name: 'Leg weakness' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+it('with the backend (real mode) says it is not available instead of inventing a stop', async () => {
+  const api = new FakeAsclepiusApi();
+  renderInWorld(<StoppedView />, { api, data: new RealDataSource(api.views), route: '/stopped' });
+  expect(await screen.findByTestId('not-built')).toBeInTheDocument();
+  expect(screen.getByText('Not available yet.')).toBeInTheDocument();
+  expect(screen.queryByText(/did not answer/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/The harness stopped recording/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Call the crew medical officer' })).not.toBeInTheDocument();
+});
+
+it('says the call could not be logged when the data source refuses, and adds nothing to the list', async () => {
+  const { data } = await setup();
+  vi.spyOn(data, 'logCrewMedicalOfficerCall').mockRejectedValue(new Error('unavailable'));
+  await userEvent.click(screen.getByRole('button', { name: 'Call the crew medical officer' }));
+  expect(await screen.findByText('The call could not be logged. Write it down and tell the flight surgeon.')).toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Contacts today' })).not.toBeInTheDocument();
 });

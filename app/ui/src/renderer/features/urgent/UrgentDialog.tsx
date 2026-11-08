@@ -126,8 +126,9 @@ function Panel(): React.JSX.Element {
   );
 
   const options = catalog ? [...catalog.flags, ...catalog.escapes].map((o) => ({ value: o.code, label: o.label })) : [];
-  const noLink = offline || strip === null || strip.groundLink.state === 'down';
-  const backInMin = strip !== null && strip.groundLink.state === 'down' ? strip.groundLink.backInMin : null;
+  // An unknown ground link counts as no link: the report is queued, never promised as sent.
+  const noLink = offline || strip === null || strip.groundLink === null || strip.groundLink.state === 'down';
+  const backInMin = strip?.groundLink?.state === 'down' ? strip.groundLink.backInMin : null;
 
   return (
     <div className={styles.backdrop}>

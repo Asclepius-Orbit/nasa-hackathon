@@ -1,3 +1,5 @@
+import { weakStreamText } from './codes';
+
 /** Copy shared by every screen (strip, navigation, banner). Feature copy lives in one file per feature next to this one. */
 
 export type DisplayLevel = 'green' | 'amber' | 'red' | 'nodata';
@@ -61,12 +63,37 @@ export const minutes = (n: number): string => `${String(n)} min`;
 export const triesLeft = (n: number): string => `${String(n)} ${n === 1 ? 'try' : 'tries'} left.`;
 export const dueLabel = (n: number): string => `${String(n)} due`;
 
-export function groundLinkValue(link: { state: 'up' } | { state: 'down'; backInMin: number | null }): string {
+export const noData = 'No data';
+export const sessionCheck = 'Checking your session.';
+export const notKnown = 'Not known';
+/** A screen whose backend does not exist yet (issues #61 to #63): not an outage, so it never says the monitor did not answer. */
+export const notBuilt = {
+  title: 'Not available yet',
+  body: 'This screen is not connected to the monitor yet.',
+} as const;
+export const noMonitor = {
+  title: 'No connection to the monitor',
+  body: 'The on-board monitor did not answer, so nothing is shown here rather than something out of date. Try again in a moment.',
+} as const;
+
+export function groundLinkValue(link: { state: 'up' } | { state: 'down'; backInMin: number | null } | null): string {
+  if (link === null) return notKnown;
   if (link.state === 'up') return 'Up';
   return link.backInMin === null ? 'Down' : `Down, back in ${minutes(link.backInMin)}`;
 }
 
-export function harnessValue(harness: { batteryPct: number; note: string | null } | null): string {
+/**
+ * `lastSeen` is the GMT time of the harness's last status, already written (`09:58` or `3 Nov 09:58`). A stale harness is
+ * shown only as last seen: its battery, degraded flag and streams are old readings and must not read as current.
+ */
+export function harnessValue(
+  harness: { batteryPct: number | null; degraded: boolean; stale: boolean; weakStreams: readonly { stream: string; state: string }[] } | null,
+  lastSeen: string,
+): string {
   if (harness === null) return notPairedYet;
-  return harness.note === null ? `${String(harness.batteryPct)} %` : `${String(harness.batteryPct)} %, ${harness.note}`;
+  if (harness.stale) return `Last seen ${lastSeen} GMT`;
+  const parts = [harness.batteryPct === null ? 'Battery not reported' : `${String(harness.batteryPct)} %`];
+  if (harness.degraded) parts.push('degraded');
+  parts.push(...harness.weakStreams.map(weakStreamText));
+  return parts.join(', ');
 }

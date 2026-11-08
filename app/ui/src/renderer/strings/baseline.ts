@@ -1,3 +1,5 @@
+import { protocolShort } from './codes';
+
 /** Copy of the preflight reference screen. */
 export const baseline = {
   title: 'Your preflight reference',
@@ -12,8 +14,20 @@ export const baseline = {
 
 export const recordedHeading = (recorded: number, required: number): string => `${String(recorded)} of ${String(required)} sessions recorded`;
 
-export const sessionLine = (session: { protocol: string; status: 'complete' | 'planned'; when: string }): string =>
-  session.status === 'complete' ? `${session.when}, ${session.protocol}, complete` : `Planned for ${session.when}`;
+/** Days relative to launch: -30 is `L-30`, 0 is launch day. */
+export const launchOffset = (days: number): string => (days === 0 ? 'Launch day' : days < 0 ? `L${String(days)}` : `L+${String(days)}`);
 
-export const referenceLine = (version: number, built: number): string =>
-  `Version ${String(version)}, built from ${String(built)} ${built === 1 ? 'session' : 'sessions'}. Assessments say “low confidence” until the third.`;
+export const sessionLine = (session: { protocolId: string; status: 'complete' | 'planned'; offsetDays: number; date: string | null }): string => {
+  const when = launchOffset(session.offsetDays);
+  const date = session.date === null ? '' : ` (${session.date})`;
+  return session.status === 'complete'
+    ? `${when}${date}, ${protocolShort(session.protocolId)}, complete`
+    : `Planned for ${when}${date}`;
+};
+
+export const sessionName = (index: number): string => `Session ${String(index + 1)}`;
+
+export const referenceLine = (version: number | null, built: number): string =>
+  version === null
+    ? 'No reference built yet. Assessments say “low confidence” until it exists.'
+    : `Version ${String(version)}, built from ${String(built)} ${built === 1 ? 'session' : 'sessions'}. Assessments say “low confidence” until the third.`;

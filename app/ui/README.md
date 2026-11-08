@@ -54,7 +54,7 @@ docker compose -f app/docker-compose.yml --profile quality run --rm ui-quality
 
 ```
 src/main/       Electron main process: window hardening, app:// protocol, IPC, PIN auth, encrypted stores
-src/preload/    The only bridge: window.asclepius (crew, auth, settings), nothing else
+src/preload/    The only bridge: window.asclepius (crew, auth, settings, views), nothing else
 src/shared/     Bridge contract (api.ts) and IPC channel names + zod schemas
 src/renderer/   React app: router, layout, screens in features/<name>/, strings/, data/, components/ui/
 src/contracts/  Generated types from spine_monitor/contracts/schemas/v1 (do not edit)
@@ -74,6 +74,7 @@ Copy lives in `src/renderer/strings/` (English, one file per screen) so other la
   zod schema; errors reach the renderer as generic messages.
 - PIN: scrypt with a per-member salt, checked in the main process. Three wrong tries lock that member for five
   minutes, persisted across restarts; the attempt is recorded before the PIN is checked.
+- Backend views: the renderer never talks to the backend (the CSP `connect-src 'self'` is unchanged). The main process fetches `/ui/...` views for the unlocked astronaut only, over loopback HTTP (`ASCLEPIUS_BACKEND_URL`, default `http://127.0.0.1:8000`, other hosts are ignored), with a 5 s timeout, no redirects and no cache. Errors reach the renderer as `locked`, `not_found` or `unavailable`.
 - Crew and auth state are encrypted with Electron `safeStorage` and fail closed when encryption is unavailable.
 - Electron fuses: no `RunAsNode`, no `NODE_OPTIONS`, no inspect flags, asar integrity, app loaded only from asar.
 - Supply chain: exact versions, a lockfile, build scripts allowed only for `electron`, and a one-day minimum

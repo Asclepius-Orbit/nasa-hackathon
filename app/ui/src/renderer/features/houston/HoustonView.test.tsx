@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { MockDataSource } from '../../data/mock/MockDataSource';
+import { RealDataSource } from '../../data/real/RealDataSource';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import { FakeClock } from '../../test/fake-clock';
 import { FakeScheduler } from '../../test/fake-scheduler';
@@ -64,5 +65,17 @@ describe('HoustonView', () => {
     renderInWorld(<HoustonView />, { data });
     expect(await screen.findByText('Sent')).toBeInTheDocument();
     expect(screen.getByText('Ground link up. Queued items go out in order.')).toBeInTheDocument();
+  });
+});
+
+describe('HoustonView with the backend (real mode)', () => {
+  it('says it is not available: no summary is invented', async () => {
+    const api = new FakeAsclepiusApi();
+    renderInWorld(<HoustonView />, { api, data: new RealDataSource(api.views) });
+    expect(await screen.findByTestId('not-built')).toBeInTheDocument();
+  expect(screen.getByText('Not available yet.')).toBeInTheDocument();
+  expect(screen.queryByText(/did not answer/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/summary/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('None reported')).not.toBeInTheDocument();
   });
 });

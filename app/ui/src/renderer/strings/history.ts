@@ -1,5 +1,8 @@
 /** Copy of the History screen. */
-import type { DayLevel } from '../data/types';
+import type { DayLevel, DayRecord } from '../data/types';
+import { protocolShort, redFlagLabels, reportKindText, sessionStateText } from './codes';
+
+type DayId = Pick<DayRecord, 'day' | 'date'>;
 
 export const history = {
   title: 'Last 30 days',
@@ -29,56 +32,88 @@ export const history = {
   changesTitle: 'Changes of level',
   showDay: 'Show day',
   noData: 'No data',
+  noRange: 'No preflight reference yet, so there is no range to compare with.',
+  emptyWindow: 'There are no days in this window.',
+  none: 'none',
+  notDone: 'Not done',
 } as const;
+
+/** A day by its mission day, or by its calendar date when there is no launch date. */
+export const dayText = (d: DayId): string => (d.day === null ? d.date : `Day ${String(d.day)}`);
+const dayLower = (d: DayId): string => (d.day === null ? d.date : `day ${String(d.day)}`);
+const dayNumber = (d: DayId): string => (d.day === null ? d.date : String(d.day));
 
 /** Ends of the length gauge in the day detail, in mm. */
 export const lengthGauge = { lo: -2, hi: 3 } as const;
 
-export const stripLabel = (first: number, last: number): string =>
-  `Mission days ${String(first)} to ${String(last)}. Use the arrow keys to move between days.`;
+export const stripLabel = (first: DayId, last: DayId): string =>
+  `Mission days ${dayNumber(first)} to ${dayNumber(last)}. Use the arrow keys to move between days.`;
 
-export const dayButtonLabel = (day: number, level: string): string => `Day ${String(day)}, ${level}`;
-export const dayHeading = (day: number): string => `Day ${String(day)}`;
+export const dayButtonLabel = (d: DayId, level: string): string => `${dayText(d)}, ${level}`;
+export const dayHeading = dayText;
 export const painOfTen = (value: number): string => `${String(value)} of 10`;
-export const showDayLabel = (day: number): string => `${history.showDay} ${String(day)}`;
+export const showDayLabel = (d: DayId): string => `${history.showDay} ${dayNumber(d)}`;
 
 export const daysSummary = (amber: number, nodata: number, green: number): string =>
   `Amber for the last ${String(amber)} days. ${String(nodata)} days without data. Green for ${String(green)} days before that.`;
 
-export function deltaText(direction: 'up' | 'down' | 'same', amount: string, fromDay: number): string {
-  const from = `day ${String(fromDay)}`;
-  return direction === 'same' ? `Same as ${from}` : `${direction === 'up' ? 'Up' : 'Down'} ${amount} from ${from}`;
+export function deltaText(direction: 'up' | 'down' | 'same', amount: string, from: DayId): string {
+  const fromText = dayLower(from);
+  return direction === 'same' ? `Same as ${fromText}` : `${direction === 'up' ? 'Up' : 'Down'} ${amount} from ${fromText}`;
 }
 
-export function changeWhen(first: number, last: number, isFirstRun: boolean, level: DayLevel): string {
-  if (level === 'nodata' && last > first) return `Days ${String(first)} to ${String(last)}`;
-  return isFirstRun ? `From day ${String(first)}` : `Day ${String(first)}`;
+export function changeWhen(first: DayId, last: DayId, isFirstRun: boolean, level: DayLevel): string {
+  if (level === 'nodata' && last.date !== first.date) return `Days ${dayNumber(first)} to ${dayNumber(last)}`;
+  return isFirstRun ? `From ${dayLower(first)}` : dayText(first);
+}
+
+/** What a day says about itself, written from its level alone: the backend sends codes, never a sentence. */
+export const dayNote = (level: DayLevel): string =>
+  ({
+    nodata: 'No session and no report: not assessed. No data is not the same as fine.',
+    green: 'Everything inside your reference.',
+    amber: 'A change from your reference.',
+    red: 'Outside your reference: the crew medical officer was alerted.',
+  })[level];
+
+export function sessionLine(session: DayRecord['session']): string {
+  return session === null ? 'None' : `${protocolShort(session.protocolId)}, ${sessionStateText(session.state)}`;
+}
+
+export function reportLine(report: DayRecord['report']): string {
+  if (report === null) return history.notDone;
+  const flags = report.redFlags.map((code) => redFlagLabels[code]);
+  return flags.length === 0 ? reportKindText(report.kind) : `${reportKindText(report.kind)}: ${flags.join('; ')}`;
 }
 
 const gapDays = (labels: readonly string[]): string =>
   `${labels.some((l) => l.includes(' to ')) || labels.length > 1 ? 'days' : 'day'} ${labels.join(' and ')}`;
 
 export function lengthChartLabel(args: {
-  first: number;
-  last: number;
-  latest: { day: number; text: string; position: 'above' | 'inside' | 'below' } | null;
-  rangeText: string;
+  first: string;
+  last: string;
+  latest: { day: string; text: string; position: 'above' | 'inside' | 'below' | null } | null;
+  /** `null` when there is no preflight reference. */
+  rangeText: string | null;
   gapLabels: readonly string[];
 }): string {
-  const parts = [`Lumbar length, days ${String(args.first)} to ${String(args.last)}, against your preflight range of ${args.rangeText}.`];
-  if (args.latest) parts.push(`Latest value ${args.latest.text} on day ${String(args.latest.day)}, ${args.latest.position} the range.`);
+  const range = args.rangeText === null ? 'with no preflight range yet' : `against your preflight range of ${args.rangeText}`;
+  const parts = [`Lumbar length, days ${args.first} to ${args.last}, ${range}.`];
+  if (args.latest) {
+    parts.push(`Latest value ${args.latest.text} on day ${args.latest.day}${args.latest.position === null ? '' : `, ${args.latest.position} the range`}.`);
+  }
   parts.push(args.gapLabels.length > 0 ? `No data on ${gapDays(args.gapLabels)}.` : 'No days without data.');
   return parts.join(' ');
 }
 
 export function painChartLabel(args: {
-  first: number;
-  last: number;
-  latest: { day: number; value: number } | null;
+  first: string;
+  last: string;
+  latest: { day: string; value: number } | null;
   gapLabels: readonly string[];
 }): string {
-  const parts = [`Pain, daily report 0 to 10, days ${String(args.first)} to ${String(args.last)}.`];
-  if (args.latest) parts.push(`Latest ${String(args.latest.value)} of 10 on day ${String(args.latest.day)}.`);
+  const parts = [`Pain, daily report 0 to 10, days ${args.first} to ${args.last}.`];
+  if (args.latest) parts.push(`Latest ${String(args.latest.value)} of 10 on day ${args.latest.day}.`);
   parts.push(args.gapLabels.length > 0 ? `No reports on ${gapDays(args.gapLabels)}.` : 'Reported every day.');
   return parts.join(' ');
 }

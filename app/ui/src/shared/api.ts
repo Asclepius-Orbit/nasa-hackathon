@@ -1,4 +1,14 @@
 /** Contract between the preload bridge (main process) and the renderer. Types only. */
+import type {
+  BaselineView,
+  FirstDayView,
+  HistoryView,
+  SessionView,
+  StripView,
+  TodayView,
+} from '../contracts/v1';
+
+export type { BaselineView, FirstDayView, HistoryView, SessionView, StripView, TodayView };
 
 /** `id` is the astronaut identifier, `AST-NN`. Names stay on this device; the bus and Houston only see `id`. */
 export interface CrewMember {
@@ -34,6 +44,22 @@ export interface Settings {
   footPedal: boolean;
 }
 
+/** Inclusive window of the History view, ISO dates (`YYYY-MM-DD`); each end defaults to the backend's choice. */
+export interface ViewRange {
+  from?: string;
+  to?: string;
+}
+
+/** The backend's first-day view plus the signed-in member's first name, which never leaves this device. */
+export type FirstDayResult = FirstDayView & { crewFirstName: string };
+
+/**
+ * Why a view call rejected, as the message of the thrown `Error`: `locked` (nobody signed in, or the lock screen is
+ * up), `not_found` (the backend has no such astronaut or session) or `unavailable` (backend down, slow, or it
+ * answered something that is not the contract). Views are never cached or invented.
+ */
+export type ViewsErrorCode = 'locked' | 'not_found' | 'unavailable';
+
 export interface AsclepiusApi {
   crew: {
     list(): Promise<CrewMember[]>;
@@ -50,6 +76,15 @@ export interface AsclepiusApi {
   settings: {
     get(): Promise<Settings>;
     update(patch: Partial<Settings>): Promise<Settings>;
+  };
+  /** Read-only views from the backend, always for the signed-in astronaut. Rejects with a `ViewsErrorCode`. */
+  views: {
+    strip(): Promise<StripView>;
+    today(): Promise<TodayView>;
+    history(range?: ViewRange): Promise<HistoryView>;
+    baseline(): Promise<BaselineView>;
+    firstDay(): Promise<FirstDayResult>;
+    session(sessionId: string): Promise<SessionView>;
   };
 }
 

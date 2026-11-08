@@ -48,7 +48,8 @@ function SidePanel(): React.JSX.Element {
             <NoData />
           ) : (
             <>
-              <b>{formatTime(now, new Date(data.missionStart))}</b>, {login.missionDay(data.missionDay)}
+              <b>{formatTime(now, data.missionStart === null ? null : new Date(data.missionStart))}</b>
+              {data.missionDay === null ? null : <>, {login.missionDay(data.missionDay)}</>}
             </>
           )}
         </dd>

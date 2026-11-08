@@ -17,6 +17,9 @@ import { createCrewStore, crewFileSchema } from './store/crew-store';
 import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
+import { BACKEND_URL_ENV, resolveBackendUrl } from './views/backend-url';
+import { createViewsClient } from './views/views-client';
+import { createViewsService } from './views/views-service';
 import { createMainWindow, hardenSession, installWebContentsGuard } from './window';
 
 const devServerUrl = import.meta.env.DEV ? process.env['ELECTRON_RENDERER_URL'] : undefined;
@@ -69,7 +72,12 @@ if (!app.requestSingleInstanceLock()) {
       now: Date.now,
     });
     const settings = createSettingsStore({ path: join(userData, 'settings.json') });
-    registerIpc(ipcMain, { crew, auth, settings }, createSenderGuard(policy));
+    // Backend URL: main-process configuration only (never a renderer setting), loopback hosts only.
+    const backendUrl = resolveBackendUrl(process.env[BACKEND_URL_ENV], () => {
+      console.error(`${BACKEND_URL_ENV} ignored: only http(s) loopback URLs are accepted`);
+    });
+    const views = createViewsService({ auth, crew, client: createViewsClient({ baseUrl: backendUrl }) });
+    registerIpc(ipcMain, { crew, auth, settings, views }, createSenderGuard(policy));
 
     openWindow();
     app.on('activate', () => {

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "mission": { "day": 87, "start": "2026-11-15", "phase": "inflight" },
+  "harness": {
+    "device_id": "wb-01",
+    "battery_pct": 18,
+    "weak_streams": [{ "stream": "stretch_lumbar", "state": "stalled" }],
+    "degraded": true,
+    "stale": false,
+    "last_seen_at": "2026-11-15T09:58:00Z"
+  },
+  "ground_link": null,
+  "last_contact_min_ago": null,
+  "reports_due": { "daily": true, "weekly_odi": false }
+}

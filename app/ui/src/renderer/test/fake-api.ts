@@ -1,4 +1,19 @@
-import type { AsclepiusApi, AuthSession, CreateCrewResult, CrewMember, PinResult, Settings } from '../../shared/api';
+import type {
+  AsclepiusApi,
+  AuthSession,
+  BaselineView,
+  CreateCrewResult,
+  CrewMember,
+  FirstDayResult,
+  HistoryView,
+  PinResult,
+  SessionView,
+  Settings,
+  StripView,
+  TodayView,
+  ViewRange,
+  ViewsErrorCode,
+} from '../../shared/api';
 
 const LOCK_MS = 5 * 60_000;
 const MAX_TRIES = 3;
@@ -80,6 +95,39 @@ export class FakeAsclepiusApi implements AsclepiusApi {
       return Promise.resolve(this.session);
     },
   };
+
+  /** Canned answers of `views.*`; a view with none rejects `unavailable`, like a backend that is down. `sessions` is by session id. */
+  viewData: {
+    strip?: StripView;
+    today?: TodayView;
+    history?: HistoryView;
+    baseline?: BaselineView;
+    firstDay?: FirstDayResult;
+    sessions?: Record<string, SessionView>;
+  } = {};
+  /** Makes a view reject with this code instead of answering. */
+  viewErrors: Partial<Record<'strip' | 'today' | 'history' | 'baseline' | 'firstDay' | 'session', ViewsErrorCode>> = {};
+  /** Range of the last `views.history` call. */
+  historyRange: ViewRange | undefined;
+
+  views = {
+    strip: () => this.view('strip', this.viewData.strip),
+    today: () => this.view('today', this.viewData.today),
+    history: (range?: ViewRange) => {
+      this.historyRange = range;
+      return this.view('history', this.viewData.history);
+    },
+    baseline: () => this.view('baseline', this.viewData.baseline),
+    firstDay: () => this.view('firstDay', this.viewData.firstDay),
+    session: (sessionId: string) => this.view('session', this.viewData.sessions?.[sessionId]),
+  };
+
+  private view<T>(name: keyof FakeAsclepiusApi['viewErrors'], data: T | undefined): Promise<T> {
+    this.calls.push(`views.${name}`);
+    const code = this.viewErrors[name] ?? (data === undefined ? 'unavailable' : undefined);
+    if (code !== undefined) return Promise.reject(new Error(code));
+    return Promise.resolve(data as T);
+  }
 
   settings = {
     get: (): Promise<Settings> => {

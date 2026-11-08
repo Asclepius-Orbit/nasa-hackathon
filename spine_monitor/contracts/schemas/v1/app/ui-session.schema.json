@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-session.schema.json",
+  "title": "SessionView",
+  "description": "Response of GET /ui/sessions/{session_id}/view: the guided session screen of the desktop UI. Protocol facts (band, reps, rest, fit items) come from catalog/protocol-catalog.json; the UI writes the instructions. Live repetitions are not part of this view.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+    "astronaut_id": {
+      "description": "astronaut_id of the session, so the client can check that the session belongs to the crew member on screen.",
+      "$ref": "../common.schema.json#/$defs/astronaut_id"
+    },
+    "state": { "$ref": "ui-common.schema.json#/$defs/session_state" },
+    "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+    "band": {
+      "description": "Band of the protocol; null when it uses none.",
+      "oneOf": [{ "$ref": "ui-common.schema.json#/$defs/band" }, { "type": "null" }]
+    },
+    "total_reps": {
+      "description": "Repetitions of the protocol; null when it has none.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "rest_seconds": {
+      "description": "Rest of the protocol; null when it has none.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "fit_items": {
+      "description": "Ids of the fit items of the protocol, in order.",
+      "type": "array",
+      "items": { "$ref": "ui-common.schema.json#/$defs/fit_item_id" }
+    },
+    "started_at": {
+      "description": "started_at of the session; null before the gateway started it.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    },
+    "steps": {
+      "description": "The five steps of a guided session, always in this order: fit, check, mvc, reps, finish.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" },
+      "prefixItems": [
+        { "allOf": [{ "$ref": "#/$defs/step" }, { "properties": { "id": { "const": "fit" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/step" }, { "properties": { "id": { "const": "check" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/step" }, { "properties": { "id": { "const": "mvc" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/step" }, { "properties": { "id": { "const": "reps" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/step" }, { "properties": { "id": { "const": "finish" } } }] }
+      ],
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "sensor_checks": {
+      "description": "Latest check of each stream of the session.",
+      "type": "array",
+      "items": {
+        "title": "SensorCheck",
+        "type": "object",
+        "properties": {
+          "stream": { "$ref": "../common.schema.json#/$defs/stream_id" },
+          "status": { "type": "string", "enum": ["good", "weak"] },
+          "state": { "$ref": "../telemetry/device-status.schema.json#/properties/streams/items/properties/state" }
+        },
+        "required": ["stream", "status", "state"],
+        "additionalProperties": false
+      }
+    },
+    "calibration": {
+      "description": "Latest calibrate command of the session; null when none was sent.",
+      "oneOf": [
+        {
+          "title": "SessionCalibration",
+          "type": "object",
+          "properties": {
+            "command_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "acked": {
+              "description": "True when the gateway acknowledged the command as completed.",
+              "type": "boolean"
+            },
+            "acked_at": {
+              "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+            }
+          },
+          "required": ["command_id", "acked", "acked_at"],
+          "if": { "properties": { "acked": { "const": false } }, "required": ["acked"] },
+          "then": { "properties": { "acked_at": { "type": "null" } } },
+          "else": { "properties": { "acked_at": { "type": "string" } } },
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "stretched_cm": {
+      "description": "Band stretch at the start position. Reserved: always null for now.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "planned_at": {
+      "description": "When the session was planned. Reserved: always null for now.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    }
+  },
+  "required": [
+    "schema_version", "session_id", "astronaut_id", "state", "protocol_id", "band", "total_reps", "rest_seconds", "fit_items",
+    "started_at", "steps", "sensor_checks", "calibration", "stretched_cm", "planned_at"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "step": {
+      "title": "SessionStep",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "enum": ["fit", "check", "mvc", "reps", "finish"] },
+        "status": { "type": "string", "enum": ["done", "now", "todo"] }
+      },
+      "required": ["id", "status"],
+      "additionalProperties": false
+    }
+  }
+}

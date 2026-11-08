@@ -55,7 +55,7 @@ docker compose -f app/docker-compose.yml --profile quality run --rm ui-quality
 
 ```
 src/main/       Proceso main de Electron: ventana endurecida, protocolo app://, IPC, PIN, almacenes cifrados
-src/preload/    El único puente: window.asclepius (crew, auth, settings) y nada más
+src/preload/    El único puente: window.asclepius (crew, auth, settings, views) y nada más
 src/shared/     Contrato del puente (api.ts) y nombres de canales IPC + esquemas zod
 src/renderer/   App React: router, layout, pantallas en features/<nombre>/, strings/, data/, components/ui/
 src/contracts/  Tipos generados desde spine_monitor/contracts/schemas/v1 (no editar)
@@ -75,6 +75,7 @@ Los textos viven en `src/renderer/strings/` (en inglés, un fichero por pantalla
   esquema zod estricto; los errores llegan al renderer como mensajes genéricos.
 - PIN: scrypt con salt por tripulante, comprobado en el proceso main. Tres fallos bloquean a ese tripulante cinco
   minutos, y el bloqueo sobrevive a reinicios; el intento se registra antes de comprobar el PIN.
+- Vistas del backend: el renderer nunca habla con el backend (el CSP `connect-src 'self'` no cambia). El proceso main pide las vistas `/ui/...` solo del astronauta desbloqueado, por HTTP a loopback (`ASCLEPIUS_BACKEND_URL`, por defecto `http://127.0.0.1:8000`; otros hosts se ignoran), con timeout de 5 s, sin redirecciones y sin caché. Los errores llegan al renderer como `locked`, `not_found` o `unavailable`.
 - El estado de tripulantes y de autenticación se cifra con `safeStorage` de Electron y falla cerrado si no hay
   cifrado disponible.
 - Fuses de Electron: sin `RunAsNode`, sin `NODE_OPTIONS`, sin flags de inspect, integridad del asar y carga solo

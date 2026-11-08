@@ -4,7 +4,7 @@ import type { DayRecord } from '../../data/types';
 import { useSettings } from '../../settings/SettingsProvider';
 import { history, lengthChartLabel, painChartLabel } from '../../strings/history';
 import styles from './Charts.module.css';
-import { buildLengthChart, buildPainChart, LENGTH_PLOT, PAIN_PLOT, type Gap, type XTick } from './scales';
+import { buildLengthChart, buildPainChart, dayName, LENGTH_PLOT, PAIN_PLOT, type Gap, type XTick } from './scales';
 
 const VIEW_WIDTH = 960;
 const AXIS_START = 60;
@@ -53,28 +53,33 @@ function XLabels({ ticks, gaps, y }: { ticks: readonly XTick[]; gaps: readonly G
   );
 }
 
-const firstDay = (days: readonly DayRecord[]): number => days[0]?.day ?? 0;
-const lastDay = (days: readonly DayRecord[]): number => days[days.length - 1]?.day ?? 0;
+const firstDay = (days: readonly DayRecord[]): string => dayName(days[0] ?? { day: 0, date: '' });
+const lastDay = (days: readonly DayRecord[]): string => dayName(days[days.length - 1] ?? { day: 0, date: '' });
 
-export function LengthChartFigure({ days, range }: { days: readonly DayRecord[]; range: { lo: number; hi: number } }): React.JSX.Element {
+function positionOf(mm: number, range: { lo: number; hi: number } | null): 'above' | 'inside' | 'below' | null {
+  if (range === null) return null;
+  return mm > range.hi ? 'above' : mm < range.lo ? 'below' : 'inside';
+}
+
+export function LengthChartFigure({ days, range }: { days: readonly DayRecord[]; range: { lo: number; hi: number } | null }): React.JSX.Element {
   const { formatLength } = useSettings();
   const hatchId = useHatchId();
   const chart = buildLengthChart(days, range);
   const latestDay = [...days].reverse().find((d) => d.lengthMm !== null);
-  const latestMm = latestDay?.lengthMm ?? 0;
   const label = lengthChartLabel({
     first: firstDay(days),
     last: lastDay(days),
     latest: latestDay
-      ? { day: latestDay.day, text: formatLength(latestMm), position: latestMm > range.hi ? 'above' : latestMm < range.lo ? 'below' : 'inside' }
+      ? { day: dayName(latestDay), text: formatLength(latestDay.lengthMm ?? 0), position: positionOf(latestDay.lengthMm ?? 0, range) }
       : null,
-    rangeText: `${formatLength(range.lo)} to ${formatLength(range.hi)}`,
+    rangeText: range === null ? null : `${formatLength(range.lo)} to ${formatLength(range.hi)}`,
     gapLabels: chart.gaps.map((g) => g.label),
   });
   return (
     <figure className={styles.chart}>
       <h2>{history.lengthTitle}</h2>
       <p className={styles.sub}>{history.lengthSub}</p>
+      {range === null && <p className={styles.sub}>{history.noRange}</p>}
       <div className={styles.legend}>
         <span>
           <i className={styles.swatchRange} />
@@ -92,7 +97,9 @@ export function LengthChartFigure({ days, range }: { days: readonly DayRecord[];
       <svg viewBox={`0 0 ${String(VIEW_WIDTH)} 220`} role="img" aria-label={label}>
         <Hatch id={hatchId} />
         <GapRects gaps={chart.gaps} top={LENGTH_PLOT.top} bottom={LENGTH_PLOT.bottom} hatchId={hatchId} />
-        <rect x={AXIS_START} y={chart.band.y} width={AXIS_END - AXIS_START} height={chart.band.height} className={styles.band} />
+        {chart.band !== null && (
+          <rect x={AXIS_START} y={chart.band.y} width={AXIS_END - AXIS_START} height={chart.band.height} className={styles.band} />
+        )}
         <line x1={AXIS_START} y1={chart.baselineY} x2={AXIS_END} y2={chart.baselineY} className={styles.axis} />
         <g className={styles.label}>
           {chart.yTicks.map((t) => (
@@ -104,7 +111,7 @@ export function LengthChartFigure({ days, range }: { days: readonly DayRecord[];
         <XLabels ticks={chart.xTicks} gaps={chart.gaps} y={chart.baselineY + LABEL_BELOW} />
         {chart.segments.map((s) => (
           <polyline
-            key={s.points[0]?.day}
+            key={s.points[0]?.date}
             data-testid="length-segment"
             className={styles.line}
             points={s.points.map((p) => `${String(p.x)},${String(p.y)}`).join(' ')}
@@ -113,7 +120,7 @@ export function LengthChartFigure({ days, range }: { days: readonly DayRecord[];
         <g className={styles.dots}>
           {chart.segments.map((s) => {
             const end = s.points.at(-1);
-            return end ? <circle key={end.day} cx={end.x} cy={end.y} r={6} /> : null;
+            return end ? <circle key={end.date} cx={end.x} cy={end.y} r={6} /> : null;
           })}
         </g>
       </svg>
@@ -128,7 +135,7 @@ export function PainChartFigure({ days }: { days: readonly DayRecord[] }): React
   const label = painChartLabel({
     first: firstDay(days),
     last: lastDay(days),
-    latest: latest ? { day: latest.day, value: latest.pain ?? 0 } : null,
+    latest: latest ? { day: dayName(latest), value: latest.pain ?? 0 } : null,
     gapLabels: chart.gaps.map((g) => g.label),
   });
   return (
@@ -149,7 +156,7 @@ export function PainChartFigure({ days }: { days: readonly DayRecord[] }): React
         <XLabels ticks={chart.xTicks} gaps={chart.gaps} y={chart.baselineY + LABEL_BELOW} />
         <g className={styles.bars}>
           {chart.bars.map((b) => (
-            <rect key={b.day} data-testid="pain-bar" x={b.x} y={b.y} width={b.width} height={b.height} rx={3} />
+            <rect key={b.date} data-testid="pain-bar" x={b.x} y={b.y} width={b.width} height={b.height} rx={3} />
           ))}
         </g>
       </svg>

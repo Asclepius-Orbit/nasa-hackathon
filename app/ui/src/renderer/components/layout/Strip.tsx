@@ -4,11 +4,14 @@ import { useApi } from '../../api/ApiContext';
 import { useAuth } from '../../auth/AuthProvider';
 import { useNow } from '../../clock/Clock';
 import type { DataSource } from '../../data/DataSource';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { useUrgent } from '../../features/urgent/UrgentContext';
+import { gmtStamp } from '../../features/today/gmt';
 import { useSettings } from '../../settings/SettingsProvider';
-import { groundLinkValue, harnessValue, lockButton, strip, urgentButton } from '../../strings/common';
+import { groundLinkValue, harnessValue, lockButton, noData, noMonitor, strip, urgentButton } from '../../strings/common';
+import { phaseText } from '../../strings/codes';
 import { BatteryIcon, GroundLinkIcon } from './icons';
+import { isNoMonitor, useSessionRecheck } from './NoMonitor';
 import styles from './Strip.module.css';
 
 const selectStrip = (data: DataSource): ReturnType<DataSource['getStrip']> => data.getStrip();
@@ -48,7 +51,8 @@ function useCrewName(crewId: string | null): string | null {
 export function Strip(): React.JSX.Element {
   const { crewId, lock } = useAuth();
   const name = useCrewName(crewId);
-  const { data } = useLoad(selectStrip);
+  const { data, error } = useLoad(selectStrip, { refreshMs: REFRESH_MS });
+  useSessionRecheck(error);
   const now = useNow();
   const { formatTime } = useSettings();
   const { open } = useUrgent();
@@ -58,13 +62,13 @@ export function Strip(): React.JSX.Element {
       <span className={styles.who}>{name}</span>
       {data !== null && (
         <>
-          <Fact label={strip.missionDay} value={String(data.missionDay)} />
-          <Fact label={strip.gmt} value={formatTime(now, new Date(data.missionStart))} />
-          <Fact label={strip.phase} value={data.flightPhase} />
+          <Fact label={strip.missionDay} value={data.missionDay === null ? noData : String(data.missionDay)} />
+          <Fact label={strip.gmt} value={formatTime(now, data.missionStart === null ? null : new Date(data.missionStart))} />
+          <Fact label={strip.phase} value={data.flightPhase === null ? noData : phaseText(data.flightPhase)} />
           <span className={styles.grow} />
           <span className={styles.status}>
             <BatteryIcon />
-            <Fact label={data.harness ? strip.harness(data.harness.id) : strip.harnessNone} value={harnessValue(data.harness)} />
+            <Fact label={data.harness ? strip.harness(data.harness.id) : strip.harnessNone} value={harnessValue(data.harness, data.harness ? gmtStamp(data.harness.lastSeenAt, now) : '')} />
           </span>
           <span className={styles.status}>
             <GroundLinkIcon />
@@ -73,6 +77,7 @@ export function Strip(): React.JSX.Element {
         </>
       )}
       {data === null && <span className={styles.grow} />}
+      {error !== null && isNoMonitor(error) && <span role="alert">{noMonitor.title}</span>}
       <button
         type="button"
         className={styles.lock}

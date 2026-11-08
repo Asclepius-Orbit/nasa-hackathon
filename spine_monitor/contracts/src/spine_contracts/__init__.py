@@ -25,6 +25,13 @@ from spine_contracts.models.app.history_schema import History
 from spine_contracts.models.app.self_report_list_schema import SelfReportList
 from spine_contracts.models.app.session_list_schema import SessionList
 from spine_contracts.models.app.status_schema import Status
+from spine_contracts.models.app.ui_baseline_schema import BaselineView
+from spine_contracts.models.app.ui_common_schema import DayLevel, SessionState, TaskCode
+from spine_contracts.models.app.ui_first_day_schema import FirstDayView
+from spine_contracts.models.app.ui_history_schema import HistoryView
+from spine_contracts.models.app.ui_session_schema import SessionView
+from spine_contracts.models.app.ui_strip_schema import StripView
+from spine_contracts.models.app.ui_today_schema import TodayView
 from spine_contracts.models.common_schema import (
     AnatomicalPlane,
     GravityEnvironment,
@@ -92,6 +99,7 @@ __all__ = [
     "Baseline",
     "BaselineEntry",
     "BaselineRequest",
+    "BaselineView",
     "BasedOn",
     "CalibrateCommand",
     "Calibration",
@@ -102,6 +110,7 @@ __all__ = [
     "Completeness",
     "DailyContext",
     "DailySelfReport",
+    "DayLevel",
     "DeviceStatus",
     "DomainAssessment",
     "Driver",
@@ -114,8 +123,10 @@ __all__ = [
     "FeatureSet",
     "FeatureValue",
     "FiredRule",
+    "FirstDayView",
     "GravityEnvironment",
     "History",
+    "HistoryView",
     "ImuChunk",
     "ImuCalibration",
     "Level",
@@ -131,6 +142,8 @@ __all__ = [
     "SelfReportList",
     "Session",
     "SessionList",
+    "SessionState",
+    "SessionView",
     "Side",
     "SimulateRequest",
     "SimulateResponse",
@@ -144,6 +157,9 @@ __all__ = [
     "StreamKind",
     "StretchCalibration",
     "StretchChunk",
+    "StripView",
+    "TaskCode",
+    "TodayView",
     "Trend",
     "Urgency",
     "WeeklyOdiReport",

@@ -22,6 +22,7 @@ export const stopped = {
   },
   callOfficer: 'Call the crew medical officer',
   messageSurgeon: 'Message the flight surgeon',
+  callNotLogged: 'The call could not be logged. Write it down and tell the flight surgeon.',
   contactsLabel: 'Contacts today',
   next: 'What happens next',
   nextBody:

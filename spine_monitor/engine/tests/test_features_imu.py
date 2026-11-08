@@ -7,6 +7,7 @@ Las señales son sintéticas y con valores exactos: el giróscopo trae el sesgo 
 
 import json
 import math
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -355,6 +356,15 @@ def test_sparc_is_computed_per_plane_from_the_angular_speed_of_the_repetition():
     assert got["imu.l3.sagittal.smoothness_sparc"] == pytest.approx(expected)
     # sin movimiento la suavidad no está definida: el compuesto lo pasa a no_data
     assert math.isnan(got["imu.l3.frontal.smoothness_sparc"])
+
+
+def test_a_plane_without_any_defined_sparc_is_nan_without_numpy_warnings():
+    # sin ninguna repetición con SPARC finito no se promedia una lista vacía (numpy avisaría): NaN directo
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = run([rep(1, 2.0, 4.0)], sagittal_context())
+
+    assert math.isnan(values(result)["imu.l3.transverse.smoothness_sparc"])
 
 
 def test_the_window_is_half_open_start_sample_in_end_sample_out():

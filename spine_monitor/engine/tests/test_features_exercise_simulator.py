@@ -9,13 +9,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import spine_physiology
 from spine_contracts import FeaturesRequest, dump, validation
 from spine_contracts.catalog import unit_for
 from spine_contracts.models.domain.session_schema import Event, EventType
 from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
 
-_MISSION = Path(__file__).resolve().parents[2] / "physiology" / "configs" / "example-mission.yaml"
+# vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
+_MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 COUNT = "exercise.rep_count"
 MEAN = "exercise.rep_duration_s_mean"
 CV = "exercise.rep_duration_cv_pct"

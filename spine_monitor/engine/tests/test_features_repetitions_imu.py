@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import spine_physiology
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from spine_contracts import FeaturesRequest
@@ -394,7 +395,8 @@ def test_shifting_the_device_clock_and_its_anchor_shifts_nothing(reps: list[tupl
 
 # --- Validación contra el simulador -----------------------------------------------------------------
 
-_MISSION = Path(__file__).resolve().parents[2] / "physiology" / "configs" / "example-mission.yaml"
+# vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
+_MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 # Tolerancias frente a la verdad del simulador: nº de reps exacto; duración media dentro del 10 %
 # (el umbral de borde recorta algo los extremos, de velocidad casi nula); cada inicio a < 0,3 s.
 DURATION_REL_TOLERANCE = 0.10

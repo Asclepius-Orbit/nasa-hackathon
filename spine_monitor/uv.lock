@@ -2072,6 +2072,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
+    { name = "spine-physiology" },
 ]
 
 [package.metadata]
@@ -2083,7 +2084,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "httpx", specifier = ">=0.28.1" }]
+dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "spine-physiology", editable = "physiology" },
+]
 
 [[package]]
 name = "spine-mcp-server"

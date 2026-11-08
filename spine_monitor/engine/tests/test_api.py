@@ -38,7 +38,7 @@ def test_health(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_features_returns_an_honest_empty_feature_set_while_no_family_is_registered(client):
+def test_features_returns_no_values_and_skips_exercise_features_for_the_single_rep_example(client):
     request = example("features-request")
 
     response = client.post("/features", json=request)
@@ -46,7 +46,8 @@ def test_features_returns_an_honest_empty_feature_set_while_no_family_is_registe
     assert response.status_code == 200
     body = response.json()
     assert validation.errors("domain/feature-set", body) == []
-    assert body["features"] == []
+    assert body["features"] == []  # el ejemplo trae una sola repetición: exercise.* sale skipped (too_few_repetitions)
+    assert {s["reason"] for s in body["skipped"]} == {"too_few_repetitions"}
     assert body["engine_version"] == "0.1.0"  # lo rellena el extractor compuesto, no el nulo
     assert "window" in body
     assert body["session_id"] == request["session"]["session_id"]

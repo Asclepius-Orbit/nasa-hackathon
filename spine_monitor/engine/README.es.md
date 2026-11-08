@@ -18,7 +18,7 @@ El contrato es `contracts/openapi.yaml`; cuerpos y errores son los JSON Schemas 
 | Endpoint | Cuerpo de entrada | Cuerpo de salida | Hoy |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` vacío con los metadatos de la sesión, hasta que llegue la extracción |
+| `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41; las familias EMG, IMU y cordón llegan en #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de las sesiones de referencia) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline; modelo de riesgo y triaje nulos (nivel siempre verde) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: no aplica `overrides`, `reference` y `scenario` son la misma evaluación |
@@ -47,13 +47,13 @@ Los ejemplos de `contracts/examples/valid/engine/` son peticiones válidas de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | cambio sostenido sobre el histórico (mismo protocolo y gravedad); un pico aislado nunca cuenta |
 | `VotePolicy` | `AllAgreeVote` | los detectores deben coincidir (AND), en el mismo sentido |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construye la baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (el registro está vacío hasta #41-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (`exercise`, #41; EMG, IMU y cordón en #42-#45) |
 
 Los detectores solo ven una serie de z-scores: no saben qué métrica es, así que no dependen del modelo teórico. `Deviation` lleva el z-score, la gravedad de referencia y si el cambio es sostenido y en qué sentido; el modelo de riesgo lo lee de ahí.
 
 ## Extracción de features
 
-`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). El registro por defecto está vacío, así que hoy la respuesta es un `FeatureSet` vacío y honesto; las métricas llegan familia a familia. `NullFeatureExtractor` sigue en `stubs.py` para los tests.
+`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). `default_registry()` registra la familia `exercise` (#41), así que hoy ya se calculan las métricas de repeticiones; las de los demás sensores llegan familia a familia (#42-#45). `NullFeatureExtractor` sigue en `stubs.py` para los tests.
 
 Antes de ejecutar las familias, el motor prepara una sola vez un `ExtractionContext`:
 
@@ -63,6 +63,20 @@ Antes de ejecutar las familias, el motor prepara una sola vez un `ExtractionCont
 - **Calidad:** `score = cobertura x (1 - fracción saturada)`, `assessed_by = "engine"`, con flags de huecos (`packet_gap`), saturación (`saturated_adc`, `clipping`), calibración caducada (`out_of_calibration`) y, si se configura `clock_uncertain_ms`, `clock_uncertain`. La saturación solo se juzga donde los datos lo permiten (bits del ADC, rangos de la IMU); no hay umbrales clínicos.
 
 El compuesto rellena `unit` desde el catálogo de features y la calidad sobre los streams que cada feature declaró usar. Un id fuera del catálogo es un error de programación de la familia y lanza `UnknownFeatureIdError`. Lo que no se puede calcular va a `skipped` con motivo: `stream_missing` (stream declarado sin chunks), `no_calibration`, `calibration_expired` y `no_data` (cobertura 0, sin UTC o valor no finito), entre otros; la petición nunca se rechaza por incoherente. `features` y `skipped` salen ordenadas, así que el resultado no depende del orden de registro.
+
+### Repeticiones y la familia `exercise`
+
+`exercise.rep_count`, `exercise.rep_duration_s_mean` y `exercise.rep_duration_cv_pct` (CV en %, desviación típica muestral n-1) necesitan al menos 2 repeticiones válidas. Con menos, las tres salen en `skipped` con `too_few_repetitions`.
+
+`RepetitionService` resuelve las ventanas de repetición (`RepWindow`): inicio, fin, la fase activa (rep_start→rep_end) y el reposo (rep_end→siguiente rep_start). La última repetición solo tiene reposo si después hay un evento `rest_end`. `default_registry()` crea un único servicio y se lo pasa a las familias, para que las familias EMG, IMU y cordón (#42-#45) lo reutilicen.
+
+El origen, en este orden:
+
+1. Los eventos `rep_start`/`rep_end` de la sesión (que registra el comando `mark_event`), ordenados por tiempo y emparejados por orden. Los huérfanos, los duplicados y las ventanas con fin <= inicio se descartan.
+2. Si no queda ninguna ventana válida, respaldo por IMU que usa solo el giróscopo (en microgravedad el acelerómetro no ve la gravedad): lóbulos de velocidad angular de signo contrario en el eje dominante, por `boot_id`, con reloj UTC. Sin señal no devuelve nada.
+3. Si tampoco hay nada, no hay repeticiones.
+
+Calidad: las features por eventos evalúan la calidad común sobre todos los streams declarados; las de respaldo IMU, sobre los streams IMU. Sin chunks con ancla de reloj, salen `no_data`.
 
 ## Configuración
 

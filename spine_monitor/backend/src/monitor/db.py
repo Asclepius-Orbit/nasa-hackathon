@@ -358,6 +358,26 @@ class Store:
         marks = ",".join("?" * len(SERVED_SESSION_STATES))
         return self._window("sessions", "started_at", f"astronaut_id = ? AND state IN ({marks})", (astronaut_id, *SERVED_SESSION_STATES), start, end, limit)
 
+    def session_rows(self, astronaut_id: str, *, phase: str | None = None, start: datetime | None = None, end: datetime | None = None) -> list[SessionRow]:
+        """Sessions of the astronaut in ANY state, oldest first, optionally of one mission phase and with `started_at` in [start, end]."""
+        where, args = ["astronaut_id = ?"], [astronaut_id]
+        if phase is not None:
+            where.append("phase = ?")
+            args.append(phase)
+        if start is not None:
+            where.append("started_at >= ?")
+            args.append(utc_key(start))
+        if end is not None:
+            where.append("started_at <= ?")
+            args.append(utc_key(end))
+        rows = self._db.execute(f"SELECT payload, state, error FROM sessions WHERE {' AND '.join(where)} ORDER BY started_at", args).fetchall()
+        return [SessionRow(json.loads(row["payload"]), row["state"], row["error"]) for row in rows]
+
+    def latest_session(self, astronaut_id: str) -> SessionRow | None:
+        """The most recently started session in any state."""
+        row = self._db.execute("SELECT payload, state, error FROM sessions WHERE astronaut_id = ? ORDER BY started_at DESC LIMIT 1", (astronaut_id,)).fetchone()
+        return None if row is None else SessionRow(json.loads(row["payload"]), row["state"], row["error"])
+
     def active_session(self, astronaut_id: str, device_id: str) -> SessionRow | None:
         row = self._db.execute(
             "SELECT payload, state, error FROM sessions WHERE astronaut_id = ? AND device_id = ? "
@@ -465,6 +485,15 @@ class Store:
 
     def assessments_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
         return self._window("assessments", "as_of", "astronaut_id = ?", (astronaut_id,), start, end, limit)
+
+    def assessments_between(self, astronaut_id: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Assessments with `as_of` in [start, end], oldest first, without a row limit."""
+        return self._all(
+            "SELECT payload FROM assessments WHERE astronaut_id = ? AND as_of >= ? AND as_of <= ? ORDER BY as_of",
+            astronaut_id,
+            utc_key(start),
+            utc_key(end),
+        )
 
     def latest_assessment(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM assessments WHERE astronaut_id = ? ORDER BY as_of DESC LIMIT 1", astronaut_id)

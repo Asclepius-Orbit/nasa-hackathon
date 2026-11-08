@@ -9,14 +9,17 @@ Separate from the read-only API of `app-openapi.yaml` (the one of the MCP server
 
 The app fills in what it owns (ids, `schema_version`, instants, `source`) and validates the result
 against the JSON Schema of the entity. Errors are problem details shaped like `app/error`.
+- Views (`GET /ui/crew/{id}/views/*`, `GET /ui/sessions/{id}/view`, `ui-openapi.yaml`): the stored data fed to the pure
+  builders of `monitor.views`; each result is validated against its schema before it is served.
 """
 
 import json
 import uuid
-from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from spine_contracts import SCHEMA_VERSION, topics, validation
@@ -25,6 +28,17 @@ from monitor.analysis import Analysis
 from monitor.control import CommandError, Control
 from monitor.db import Store
 from monitor.models import CalibrateBody, EventBody, StopBody
+from monitor.settings import AppSettings
+from monitor.views.baseline import build_baseline, build_first_day
+from monitor.views.due import reports_due
+from monitor.views.history import build_history
+from monitor.views.lumbar import baseline_entry, latest_elongation, lumbar_delta_mm
+from monitor.views.mission import mission_day_of, mission_for
+from monitor.views.protocol_catalog import protocol_entry, total_reps_for
+from monitor.views.session import build_session_view
+from monitor.views.strip import build_strip
+from monitor.views.tasks import tasks_for
+from monitor.views.today import build_today
 
 PROBLEM = "application/problem+json"
 TITLES = {
@@ -100,7 +114,46 @@ def _same(body: dict[str, Any], key: str, value: Any) -> None:
         raise Problem(422, f"{key} in the body ({body[key]!r}) does not match the path ({value!r})")
 
 
-def build_router(store: Store, control: Control, analysis: Analysis, *, odi_interval_days: int, clock=lambda: datetime.now(UTC)) -> APIRouter:
+# Feature sets are read from here when a view needs "every measure so far" (the pre-flight range of the history).
+_EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
+_DAY = timedelta(days=1)
+
+
+@dataclass(frozen=True)
+class ViewSettings:
+    """What the UI views need from the app settings."""
+
+    baseline_required: int
+    baseline_plan_offsets_days: tuple[int, ...]
+    baseline_protocol_id: str
+    history_window_days: int
+
+    @classmethod
+    def from_app(cls, settings: AppSettings) -> ViewSettings:
+        return cls(settings.baseline_required, tuple(settings.baseline_plan_offsets_days), settings.baseline_protocol_id, settings.history_window_days)
+
+
+def _day_span(first: date, last: date) -> tuple[datetime, datetime]:
+    """UTC instants [start of `first`, last instant of `last`]."""
+    return datetime.combine(first, time.min, UTC), datetime.combine(last, time.min, UTC) + _DAY - timedelta(microseconds=1)
+
+
+def _launch_date(profile: dict[str, Any] | None) -> date | None:
+    value = None if profile is None else profile.get("launch_date")
+    return None if value is None else date.fromisoformat(value)
+
+
+def _conforming(schema: str, view: dict[str, Any]) -> dict[str, Any]:
+    """The view after checking it against its schema: a view that does not conform is a bug and is never served."""
+    found = validation.errors(schema, view)
+    if found:
+        raise Problem(500, f"the {schema} view does not conform to its schema: {found[0]}", type_="internal")
+    return view
+
+
+def build_router(
+    store: Store, control: Control, analysis: Analysis, *, odi_interval_days: int, views: ViewSettings, clock=lambda: datetime.now(UTC)
+) -> APIRouter:
     router = APIRouter(prefix="/ui", tags=["ui"])
 
     def today() -> str:
@@ -187,11 +240,10 @@ def build_router(store: Store, control: Control, analysis: Analysis, *, odi_inte
         now = clock()
         daily = store.latest_self_report(astronaut_id, "daily")
         odi = store.latest_self_report(astronaut_id, "weekly_odi")
-        daily_today = daily is not None and datetime.fromisoformat(daily["timestamp"]).astimezone(UTC).date() == now.date()
-        odi_due = odi is None or datetime.fromisoformat(odi["timestamp"]) <= now - timedelta(days=odi_interval_days)
+        daily_due, odi_due = reports_due(daily, odi, now, odi_interval_days)
         return {
             "date": now.date().isoformat(),
-            "daily_due": not daily_today,
+            "daily_due": daily_due,
             "weekly_odi_due": odi_due,
             "red_flag_available": True,
             "last_daily_at": None if daily is None else daily["timestamp"],
@@ -258,5 +310,117 @@ def build_router(store: Store, control: Control, analysis: Analysis, *, odi_inte
         if command is None:
             raise Problem(404, f"unknown command {command_id}", type_="not_found")
         return {"command": command.payload, "state": command.state, "acks": command.acks}
+
+    # --- views (ui-openapi.yaml) --------------------------------------------------------------------
+
+    def baseline_view(astronaut_id: str, profile: dict[str, Any] | None) -> dict[str, Any]:
+        return build_baseline(
+            store.latest_baseline(astronaut_id),
+            store.session_rows(astronaut_id, phase="preflight"),
+            _launch_date(profile),
+            views.baseline_required,
+            views.baseline_plan_offsets_days,
+            views.baseline_protocol_id,
+        )
+
+    def open_tasks(astronaut_id: str, profile: dict[str, Any] | None, baseline: dict[str, Any], now: datetime) -> list[str]:
+        daily_due, odi_due = reports_due(
+            store.latest_self_report(astronaut_id, "daily"), store.latest_self_report(astronaut_id, "weekly_odi"), now, odi_interval_days
+        )
+        baseline_pending = mission_for(profile, now.date())["phase"] == "preflight" and baseline["recorded"] < baseline["required"]
+        start, end = _day_span(now.date(), now.date())
+        session_today = any(row.state != "rejected" for row in store.session_rows(astronaut_id, start=start, end=end))
+        return list(tasks_for(daily_due, odi_due, baseline_pending, session_today))
+
+    @router.get("/crew/{astronaut_id}/views/strip")
+    async def strip_view(astronaut_id: str) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        view = build_strip(
+            astronaut_id,
+            store.profile(astronaut_id),
+            store.device_statuses(astronaut_id),
+            store.latest_self_report(astronaut_id, "daily"),
+            store.latest_self_report(astronaut_id, "weekly_odi"),
+            clock(),
+            odi_interval_days,
+        )
+        return _conforming("app/ui-strip", view)
+
+    @router.get("/crew/{astronaut_id}/views/today")
+    async def today_view(astronaut_id: str) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        now = clock()
+        profile = store.profile(astronaut_id)
+        # "Recent" measures: the history window ending now; an older measure no longer says how the spine is today.
+        recent = store.feature_sets_between(astronaut_id, now - timedelta(days=views.history_window_days), now)
+        latest = latest_elongation(recent)
+        delta = None if latest is None else lumbar_delta_mm(latest[0], baseline_entry(store.latest_baseline(astronaut_id), latest[1], latest[2]))
+        last = store.latest_session(astronaut_id)
+        in_progress = None if last is None else (last, total_reps_for(last.payload["protocol_id"]))
+        tasks = open_tasks(astronaut_id, profile, baseline_view(astronaut_id, profile), now)
+        return _conforming("app/ui-today", build_today(store.latest_assessment(astronaut_id), delta, in_progress, tasks))
+
+    @router.get("/crew/{astronaut_id}/views/history")
+    async def history_view(
+        astronaut_id: str, from_date: Annotated[date | None, Query(alias="from")] = None, to_date: Annotated[date | None, Query(alias="to")] = None
+    ) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        now = clock()
+        today_date = now.date()
+        launch = _launch_date(store.profile(astronaut_id))
+        try:
+            last = today_date if to_date is None else to_date
+            first = last - timedelta(days=views.history_window_days - 1) if from_date is None else from_date
+            if first > last:
+                raise Problem(422, f"from ({first}) is after to ({last})", type_="invalid_range")
+            start, end = _day_span(first, last)
+            # The pre-flight range looks at every measure so far, also outside the window. The window is not capped: a wide one reads more rows.
+            feature_sets = store.feature_sets_between(astronaut_id, _EPOCH, max(end, now) + _DAY)
+        except OverflowError:
+            raise Problem(422, "date out of range", type_="invalid_range") from None
+        view = build_history(
+            first,
+            last,
+            today_date,
+            lambda day: None if launch is None else mission_day_of(launch, day),
+            store.assessments_between(astronaut_id, start, end),
+            feature_sets,
+            store.self_reports_between(astronaut_id, start, end),
+            store.session_rows(astronaut_id, start=start, end=end),
+            store.latest_baseline(astronaut_id),
+        )
+        return _conforming("app/ui-history", view)
+
+    @router.get("/crew/{astronaut_id}/views/baseline")
+    async def baseline_screen(astronaut_id: str) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        return _conforming("app/ui-baseline", baseline_view(astronaut_id, store.profile(astronaut_id)))
+
+    @router.get("/crew/{astronaut_id}/views/first-day")
+    async def first_day_view(astronaut_id: str) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        profile = store.profile(astronaut_id)
+        baseline = baseline_view(astronaut_id, profile)
+        return _conforming("app/ui-first-day", build_first_day(open_tasks(astronaut_id, profile, baseline, clock()), baseline))
+
+    @router.get("/sessions/{session_id}/view")
+    async def session_view(session_id: str) -> dict[str, Any]:
+        try:
+            canonical = str(uuid.UUID(session_id))
+        except ValueError:
+            canonical = ""
+        if canonical != session_id:
+            raise Problem(422, f"invalid session_id {session_id!r}: must be a lowercase UUID")
+        row = store.session(session_id)
+        if row is None:
+            raise Problem(404, f"unknown session {session_id}", type_="not_found")
+        payload = row.payload
+        view = build_session_view(
+            row,
+            store.session_commands(session_id, "calibrate"),
+            store.device_status(payload["astronaut_id"], payload["device_id"]),
+            protocol_entry(payload["protocol_id"]),
+        )
+        return _conforming("app/ui-session", view)
 
     return router

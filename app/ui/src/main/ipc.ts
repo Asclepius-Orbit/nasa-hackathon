@@ -9,6 +9,8 @@ import type { z } from 'zod';
 import {
   IPC_CHANNELS,
   createCrewInputSchema,
+  historyInputSchema,
+  sessionInputSchema,
   settingsPatchSchema,
   verifyPinInputSchema,
 } from '../shared/ipc-schema';
@@ -16,6 +18,8 @@ import type { AuthService } from './auth/auth-service';
 import type { IpcEventLike } from './security/app-url';
 import type { CrewStore } from './store/crew-store';
 import type { SettingsStore } from './store/settings-store';
+import { ViewsError } from './views/views-error';
+import type { ViewsService } from './views/views-service';
 
 /** The part of Electron's `ipcMain` used here. */
 export interface IpcMainLike {
@@ -26,6 +30,7 @@ export interface IpcServices {
   crew: CrewStore;
   auth: AuthService;
   settings: SettingsStore;
+  views: ViewsService;
 }
 
 class UnavailableError extends Error {
@@ -41,7 +46,7 @@ function orUnavailable<T>(value: T | null): T {
 
 export function registerIpc(
   ipcMain: IpcMainLike,
-  { crew, auth, settings }: IpcServices,
+  { crew, auth, settings, views }: IpcServices,
   isTrustedSender: (event: IpcEventLike) => boolean,
   logError: (error: unknown) => void = console.error,
 ): void {
@@ -53,7 +58,13 @@ export function registerIpc(
     try {
       return await task();
     } catch (error) {
-      if (!(error instanceof UnavailableError)) logError(error);
+      // `locked` and `not_found` are expected answers the renderer may tell apart; nothing else is let through.
+      if (error instanceof ViewsError && error.code !== 'unavailable') throw new Error(error.code);
+      if (error instanceof ViewsError) {
+        if (error.cause !== undefined) logError(error.cause);
+      } else if (!(error instanceof UnavailableError)) {
+        logError(error);
+      }
       throw new Error('unavailable');
     }
   }
@@ -93,4 +104,11 @@ export function registerIpc(
 
   withoutInput(IPC_CHANNELS.settingsGet, () => settings.get());
   withInput(IPC_CHANNELS.settingsUpdate, settingsPatchSchema, (patch) => settings.update(patch));
+
+  withoutInput(IPC_CHANNELS.viewsStrip, () => views.strip());
+  withoutInput(IPC_CHANNELS.viewsToday, () => views.today());
+  withInput(IPC_CHANNELS.viewsHistory, historyInputSchema, (range) => views.history(range));
+  withoutInput(IPC_CHANNELS.viewsBaseline, () => views.baseline());
+  withoutInput(IPC_CHANNELS.viewsFirstDay, () => views.firstDay());
+  withInput(IPC_CHANNELS.viewsSession, sessionInputSchema, ({ sessionId }) => views.session(sessionId));
 }

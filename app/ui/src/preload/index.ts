@@ -23,6 +23,15 @@ const api: AsclepiusApi = Object.freeze({
     get: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
     update: (patch) => ipcRenderer.invoke(IPC_CHANNELS.settingsUpdate, patch),
   } satisfies AsclepiusApi['settings']),
+  views: Object.freeze({
+    strip: () => ipcRenderer.invoke(IPC_CHANNELS.viewsStrip),
+    today: () => ipcRenderer.invoke(IPC_CHANNELS.viewsToday),
+    // Always exactly one argument: the main process rejects a missing or extra one.
+    history: (range = {}) => ipcRenderer.invoke(IPC_CHANNELS.viewsHistory, range),
+    baseline: () => ipcRenderer.invoke(IPC_CHANNELS.viewsBaseline),
+    firstDay: () => ipcRenderer.invoke(IPC_CHANNELS.viewsFirstDay),
+    session: (sessionId) => ipcRenderer.invoke(IPC_CHANNELS.viewsSession, { sessionId }),
+  } satisfies AsclepiusApi['views']),
 });
 
 contextBridge.exposeInMainWorld('asclepius', api);

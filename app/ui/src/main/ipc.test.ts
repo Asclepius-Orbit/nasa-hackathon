@@ -12,6 +12,9 @@ import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
 import { FakeClock, FakeSafeStorage, FlakyFs, makeTempDir } from './store/test-fakes';
+import type { ViewsClient } from './views/views-client';
+import { ViewsError } from './views/views-error';
+import { createViewsService } from './views/views-service';
 
 type Listener = (event: IpcEventLike, ...args: unknown[]) => unknown;
 
@@ -29,6 +32,7 @@ class FakeIpcMain implements IpcMainLike {
   }
 }
 
+const SESSION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const APP_URL = 'app://asclepius/index.html';
 const trusted: IpcEventLike = { senderFrame: { url: `${APP_URL}#/login`, parent: null } };
 const untrustedEvents: [string, IpcEventLike][] = [
@@ -44,6 +48,25 @@ let fs: FlakyFs;
 let ipc: FakeIpcMain;
 let services: IpcServices;
 let logged: unknown[];
+/** Fake of the backend HTTP client: remembers the arguments and answers (or fails) as told. */
+let backend: { calls: unknown[][]; failWith: Error | null };
+
+function fakeViewsClient(): ViewsClient {
+  backend = { calls: [], failWith: null };
+  const view = (name: string, ...args: unknown[]): Promise<never> => {
+    backend.calls.push([name, ...args]);
+    if (backend.failWith !== null) return Promise.reject(backend.failWith);
+    return Promise.resolve({ schema_version: '1.0.0', view: name } as never);
+  };
+  return {
+    strip: (id) => view('strip', id),
+    today: (id) => view('today', id),
+    history: (id, range) => view('history', id, range),
+    baseline: (id) => view('baseline', id),
+    firstDay: (id) => view('firstDay', id),
+    session: (id) => view('session', id),
+  };
+}
 
 beforeEach(async () => {
   ({ dir, cleanup } = await makeTempDir());
@@ -62,7 +85,8 @@ beforeEach(async () => {
     now: new FakeClock().now,
   });
   const settings = createSettingsStore({ path: join(dir, 'settings.json'), fs });
-  services = { crew, auth, settings };
+  const views = createViewsService({ auth, crew, client: fakeViewsClient() });
+  services = { crew, auth, settings, views };
   ipc = new FakeIpcMain();
   logged = [];
   const policy = createAppUrlPolicy({});
@@ -105,6 +129,20 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.settingsUpdate, [{ lengthUnit: 'cm' }]],
     [IPC_CHANNELS.settingsUpdate, [{ theme: 'dark' }]],
     [IPC_CHANNELS.settingsUpdate, []],
+    [IPC_CHANNELS.viewsStrip, ['AST-02']],
+    [IPC_CHANNELS.viewsToday, [{}]],
+    [IPC_CHANNELS.viewsBaseline, ['AST-02']],
+    [IPC_CHANNELS.viewsFirstDay, [{ astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.viewsHistory, []],
+    [IPC_CHANNELS.viewsHistory, ['2026-11-01']],
+    [IPC_CHANNELS.viewsHistory, [{ from: '2026-13-01' }]],
+    [IPC_CHANNELS.viewsHistory, [{ from: '2026-11-08', to: '2026-11-01' }]],
+    [IPC_CHANNELS.viewsHistory, [{ from: '2026-11-01', astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.viewsHistory, [{}, 'extra']],
+    [IPC_CHANNELS.viewsSession, []],
+    [IPC_CHANNELS.viewsSession, ['not-a-uuid']],
+    [IPC_CHANNELS.viewsSession, [{ sessionId: '../../etc' }]],
+    [IPC_CHANNELS.viewsSession, [{ sessionId: SESSION, astronautId: 'AST-02' }]],
   ])('rejects invalid input on %s %j without echoing it', async (channel, args) => {
     await expect(call(channel, ...args)).rejects.toThrow(/^invalid input$/);
   });
@@ -190,5 +228,82 @@ describe('settings channels', () => {
     registerIpc(leaky, { ...services, settings: broken }, () => true, (error) => logged.push(error));
     await expect(leaky.invoke(IPC_CHANNELS.settingsGet, trusted)).rejects.toThrow(/^unavailable$/);
     expect(logged).toEqual([bug]);
+  });
+});
+
+describe('views channels', () => {
+  const unlock = () => call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-01', pin: '1234' });
+
+  it('forwards each call to the backend for the unlocked astronaut only', async () => {
+    await unlock();
+    expect(await call(IPC_CHANNELS.viewsStrip)).toEqual({ schema_version: '1.0.0', view: 'strip' });
+    await call(IPC_CHANNELS.viewsToday);
+    await call(IPC_CHANNELS.viewsHistory, {});
+    await call(IPC_CHANNELS.viewsHistory, { from: '2026-11-01', to: '2026-11-07' });
+    await call(IPC_CHANNELS.viewsBaseline);
+    await call(IPC_CHANNELS.viewsSession, { sessionId: SESSION });
+    expect(backend.calls).toEqual([
+      ['strip', 'AST-01'],
+      ['today', 'AST-01'],
+      ['history', 'AST-01', {}],
+      ['history', 'AST-01', { from: '2026-11-01', to: '2026-11-07' }],
+      ['baseline', 'AST-01'],
+      ['session', SESSION],
+    ]);
+  });
+
+  it('adds the crew first name to first-day', async () => {
+    await unlock();
+    expect(await call(IPC_CHANNELS.viewsFirstDay)).toEqual({
+      schema_version: '1.0.0',
+      view: 'firstDay',
+      crewFirstName: 'Elena',
+    });
+  });
+
+  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay])(
+    'rejects %s with "locked" before login and behind the lock screen',
+    async (channel) => {
+      await expect(call(channel)).rejects.toThrow(/^locked$/);
+      await unlock();
+      await call(IPC_CHANNELS.authLock);
+      await expect(call(channel)).rejects.toThrow(/^locked$/);
+      expect(backend.calls).toEqual([]);
+    },
+  );
+
+  it('rejects history and session with "locked" too', async () => {
+    await expect(call(IPC_CHANNELS.viewsHistory, {})).rejects.toThrow(/^locked$/);
+    await expect(call(IPC_CHANNELS.viewsSession, { sessionId: SESSION })).rejects.toThrow(/^locked$/);
+    expect(backend.calls).toEqual([]);
+  });
+
+  it('passes "not_found" through without logging it', async () => {
+    await unlock();
+    backend.failWith = new ViewsError('not_found');
+    await expect(call(IPC_CHANNELS.viewsSession, { sessionId: SESSION })).rejects.toThrow(/^not_found$/);
+    expect(logged).toEqual([]);
+  });
+
+  it('turns backend failures into "unavailable" and logs the cause', async () => {
+    await unlock();
+    const cause = new TypeError('fetch failed');
+    backend.failWith = new ViewsError('unavailable', { cause });
+    await expect(call(IPC_CHANNELS.viewsToday)).rejects.toThrow(/^unavailable$/);
+    expect(logged).toEqual([cause]);
+  });
+
+  it('does not log an unavailable view that has no underlying error', async () => {
+    await unlock();
+    backend.failWith = new ViewsError('unavailable');
+    await expect(call(IPC_CHANNELS.viewsToday)).rejects.toThrow(/^unavailable$/);
+    expect(logged).toEqual([]);
+  });
+
+  it('keeps hiding unexpected errors behind "unavailable"', async () => {
+    await unlock();
+    backend.failWith = new Error('boom C:\\secret');
+    await expect(call(IPC_CHANNELS.viewsStrip)).rejects.toThrow(/^unavailable$/);
+    expect(logged).toHaveLength(1);
   });
 });

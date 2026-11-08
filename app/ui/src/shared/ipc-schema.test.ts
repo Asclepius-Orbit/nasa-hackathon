@@ -4,6 +4,8 @@ import { IPC_CHANNELS } from './ipc-channels';
 import {
   createCrewInputSchema,
   crewIdSchema,
+  historyInputSchema,
+  sessionInputSchema,
   nameSchema,
   pinSchema,
   settingsPatchSchema,
@@ -23,6 +25,12 @@ describe('IPC_CHANNELS', () => {
       'asclepius:auth:current',
       'asclepius:settings:get',
       'asclepius:settings:update',
+      'asclepius:views:strip',
+      'asclepius:views:today',
+      'asclepius:views:history',
+      'asclepius:views:baseline',
+      'asclepius:views:first-day',
+      'asclepius:views:session',
     ]);
     expect(new Set(names).size).toBe(names.length);
   });
@@ -102,5 +110,50 @@ describe('settings schemas', () => {
     expect(settingsPatchSchema.safeParse({ voiceCommands: 'yes' }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ footPedal: undefined }).success).toBe(false);
     expect(settingsPatchSchema.safeParse(null).success).toBe(false);
+  });
+});
+
+describe('historyInputSchema', () => {
+  it.each([
+    {},
+    { from: '2026-11-01' },
+    { to: '2026-11-07' },
+    { from: '2026-11-01', to: '2026-11-07' },
+    { from: '2026-11-01', to: '2026-11-01' },
+    { from: '2028-02-29' },
+  ])('accepts %j', (range) => {
+    expect(historyInputSchema.safeParse(range).success).toBe(true);
+  });
+
+  it.each([
+    ['a non-object', '2026-11-01'],
+    ['null', null],
+    ['extra keys', { from: '2026-11-01', astronautId: 'AST-01' }],
+    ['a date-time', { from: '2026-11-01T00:00:00Z' }],
+    ['a date with a trailing newline', { from: '2026-11-01\n' }],
+    ['a non-existent day', { from: '2026-02-30' }],
+    ['a month 13', { to: '2026-13-01' }],
+    ['a number', { from: 20261101 }],
+    ['an explicit undefined', { from: undefined }],
+    ['an inverted range', { from: '2026-11-08', to: '2026-11-01' }],
+  ])('rejects %s', (_label, range) => {
+    expect(historyInputSchema.safeParse(range).success).toBe(false);
+  });
+});
+
+describe('sessionInputSchema', () => {
+  it('accepts { sessionId } with a UUID', () => {
+    expect(sessionInputSchema.safeParse({ sessionId: '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b' }).success).toBe(true);
+  });
+
+  it.each([
+    ['a missing id', {}],
+    ['a bare string', '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b'],
+    ['a non-UUID', { sessionId: 'abc' }],
+    ['a path traversal', { sessionId: '../../x' }],
+    ['an uppercase UUID', { sessionId: '3F2B8C1E-5D4A-4E6F-9A7B-1C2D3E4F5A6B' }],
+    ['extra keys', { sessionId: '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b', x: 1 }],
+  ])('rejects %s', (_label, input) => {
+    expect(sessionInputSchema.safeParse(input).success).toBe(false);
   });
 });

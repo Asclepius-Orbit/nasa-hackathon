@@ -11,6 +11,12 @@ export const IPC_CHANNELS = Object.freeze({
   authCurrent: 'asclepius:auth:current',
   settingsGet: 'asclepius:settings:get',
   settingsUpdate: 'asclepius:settings:update',
+  viewsStrip: 'asclepius:views:strip',
+  viewsToday: 'asclepius:views:today',
+  viewsHistory: 'asclepius:views:history',
+  viewsBaseline: 'asclepius:views:baseline',
+  viewsFirstDay: 'asclepius:views:first-day',
+  viewsSession: 'asclepius:views:session',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

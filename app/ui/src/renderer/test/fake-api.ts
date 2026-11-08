@@ -81,6 +81,21 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     },
   };
 
+  /** No view data yet: every call fails as if the backend were down. The views screens add their own fakes. */
+  views = {
+    strip: () => this.viewUnavailable('views.strip'),
+    today: () => this.viewUnavailable('views.today'),
+    history: () => this.viewUnavailable('views.history'),
+    baseline: () => this.viewUnavailable('views.baseline'),
+    firstDay: () => this.viewUnavailable('views.firstDay'),
+    session: () => this.viewUnavailable('views.session'),
+  };
+
+  private viewUnavailable(call: string): Promise<never> {
+    this.calls.push(call);
+    return Promise.reject(new Error('unavailable'));
+  }
+
   settings = {
     get: (): Promise<Settings> => {
       this.calls.push('settings.get');

@@ -56,7 +56,7 @@ docker compose -f app/docker-compose.yml --profile quality run --rm ui-quality
 
 ```
 src/main/       Procés main d'Electron: finestra enfortida, protocol app://, IPC, PIN, magatzems xifrats
-src/preload/    L'únic pont: window.asclepius (crew, auth, settings) i res més
+src/preload/    L'únic pont: window.asclepius (crew, auth, settings, views) i res més
 src/shared/     Contracte del pont (api.ts) i noms de canals IPC + esquemes zod
 src/renderer/   App React: router, layout, pantalles a features/<nom>/, strings/, data/, components/ui/
 src/contracts/  Tipus generats des de spine_monitor/contracts/schemas/v1 (no editar)
@@ -76,6 +76,7 @@ Els textos viuen a `src/renderer/strings/` (en anglès, un fitxer per pantalla) 
   esquema zod estricte; els errors arriben al renderer com a missatges genèrics.
 - PIN: scrypt amb salt per tripulant, comprovat al procés main. Tres errors bloquegen aquell tripulant cinc minuts,
   i el bloqueig sobreviu als reinicis; l'intent es registra abans de comprovar el PIN.
+- Vistes del backend: el renderer mai parla amb el backend (el CSP `connect-src 'self'` no canvia). El procés main demana les vistes `/ui/...` només de l'astronauta desbloquejat, per HTTP a loopback (`ASCLEPIUS_BACKEND_URL`, per defecte `http://127.0.0.1:8000`; altres hosts s'ignoren), amb timeout de 5 s, sense redireccions i sense cau. Els errors arriben al renderer com `locked`, `not_found` o `unavailable`.
 - L'estat de tripulants i d'autenticació es xifra amb `safeStorage` d'Electron i falla tancat si no hi ha xifratge
   disponible.
 - Fuses d'Electron: sense `RunAsNode`, sense `NODE_OPTIONS`, sense flags d'inspect, integritat de l'asar i càrrega

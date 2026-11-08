@@ -289,7 +289,7 @@ async def test_history_in_the_wrong_year_comes_back_empty_so_invented_numbers_ar
     assert result.output.tool_results[0]["assessments"] == []
     assert result.output.tool_results[0]["feature_sets"] == []
     failed = {n for n, r in result.assertions.items() if not r.value}
-    assert failed == {"NumbersGrounded"}  # RequiredToolsCalled still passes: the tool was called
+    assert failed == {"NumbersGrounded", "RangesMatch"}  # RequiredToolsCalled still passes: the tool was called
 
 
 @pytest.mark.integration
@@ -298,4 +298,29 @@ async def test_an_honest_empty_history_answer_still_fails_because_nothing_is_cit
     bad = scripted_model([WRONG_YEAR], "I don't know: the tool found no data for that period, so I cannot say how your status changed.")
     report = await _evaluate_case("history_trend_en_last_week", lambda inputs: bad)
     failed = {n for n, r in report.cases[0].assertions.items() if not r.value}
-    assert failed == {"NumbersGrounded"}
+    assert failed == {"NumbersGrounded", "RangesMatch"}
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_the_run_records_the_instant_the_agent_was_told():
+    steps, answer = SCRIPTS["history_trend_en_last_week"]
+    report = await _evaluate_case("history_trend_en_last_week", lambda inputs: scripted_model(steps, answer))
+    assert report.cases[0].output.now == FIXED_NOW
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_the_run_reads_the_wall_clock_once_so_the_prompt_and_the_run_share_one_instant():
+    ticks = iter([FIXED_NOW, datetime(2030, 1, 1, tzinfo=UTC)])
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "I don't know."
+
+    settings = _settings()
+    inputs = EvalInput(question="Hi", astronaut_id="AST-01", language="en")
+    run = await run_chat(build_agent(settings, model=FunctionModel(stream_function=stream)), McpStatusSource(settings), inputs, wall_clock=lambda: next(ticks))
+    assert run.now == FIXED_NOW
+    assert "2026-11-13T12:00:00Z" in seen[0]

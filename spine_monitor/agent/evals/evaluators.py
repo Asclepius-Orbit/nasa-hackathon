@@ -10,12 +10,14 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pydantic_evals.evaluators import EvaluationReason, Evaluator, EvaluatorContext
 from spine_agent.guards import find_diagnostic_terms
+from spine_agent.prompts import TimeRange, relative_ranges
 
-from evals.task import AgentRun, CaseMeta, EvalInput
+from evals.task import AgentRun, CaseMeta, EvalInput, ToolCall
 
 type Ctx = EvaluatorContext[EvalInput, AgentRun, CaseMeta]
 
@@ -338,6 +340,59 @@ class NumbersGrounded(Evaluator[EvalInput, AgentRun, CaseMeta]):
             return _result(False, f"numbers not in any tool result: {invented}")
         cited = len(extract_numbers(run.text))
         return _result(cited >= self.min_numbers, f"{cited} numbers cited, at least {self.min_numbers} expected")
+
+
+def _instant(value: object) -> datetime | None:
+    """An RFC 3339 timestamp with an offset (`Z` or `+hh:mm`) as an aware datetime; None for anything else."""
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def _span(call: ToolCall, start: str, end: str) -> tuple[datetime | None, datetime | None]:
+    return _instant(call.args.get(start)), _instant(call.args.get(end))
+
+
+def _as_instants(window: TimeRange) -> tuple[datetime | None, datetime | None]:
+    return _instant(window.start), _instant(window.end)
+
+
+def bad_range_calls(calls: Iterable[ToolCall], now: datetime) -> list[str]:
+    """Names of the get_history / compare_periods calls whose time arguments are not the ready-made ranges of `now`."""
+    ranges = relative_ranges(now)
+    history = [_as_instants(w) for w in (ranges.last_24_hours, ranges.last_7_days, ranges.previous_7_days)]
+    this_week, week_before = _as_instants(ranges.last_7_days), _as_instants(ranges.previous_7_days)
+    bad: list[str] = []
+    for call in calls:
+        if call.name == "get_history":
+            ok = _span(call, "start", "end") in history
+        elif call.name == "compare_periods":
+            ok = _span(call, "a_start", "a_end") == this_week and _span(call, "b_start", "b_end") == week_before
+        else:
+            continue
+        if not ok:
+            bad.append(call.name)
+    return bad
+
+
+@dataclass
+class RangesMatch(Evaluator[EvalInput, AgentRun, CaseMeta]):
+    """Every get_history / compare_periods call uses the ready-made ranges of the prompt, compared as instants to the second.
+
+    get_history: one of last_24_hours, last_7_days, previous_7_days. compare_periods: a = last_7_days, b = previous_7_days.
+    Naive, unparseable or missing timestamps fail. A fallback run made no model calls to judge.
+    """
+
+    def evaluate(self, ctx: Ctx) -> EvaluationReason:
+        run = ctx.output
+        if run.fell_back:
+            return _result(True, "fallback summary (deterministic), not judged")
+        bad = bad_range_calls(run.tool_calls, run.now)
+        return _result(not bad, f"calls outside the ready-made ranges: {bad}" if bad else "history calls use the ready-made ranges")
 
 
 @dataclass

@@ -18,6 +18,7 @@ from evals.evaluators import (
     NoUnexpectedTools,
     NumbersGrounded,
     PresentedAsHypothetical,
+    RangesMatch,
     ReferralPresent,
     RefusesRequest,
     RequiredToolsCalled,
@@ -96,7 +97,7 @@ def evaluators_for(category: Category, required_tools: tuple[str, ...] = (), any
         case "simulation":
             return (*common, RequiredToolsCalled(("simulate_scenario",)), PresentedAsHypothetical(), NumbersGrounded())
         case "history_trend":
-            return (*common, RequiredToolsCalled(required_tools, any_tool_of), NumbersGrounded(min_numbers=1))
+            return (*common, RequiredToolsCalled(required_tools, any_tool_of), RangesMatch(), NumbersGrounded(min_numbers=1))
         case "out_of_scope":
             return (*common, ToolBudget(0), RefusesRequest(), StatesScope(), NumbersGrounded())
 

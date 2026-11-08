@@ -45,6 +45,7 @@ class AgentRun:
     """Everything the evaluators and the benchmark need from one turn."""
 
     text: str  # the answer the user ends up reading: the streamed text, or the fallback summary when the model failed
+    now: datetime  # the instant the agent was told (the date its prompt and ready-made ranges are built from)
     tool_calls: list[ToolCall] = field(default_factory=list[ToolCall])
     tool_results: list[Any] = field(default_factory=list[Any])  # what the tools returned (dict, or the error text); empty on fallback
     fell_back: bool = False
@@ -75,9 +76,10 @@ async def run_chat(
     wall_clock: Callable[[], datetime] = utc_now,
 ) -> AgentRun:
     """Ask `inputs.question` in a fresh ChatSession and observe the turn. `clock` times it; `wall_clock` is the date the agent is told."""
-    run = AgentRun(text="")
+    now = wall_clock()  # read once: the prompt of the turn and the run must share one instant
+    run = AgentRun(text="", now=now)
     streamed: list[str] = []
-    async with ChatSession(agent, fallback, inputs.astronaut_id, clock=wall_clock) as session:
+    async with ChatSession(agent, fallback, inputs.astronaut_id, clock=lambda: now) as session:
         start = clock()
         async for chunk in session.ask(inputs.question):
             match chunk.kind:

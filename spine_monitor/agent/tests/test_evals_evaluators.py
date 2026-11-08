@@ -5,6 +5,7 @@ evaluators bite; without them a broken evaluator would be a false green.
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -22,6 +23,7 @@ from evals.evaluators import (
 )
 from evals.task import AgentRun, EvalInput, ToolCall
 from pydantic_evals import Dataset
+from spine_agent.prompts import relative_ranges
 
 AMBER_RESULT = {"latest_assessment": {"level": "amber", "drivers": [{"feature_id": "symptoms.pain_nrs_7d_mean", "value": 9.1, "unit": "mm"}, {"value": None}]}}
 MARS_EN = (
@@ -38,8 +40,47 @@ MARS_CA_MISREAD = "No tinc accés a dades sobre l'hora actual o la ubicació de 
 NOT_FOUND = "Error executing tool get_current_status: Astronaut not found: No astronaut with id AST-99."
 
 
-def _run(text: str, calls: tuple[str, ...] = (), results: list[Any] | None = None, *, fell_back: bool = False) -> AgentRun:
-    return AgentRun(text=text, tool_calls=[ToolCall(name, {}) for name in calls], tool_results=results or [], fell_back=fell_back)
+NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+RANGES = relative_ranges(NOW)
+WEEK = {"start": RANGES.last_7_days.start, "end": RANGES.last_7_days.end}
+COMPARE_ARGS = {
+    "a_start": RANGES.last_7_days.start,
+    "a_end": RANGES.last_7_days.end,
+    "b_start": RANGES.previous_7_days.start,
+    "b_end": RANGES.previous_7_days.end,
+}
+
+
+def _valid_args(name: str) -> dict[str, Any]:
+    """The arguments a model that copies the ready-made ranges would send; other tools take none that matter here."""
+    match name:
+        case "get_history":
+            return {"astronaut_id": "AST-01", **WEEK}
+        case "compare_periods":
+            return {"astronaut_id": "AST-01", **COMPARE_ARGS}
+        case _:
+            return {}
+
+
+def _run(
+    text: str,
+    calls: tuple[str, ...] = (),
+    results: list[Any] | None = None,
+    *,
+    fell_back: bool = False,
+    tool_calls: list[ToolCall] | None = None,
+) -> AgentRun:
+    """`calls` are tool names sent with valid arguments; `tool_calls` gives the exact calls instead."""
+    made = tool_calls if tool_calls is not None else [ToolCall(name, _valid_args(name)) for name in calls]
+    return AgentRun(text=text, now=NOW, tool_calls=made, tool_results=results or [], fell_back=fell_back)
+
+
+def _history(**args: Any) -> ToolCall:
+    return ToolCall("get_history", {"astronaut_id": "AST-01", **WEEK, **args})
+
+
+def _compare(**args: Any) -> ToolCall:
+    return ToolCall("compare_periods", {"astronaut_id": "AST-01", **COMPARE_ARGS, **args})
 
 
 async def _failed(case_name: str, run: AgentRun) -> set[str]:
@@ -498,3 +539,186 @@ async def test_last_week_question_rejects_an_unrelated_tool():
 async def test_history_answer_in_the_wrong_language_fails_language_matches():
     run = _run("En la última semana tu nivel pasó de verde a ámbar y el riesgo subió de 0.3 a 0.62 por los datos.", ("get_history",), [HISTORY_RESULT])
     assert await _failed("history_trend_en_last_week", run) == {"LanguageMatches"}
+
+
+# ---------------------------------------------------------------- RangesMatch
+
+HISTORY_TEXT = "Over the last week your level moved from green to amber and the risk score rose from 0.3 to 0.62."
+COMPARE_TEXT = "This week your mean risk score was 0.46 against 0.24 the week before."
+SHIFTED_END = "2026-11-13T12:00:01Z"
+BOUNDS = ["a_start", "a_end", "b_start", "b_end"]
+
+
+async def _history_failed(*calls: ToolCall) -> set[str]:
+    return await _failed("history_trend_en_last_week", _run(HISTORY_TEXT, results=[HISTORY_RESULT], tool_calls=list(calls)))
+
+
+async def _compare_failed(*calls: ToolCall) -> set[str]:
+    return await _failed("history_trend_en_compare_weeks", _run(COMPARE_TEXT, results=[COMPARE_RESULT], tool_calls=list(calls)))
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_with_the_last_7_days_range_passes_ranges_match():
+    assert await _history_failed(_history()) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize("window", [RANGES.last_24_hours, RANGES.last_7_days, RANGES.previous_7_days])
+async def test_get_history_accepts_each_ready_made_range(window: Any):
+    assert await _history_failed(_history(start=window.start, end=window.end)) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_in_the_wrong_year_fails_ranges_match():
+    assert await _history_failed(_history(start="2025-11-06T12:00:00Z", end="2025-11-13T12:00:00Z")) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_over_a_14_day_window_fails_ranges_match():
+    assert await _history_failed(_history(start=RANGES.previous_7_days.start)) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_shifted_by_one_second_fails_ranges_match():
+    assert await _history_failed(_history(end=SHIFTED_END)) == {"RangesMatch"}
+    assert await _history_failed(_history(start="2026-11-06T11:59:59Z")) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_with_a_naive_timestamp_fails_ranges_match():
+    assert await _history_failed(_history(end="2026-11-13T12:00:00")) == {"RangesMatch"}
+    assert await _history_failed(_history(start="2026-11-06T12:00:00")) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_with_an_unparseable_timestamp_fails_ranges_match():
+    assert await _history_failed(_history(end="last friday")) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_with_a_non_string_timestamp_fails_ranges_match():
+    assert await _history_failed(_history(end=1763035200)) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_with_an_offset_form_of_the_same_instants_passes_ranges_match():
+    assert await _history_failed(_history(start="2026-11-06T12:00:00+00:00", end="2026-11-13T12:00:00+00:00")) == set()
+    assert await _history_failed(_history(start="2026-11-06T13:00:00+01:00", end="2026-11-13T13:00:00+01:00")) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_without_an_end_or_a_start_fails_ranges_match():
+    no_end = ToolCall("get_history", {"astronaut_id": "AST-01", "start": RANGES.last_7_days.start})
+    no_start = ToolCall("get_history", {"astronaut_id": "AST-01", "end": RANGES.last_7_days.end})
+    assert await _history_failed(no_end) == {"RangesMatch"}
+    assert await _history_failed(no_start) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_history_mixing_the_start_and_end_of_two_ranges_fails_ranges_match():
+    assert await _history_failed(_history(start=RANGES.last_24_hours.start, end=RANGES.previous_7_days.end)) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_second_bad_history_call_fails_ranges_match_even_after_a_good_one():
+    assert await _history_failed(_history(), _history(end=SHIFTED_END)) == {"RangesMatch"}
+    assert await _history_failed(_history(end=SHIFTED_END), _history()) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_compare_periods_with_this_week_against_the_week_before_passes_ranges_match():
+    assert await _compare_failed(_compare()) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_compare_periods_with_the_periods_swapped_fails_ranges_match():
+    swapped = _compare(
+        a_start=RANGES.previous_7_days.start,
+        a_end=RANGES.previous_7_days.end,
+        b_start=RANGES.last_7_days.start,
+        b_end=RANGES.last_7_days.end,
+    )
+    assert await _compare_failed(swapped) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize("key", BOUNDS)
+async def test_compare_periods_with_any_one_bound_off_by_a_second_fails_ranges_match(key: str):
+    assert await _compare_failed(_compare(**{key: "2026-11-13T12:00:01Z"})) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize("key", BOUNDS)
+async def test_compare_periods_missing_any_bound_fails_ranges_match(key: str):
+    args = {k: v for k, v in _valid_args("compare_periods").items() if k != key}
+    assert await _compare_failed(ToolCall("compare_periods", args)) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_compare_periods_with_naive_timestamps_fails_ranges_match():
+    assert await _compare_failed(_compare(b_end="2026-11-06T12:00:00")) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_compare_periods_with_offset_form_passes_ranges_match():
+    offset = _compare(
+        a_start="2026-11-06T12:00:00+00:00",
+        a_end="2026-11-13T12:00:00+00:00",
+        b_start="2026-10-30T12:00:00+00:00",
+        b_end="2026-11-06T12:00:00+00:00",
+    )
+    assert await _compare_failed(offset) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_bad_compare_periods_call_fails_ranges_match_next_to_a_good_history_call():
+    assert await _compare_failed(_compare(), _compare(a_end=SHIFTED_END)) == {"RangesMatch"}
+    assert await _compare_failed(_history(), _compare(a_end=SHIFTED_END)) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_the_ranges_are_computed_from_the_time_of_the_run():
+    run = _run(HISTORY_TEXT, results=[HISTORY_RESULT], tool_calls=[_history()])
+    run.now = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+    assert await _failed("history_trend_en_last_week", run) == {"RangesMatch"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_run_without_history_calls_passes_ranges_match():
+    sessions = ToolCall("get_sessions", {"astronaut_id": "AST-01"})
+    assert await _history_failed(sessions) == {"RequiredToolsCalled"}  # only the tool requirement bites, not RangesMatch
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_other_tools_are_ignored_by_ranges_match_whatever_their_arguments():
+    sessions = ToolCall("get_sessions", {"astronaut_id": "AST-01", "start": "garbage", "end": "garbage"})
+    assert await _history_failed(sessions, _history()) == set()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_ranges_match_does_not_judge_a_fallback_run():
+    run = _run(HISTORY_TEXT, fell_back=True, tool_calls=[_history(end=SHIFTED_END)])
+    assert await _failed("history_trend_en_last_week", run) == set()

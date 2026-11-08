@@ -106,6 +106,37 @@ def test_overrides_on_one_feature_compose_sequentially(overrides):
     assert _latest(result, PEAK) == pytest.approx(expected)
 
 
+def _value_in(base: AssessRequest, index: int, feature_id: str) -> float:
+    return next(f.value for f in base.feature_sets[index].features if f.feature_id == feature_id)
+
+
+def test_feature_only_in_an_older_set_overrides_that_older_value():
+    base = BASE.model_copy(deep=True)
+    base.feature_sets[0].features = [f for f in base.feature_sets[0].features if f.feature_id != PEAK]
+
+    result = apply_overrides(base, _on_peak((Mode.SET, 42.0)))
+
+    assert _value_in(result, 1, PEAK) == 42.0  # el antiguo es el único que la tiene
+    assert result.feature_sets[0] == base.feature_sets[0]
+    others = [f for f in base.feature_sets[1].features if f.feature_id != PEAK]
+    assert [f for f in result.feature_sets[1].features if f.feature_id != PEAK] == others
+
+
+@pytest.mark.parametrize("last", [0, 1])
+def test_tie_on_computed_at_picks_the_later_set_in_the_list(last):
+    base = BASE.model_copy(deep=True)
+    base.feature_sets[1].computed_at = base.feature_sets[0].computed_at  # empate
+    first = 1 - last
+    before_first, before_last = _value_in(base, first, PEAK), _value_in(base, last, PEAK)
+    assert before_first != before_last
+    base.feature_sets = [base.feature_sets[first], base.feature_sets[last]]
+
+    result = apply_overrides(base, _on_peak((Mode.SET, 42.0)))
+
+    assert _value_in(result, 0, PEAK) == before_first
+    assert _value_in(result, 1, PEAK) == 42.0
+
+
 @pytest.mark.property
 @given(overrides=overrides)
 def test_only_the_latest_value_of_each_feature_changes(overrides):

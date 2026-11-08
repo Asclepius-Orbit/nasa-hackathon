@@ -153,3 +153,12 @@ def test_risk_parameters_come_from_the_settings():
     assert sharp.risk_score == 1.0
     assert [d.feature_id for d in soft.drivers] == [ROM]
     assert 0.0 < patient.risk_score < soft.risk_score < 1e-3
+
+
+def test_partial_risk_weights_keep_the_other_domains_scoring():
+    req = request()
+    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 31.0, 31.2, 31.1, 31.3, 31.0])
+
+    assessment = default_pipeline(EngineSettings(_env_file=None, risk_domain_weights={AssessmentDomain.MUSCLE: 2.0})).evaluate(req)
+
+    assert ROM in {d.feature_id for d in assessment.drivers}

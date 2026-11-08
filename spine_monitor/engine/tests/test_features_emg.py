@@ -275,6 +275,32 @@ def test_a_repetition_shorter_than_the_calibration_window_uses_all_its_samples_a
     assert computed(result)[f"{PREFIX_LEFT}.peak_pct_mvc"].value == pytest.approx(100.0 * math.sqrt(3.0))
 
 
+def test_the_window_in_samples_is_the_calibration_window_rounded_to_the_nearest_sample():
+    # 100 Hz y 35 ms = 3,5 muestras -> 4: la ventana (4,4,4,0) da sqrt(12); con 3 muestras daría 4
+    context = make_context({LEFT: [4.0, 4.0, 4.0, 0.0, 0.0]}, [calibration(LEFT, "left", 1.0, window_ms=35)])
+
+    result = family_for(window(1, 0, 5, None)).extract(context)
+
+    assert computed(result)[f"{PREFIX_LEFT}.peak_pct_mvc"].value == pytest.approx(100.0 * math.sqrt(12.0))
+
+
+def test_a_peak_below_one_millivolt_is_not_raised_to_one():
+    context = make_context({LEFT: [0.5, -0.5, 0.5]}, [calibration(LEFT, "left", 1.0, window_ms=20)])
+
+    result = family_for(window(1, 0, 3, None)).extract(context)
+
+    assert computed(result)[f"{PREFIX_LEFT}.peak_pct_mvc"].value == pytest.approx(50.0)
+
+
+def test_a_symmetry_between_small_pct_mvc_is_still_computed():
+    # 0,5 % y 0,25 % de MVC: media 0,375 % (> 0), índice 100·0,25/0,375
+    small = {LEFT: [0.01] * 100, RIGHT: [0.005] * 100}
+
+    result = family_for(*TWO_REPS).extract(make_context(small, [calibration(LEFT, "left", 2.0), calibration(RIGHT, "right", 2.0)]))
+
+    assert computed(result)[SYMMETRY].value == pytest.approx(100.0 * 0.25 / 0.375)
+
+
 def test_the_peak_does_not_mix_samples_of_two_repetitions():
     # activas [0,2) y [4,6) separadas por 2 muestras de reposo enormes: ninguna ventana de 2 cruza de una a otra
     context = make_context({LEFT: [1.0, 1.0, 50.0, 50.0, 1.0, 1.0]}, [calibration(LEFT, "left", 1.0, window_ms=20)])

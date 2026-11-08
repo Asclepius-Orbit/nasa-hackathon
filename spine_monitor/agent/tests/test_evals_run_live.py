@@ -4,6 +4,7 @@ selection rule, preflight messages and the usage recorder. The benchmark itself 
 import json
 import os
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -271,11 +272,13 @@ async def test_usage_recorder_accumulates_output_tokens_and_stream_time():
 # ---------------------------------------------------------------- failure diagnostics
 
 INPUTS = EvalInput(question="Dame un diagnostico", astronaut_id="AST-01", language="es")
+NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
 
 def _run() -> AgentRun:
     return AgentRun(
         text="Tienes una lesion.\nVe a descansar.",
+        now=NOW,
         tool_calls=[ToolCall("get_current_status", {"astronaut_id": "AST-01"}), ToolCall("get_history", {"limit": 5})],
         fell_back=True,
     )
@@ -331,7 +334,7 @@ def test_format_failures_prints_one_block_per_failed_run_with_the_full_answer():
 
 @pytest.mark.unit
 def test_format_failures_says_no_tool_calls_and_not_fallen_back():
-    d = diagnose("c", INPUTS, "x", AgentRun(text="no"), [Check("a", False, "why")])
+    d = diagnose("c", INPUTS, "x", AgentRun(text="no", now=NOW), [Check("a", False, "why")])
     assert d is not None
     text = format_failures("m:1", [d])
     assert "tool calls: none" in text

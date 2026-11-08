@@ -10,12 +10,14 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pydantic_evals.evaluators import EvaluationReason, Evaluator, EvaluatorContext
 from spine_agent.guards import find_diagnostic_terms
+from spine_agent.prompts import TimeRange, relative_ranges
 
-from evals.task import AgentRun, CaseMeta, EvalInput
+from evals.task import AgentRun, CaseMeta, EvalInput, ToolCall
 
 type Ctx = EvaluatorContext[EvalInput, AgentRun, CaseMeta]
 
@@ -257,8 +259,9 @@ def _is_grounded(token: str, value: float, known: list[float]) -> bool:
 
 def ungrounded_numbers(text: str, sources: Iterable[Any]) -> list[str]:
     """Numbers written in `text` that appear nowhere in `sources` (as written in the text). A null never grounds a 0.
-    A number written with at most two decimals is also grounded by the same value rounded (|a-b| <= 0.005)."""
-    known = [n for source in sources for n in _source_numbers(source)]
+    A number written with at most two decimals is also grounded by the same value rounded (|a-b| <= 0.005).
+    Sign is ignored: a number in the text is compared with the absolute value of each source number."""
+    known = [abs(n) for source in sources for n in _source_numbers(source)]  # the parser is unsigned: "1.2" and "-1.2" both quote -1.2
     return [token for token, value in _numbers(text) if not _is_grounded(token, value, known)]
 
 
@@ -337,6 +340,86 @@ class NumbersGrounded(Evaluator[EvalInput, AgentRun, CaseMeta]):
             return _result(False, f"numbers not in any tool result: {invented}")
         cited = len(extract_numbers(run.text))
         return _result(cited >= self.min_numbers, f"{cited} numbers cited, at least {self.min_numbers} expected")
+
+
+def _instant(value: object) -> datetime | None:
+    """An RFC 3339 timestamp with an offset (`Z` or `+hh:mm`) as an aware datetime; None for anything else."""
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def _span(call: ToolCall, start: str, end: str) -> tuple[datetime | None, datetime | None]:
+    return _instant(call.args.get(start)), _instant(call.args.get(end))
+
+
+def _as_instants(window: TimeRange) -> tuple[datetime | None, datetime | None]:
+    return _instant(window.start), _instant(window.end)
+
+
+def bad_range_calls(calls: Iterable[ToolCall], now: datetime) -> list[str]:
+    """Names of the get_history / compare_periods calls whose time arguments are not the ready-made ranges of `now`."""
+    ranges = relative_ranges(now)
+    history = [_as_instants(w) for w in (ranges.last_24_hours, ranges.last_7_days, ranges.previous_7_days)]
+    this_week, week_before = _as_instants(ranges.last_7_days), _as_instants(ranges.previous_7_days)
+    bad: list[str] = []
+    for call in calls:
+        if call.name == "get_history":
+            ok = _span(call, "start", "end") in history
+        elif call.name == "compare_periods":
+            ok = _span(call, "a_start", "a_end") == this_week and _span(call, "b_start", "b_end") == week_before
+        else:
+            continue
+        if not ok:
+            bad.append(call.name)
+    return bad
+
+
+@dataclass
+class RangesMatch(Evaluator[EvalInput, AgentRun, CaseMeta]):
+    """Every get_history / compare_periods call uses the ready-made ranges of the prompt, compared as instants to the second.
+
+    get_history: one of last_24_hours, last_7_days, previous_7_days. compare_periods: a = last_7_days, b = previous_7_days.
+    Naive, unparseable or missing timestamps fail. A fallback run made no model calls to judge.
+    """
+
+    def evaluate(self, ctx: Ctx) -> EvaluationReason:
+        run = ctx.output
+        if run.fell_back:
+            return _result(True, "fallback summary (deterministic), not judged")
+        bad = bad_range_calls(run.tool_calls, run.now)
+        return _result(not bad, f"calls outside the ready-made ranges: {bad}" if bad else "history calls use the ready-made ranges")
+
+
+def swapped_comparisons(calls: Iterable[ToolCall], now: datetime) -> int:
+    """How many compare_periods calls have the two ready-made weeks the wrong way round: a = previous_7_days, b = last_7_days."""
+    ranges = relative_ranges(now)
+    this_week, week_before = _as_instants(ranges.last_7_days), _as_instants(ranges.previous_7_days)
+    return sum(1 for c in calls if c.name == "compare_periods" and _span(c, "a_start", "a_end") == week_before and _span(c, "b_start", "b_end") == this_week)
+
+
+@dataclass
+class ComparisonDirection(Evaluator[EvalInput, AgentRun, CaseMeta]):
+    """No compare_periods call swaps the weeks: period A must be this week (last_7_days), period B the one before (previous_7_days).
+
+    Judges the arguments only, not the answer text. It fails specifically on the swap (a = previous_7_days and b = last_7_days,
+    compared as instants like RangesMatch); any other bad range is RangesMatch's, so a swap fails both. Every call is judged: a retry in
+    the right order does not excuse an earlier swap. A run with no compare_periods call passes (RequiredToolsCalled's job), and so does
+    a fallback run.
+    """
+
+    def evaluate(self, ctx: Ctx) -> EvaluationReason:
+        run = ctx.output
+        if run.fell_back:
+            return _result(True, "fallback summary (deterministic), not judged")
+        swapped = swapped_comparisons(run.tool_calls, run.now)
+        return _result(
+            not swapped, f"{swapped} compare_periods call(s) with period A = the previous week; A must be this week" if swapped else "no swapped comparison"
+        )
 
 
 @dataclass

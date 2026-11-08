@@ -8,7 +8,7 @@ The LLM is the only fake. Real-model runs are opt-in and live in agent/evals/run
 import json
 import sys
 from collections.abc import AsyncIterator, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -344,3 +344,24 @@ async def test_the_run_reads_the_wall_clock_once_so_the_prompt_and_the_run_share
     run = await run_chat(build_agent(settings, model=FunctionModel(stream_function=stream)), McpStatusSource(settings), inputs, wall_clock=lambda: next(ticks))
     assert run.now == FIXED_NOW
     assert "2026-11-13T12:00:00Z" in seen[0]
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_each_run_reads_its_own_instant_and_does_not_freeze_the_date_across_runs():
+    later = FIXED_NOW + timedelta(days=2)
+    ticks = iter([FIXED_NOW, later])
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "I don't know."
+
+    settings = _settings()
+    inputs = EvalInput(question="Hi", astronaut_id="AST-01", language="en")
+    agent = build_agent(settings, model=FunctionModel(stream_function=stream))
+    first = await run_chat(agent, McpStatusSource(settings), inputs, wall_clock=lambda: next(ticks))
+    second = await run_chat(agent, McpStatusSource(settings), inputs, wall_clock=lambda: next(ticks))
+    assert (first.now, second.now) == (FIXED_NOW, later)
+    assert "2026-11-13T12:00:00Z" in seen[0]
+    assert "2026-11-15T12:00:00Z" in seen[1]

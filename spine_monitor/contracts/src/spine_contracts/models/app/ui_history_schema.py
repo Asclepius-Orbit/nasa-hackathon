@@ -97,6 +97,6 @@ class HistoryView(BaseModel):
     )
     preflight_range_mm: LengthRange | None = Field(
         ...,
-        description='Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.elongation_mm baseline entry. Null without that entry.',
+        description='Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.peak_elongation_mm baseline entry. Null without that entry.',
     )
     days: list[HistoryDay]

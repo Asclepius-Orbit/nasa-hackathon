@@ -113,7 +113,7 @@ class TodayView(BaseModel):
     )
     lumbar_delta_mm: float | None = Field(
         ...,
-        description='Latest lumbar elongation (stretch.lumbar.elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.',
+        description='Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.',
     )
     session_in_progress: SessionInProgress | None = Field(
         ..., description='Session currently running; null when there is none.'

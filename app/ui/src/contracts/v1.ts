@@ -1566,7 +1566,7 @@ export interface HistoryView {
    */
   today_day: number | null;
   /**
-   * Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.elongation_mm baseline entry. Null without that entry.
+   * Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.peak_elongation_mm baseline entry. Null without that entry.
    */
   preflight_range_mm: LengthRange | null;
   days: HistoryDay[];
@@ -1819,7 +1819,7 @@ export interface TodayView {
    */
   trust: TrustFacts | null;
   /**
-   * Latest lumbar elongation (stretch.lumbar.elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.
+   * Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.
    */
   lumbar_delta_mm: number | null;
   /**

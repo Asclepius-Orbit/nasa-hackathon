@@ -79,7 +79,7 @@
       ]
     },
     "lumbar_delta_mm": {
-      "description": "Latest lumbar elongation (stretch.lumbar.elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.",
+      "description": "Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.",
       "type": ["number", "null"]
     },
     "session_in_progress": {

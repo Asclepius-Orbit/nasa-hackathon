@@ -452,6 +452,18 @@ def test_non_emg_streams_are_ignored():
     assert all(s.feature_id.startswith("emg.latissimus_dorsi.left.") or s.feature_id.endswith("symmetry_index_pct") for s in result.skipped)
 
 
+def test_a_non_emg_stream_is_ignored_even_if_its_placement_names_a_muscle_and_a_side():
+    # el placement es común a todos los tipos: un IMU puede declarar lado (y músculo); solo el tipo decide
+    payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
+    imu = next(s for s in payload["session"]["streams"] if s["stream_kind"] == "imu")
+    imu["placement"].update(muscle=MUSCLE, side="right")
+    context = build_context(FeaturesRequest.model_validate(payload))
+
+    result = family_for(*TWO_REPS).extract(context)
+
+    assert not any(f.feature_id.startswith(PREFIX_RIGHT) for f in (*result.computed, *result.skipped))
+
+
 def test_the_real_service_uses_the_session_events_for_active_and_rest_windows():
     events = [ev("rep_start", 0, 1), ev("rep_end", 30, 1), ev("rep_start", 50, 2), ev("rep_end", 80, 2), ev("rest_end", 100, 2)]
     context = make_context(SAMPLES, both_calibrated(), events=events)

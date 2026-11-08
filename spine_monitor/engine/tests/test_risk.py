@@ -81,14 +81,21 @@ def test_confidence_is_the_completeness():
     assert model().score([], 0.0).confidence == 0.0
 
 
-@pytest.mark.parametrize("bad", [{"persistence_points": 0}, {"saturation": 0.0}, {"saturation": -1.0}])
-def test_rejects_invalid_parameters(bad):
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize(
+    ("bad", "message"),
+    [
+        ({"persistence_points": 0}, "persistence_points must be at least 1"),
+        ({"saturation": 0.0}, "saturation must be positive"),
+        ({"saturation": -1.0}, "saturation must be positive"),
+    ],
+)
+def test_rejects_invalid_parameters(bad, message):
+    with pytest.raises(ValueError, match=f"^{message}$"):
         DeviationRiskModel(WEIGHTS, **{"persistence_points": 4, "saturation": 2.0, **bad})
 
 
 def test_rejects_negative_domain_weights():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="^domain weights must not be negative$"):
         DeviationRiskModel({**WEIGHTS, AssessmentDomain.MUSCLE: -0.1}, persistence_points=4, saturation=2.0)
 
 

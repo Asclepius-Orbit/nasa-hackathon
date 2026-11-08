@@ -474,6 +474,47 @@ export type DayLevel = "green" | "amber" | "red" | "nodata";
 export type SessionState =
   "starting" | "running" | "rejected" | "ended" | "processing" | "processed" | "processing_failed";
 /**
+ * Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept.
+ */
+export type RepStateView = {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  /**
+   * Repetitions completed plus the current one; 0 when none has started yet.
+   */
+  rep: number;
+  /**
+   * planned_reps of the session, otherwise total_reps of the protocol catalog; null when neither is known.
+   */
+  total: number | null;
+  /**
+   * pulling, letting_up or resting (between repetitions); null when there is no signal.
+   */
+  phase: ("pulling" | "letting_up" | "resting") | null;
+  /**
+   * Movement angle relative to the peak of the previous repetition, 0 to 100; null in the first repetition (the range is not known yet), while resting and when there is no signal.
+   */
+  progress_pct: number | null;
+  /**
+   * Last completed repetition; null when none is complete.
+   */
+  last: LastRep | null;
+  /**
+   * ok, or no_signal when the imu_l3 stream is not delivering.
+   */
+  signal: "ok" | "no_signal";
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  as_of: string;
+};
+/**
  * Id of a fit item of a protocol, as in catalog/protocol-catalog.json.
  */
 export type FitItemId = string;
@@ -845,6 +886,7 @@ export interface ContractsV1 {
   "app/ui-common"?: UIViewDefinitions;
   "app/ui-first-day"?: FirstDayView;
   "app/ui-history"?: HistoryView;
+  "app/ui-rep-state"?: RepStateView;
   "app/ui-session"?: SessionView;
   "app/ui-strip"?: StripView;
   "app/ui-today"?: TodayView;
@@ -1030,7 +1072,7 @@ export interface Assessment {
  * Error body of every endpoint of the read-only API of the app, shaped after RFC 9457 problem details (served as application/problem+json). Same shape as the engine error, with the problems a read API can have.
  */
 export interface AppErrorResponse {
-  type: "invalid_request" | "invalid_range" | "not_found" | "unsupported_schema_version" | "internal";
+  type: "invalid_request" | "invalid_range" | "not_found" | "no_reps" | "unsupported_schema_version" | "internal";
   title: string;
   status: number;
   detail?: string;
@@ -1670,6 +1712,10 @@ export interface HistoryDayReport {
     | "fever_with_back_pain"
     | "trauma_event"
   )[];
+}
+export interface LastRep {
+  rep: number;
+  duration_s: number;
 }
 /**
  * Response of GET /ui/sessions/{session_id}/view: the guided session screen of the desktop UI. Protocol facts (band, reps, rest, fit items) come from catalog/protocol-catalog.json; the UI writes the instructions. Live repetitions are not part of this view.

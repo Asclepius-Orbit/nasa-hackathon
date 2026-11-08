@@ -29,6 +29,7 @@ from spine_contracts.models.app.ui_baseline_schema import BaselineView
 from spine_contracts.models.app.ui_common_schema import DayLevel, SessionState, TaskCode
 from spine_contracts.models.app.ui_first_day_schema import FirstDayView
 from spine_contracts.models.app.ui_history_schema import HistoryView
+from spine_contracts.models.app.ui_rep_state_schema import RepStateView
 from spine_contracts.models.app.ui_session_schema import SessionView
 from spine_contracts.models.app.ui_strip_schema import StripView
 from spine_contracts.models.app.ui_today_schema import TodayView
@@ -138,6 +139,7 @@ __all__ = [
     "Quality",
     "QualityFlag",
     "RedFlagReport",
+    "RepStateView",
     "SelfReport",
     "SelfReportList",
     "Session",

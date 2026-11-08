@@ -29,6 +29,7 @@ from spine_contracts import (
     SelfReportList,
     Session,
     SessionList,
+    RepStateView,
     SessionView,
     SimulateRequest,
     SimulateResponse,
@@ -80,6 +81,7 @@ PARSERS = {
     "app/ui-history": HistoryView.model_validate,
     "app/ui-baseline": BaselineView.model_validate,
     "app/ui-first-day": FirstDayView.model_validate,
+    "app/ui-rep-state": RepStateView.model_validate,
     "app/ui-session": SessionView.model_validate,
     "mcp/compare-periods": ComparePeriods.model_validate,
 }

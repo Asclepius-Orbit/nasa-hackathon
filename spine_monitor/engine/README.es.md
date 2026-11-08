@@ -83,7 +83,7 @@ Calidad: las features por eventos evalúan la calidad común sobre todos los str
 Basada en el giróscopo, así que no depende de la gravedad y es comparable entre Tierra y microgravedad. Para cada stream IMU declarado, con el `spine_level` de su `placement` en la sesión (nunca fijado en el código), y para cada ventana de repetición (fase activa, `start <= t < end`):
 
 - **Planos:** se emiten los tres. `calibration.imu.mounting` lleva cada eje del sensor a un eje corporal: sagital = rotación sobre el eje izquierda-derecha, frontal = sobre el anterior, transversal = sobre el craneal (el mismo marco que el simulador). Un montaje sin eje del sensor para un plano deja ese plano en `no_calibration`. El `gyro_bias_dps` de la calibración se resta a cada eje del sensor.
-- **`imu.{nivel}.{plano}.rom_deg`:** recorrido (máx - mín) del ángulo integrado, desde 0 antes de la primera muestra. **`peak_angular_velocity_dps`:** el mayor `|ω|`.
+- **`imu.{nivel}.{plano}.rom_deg`:** recorrido (máx - mín) del ángulo integrado (cada muestra con el periodo de su chunk), desde 0 antes de la primera muestra. **`peak_angular_velocity_dps`:** el mayor `|ω|`.
 - **`imu.{nivel}.{plano}.smoothness_sparc`:** SPARC de `|ω|` con la FFT de numpy y los valores por defecto publicados (relleno de ceros 2^4, corte en 10 Hz, umbral de amplitud del 5 %; Balasubramanian et al. 2015). Solo si todos los chunks del stream van a 50 Hz o más (el requisito del catálogo); si no, `skipped` con `insufficient_sample_rate`. Sin movimiento SPARC no está definido y acaba en `no_data`.
 - **`imu.{nivel}.accel_rms_g`:** RMS de la magnitud de la aceleración tras quitar a cada eje su media en la repetición (la componente estática: gravedad y sesgo del acelerómetro).
 

@@ -83,7 +83,7 @@ Qualitat: les features per esdeveniments avaluen la qualitat comuna sobre tots e
 Basada en el giroscopi, així que no depèn de la gravetat i és comparable entre la Terra i la microgravetat. Per a cada stream IMU declarat, amb el `spine_level` del seu `placement` a la sessió (mai fixat al codi), i per a cada finestra de repetició (fase activa, `start <= t < end`):
 
 - **Plans:** s'emeten tots tres. `calibration.imu.mounting` porta cada eix del sensor a un eix corporal: sagital = rotació sobre l'eix esquerra-dreta, frontal = sobre l'anterior, transversal = sobre el cranial (el mateix marc que el simulador). Un muntatge sense eix del sensor per a un pla deixa aquest pla a `no_calibration`. El `gyro_bias_dps` del calibratge es resta a cada eix del sensor.
-- **`imu.{nivell}.{pla}.rom_deg`:** recorregut (màx - mín) de l'angle integrat, des de 0 abans de la primera mostra. **`peak_angular_velocity_dps`:** el `|ω|` més gran.
+- **`imu.{nivell}.{pla}.rom_deg`:** recorregut (màx - mín) de l'angle integrat (cada mostra amb el període del seu chunk), des de 0 abans de la primera mostra. **`peak_angular_velocity_dps`:** el `|ω|` més gran.
 - **`imu.{nivell}.{pla}.smoothness_sparc`:** SPARC de `|ω|` amb la FFT de numpy i els valors per defecte publicats (farciment de zeros 2^4, tall a 10 Hz, llindar d'amplitud del 5 %; Balasubramanian et al. 2015). Només si tots els chunks del stream van a 50 Hz o més (el requisit del catàleg); si no, `skipped` amb `insufficient_sample_rate`. Sense moviment SPARC no està definit i acaba a `no_data`.
 - **`imu.{nivell}.accel_rms_g`:** RMS de la magnitud de l'acceleració després de treure a cada eix la seva mitjana a la repetició (la component estàtica: gravetat i biaix de l'acceleròmetre).
 

@@ -201,7 +201,7 @@ def _segment_rep(context: ExtractionContext, segment: Segment, window: RepWindow
         for name, values in samples.channels.items():
             parts[name].append(values)
     channels = {name: np.concatenate(values) for name, values in parts.items()}
-    return _RepSamples(min(c.sample_rate_hz for c in segment.chunks), np.asarray(rates, dtype=np.float64), channels)
+    return _RepSamples(min(c.sample_rate_hz for c in segment.chunks), np.asarray(rates), channels)
 
 
 def _compute(
@@ -228,10 +228,10 @@ def _compute(
             skipped += [SkippedFeature(i, Reason.NO_CALIBRATION) for i in (rom_id, peak_id, sparc_id) if sparc_ok or i != sparc_id]
             continue
         channel, sign = found
-        omegas = [(sign * (r.channels[channel] - offsets[channel]), r.rate_hz) for r in reps]
-        add(rom_id, [range_of_motion_deg(omega, r.sample_rates_hz) for (omega, _), r in zip(omegas, reps, strict=True)])
+        omegas = [(sign * (r.channels[channel] - offsets[channel]), r) for r in reps]
+        add(rom_id, [range_of_motion_deg(omega, r.sample_rates_hz) for omega, r in omegas])
         add(peak_id, [peak_angular_velocity_dps(omega) for omega, _ in omegas])
         if sparc_ok:
-            add(sparc_id, [sparc(np.abs(omega), rate) for omega, rate in omegas])
+            add(sparc_id, [sparc(np.abs(omega), r.rate_hz) for omega, r in omegas])
     add(f"imu.{level}.accel_rms_g", [accel_rms_g(*(r.channels[name] for name in _ACCEL)) for r in reps])
     return FamilyResult(tuple(computed), tuple(skipped))

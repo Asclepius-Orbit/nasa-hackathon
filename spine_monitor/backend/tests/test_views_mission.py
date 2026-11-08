@@ -29,7 +29,8 @@ def test_without_launch_date_everything_is_null(profile: dict[str, str | None]) 
         (LAUNCH - timedelta(days=1), -1, "preflight"),
         (LAUNCH, 1, "inflight"),
         (LAUNCH + timedelta(days=86), 87, "inflight"),
-        (LANDING, 182, "inflight"),
+        (LANDING - timedelta(days=1), 181, "inflight"),
+        (LANDING, 182, "postflight"),
         (LANDING + timedelta(days=1), 183, "postflight"),
     ],
 )
@@ -76,6 +77,6 @@ def test_phase_boundaries_with_landing(launch: date, landing_gap: int, offset: i
     landing = launch + timedelta(days=landing_gap)
     today = launch + timedelta(days=offset)
     result = mission_for({"launch_date": launch.isoformat(), "landing_date": landing.isoformat()}, today)
-    expected = "preflight" if today < launch else "postflight" if today > landing else "inflight"
+    expected = "preflight" if today < launch else "postflight" if today >= landing else "inflight"
     assert result["phase"] == expected
     assert result["day"] == mission_day_of(launch, today)

@@ -56,10 +56,11 @@ def _preflight_range(measures: Sequence[Payload], baseline: Payload | None) -> d
 
 
 def _report(reports: Sequence[Payload]) -> dict[str, Any] | None:
+    """Kind of the latest report of the day; red flags are those of every report of the day (a flag is not undone by a later report)."""
     if not reports:
         return None
-    last = reports[-1]
-    return {"kind": last["kind"], "red_flags": list(dict.fromkeys(last.get("red_flags", [])))}
+    flags = [flag for r in reports for flag in r.get("red_flags", [])]
+    return {"kind": reports[-1]["kind"], "red_flags": list(dict.fromkeys(flags))}
 
 
 def _pain(reports: Sequence[Payload]) -> int | None:
@@ -70,7 +71,8 @@ def _pain(reports: Sequence[Payload]) -> int | None:
 def _session(sessions: Sequence[SessionRow]) -> dict[str, Any] | None:
     if not sessions:
         return None
-    last = sessions[-1]
+    # A `rejected` retry never ran: it must not hide a session that did. If all are rejected, the last one still shows.
+    last = next((s for s in reversed(sessions) if s.state != "rejected"), sessions[-1])
     return {"session_id": last.payload["session_id"], "state": last.state, "protocol_id": last.payload["protocol_id"]}
 
 

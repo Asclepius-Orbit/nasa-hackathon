@@ -162,7 +162,8 @@ def _conforming(schema: str, view: dict[str, Any]) -> dict[str, Any]:
     """
     found = validation.errors(schema, view)
     if found:
-        logger.error("the %s view does not conform to its schema: %s", schema, found[0])
+        # Only the JSON pointer: the message of a violation quotes the offending value, which may be health data.
+        logger.error("the %s view does not conform to its schema at %s", schema, found[0].split(": ", 1)[0])
         raise Problem(500, "the view could not be built", type_="internal")
     return view
 

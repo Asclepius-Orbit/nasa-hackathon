@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,7 +43,8 @@ class AppSettings(BaseSettings):
 
     # UI views: the pre-flight baseline plan (sessions required, days relative to launch, default protocol of the
     # planned ones; the pre-flight examples and the protocol catalog use the lat pulldown) and the history span.
-    baseline_required: int = 3
+    baseline_required: int = Field(3, ge=1)
     baseline_plan_offsets_days: list[int] = [-30, -23, -16]
     baseline_protocol_id: str = "lat_pulldown_standing_v1"
-    history_window_days: int = 30
+    # At most 366 days: the longest window the history endpoint accepts (`api.MAX_HISTORY_DAYS`; settings cannot import api).
+    history_window_days: int = Field(30, ge=1, le=366)

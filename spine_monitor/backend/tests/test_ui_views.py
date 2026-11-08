@@ -546,3 +546,22 @@ async def test_the_500_detail_is_generic_and_the_validation_error_only_goes_to_t
     assert "leaked_field_name" not in response.text
     assert "app/ui-strip" not in response.json().get("detail", "")
     assert any("leaked_field_name" in record.getMessage() or "app/ui-strip" in record.getMessage() for record in caplog.records)
+
+
+async def test_a_non_conforming_view_logs_only_the_pointer_never_the_failing_value(caplog):
+    from datetime import date
+
+    from monitor.api import Problem, _conforming
+    from monitor.views.history import build_history
+
+    view = build_history(date(2030, 1, 8), date(2030, 1, 8), date(2030, 1, 8), lambda _: None, [], [], [], [], None)
+    view["days"][0]["level"] = "SENTINEL_HEALTH_VALUE"
+
+    with caplog.at_level("ERROR", logger="monitor.api"), pytest.raises(Problem) as raised:
+        _conforming("app/ui-history", view)
+
+    logged = " ".join(record.getMessage() for record in caplog.records)
+    assert raised.value.status == 500
+    assert "SENTINEL_HEALTH_VALUE" not in logged
+    assert "/days/0/level" in logged
+    assert "app/ui-history" in logged

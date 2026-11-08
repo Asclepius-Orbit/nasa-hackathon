@@ -295,6 +295,28 @@ def test_report_is_the_latest_of_the_day_with_its_red_flags():
     ]
 
 
+def test_red_flags_of_every_report_of_the_day_are_kept_whatever_the_last_kind():
+    result = view(
+        self_reports=[
+            report("2030-01-09T08:00:00Z", kind="red_flag", pain=None, flags=["saddle_numbness"]),
+            report("2030-01-09T20:00:00Z", kind="daily", flags=[]),
+        ]
+    )
+
+    assert day_of(result, "2030-01-09")["report"] == {"kind": "daily", "red_flags": ["saddle_numbness"]}
+
+
+def test_red_flags_across_reports_are_merged_in_order_without_duplicates():
+    result = view(
+        self_reports=[
+            report("2030-01-09T08:00:00Z", flags=["leg_weakness", "saddle_numbness"]),
+            report("2030-01-09T20:00:00Z", kind="red_flag", pain=None, flags=["saddle_numbness", "fever"]),
+        ]
+    )
+
+    assert day_of(result, "2030-01-09")["report"] == {"kind": "red_flag", "red_flags": ["leg_weakness", "saddle_numbness", "fever"]}
+
+
 def test_a_report_without_red_flags_key_has_an_empty_list():
     entry = {"timestamp": "2030-01-09T08:00:00Z", "kind": "weekly_odi"}
 
@@ -307,6 +329,24 @@ def test_session_is_the_latest_of_the_day():
 
     assert day_of(result, "2030-01-09")["session"] == {"session_id": late.payload["session_id"], "state": "processing", "protocol_id": "spine_length_rest_v1"}
     assert day_of(result, "2030-01-08")["session"] is None
+
+
+def test_session_prefers_the_latest_not_rejected_over_a_later_rejected_retry():
+    ran = session("2030-01-09T08:00:00Z", "processed")
+    retry = session("2030-01-09T19:00:00Z", "rejected")
+
+    result = view(sessions=[retry, ran])
+
+    assert day_of(result, "2030-01-09")["session"] == {"session_id": ran.payload["session_id"], "state": "processed", "protocol_id": PROTOCOL}
+
+
+def test_session_is_the_latest_rejected_when_all_of_the_day_are_rejected():
+    first, last = session("2030-01-09T08:00:00Z", "rejected"), session("2030-01-09T19:00:00Z", "rejected")
+
+    result = view(sessions=[last, first])
+
+    assert day_of(result, "2030-01-09")["session"]["session_id"] == last.payload["session_id"]
+    assert day_of(result, "2030-01-09")["session"]["state"] == "rejected"
 
 
 def test_the_full_view_validates_against_its_schema():

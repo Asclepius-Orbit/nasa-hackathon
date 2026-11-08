@@ -24,5 +24,5 @@ def mission_for(profile: Mapping[str, Any] | None, today: date) -> dict[str, Any
     if profile is None or launch is None:
         return {"day": None, "start": None, "phase": None}
     landing = _date(profile, "landing_date")
-    phase: Phase = "preflight" if today < launch else "postflight" if landing is not None and today > landing else "inflight"
+    phase: Phase = "preflight" if today < launch else "postflight" if landing is not None and today >= landing else "inflight"
     return {"day": mission_day_of(launch, today), "start": launch.isoformat(), "phase": phase}

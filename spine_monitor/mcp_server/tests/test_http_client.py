@@ -6,14 +6,17 @@ from datetime import UTC, datetime, timedelta, timezone
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from mcp.client.client import Client
+from mcp.types import TextContent
 from monitor.db import Store
 from monitor.readonly import create_read_app
 from monitor.settings import AppSettings
-from spine_contracts import Explanation, History, SelfReportList, SessionList, Status
+from spine_contracts import SCHEMA_VERSION, Explanation, History, SelfReportList, SessionList, SimulateRequest, Status
 from spine_mcp_server.errors import UpstreamError
-from spine_mcp_server.http_client import HttpAppReader
-from spine_mcp_server.mocks import EXAMPLES_DIR, ExampleAppReader
+from spine_mcp_server.http_client import HttpAppReader, UnavailableAssessBase, UnavailableSimulator
+from spine_mcp_server.mocks import EXAMPLES_DIR, ExampleAppReader, ExampleAssessBaseSource
 from spine_mcp_server.ports import AppReader
+from spine_mcp_server.server import create_server
 
 AST = "AST-01"
 ASSESSMENT_ID = "a55e55e0-0000-4000-8000-0000000000a1"
@@ -324,3 +327,41 @@ def test_out_of_range_limit_is_422(real):
     error = raises(lambda: real.get_sessions(AST, FROM, TO, 0))
 
     assert error.status == 422
+
+
+def _simulate_request():
+    return SimulateRequest(schema_version=SCHEMA_VERSION, base=ExampleAssessBaseSource().get_base(AST), overrides=[], project_days=None)
+
+
+def test_unavailable_simulator_raises_501_explaining_the_missing_endpoint():
+    with pytest.raises(UpstreamError) as caught:
+        UnavailableSimulator().simulate(_simulate_request())
+    assert caught.value.status == 501
+    assert caught.value.title == "Simulation not available"
+    assert "no endpoint for this yet" in str(caught.value)
+    assert "http mode" in str(caught.value)
+    assert "#" not in str(caught.value)
+
+
+def test_unavailable_assess_base_raises_501_explaining_the_missing_endpoint():
+    with pytest.raises(UpstreamError) as caught:
+        UnavailableAssessBase().get_base(AST)
+    assert caught.value.status == 501
+    assert caught.value.title == "Assessment base not available"
+    assert "no endpoint for this yet" in str(caught.value)
+    assert "http mode" in str(caught.value)
+    assert "#" not in str(caught.value)
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_simulate_scenario_through_the_server_reports_the_unavailable_ports_as_a_tool_error():
+    server = create_server(ExampleAppReader(), UnavailableSimulator(), UnavailableAssessBase())
+    async with Client(server) as client:
+        result = await client.call_tool("simulate_scenario", {"astronaut_id": AST, "overrides": []})
+    assert result.is_error
+    assert isinstance(result.content[0], TextContent)
+    text = result.content[0].text
+    assert "Assessment base not available: The app API has no endpoint for this yet" in text
+    assert text.endswith("the assessment base is not available in http mode.")
+    assert "http mode" in result.content[0].text

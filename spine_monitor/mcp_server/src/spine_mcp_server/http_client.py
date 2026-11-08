@@ -8,7 +8,7 @@ from datetime import datetime
 
 import httpx
 from pydantic import BaseModel, ValidationError
-from spine_contracts import AppErrorResponse, Explanation, History, SelfReportList, SessionList, Status
+from spine_contracts import AppErrorResponse, AssessRequest, Explanation, History, SelfReportList, SessionList, SimulateRequest, SimulateResponse, Status
 
 from spine_mcp_server.errors import UpstreamError
 
@@ -69,3 +69,20 @@ def _failure(response: httpx.Response) -> UpstreamError:
     if problem is not None:
         return UpstreamError.from_problem(problem)
     return UpstreamError(status, "App API request rejected", f"HTTP {status}")
+
+
+_NOT_IMPLEMENTED_DETAIL = "The app API has no endpoint for this yet, so {what} is not available in http mode."
+
+
+class UnavailableSimulator:
+    """`Simulator` del modo http: la API de la app aún no expone la simulación."""
+
+    def simulate(self, request: SimulateRequest) -> SimulateResponse:
+        raise UpstreamError(501, "Simulation not available", _NOT_IMPLEMENTED_DETAIL.format(what="the simulator"))
+
+
+class UnavailableAssessBase:
+    """`AssessBaseSource` del modo http: la API de la app aún no expone la petición de valoración base."""
+
+    def get_base(self, astronaut_id: str) -> AssessRequest:
+        raise UpstreamError(501, "Assessment base not available", _NOT_IMPLEMENTED_DETAIL.format(what="the assessment base"))

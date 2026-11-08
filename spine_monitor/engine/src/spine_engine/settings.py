@@ -31,6 +31,9 @@ class EngineSettings(BaseSettings):
 
     # Modelo de riesgo genérico (sin rangos clínicos): peso de cada dominio, puntos de la serie a
     # partir de los que una desviación cuenta entera y escala de la saturación 1 - exp(-suma / escala).
+    # Los dominios que falten en los pesos se completan con DEFAULT_DOMAIN_WEIGHT. n_points es el largo
+    # de la serie, no el tramo final desviado: con risk_persistence_points <= al mínimo de puntos del
+    # detector, el factor de persistencia es siempre 1.
     risk_domain_weights: dict[AssessmentDomain, float] = Field(default_factory=lambda: dict.fromkeys(AssessmentDomain, DEFAULT_DOMAIN_WEIGHT))
     risk_persistence_points: int = 3
     risk_saturation: float = 3.0

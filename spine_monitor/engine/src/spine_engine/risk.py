@@ -13,10 +13,15 @@ class DeviationRiskModel:
     """Implementa `RiskModel`. Combina el |z| de las desviaciones sostenidas.
 
     Cada desviación sostenida aporta `|z| · peso de su dominio · persistencia`, con la persistencia
-    `min(n_points, persistence_points) / persistence_points`. La suma se satura a [0, 1) con
-    `1 - exp(-suma / saturation)`. Sin `risk_direction` conocido, cualquier sentido es peor: se usa
+    `min(n_points, persistence_points) / persistence_points`. La suma se satura a [0, 1] con
+    `1 - exp(-suma / saturation)` (con sumas muy grandes el redondeo llega a 1.0). Sin `risk_direction` conocido, cualquier sentido es peor: se usa
     |z|, y el signo solo viaja en `deviation_z` del driver. Una desviación aislada, sin z o de una
     feature sin dominio no aporta riesgo. La confianza es la completitud: lo que falta no la sube.
+
+    Limitación: `n_points` es el largo de la serie de la feature, no el tramo final desviado, y los
+    detectores exigen un mínimo de puntos para marcar una desviación como sostenida. Con
+    `persistence_points` menor o igual a ese mínimo el factor de persistencia vale siempre 1.
+    Un dominio ausente de `domain_weights` no aporta riesgo (`EngineSettings` los completa).
     """
 
     def __init__(self, domain_weights: Mapping[AssessmentDomain, float], persistence_points: int, saturation: float) -> None:

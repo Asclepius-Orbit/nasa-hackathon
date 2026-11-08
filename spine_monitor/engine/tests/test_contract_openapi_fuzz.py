@@ -34,13 +34,22 @@ client = TestClient(create_default_app(), raise_server_exceptions=False)
 def test_engine_answers_what_the_contract_promises(case: schemathesis.Case) -> None:
     kwargs = case.as_transport_kwargs(base_url=BASE_URL)
     response = client.request(**kwargs)
-    case.validate_response(response, excluded_checks=_domain_rejections(response))
+    case.validate_response(response, excluded_checks=_domain_rejections(case, response))
 
 
-_DOMAIN_REJECTIONS = {"insufficient_data", "unknown_feature", "invalid_request"}
+# Rechazos de dominio por operación: el único 422 que el schema de la petición no puede expresar.
+_DOMAIN_REJECTIONS = {
+    "/baseline": {"insufficient_data"},
+    "/simulate": {"unknown_feature", "invalid_request"},
+}
 
 
-def _domain_rejections(response) -> list:
+def rechazo_de_dominio(path: str, status: int, problem_type: str | None) -> bool:
+    """¿Es un 422 de dominio documentado para esa ruta? Cualquier otra combinación no lo es."""
+    return status == 422 and problem_type in _DOMAIN_REJECTIONS.get(path, set())
+
+
+def _domain_rejections(case: schemathesis.Case, response) -> list:
     """`positive_data_acceptance` toma por fallo un 422 a una petición válida según el schema.
 
     El contrato documenta ese 422 en POST /baseline (`insufficient_data`: p. ej. sin sesiones en gravedad de
@@ -48,9 +57,31 @@ def _domain_rejections(response) -> list:
     `expected_statuses` de su configuración. Se excluye la comprobación únicamente para ese 422 y el cuerpo
     sigue validándose contra el schema de error. Lo mismo vale para POST /simulate: un override sobre una
     feature fuera del catálogo o sin valor en la base (`unknown_feature`) o con resultado no finito
-    (`invalid_request`) es un rechazo de dominio que el schema de la petición no puede expresar. Cualquier
-    otro rechazo de datos válidos falla.
+    (`invalid_request`) es un rechazo de dominio que el schema de la petición no puede expresar. El acotado es
+    por operación: un `invalid_request` en /features, /baseline o /assess sería una divergencia entre el schema
+    y Pydantic y debe fallar. Cualquier otro rechazo de datos válidos falla.
     """
-    if response.status_code == 422 and json.loads(response.content).get("type") in _DOMAIN_REJECTIONS:
+    problem_type = json.loads(response.content).get("type") if response.status_code == 422 else None
+    if rechazo_de_dominio(case.operation.path, response.status_code, problem_type):
         return [positive_data_acceptance]
     return []
+
+
+@pytest.mark.parametrize(
+    ("path", "status", "problem_type", "expected"),
+    [
+        ("/baseline", 422, "insufficient_data", True),
+        ("/baseline", 422, "invalid_request", False),
+        ("/baseline", 422, "unknown_feature", False),
+        ("/simulate", 422, "unknown_feature", True),
+        ("/simulate", 422, "invalid_request", True),
+        ("/simulate", 422, "insufficient_data", False),
+        ("/assess", 422, "invalid_request", False),
+        ("/assess", 422, "insufficient_data", False),
+        ("/features", 422, "invalid_request", False),
+        ("/simulate", 400, "invalid_request", False),
+        ("/simulate", 422, None, False),
+    ],
+)
+def test_domain_rejections_are_scoped_per_operation(path, status, problem_type, expected):
+    assert rechazo_de_dominio(path, status, problem_type) is expected

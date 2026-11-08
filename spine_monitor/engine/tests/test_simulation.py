@@ -63,6 +63,49 @@ def test_each_mode_does_its_arithmetic_on_the_latest_value(overrides):
         assert _latest(result, o.feature_id) == pytest.approx(expected)
 
 
+def _on_peak(*pairs: tuple[Mode, float]) -> list[Override]:
+    return [Override(feature_id=PEAK, mode=mode, value=value) for mode, value in pairs]
+
+
+def test_example_overrides_on_the_same_feature_compose_in_order():
+    x = _latest(BASE, PEAK)
+
+    add_then_scale = apply_overrides(BASE, _on_peak((Mode.ADD, 2), (Mode.SCALE, 3)))
+    scale_then_add = apply_overrides(BASE, _on_peak((Mode.SCALE, 3), (Mode.ADD, 2)))
+
+    assert _latest(add_then_scale, PEAK) == pytest.approx((x + 2) * 3)
+    assert _latest(scale_then_add, PEAK) == pytest.approx(x * 3 + 2)
+
+
+# Acotado a 1e3 y 5 overrides: el resultado crece como mucho ~1e15 y nunca llega a infinito.
+bounded = st.floats(min_value=-1e3, max_value=1e3, allow_nan=False, allow_infinity=False)
+same_feature = st.lists(
+    st.builds(Override, feature_id=st.just(PEAK), mode=st.sampled_from(list(Mode)), value=bounded),
+    min_size=1,
+    max_size=5,
+)
+
+
+@pytest.mark.property
+@given(overrides=same_feature)
+@example(overrides=_on_peak((Mode.SCALE, 0.0), (Mode.ADD, 7.0)))
+@example(overrides=_on_peak((Mode.SET, 1e3), (Mode.SCALE, -1e3), (Mode.SCALE, 1e3)))
+@example(overrides=_on_peak((Mode.ADD, -1e3), (Mode.SCALE, -1e3), (Mode.ADD, 1e3), (Mode.SET, 0.0)))
+def test_overrides_on_one_feature_compose_sequentially(overrides):
+    expected = _latest(BASE, PEAK)
+    for o in overrides:  # oráculo secuencial escrito a mano
+        if o.mode is Mode.SET:
+            expected = o.value
+        elif o.mode is Mode.ADD:
+            expected = expected + o.value
+        else:
+            expected = expected * o.value
+
+    result = apply_overrides(BASE, overrides)
+
+    assert _latest(result, PEAK) == pytest.approx(expected)
+
+
 @pytest.mark.property
 @given(overrides=overrides)
 def test_only_the_latest_value_of_each_feature_changes(overrides):

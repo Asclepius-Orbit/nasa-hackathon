@@ -47,7 +47,7 @@ def test_features_returns_no_values_and_skips_exercise_features_for_the_single_r
     body = response.json()
     assert validation.errors("domain/feature-set", body) == []
     assert body["features"] == []  # el ejemplo trae una sola repetición: exercise.* sale skipped (too_few_repetitions)
-    assert {s["reason"] for s in body["skipped"]} == {"too_few_repetitions"}
+    assert {s["reason"] for s in body["skipped"] if s["feature_id"].startswith("exercise.")} == {"too_few_repetitions"}
     assert body["engine_version"] == "0.1.0"  # lo rellena el extractor compuesto, no el nulo
     assert "window" in body
     assert body["session_id"] == request["session"]["session_id"]

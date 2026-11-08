@@ -69,5 +69,14 @@ class ExtractorRegistry:
 
 
 def default_registry() -> ExtractorRegistry:
-    """Registro por defecto: vacío hasta que #41-#45 añadan sus familias."""
-    return ExtractorRegistry()
+    """Registro por defecto: ``exercise`` (#41); las familias de #42-#45 se añaden aquí."""
+    # import local: exercise importa los tipos de este módulo (evita el ciclo)
+    from spine_engine.features.exercise import ExerciseFamily
+    from spine_engine.features.repetitions import RepetitionService
+    from spine_engine.features.repetitions_imu import detect_imu_windows
+
+    # un único servicio de repeticiones (con respaldo IMU) para compartir con las familias de #42-#45
+    repetitions = RepetitionService(detect_imu_windows)
+    registry = ExtractorRegistry()
+    registry.register(ExerciseFamily(repetitions))
+    return registry

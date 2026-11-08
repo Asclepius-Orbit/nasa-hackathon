@@ -100,7 +100,7 @@ def test_with_session_events_the_features_match_the_simulator_truth(seed: int, g
 
     features = _by_id(result)
     assert {f for f in features if f.startswith("exercise.")} == set(ALL_IDS)
-    assert result.get("skipped", []) == []
+    assert [s for s in result.get("skipped", []) if s["feature_id"].startswith("exercise.")] == []
     assert features[COUNT]["value"] == truth[COUNT]
     assert features[MEAN]["value"] == pytest.approx(truth[MEAN], abs=EVENTS_MEAN_ABS_TOLERANCE_S)
     assert features[MEAN]["value"] == pytest.approx(REP_DURATION_S, abs=EVENTS_MEAN_ABS_TOLERANCE_S)

@@ -32,8 +32,7 @@ class StatisticalBaselineBuilder:
             raise InsufficientDataError("no feature set with a gravity environment and a session to build a baseline from")
 
         entries = [
-            self._entry(feature_id, protocol_id, gravity, values)
-            for (feature_id, protocol_id, gravity), values in sorted(groups.items(), key=_sort_key)
+            self._entry(feature_id, protocol_id, gravity, values) for (feature_id, protocol_id, gravity), values in sorted(groups.items(), key=_sort_key)
         ]
         return Baseline(
             schema_version=SCHEMA_VERSION,

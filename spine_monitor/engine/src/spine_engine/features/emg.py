@@ -1,0 +1,219 @@
+"""Familia ``emg`` de amplitud (#42): RMS activo y de reposo, %MVC, pico en ventana y simetría entre lados.
+
+Por cada stream EMG declarado con ``placement.muscle`` y ``side``:
+
+- ``emg.{muscle}.{side}.rms_mv``: RMS de las muestras de la fase activa de todas las repeticiones.
+- ``emg.{muscle}.{side}.rest_rms_mv``: RMS de las muestras de los reposos de las repeticiones.
+- ``emg.{muscle}.{side}.rms_pct_mvc``: ``rms_mv`` como % de ``mvc_rms_mv`` de ``calibration.emg-mvc``.
+- ``emg.{muscle}.{side}.peak_pct_mvc``: el RMS en ventana más alto (``window_ms`` de la calibración) como % de la MVC.
+  Las ventanas no cruzan de una repetición a otra ni de un ``boot_id`` a otro; si una repetición tiene menos muestras
+  que la ventana, todas sus muestras forman una sola ventana.
+
+Y por músculo, ``emg.{muscle}.symmetry_index_pct`` = 100·|L-R| / ((L+R)/2) sobre los ``rms_pct_mvc`` de los dos lados.
+
+La amplitud no necesita señal cruda: el RMS se calcula igual sobre cruda, rectificada o envolvente. Las muestras de
+cada ventana salen de ``segment_samples`` (ventana UTC semiabierta ``inicio <= t < fin``). ``n`` es el número de
+repeticiones que aportaron muestras. Nunca lanza.
+
+Motivos de ``skipped``: sin calibración ``no_calibration`` y caducada ``calibration_expired`` (solo afectan a lo que
+lleva %MVC); sin repeticiones ``too_few_repetitions``; sin muestras en las ventanas ``no_data``; stream declarado sin
+chunks ``stream_missing``. La simetría hace falta con la MVC de ambos lados: si falta alguna, ``no_calibration``
+(aunque la otra esté caducada); un músculo con un solo lado declarado, ``stream_missing``; ``(L+R)/2`` nulo, ``no_data``.
+"""
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
+
+import numpy as np
+from numpy.typing import NDArray
+from spine_contracts import EmgMvcCalibration, StreamKind
+from spine_contracts.catalog import expand_template
+from spine_contracts.models.domain.feature_set_schema import Reason
+
+from spine_engine.features.calibrations import CalibrationResolution
+from spine_engine.features.context import ExtractionContext
+from spine_engine.features.registry import ComputedFeature, FamilyResult, SkippedFeature
+from spine_engine.features.repetitions import RepetitionService, RepWindow
+from spine_engine.features.signals import segment_samples
+
+RMS_MV = "emg.{muscle}.{side}.rms_mv"
+REST_RMS_MV = "emg.{muscle}.{side}.rest_rms_mv"
+RMS_PCT_MVC = "emg.{muscle}.{side}.rms_pct_mvc"
+PEAK_PCT_MVC = "emg.{muscle}.{side}.peak_pct_mvc"
+SYMMETRY_INDEX_PCT = "emg.{muscle}.symmetry_index_pct"
+
+_CHANNEL = "emg"
+_TEMPLATES = {"rms_mv": RMS_MV, "rest_rms_mv": REST_RMS_MV, "rms_pct_mvc": RMS_PCT_MVC, "peak_pct_mvc": PEAK_PCT_MVC}
+
+
+@dataclass(frozen=True, slots=True)
+class _Piece:
+    """Muestras de una repetición (``window``) dentro de un segmento, con su frecuencia de muestreo."""
+
+    window: int
+    values: NDArray[np.float64]
+    rate_hz: float
+
+
+@dataclass(frozen=True, slots=True)
+class _EmgStream:
+    stream_id: str
+    muscle: str
+    side: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Pct:
+    """``rms_pct_mvc`` de un lado y las repeticiones que lo respaldan."""
+
+    value: float
+    n: int
+
+
+def _emg_streams(context: ExtractionContext) -> tuple[_EmgStream, ...]:
+    found: dict[str, _EmgStream] = {}
+    for declared in context.session.streams:
+        muscle = getattr(declared.placement, "muscle", None)
+        side = getattr(declared.placement, "side", None)
+        if declared.stream_kind is StreamKind.EMG and muscle is not None and side is not None:
+            found.setdefault(declared.stream_id, _EmgStream(declared.stream_id, muscle.value, side.value))
+    return tuple(found.values())
+
+
+def _pieces(context: ExtractionContext, stream_id: str, spans: Sequence[tuple[datetime, datetime]]) -> tuple[_Piece, ...]:
+    """Muestras de cada tramo UTC, un trozo por (tramo, segmento) que tenga muestras."""
+    pieces: list[_Piece] = []
+    for index, span in enumerate(spans):
+        for segment in context.segments(stream_id):
+            values = segment_samples(context.clock, segment, (_CHANNEL,), span).channels[_CHANNEL]
+            if values.size:
+                pieces.append(_Piece(index, values, segment.chunks[0].sample_rate_hz))
+    return tuple(pieces)
+
+
+def _rms(pieces: Sequence[_Piece]) -> float:
+    return float(np.sqrt(np.mean(np.concatenate([p.values for p in pieces]) ** 2)))
+
+
+def _peak_rms(pieces: Sequence[_Piece], window_ms: float) -> float:
+    """RMS en ventana más alto de todos los trozos; la ventana nunca cruza de un trozo a otro."""
+    best = 0.0
+    for piece in pieces:
+        length = min(piece.values.size, max(1, round(window_ms / 1000.0 * piece.rate_hz)))
+        windowed = np.convolve(piece.values**2, np.full(length, 1.0 / length), mode="valid")
+        best = max(best, float(np.sqrt(windowed.max())))
+    return best
+
+
+def _n(pieces: Sequence[_Piece]) -> int:
+    return len({p.window for p in pieces})
+
+
+def _mvc(resolution: CalibrationResolution) -> EmgMvcCalibration | Reason:
+    if resolution.reason is not None:
+        return resolution.reason
+    calibration = resolution.calibration
+    return calibration if isinstance(calibration, EmgMvcCalibration) else Reason.NO_CALIBRATION
+
+
+class EmgFamily:
+    """Features de amplitud del EMG a partir de las ventanas del servicio de repeticiones inyectado.
+
+    ``feature_ids`` son todos los ids concretos del catálogo (plantillas expandidas con músculos y lados); en cada
+    petición solo se emiten los de los streams EMG declarados en la sesión.
+    """
+
+    family = "emg"
+    feature_ids: Sequence[str] = tuple(
+        i for template in (RMS_MV, REST_RMS_MV, RMS_PCT_MVC, PEAK_PCT_MVC, SYMMETRY_INDEX_PCT) for i in expand_template(template)
+    )
+
+    def __init__(self, repetitions: RepetitionService) -> None:
+        self._repetitions = repetitions
+
+    def extract(self, context: ExtractionContext) -> FamilyResult:
+        windows = self._repetitions.windows(context).windows
+        computed: list[ComputedFeature] = []
+        skipped: list[SkippedFeature] = []
+        outcomes: dict[tuple[str, str], tuple[str, _Pct | Reason]] = {}
+        for stream in _emg_streams(context):
+            pct = self._stream(context, windows, stream, computed, skipped)
+            outcomes.setdefault((stream.muscle, stream.side), (stream.stream_id, pct))
+        for muscle in dict.fromkeys(muscle for muscle, _ in outcomes):
+            self._symmetry(muscle, outcomes, computed, skipped)
+        return FamilyResult(tuple(computed), tuple(skipped))
+
+    def _stream(
+        self,
+        context: ExtractionContext,
+        windows: tuple[RepWindow, ...],
+        stream: _EmgStream,
+        computed: list[ComputedFeature],
+        skipped: list[SkippedFeature],
+    ) -> _Pct | Reason:
+        """Calcula las cuatro features de un stream y devuelve su ``rms_pct_mvc`` (o por qué no hay)."""
+        ids = {name: template.format(muscle=stream.muscle, side=stream.side) for name, template in _TEMPLATES.items()}
+        used = (stream.stream_id,)
+
+        def skip(name: str, reason: Reason) -> None:
+            skipped.append(SkippedFeature(ids[name], reason))
+
+        if context.stream_missing(stream.stream_id):
+            for name in _TEMPLATES:
+                skip(name, Reason.STREAM_MISSING)
+            return Reason.STREAM_MISSING
+
+        active = _pieces(context, stream.stream_id, [w.active for w in windows])
+        rests = [rest for w in windows if (rest := w.rest) is not None]
+        rest = _pieces(context, stream.stream_id, rests)
+        no_active = Reason.TOO_FEW_REPETITIONS if not windows else Reason.NO_DATA
+        mvc = _mvc(context.calibration(stream.stream_id))
+        rms_mv = _rms(active) if active else None
+        if rms_mv is None:
+            skip("rms_mv", no_active)
+        else:
+            computed.append(ComputedFeature(ids["rms_mv"], rms_mv, used, _n(active)))
+        if rest:
+            computed.append(ComputedFeature(ids["rest_rms_mv"], _rms(rest), used, _n(rest)))
+        else:
+            skip("rest_rms_mv", Reason.NO_DATA)
+        if isinstance(mvc, Reason):
+            skip("rms_pct_mvc", mvc)
+            skip("peak_pct_mvc", mvc)
+            return mvc
+        if rms_mv is None:
+            skip("rms_pct_mvc", no_active)
+            skip("peak_pct_mvc", no_active)
+            return no_active
+        pct = 100.0 * rms_mv / mvc.mvc_rms_mv
+        peak = 100.0 * _peak_rms(active, mvc.window_ms) / mvc.mvc_rms_mv
+        n = _n(active)
+        computed.append(ComputedFeature(ids["rms_pct_mvc"], pct, used, n))
+        computed.append(ComputedFeature(ids["peak_pct_mvc"], peak, used, n))
+        return _Pct(pct, n)
+
+    @staticmethod
+    def _symmetry(
+        muscle: str,
+        outcomes: dict[tuple[str, str], tuple[str, _Pct | Reason]],
+        computed: list[ComputedFeature],
+        skipped: list[SkippedFeature],
+    ) -> None:
+        feature_id = SYMMETRY_INDEX_PCT.format(muscle=muscle)
+        left, right = outcomes.get((muscle, "left")), outcomes.get((muscle, "right"))
+        if left is None or right is None:
+            skipped.append(SkippedFeature(feature_id, Reason.STREAM_MISSING))
+            return
+        sides = (left[1], right[1])
+        reasons = [s for s in sides if isinstance(s, Reason)]
+        if reasons:
+            skipped.append(SkippedFeature(feature_id, Reason.NO_CALIBRATION if Reason.NO_CALIBRATION in reasons else reasons[0]))
+            return
+        left_pct, right_pct = (s for s in sides if isinstance(s, _Pct))
+        mean = (left_pct.value + right_pct.value) / 2.0
+        if mean <= 0.0:
+            skipped.append(SkippedFeature(feature_id, Reason.NO_DATA))
+            return
+        index = 100.0 * abs(left_pct.value - right_pct.value) / mean
+        computed.append(ComputedFeature(feature_id, index, (left[0], right[0]), min(left_pct.n, right_pct.n)))

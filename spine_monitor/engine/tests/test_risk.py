@@ -123,3 +123,9 @@ def test_a_tiny_sustained_deviation_still_adds_risk_and_keeps_its_share():
 
     assert result.score > 0
     assert result.drivers[0].contribution == pytest.approx(result.score)
+
+
+def test_the_risk_model_is_exported_next_to_the_null_one():
+    import spine_engine
+
+    assert spine_engine.DeviationRiskModel is DeviationRiskModel

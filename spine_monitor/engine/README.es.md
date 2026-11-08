@@ -18,7 +18,7 @@ El contrato es `contracts/openapi.yaml`; cuerpos y errores son los JSON Schemas 
 | Endpoint | Cuerpo de entrada | Cuerpo de salida | Hoy |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41; las familias EMG, IMU y cordón llegan en #42-#45 |
+| `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41 e `imu` desde #44; las familias EMG y cordón llegan en #42, #43 y #45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de las sesiones de referencia) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline; modelo de riesgo y triaje nulos (nivel siempre verde) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: no aplica `overrides`, `reference` y `scenario` son la misma evaluación |
@@ -47,13 +47,13 @@ Los ejemplos de `contracts/examples/valid/engine/` son peticiones válidas de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | cambio sostenido sobre el histórico (mismo protocolo y gravedad); un pico aislado nunca cuenta |
 | `VotePolicy` | `AllAgreeVote` | los detectores deben coincidir (AND), en el mismo sentido |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construye la baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (`exercise`, #41; EMG, IMU y cordón en #42-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (`exercise`, #41; `imu`, #44; EMG y cordón en #42, #43 y #45) |
 
 Los detectores solo ven una serie de z-scores: no saben qué métrica es, así que no dependen del modelo teórico. `Deviation` lleva el z-score, la gravedad de referencia y si el cambio es sostenido y en qué sentido; el modelo de riesgo lo lee de ahí.
 
 ## Extracción de features
 
-`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). `default_registry()` registra la familia `exercise` (#41), así que hoy ya se calculan las métricas de repeticiones; las de los demás sensores llegan familia a familia (#42-#45). `NullFeatureExtractor` sigue en `stubs.py` para los tests.
+`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). `default_registry()` registra las familias `exercise` (#41) e `imu` (#44), así que hoy ya se calculan las métricas de repeticiones y de la IMU; las de los demás sensores llegan familia a familia (#42, #43, #45). `NullFeatureExtractor` sigue en `stubs.py` para los tests.
 
 Antes de ejecutar las familias, el motor prepara una sola vez un `ExtractionContext`:
 
@@ -77,6 +77,17 @@ El origen, en este orden:
 3. Si tampoco hay nada, no hay repeticiones.
 
 Calidad: las features por eventos evalúan la calidad común sobre todos los streams declarados; las de respaldo IMU, sobre los streams IMU. Sin chunks con ancla de reloj, salen `no_data`.
+
+### La familia `imu`
+
+Basada en el giróscopo, así que no depende de la gravedad y es comparable entre Tierra y microgravedad. Para cada stream IMU declarado, con el `spine_level` de su `placement` en la sesión (nunca fijado en el código), y para cada ventana de repetición (fase activa, `start <= t < end`):
+
+- **Planos:** se emiten los tres. `calibration.imu.mounting` lleva cada eje del sensor a un eje corporal: sagital = rotación sobre el eje izquierda-derecha, frontal = sobre el anterior, transversal = sobre el craneal (el mismo marco que el simulador). Un montaje sin eje del sensor para un plano deja ese plano en `no_calibration`. El `gyro_bias_dps` de la calibración se resta a cada eje del sensor.
+- **`imu.{nivel}.{plano}.rom_deg`:** recorrido (máx - mín) del ángulo integrado, desde 0 antes de la primera muestra. **`peak_angular_velocity_dps`:** el mayor `|ω|`.
+- **`imu.{nivel}.{plano}.smoothness_sparc`:** SPARC de `|ω|` con la FFT de numpy y los valores por defecto publicados (relleno de ceros 2^4, corte en 10 Hz, umbral de amplitud del 5 %; Balasubramanian et al. 2015). Solo si todos los chunks del stream van a 50 Hz o más (el requisito del catálogo); si no, `skipped` con `insufficient_sample_rate`. Sin movimiento SPARC no está definido y acaba en `no_data`.
+- **`imu.{nivel}.accel_rms_g`:** RMS de la magnitud de la aceleración tras quitar a cada eje su media en la repetición (la componente estática: gravedad y sesgo del acelerómetro).
+
+Cada valor es la media sobre las repeticiones con muestras, y `n` las cuenta; una repetición lee el segmento (`boot_id`) con más muestras en su ventana. Motivos de `skipped`, en orden: `stream_missing`, `no_calibration`/`calibration_expired`, luego `no_data` (sin reloj o sin muestras en ninguna repetición) o `too_few_repetitions` (ninguna repetición); el `insufficient_sample_rate` de SPARC se decide antes que estos dos últimos.
 
 ## Configuración
 

@@ -18,7 +18,7 @@ El contracte és `contracts/openapi.yaml`; cossos i errors són els JSON Schemas
 | Endpoint | Cos d'entrada | Cos de sortida | Avui |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` de les famílies registrades: `exercise` des de #41; les famílies EMG, IMU i cordó arriben a #42-#45 |
+| `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` de les famílies registrades: `exercise` des de #41 i `imu` des de #44; les famílies EMG i cordó arriben a #42, #43 i #45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de les sessions de referència) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparació real amb la baseline; model de risc i triatge nuls (nivell sempre verd) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: no aplica `overrides`, `reference` i `scenario` són la mateixa avaluació |
@@ -47,13 +47,13 @@ Els exemples de `contracts/examples/valid/engine/` són peticions vàlides de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | canvi sostingut sobre l'històric (mateix protocol i gravetat); un pic aïllat mai compta |
 | `VotePolicy` | `AllAgreeVote` | els detectors han de coincidir (AND), en el mateix sentit |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construeix la baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (`exercise`, #41; EMG, IMU i cordó a #42-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (`exercise`, #41; `imu`, #44; EMG i cordó a #42, #43 i #45) |
 
 Els detectors només veuen una sèrie de z-scores: no saben quina mètrica és, així que no depenen del model teòric. `Deviation` porta el z-score, la gravetat de referència i si el canvi és sostingut i en quin sentit; el model de risc ho llegeix d'allà.
 
 ## Extracció de features
 
-`POST /features` executa `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de famílies de features (`FeatureFamilyExtractor`: un nom `family`, els `feature_ids` del catàleg que declara i `extract(context) -> FamilyResult` amb features `computed` i `skipped`). `default_registry()` registra la família `exercise` (#41), així que avui ja es calculen les mètriques de repeticions; les dels altres sensors arriben família a família (#42-#45). `NullFeatureExtractor` es manté a `stubs.py` per als tests.
+`POST /features` executa `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de famílies de features (`FeatureFamilyExtractor`: un nom `family`, els `feature_ids` del catàleg que declara i `extract(context) -> FamilyResult` amb features `computed` i `skipped`). `default_registry()` registra les famílies `exercise` (#41) i `imu` (#44), així que avui ja es calculen les mètriques de repeticions i de la IMU; les dels altres sensors arriben família a família (#42, #43, #45). `NullFeatureExtractor` es manté a `stubs.py` per als tests.
 
 Abans d'executar les famílies, el motor prepara una sola vegada un `ExtractionContext`:
 
@@ -77,6 +77,17 @@ L'origen, en aquest ordre:
 3. Si tampoc hi ha res, no hi ha repeticions.
 
 Qualitat: les features per esdeveniments avaluen la qualitat comuna sobre tots els streams declarats; les de recurs de reserva IMU, sobre els streams IMU. Sense chunks amb àncora de rellotge, surten `no_data`.
+
+### La família `imu`
+
+Basada en el giroscopi, així que no depèn de la gravetat i és comparable entre la Terra i la microgravetat. Per a cada stream IMU declarat, amb el `spine_level` del seu `placement` a la sessió (mai fixat al codi), i per a cada finestra de repetició (fase activa, `start <= t < end`):
+
+- **Plans:** s'emeten tots tres. `calibration.imu.mounting` porta cada eix del sensor a un eix corporal: sagital = rotació sobre l'eix esquerra-dreta, frontal = sobre l'anterior, transversal = sobre el cranial (el mateix marc que el simulador). Un muntatge sense eix del sensor per a un pla deixa aquest pla a `no_calibration`. El `gyro_bias_dps` del calibratge es resta a cada eix del sensor.
+- **`imu.{nivell}.{pla}.rom_deg`:** recorregut (màx - mín) de l'angle integrat, des de 0 abans de la primera mostra. **`peak_angular_velocity_dps`:** el `|ω|` més gran.
+- **`imu.{nivell}.{pla}.smoothness_sparc`:** SPARC de `|ω|` amb la FFT de numpy i els valors per defecte publicats (farciment de zeros 2^4, tall a 10 Hz, llindar d'amplitud del 5 %; Balasubramanian et al. 2015). Només si tots els chunks del stream van a 50 Hz o més (el requisit del catàleg); si no, `skipped` amb `insufficient_sample_rate`. Sense moviment SPARC no està definit i acaba a `no_data`.
+- **`imu.{nivell}.accel_rms_g`:** RMS de la magnitud de l'acceleració després de treure a cada eix la seva mitjana a la repetició (la component estàtica: gravetat i biaix de l'acceleròmetre).
+
+Cada valor és la mitjana sobre les repeticions amb mostres, i `n` les compta; una repetició llegeix el segment (`boot_id`) amb més mostres a la seva finestra. Motius de `skipped`, en ordre: `stream_missing`, `no_calibration`/`calibration_expired`, després `no_data` (sense rellotge o sense mostres a cap repetició) o `too_few_repetitions` (cap repetició); l'`insufficient_sample_rate` de SPARC es decideix abans que aquests dos últims.
 
 ## Configuració
 

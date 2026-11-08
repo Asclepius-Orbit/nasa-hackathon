@@ -195,7 +195,7 @@ async def test_demo_server_wires_the_demo_simulator_and_assess_base():
 
 def _reader(server: MCPServer) -> HttpAppReader:
     """El `AppReader` con el que `create_server` ha cableado la tool `get_current_status`."""
-    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue]
+    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- `_tool_manager` y los cierres no son API pública
     assert closure is not None
     readers = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpAppReader)]
     assert len(readers) == 1
@@ -232,14 +232,20 @@ async def test_http_dataset_simulation_is_reported_as_unavailable(monkeypatch: p
 
 def test_http_dataset_defaults_to_the_local_app_url(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("SPINE_APP_URL", raising=False)
-    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage]
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_http_dataset_uses_the_default_url_when_spine_app_url_is_blank(monkeypatch: pytest.MonkeyPatch, blank: str):
+    monkeypatch.setenv("SPINE_APP_URL", blank)
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
 
 
 def test_http_dataset_reads_the_env_var_when_building_not_when_importing(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SPINE_APP_URL", "http://other.test:1234/")
-    assert _reader(build_server(["--dataset", "http"]))._base == "http://other.test:1234"  # pyright: ignore[reportPrivateUsage]
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://other.test:1234"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
     monkeypatch.setenv("SPINE_APP_URL", "http://second.test")
-    assert _reader(build_server(["--dataset", "http"]))._base == "http://second.test"  # pyright: ignore[reportPrivateUsage]
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://second.test"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
 
 
 @pytest.mark.integration

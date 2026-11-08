@@ -66,9 +66,9 @@ In `--dataset http`, failures from the app API map as follows:
 
 | Upstream failure | MCP tool error |
 |---|---|
-| Problem details 4xx (for example 404 or 422) | `title: detail`, upstream status kept |
-| Other 4xx, without a problem body | `App API request rejected`, upstream status kept |
-| 5xx | `App API error`, upstream status kept (detail from the problem body, if any) |
+| Problem details 4xx (for example 404 or 422) | `title: detail`, upstream status kept; without `detail`, the field errors (`pointer: message`) take its place; capped at 500 characters |
+| Other non-success below 500 (4xx, 3xx), without a problem body | `App API request rejected`, upstream status kept |
+| 5xx | `App API error: HTTP <status>`, upstream status kept; the upstream detail is not forwarded |
 | Response body that does not match the contract | 502, `App API returned an invalid response` |
 | No response within 10 seconds | 504, `App API timeout` |
 | Connection failure | 503, `App API unavailable` |

@@ -47,7 +47,7 @@ def build_server(argv: Sequence[str] | None = None) -> MCPServer:
     if args.dataset == "examples":
         return create_server(ExampleAppReader(), ExampleSimulator(), ExampleAssessBaseSource())
     if args.dataset == "http":
-        return create_server(HttpAppReader(os.environ.get(APP_URL_ENV, DEFAULT_APP_URL)), UnavailableSimulator(), UnavailableAssessBase())
+        return create_server(HttpAppReader(os.environ.get(APP_URL_ENV, "").strip() or DEFAULT_APP_URL), UnavailableSimulator(), UnavailableAssessBase())
     now = args.now or datetime.now(UTC)
     return create_server(build_demo_app_reader(now), build_demo_simulator(now), build_demo_assess_base(now))
 

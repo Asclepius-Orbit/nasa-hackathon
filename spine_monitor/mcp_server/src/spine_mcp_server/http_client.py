@@ -5,6 +5,9 @@ y los fallos de transporte o de forma se traducen a 502, 503 o 504. No se hace n
 """
 
 from datetime import datetime
+from types import TracebackType
+from typing import Self
+from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -12,28 +15,43 @@ from spine_contracts import AppErrorResponse, AssessRequest, Explanation, Histor
 
 from spine_mcp_server.errors import UpstreamError
 
+MAX_DETAIL_CHARS = 500
+"""Tope del detalle que viene de la app y llega al LLM (contenido aguas arriba, no confiable)."""
+
 
 class HttpAppReader:
     """`AppReader` que consulta la API de lectura de la app por HTTP."""
 
     def __init__(self, base_url: str, *, client: httpx.Client | None = None, timeout: float = 10.0) -> None:
+        self._owns_client = client is None
         self._client = client if client is not None else httpx.Client(base_url=base_url, timeout=timeout)
         self._base = base_url.rstrip("/")
 
+    def close(self) -> None:
+        """Cierra el cliente httpx propio; uno inyectado lo cierra quien lo creó."""
+        if self._owns_client:
+            self._client.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None:
+        self.close()
+
     def get_status(self, astronaut_id: str) -> Status:
-        return self._get(f"/crew/{astronaut_id}/status", Status)
+        return self._get(f"/crew/{_segment(astronaut_id)}/status", Status)
 
     def get_history(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> History:
-        return self._get(f"/crew/{astronaut_id}/history", History, _window(from_, to, limit))
+        return self._get(f"/crew/{_segment(astronaut_id)}/history", History, _window(from_, to, limit))
 
     def get_sessions(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SessionList:
-        return self._get(f"/crew/{astronaut_id}/sessions", SessionList, _window(from_, to, limit))
+        return self._get(f"/crew/{_segment(astronaut_id)}/sessions", SessionList, _window(from_, to, limit))
 
     def get_self_reports(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SelfReportList:
-        return self._get(f"/crew/{astronaut_id}/self-reports", SelfReportList, _window(from_, to, limit))
+        return self._get(f"/crew/{_segment(astronaut_id)}/self-reports", SelfReportList, _window(from_, to, limit))
 
     def get_explanation(self, assessment_id: str) -> Explanation:
-        return self._get(f"/assessments/{assessment_id}/explanation", Explanation)
+        return self._get(f"/assessments/{_segment(assessment_id)}/explanation", Explanation)
 
     def _get[M: BaseModel](self, path: str, model: type[M], params: dict[str, str | int] | None = None) -> M:
         try:
@@ -50,6 +68,11 @@ class HttpAppReader:
         raise _failure(response)
 
 
+def _segment(identifier: str) -> str:
+    """Un id como un único segmento de ruta: `/`, `?`, `#` o `..` no pueden cambiar de endpoint ni abrir la query."""
+    return quote(identifier, safe="")
+
+
 def _window(from_: datetime, to: datetime, limit: int) -> dict[str, str | int]:
     return {"from": from_.isoformat(), "to": to.isoformat(), "limit": limit}
 
@@ -61,13 +84,19 @@ def _problem(response: httpx.Response) -> AppErrorResponse | None:
         return None
 
 
+def _detail(problem: AppErrorResponse) -> str | None:
+    """`detail` del problema o, si no lo trae, sus errores de campo (`pointer: message`); recortado a `MAX_DETAIL_CHARS`."""
+    detail = problem.detail or "; ".join(f"{error.pointer}: {error.message}" for error in problem.errors or []) or None
+    return None if detail is None else detail[:MAX_DETAIL_CHARS]
+
+
 def _failure(response: httpx.Response) -> UpstreamError:
     status = response.status_code
     problem = _problem(response)
     if status >= 500:
-        return UpstreamError(status, "App API error", problem.detail if problem and problem.detail else f"HTTP {status}")
+        return UpstreamError(status, "App API error", f"HTTP {status}")
     if problem is not None:
-        return UpstreamError.from_problem(problem)
+        return UpstreamError(problem.status, problem.title, _detail(problem))
     return UpstreamError(status, "App API request rejected", f"HTTP {status}")
 
 

@@ -66,9 +66,9 @@ Amb `--dataset http`, les fallades de l'API de l'app es tradueixen així:
 
 | Fallada upstream | Error d'eina MCP |
 |---|---|
-| 4xx amb problem details (per exemple 404 o 422) | `títol: detall`, es conserva l'estat upstream |
-| Altres 4xx, sense cos problem | `App API request rejected`, es conserva l'estat upstream |
-| 5xx | `App API error`, es conserva l'estat upstream (detall del cos problem, si n'hi ha) |
+| 4xx amb problem details (per exemple 404 o 422) | `títol: detall`, es conserva l'estat upstream; sense `detail`, el substitueixen els errors de camp (`pointer: message`); retallat a 500 caràcters |
+| Altres no èxits per sota de 500 (4xx, 3xx), sense cos problem | `App API request rejected`, es conserva l'estat upstream |
+| 5xx | `App API error: HTTP <estat>`, es conserva l'estat upstream; no es reenvia el detall upstream |
 | Cos de resposta que no compleix el contracte | 502, `App API returned an invalid response` |
 | Sense resposta en 10 segons | 504, `App API timeout` |
 | Fallada de connexió | 503, `App API unavailable` |

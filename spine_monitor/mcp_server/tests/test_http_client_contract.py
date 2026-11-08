@@ -95,7 +95,7 @@ def declared_statuses(op: dict) -> set[str]:
 def response_schema_name(op: dict) -> str:
     """'schemas/v1/app/status.schema.json' -> 'app/status', as `spine_contracts.validation` names it."""
     ref = op["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
-    return re.fullmatch(r"schemas/v1/(.+)\.schema\.json", ref).group(1)  # pyright: ignore[reportOptionalMemberAccess]
+    return re.fullmatch(r"schemas/v1/(.+)\.schema\.json", ref).group(1)  # pyright: ignore[reportOptionalMemberAccess] -- la expresión regular casa siempre con los `$ref` del contrato
 
 
 def path_regex(template: str) -> re.Pattern[str]:

@@ -66,9 +66,9 @@ En `--dataset http`, los fallos de la API de la app se traducen así:
 
 | Fallo upstream | Error de herramienta MCP |
 |---|---|
-| 4xx con problem details (por ejemplo 404 o 422) | `título: detalle`, se conserva el estado upstream |
-| Otros 4xx, sin cuerpo problem | `App API request rejected`, se conserva el estado upstream |
-| 5xx | `App API error`, se conserva el estado upstream (detalle del cuerpo problem, si lo hay) |
+| 4xx con problem details (por ejemplo 404 o 422) | `título: detalle`, se conserva el estado upstream; sin `detail`, lo sustituyen los errores de campo (`pointer: message`); recortado a 500 caracteres |
+| Otros no éxitos por debajo de 500 (4xx, 3xx), sin cuerpo problem | `App API request rejected`, se conserva el estado upstream |
+| 5xx | `App API error: HTTP <estado>`, se conserva el estado upstream; no se reenvía el detalle upstream |
 | Cuerpo de respuesta que no cumple el contrato | 502, `App API returned an invalid response` |
 | Sin respuesta en 10 segundos | 504, `App API timeout` |
 | Fallo de conexión | 503, `App API unavailable` |

@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime, timedelta, timezone
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -15,7 +16,6 @@ from spine_contracts import SCHEMA_VERSION, Explanation, History, SelfReportList
 from spine_mcp_server.errors import UpstreamError
 from spine_mcp_server.http_client import HttpAppReader, UnavailableAssessBase, UnavailableSimulator
 from spine_mcp_server.mocks import EXAMPLES_DIR, ExampleAppReader, ExampleAssessBaseSource
-from spine_mcp_server.ports import AppReader
 from spine_mcp_server.server import create_server
 
 AST = "AST-01"
@@ -51,17 +51,38 @@ def raises(call) -> UpstreamError:
 # --- construction and requests -------------------------------------------------------------------
 
 
-def test_is_an_app_reader():
-    reader_: AppReader = HttpAppReader(BASE)
-
-    assert isinstance(reader_, HttpAppReader)
-
-
 def test_construction_does_no_network_and_owns_its_client_with_the_timeout():
     http = HttpAppReader("http://127.0.0.1:1", timeout=3.5)
 
     assert http._client.timeout == httpx.Timeout(3.5)
     assert str(http._client.base_url).rstrip("/") == "http://127.0.0.1:1"
+
+
+def test_default_timeout_is_10_seconds():
+    assert HttpAppReader("http://127.0.0.1:1")._client.timeout == httpx.Timeout(10.0)
+
+
+def test_close_closes_the_client_it_owns():
+    http = HttpAppReader("http://127.0.0.1:1")
+
+    http.close()
+
+    assert http._client.is_closed
+
+
+def test_close_leaves_an_injected_client_open():
+    client = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
+
+    HttpAppReader(BASE, client=client).close()
+
+    assert not client.is_closed
+
+
+def test_context_manager_closes_the_owned_client():
+    with HttpAppReader("http://127.0.0.1:1") as http:
+        assert not http._client.is_closed
+
+    assert http._client.is_closed
 
 
 def test_status_request_and_parse():
@@ -75,6 +96,52 @@ def test_status_request_and_parse():
 
     assert seen == [("GET", f"/crew/{AST}/status", {})]
     assert status == Status.model_validate(example("app/status"))
+
+
+UNSAFE_IDS = ["../x", "a?b=1", "a#b", "a/b", "AST-01\n", "a b", "%2e%2e"]
+
+
+@pytest.mark.parametrize("unsafe", UNSAFE_IDS)
+def test_astronaut_ids_are_escaped_as_a_single_path_segment(unsafe):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path.decode())
+        return httpx.Response(200, json=example("app/history"))
+
+    reader(handler).get_history(unsafe, FROM, TO, 7)
+
+    assert len(seen) == 1
+    path, _, query = seen[0].partition("?")
+    assert path == f"/crew/{quote(unsafe, safe='')}/history"
+    assert httpx.QueryParams(query).keys() == {"from", "to", "limit"}
+
+
+@pytest.mark.parametrize("unsafe", UNSAFE_IDS)
+def test_assessment_ids_are_escaped_as_a_single_path_segment(unsafe):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path.decode())
+        return httpx.Response(200, json=example("app/explanation"))
+
+    reader(handler).get_explanation(unsafe)
+
+    assert seen == [f"/assessments/{quote(unsafe, safe='')}/explanation"]
+
+
+@pytest.mark.parametrize("method", ["get_status", "get_sessions", "get_self_reports"])
+def test_every_astronaut_endpoint_escapes_the_id(method):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path.decode())
+        return httpx.Response(404, text="x")
+
+    args = (FROM, TO) if method != "get_status" else ()
+    raises(lambda: getattr(reader(handler), method)("a/b", *args))
+
+    assert seen[0].startswith("/crew/a%2Fb/")
 
 
 def test_base_url_trailing_slash_is_tolerated():
@@ -146,14 +213,64 @@ def test_problem_bodies_become_the_same_error_as_the_mocks(status):
     assert (error.status, error.title, error.detail) == (status, "Invalid range", "to is before from")
 
 
+def _validation_problem(errors: list[dict[str, str]], detail: str | None = None) -> httpx.Response:
+    body: dict = {"type": "invalid_request", "title": "Invalid request", "status": 422, "errors": errors}
+    if detail is not None:
+        body["detail"] = detail
+    return httpx.Response(422, json=body, headers={"content-type": "application/problem+json"})
+
+
+def test_field_errors_become_the_detail_when_the_problem_has_none():
+    response = _validation_problem([{"pointer": "assessment_id", "message": "not a valid UUID"}, {"pointer": "limit", "message": "must be <= 500"}])
+
+    error = raises(lambda: reader(lambda _: response).get_explanation("nope"))
+
+    assert (error.status, error.title, error.detail) == (422, "Invalid request", "assessment_id: not a valid UUID; limit: must be <= 500")
+
+
+def test_problem_detail_wins_over_field_errors():
+    response = _validation_problem([{"pointer": "limit", "message": "bad"}], detail="the range is inverted")
+
+    error = raises(lambda: reader(lambda _: response).get_status(AST))
+
+    assert error.detail == "the range is inverted"
+
+
+def test_empty_field_errors_keep_detail_none():
+    error = raises(lambda: reader(lambda _: _validation_problem([])).get_status(AST))
+
+    assert error.detail is None
+
+
+def test_long_upstream_detail_is_truncated():
+    error = raises(lambda: reader(lambda _: problem(404, "Not found", "x" * 2000)).get_status(AST))
+
+    assert error.detail == "x" * 500
+
+
+def test_detail_of_exactly_the_limit_is_kept():
+    error = raises(lambda: reader(lambda _: problem(404, "Not found", "y" * 500)).get_status(AST))
+
+    assert error.detail == "y" * 500
+
+
+def test_long_field_errors_are_truncated_too():
+    response = _validation_problem([{"pointer": "p", "message": "m" * 2000}])
+
+    error = raises(lambda: reader(lambda _: response).get_status(AST))
+
+    assert error.detail is not None
+    assert len(error.detail) == 500
+
+
 def test_problem_without_detail_keeps_detail_none():
     error = raises(lambda: reader(lambda _: problem(404, "Not found", None)).get_explanation(ASSESSMENT_ID))
 
     assert (error.status, error.title, error.detail) == (404, "Not found", None)
 
 
-@pytest.mark.parametrize("status", [400, 403, 404, 409, 422])
-def test_4xx_without_a_valid_problem_body_gets_a_synthetic_title(status):
+@pytest.mark.parametrize("status", [301, 304, 400, 403, 404, 409, 422])
+def test_non_success_below_500_without_a_valid_problem_body_gets_a_synthetic_title(status):
     error = raises(lambda: reader(lambda _: httpx.Response(status, text="nope")).get_status(AST))
 
     assert (error.status, error.title, error.detail) == (status, "App API request rejected", f"HTTP {status}")
@@ -166,10 +283,10 @@ def test_4xx_with_json_that_is_not_a_problem_is_synthetic():
 
 
 @pytest.mark.parametrize("status", [500, 502, 503])
-def test_5xx_keeps_its_status_and_adds_the_detail_of_the_problem(status):
+def test_5xx_keeps_its_status_and_does_not_forward_the_upstream_detail(status):
     error = raises(lambda: reader(lambda _: problem(status, "Internal error", "boom", "internal")).get_status(AST))
 
-    assert (error.status, error.title, error.detail) == (status, "App API error", "boom")
+    assert (error.status, error.title, error.detail) == (status, "App API error", f"HTTP {status}")
 
 
 def test_5xx_without_a_problem_body_uses_the_http_status_as_detail():

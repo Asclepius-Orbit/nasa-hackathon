@@ -115,3 +115,11 @@ def test_rejects_a_non_finite_saturation(value):
 def test_rejects_non_finite_domain_weights(value):
     with pytest.raises(ValueError, match="^domain weights must be finite$"):
         DeviationRiskModel({**WEIGHTS, AssessmentDomain.MUSCLE: value}, persistence_points=4, saturation=2.0)
+
+
+def test_a_tiny_sustained_deviation_still_adds_risk_and_keeps_its_share():
+    # 1 - exp(-x) redondea a 0.0 con x diminuto; expm1 lo conserva
+    result = model().score([dev(z=1e-300)], 1.0)
+
+    assert result.score > 0
+    assert result.drivers[0].contribution == pytest.approx(result.score)

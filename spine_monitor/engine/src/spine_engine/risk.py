@@ -14,7 +14,8 @@ class DeviationRiskModel:
 
     Cada desviación sostenida aporta `|z| · peso de su dominio · persistencia`, con la persistencia
     `min(n_points, persistence_points) / persistence_points`. La suma se satura a [0, 1] con
-    `1 - exp(-suma / saturation)` (con sumas muy grandes el redondeo llega a 1.0). Sin `risk_direction` conocido, cualquier sentido es peor: se usa
+    `1 - exp(-suma / saturation)`, calculada con `expm1` para no perder sumas diminutas (con sumas muy
+    grandes el redondeo llega a 1.0). Sin `risk_direction` conocido, cualquier sentido es peor: se usa
     |z|, y el signo solo viaja en `deviation_z` del driver. Una desviación aislada, sin z o de una
     feature sin dominio no aporta riesgo. La confianza es la completitud: lo que falta no la sube.
 
@@ -49,7 +50,7 @@ class DeviationRiskModel:
     def score(self, deviations: Sequence[Deviation], completeness: float) -> RiskResult:
         raw = [(d, c) for d in deviations if (c := self._raw(d)) > 0]
         total = sum(c for _, c in raw)
-        score = 1 - math.exp(-total / self._saturation)
+        score = -math.expm1(-total / self._saturation)
         drivers = [
             Driver(feature_id=d.feature_id, value=d.value, deviation_z=d.z, contribution=score * c / total)
             for d, c in sorted(raw, key=lambda item: (-item[1], item[0].feature_id))

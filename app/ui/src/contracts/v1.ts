@@ -1182,7 +1182,8 @@ export interface FeatureSet {
       | "calibration_expired"
       | "signal_not_raw"
       | "too_few_repetitions"
-      | "stream_missing";
+      | "stream_missing"
+      | "insufficient_sample_rate";
   }[];
 }
 /**

@@ -20,6 +20,7 @@ spine-engine = "spine_engine.api.__main__:main"
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "spine-physiology",
 ]
 
 [build-system]
@@ -28,3 +29,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 spine-contracts = { workspace = true }
+spine-physiology = { workspace = true }

@@ -37,14 +37,20 @@ def test_engine_answers_what_the_contract_promises(case: schemathesis.Case) -> N
     case.validate_response(response, excluded_checks=_domain_rejections(response))
 
 
+_DOMAIN_REJECTIONS = {"insufficient_data", "unknown_feature", "invalid_request"}
+
+
 def _domain_rejections(response) -> list:
     """`positive_data_acceptance` toma por fallo un 422 a una petición válida según el schema.
 
     El contrato documenta ese 422 en POST /baseline (`insufficient_data`: p. ej. sin sesiones en gravedad de
     referencia), pero Schemathesis 4.33 no lee las respuestas documentadas para este check: solo compara con
     `expected_statuses` de su configuración. Se excluye la comprobación únicamente para ese 422 y el cuerpo
-    sigue validándose contra el schema de error. Cualquier otro rechazo de datos válidos falla.
+    sigue validándose contra el schema de error. Lo mismo vale para POST /simulate: un override sobre una
+    feature fuera del catálogo o sin valor en la base (`unknown_feature`) o con resultado no finito
+    (`invalid_request`) es un rechazo de dominio que el schema de la petición no puede expresar. Cualquier
+    otro rechazo de datos válidos falla.
     """
-    if response.status_code == 422 and json.loads(response.content).get("type") == "insufficient_data":
+    if response.status_code == 422 and json.loads(response.content).get("type") in _DOMAIN_REJECTIONS:
         return [positive_data_acceptance]
     return []

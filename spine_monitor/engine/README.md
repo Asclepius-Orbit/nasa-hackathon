@@ -21,7 +21,7 @@ The contract is `contracts/openapi.yaml`; bodies and errors are the JSON Schemas
 | `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | `features` from the registered families: `exercise` since #41; the EMG, IMU and strap families follow in #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets of the reference sessions) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison; null risk model and triage (level always green) |
-| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: `overrides` are not applied, `reference` and `scenario` are the same assessment |
+| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | applies `overrides` (`set`, `add`, `scale`) to the latest value of each feature and re-assesses; `project_days` is not applied yet |
 
 Errors are problem details (`application/problem+json`, `engine/error.schema.json`): `422` with `invalid_request` (with a JSON Pointer per problem), `unsupported_schema_version` or `insufficient_data`, and `500` with `internal`. Request bodies are checked against the JSON Schema as well as Pydantic, so the conditional rules are enforced.
 

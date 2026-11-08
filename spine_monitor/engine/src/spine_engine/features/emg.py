@@ -11,7 +11,12 @@ Por cada stream EMG declarado con ``placement.muscle`` y ``side``:
 
 Y por músculo, ``emg.{muscle}.symmetry_index_pct`` = 100·|L-R| / ((L+R)/2) sobre los ``rms_pct_mvc`` de los dos lados.
 
-La amplitud no necesita señal cruda: el RMS se calcula igual sobre cruda, rectificada o envolvente. Las muestras de
+La amplitud no necesita señal cruda: el cálculo es el mismo sobre cruda, rectificada o envolvente; el valor coincide
+para cruda y rectificada, no para la envolvente. Por eso la MVC solo se usa si es del mismo músculo y lado que el
+stream y se midió en un tipo de señal compatible con el de todos sus chunks (cruda y rectificada entre sí; envolvente
+solo con envolvente); si no, lo que lleva %MVC sale ``no_calibration`` y ``rms_mv``/``rest_rms_mv`` se calculan igual.
+Dos streams declarados con el mismo músculo y lado (caso de borde no tratado): cada uno emite sus features con el mismo
+id (el compuesto se queda con la primera calculada) y la simetría usa siempre el primero. Las muestras de
 cada ventana salen de ``segment_samples`` (ventana UTC semiabierta ``inicio <= t < fin``). ``n`` es el número de
 repeticiones que aportaron muestras. Nunca lanza.
 
@@ -27,11 +32,10 @@ from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from numpy.typing import NDArray
-from spine_contracts import EmgMvcCalibration, StreamKind
+from spine_contracts import EmgChunk, EmgMvcCalibration, StreamKind
 from spine_contracts.catalog import expand_template
 from spine_contracts.models.domain.feature_set_schema import Reason
 
-from spine_engine.features.calibrations import CalibrationResolution
 from spine_engine.features.context import ExtractionContext
 from spine_engine.features.registry import ComputedFeature, FamilyResult, SkippedFeature
 from spine_engine.features.repetitions import RepetitionService, RepWindow
@@ -44,6 +48,8 @@ PEAK_PCT_MVC = "emg.{muscle}.{side}.peak_pct_mvc"
 SYMMETRY_INDEX_PCT = "emg.{muscle}.symmetry_index_pct"
 
 _CHANNEL = "emg"
+# Tipos de señal con el mismo RMS: cruda y rectificada (el cuadrado borra el signo); la envolvente va aparte.
+_SIGNAL_GROUP = {"raw": "rms", "rectified": "rms", "envelope": "envelope"}
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _MICROSECOND = timedelta(microseconds=1)
 _TEMPLATES = {"rms_mv": RMS_MV, "rest_rms_mv": REST_RMS_MV, "rms_pct_mvc": RMS_PCT_MVC, "peak_pct_mvc": PEAK_PCT_MVC}
@@ -136,11 +142,17 @@ def _n(pieces: Sequence[_Piece]) -> int:
     return len({p.window for p in pieces})
 
 
-def _mvc(resolution: CalibrationResolution) -> EmgMvcCalibration | Reason:
+def _mvc(context: ExtractionContext, stream: _EmgStream) -> EmgMvcCalibration | Reason:
+    """MVC utilizable del stream: resuelta, del mismo músculo y lado, y medida en un tipo de señal compatible."""
+    resolution = context.calibration(stream.stream_id)
     if resolution.reason is not None:
         return resolution.reason
     calibration = resolution.calibration
-    return calibration if isinstance(calibration, EmgMvcCalibration) else Reason.NO_CALIBRATION
+    if not isinstance(calibration, EmgMvcCalibration) or (calibration.muscle.value, calibration.side.value) != (stream.muscle, stream.side):
+        return Reason.NO_CALIBRATION
+    kinds = {c.signal_kind.value for s in context.segments(stream.stream_id) for c in s.chunks if isinstance(c, EmgChunk)}
+    measured = _SIGNAL_GROUP[calibration.signal_kind.value]
+    return calibration if all(_SIGNAL_GROUP[kind] == measured for kind in kinds) else Reason.NO_CALIBRATION
 
 
 class EmgFamily:
@@ -194,7 +206,7 @@ class EmgFamily:
         active = _pieces(reads, [w.active for w in windows])
         rest = _pieces(reads, [rest for w in windows if (rest := w.rest) is not None])
         no_active = Reason.TOO_FEW_REPETITIONS if not windows else Reason.NO_DATA
-        mvc = _mvc(context.calibration(stream.stream_id))
+        mvc = _mvc(context, stream)
         rms_mv = _rms(active) if active else None
         if rms_mv is None:
             skip("rms_mv", no_active)

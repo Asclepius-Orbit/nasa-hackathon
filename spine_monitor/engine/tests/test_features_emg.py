@@ -63,7 +63,9 @@ def alternating(values: list[float]) -> list[float]:
     return [v if i % 2 == 0 else -v for i, v in enumerate(values)]
 
 
-def calibration(stream_id: str, side: str, mvc: float, *, window_ms: int = 50, valid_until: datetime | None = None, signal_kind: str = "raw") -> dict[str, Any]:
+def calibration(
+    stream_id: str, side: str, mvc: float, *, window_ms: int = 50, valid_until: datetime | None = None, signal_kind: str = "raw", muscle: str = MUSCLE
+) -> dict[str, Any]:
     return {
         "schema_version": "1.0.0",
         "calibration_id": CAL_IDS[stream_id],
@@ -74,7 +76,7 @@ def calibration(stream_id: str, side: str, mvc: float, *, window_ms: int = 50, v
         "valid_until": valid_until.isoformat() if valid_until else None,
         "source": "device",
         "calibration_type": "emg_mvc",
-        "muscle": MUSCLE,
+        "muscle": muscle,
         "side": side,
         "mvc_rms_mv": mvc,
         "window_ms": window_ms,
@@ -116,9 +118,13 @@ def make_context(
     *,
     declared: tuple[str, ...] | None = None,
     signal_kind: str = "raw",
+    last_chunk_kind: str | None = None,
     events: list[dict[str, Any]] | None = None,
 ) -> ExtractionContext:
-    """Contexto con los streams EMG ``declared`` (por defecto los de ``samples``), sus chunks y calibraciones."""
+    """Contexto con los streams EMG ``declared`` (por defecto los de ``samples``), sus chunks y calibraciones.
+
+    ``last_chunk_kind`` cambia el ``signal_kind`` del último chunk de cada stream (un stream que mezcla tipos).
+    """
     payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
     sides = {LEFT: "left", RIGHT: "right"}
     session = payload["session"]
@@ -134,7 +140,12 @@ def make_context(
     ]
     if events is not None:
         session["events"] = events
-    payload["chunks"] = [c for stream_id, values in samples.items() for c in chunks_of(stream_id, values, signal_kind)]
+    payload["chunks"] = []
+    for stream_id, values in samples.items():
+        chunks = chunks_of(stream_id, values, signal_kind)
+        if last_chunk_kind is not None:
+            chunks[-1]["signal_kind"] = last_chunk_kind
+        payload["chunks"].extend(chunks)
     payload["calibrations"] = calibrations
     return build_context(FeaturesRequest.model_validate(payload))
 
@@ -234,9 +245,66 @@ def test_the_output_order_is_deterministic_per_stream_then_symmetry():
 @pytest.mark.parametrize("signal_kind", ["envelope", "rectified"])
 def test_an_envelope_or_rectified_signal_gives_the_same_amplitude_features(signal_kind: str):
     raw = computed(family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated())))
-    other = computed(family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated(), signal_kind=signal_kind)))
+    # con la MVC medida en el mismo tipo de señal (la envolvente solo es compatible consigo misma)
+    other = computed(family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated(signal_kind=signal_kind), signal_kind=signal_kind)))
 
     assert {k: v.value for k, v in other.items()} == {k: v.value for k, v in raw.items()}
+
+
+MVC_IDS = {f"{p}.{n}" for p in (PREFIX_LEFT, PREFIX_RIGHT) for n in ("rms_pct_mvc", "peak_pct_mvc")} | {SYMMETRY}
+AMPLITUDE_IDS = {f"{p}.{n}" for p in (PREFIX_LEFT, PREFIX_RIGHT) for n in ("rms_mv", "rest_rms_mv")}
+
+
+def test_an_mvc_measured_on_the_envelope_does_not_apply_to_raw_chunks():
+    result = family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated(signal_kind="envelope")))
+
+    assert skipped(result) == dict.fromkeys(MVC_IDS, Reason.NO_CALIBRATION)
+    assert computed(result)[f"{PREFIX_LEFT}.rms_mv"].value == pytest.approx(LEFT_RMS)
+    assert set(computed(result)) == AMPLITUDE_IDS
+
+
+def test_an_mvc_measured_on_the_raw_signal_does_not_apply_to_envelope_chunks():
+    result = family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated(), signal_kind="envelope"))
+
+    assert skipped(result) == dict.fromkeys(MVC_IDS, Reason.NO_CALIBRATION)
+
+
+@pytest.mark.parametrize(("calibrated", "chunks"), [("raw", "rectified"), ("rectified", "raw"), ("envelope", "envelope")])
+def test_compatible_signal_kinds_give_the_mvc_features(calibrated: str, chunks: str):
+    result = family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated(signal_kind=calibrated), signal_kind=chunks))
+
+    assert computed(result)[f"{PREFIX_LEFT}.rms_pct_mvc"].value == pytest.approx(LEFT_PCT)
+    assert set(computed(result)) == AMPLITUDE_IDS | MVC_IDS
+
+
+def test_a_single_incompatible_chunk_makes_the_mvc_unusable_for_its_stream():
+    result = family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated(), last_chunk_kind="envelope"))
+
+    assert skipped(result) == dict.fromkeys(MVC_IDS, Reason.NO_CALIBRATION)
+
+
+def test_an_mvc_of_another_muscle_is_skipped_as_no_calibration():
+    calibrations = [calibration(LEFT, "left", LEFT_MVC, muscle="trapezius"), calibration(RIGHT, "right", RIGHT_MVC)]
+
+    result = family_for(*TWO_REPS).extract(make_context(SAMPLES, calibrations))
+
+    assert skipped(result) == {
+        f"{PREFIX_LEFT}.rms_pct_mvc": Reason.NO_CALIBRATION,
+        f"{PREFIX_LEFT}.peak_pct_mvc": Reason.NO_CALIBRATION,
+        SYMMETRY: Reason.NO_CALIBRATION,
+    }
+
+
+def test_an_mvc_of_the_other_side_is_skipped_as_no_calibration():
+    calibrations = [calibration(LEFT, "right", LEFT_MVC), calibration(RIGHT, "right", RIGHT_MVC)]
+
+    result = family_for(*TWO_REPS).extract(make_context(SAMPLES, calibrations))
+
+    assert skipped(result) == {
+        f"{PREFIX_LEFT}.rms_pct_mvc": Reason.NO_CALIBRATION,
+        f"{PREFIX_LEFT}.peak_pct_mvc": Reason.NO_CALIBRATION,
+        SYMMETRY: Reason.NO_CALIBRATION,
+    }
 
 
 def test_the_active_window_is_half_open_start_included_end_excluded():

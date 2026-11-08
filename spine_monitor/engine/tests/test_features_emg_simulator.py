@@ -184,9 +184,11 @@ def test_a_single_calibrated_side_gives_its_own_pct_mvc_but_no_symmetry():
 
 
 @pytest.mark.integration
-def test_relabelling_the_signal_as_envelope_gives_the_same_amplitude_features():
+def test_relabelling_the_signal_and_its_mvc_as_envelope_gives_the_same_amplitude_features():
     payload, _truth = _simulate(7, "earth_1g")
-    relabelled = {**payload, "chunks": [{**c, "signal_kind": "envelope"} for c in payload["chunks"]]}
+    # la MVC solo vale para el mismo tipo de señal: se reetiquetan los chunks y sus calibraciones
+    calibrations = [{**c, "signal_kind": "envelope"} if c["calibration_type"] == "emg_mvc" else c for c in payload["calibrations"]]
+    relabelled = {**payload, "chunks": [{**c, "signal_kind": "envelope"} for c in payload["chunks"]], "calibrations": calibrations}
 
     straight = {k: v["value"] for k, v in _by_id(_extract(payload)).items() if k.startswith("emg.")}
     other = {k: v["value"] for k, v in _by_id(_extract(relabelled)).items() if k.startswith("emg.")}

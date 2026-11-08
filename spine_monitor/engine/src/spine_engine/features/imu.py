@@ -14,12 +14,17 @@ IMU declarado en la sesión, con su ``placement.spine_level`` (nunca fijado aqu�
   más; si no, ``insufficient_sample_rate``). Sin movimiento SPARC no está definido (NaN -> ``no_data``).
 - ``accel_rms_g`` = RMS de la magnitud del acelerómetro tras quitar a cada eje su media en la repetición (la
   componente estática: gravedad y ``accel_bias_g``, que esa resta ya cancela).
-- Valor publicado = media sobre las repeticiones con muestras; ``n`` = cuántas. Cada repetición lee el segmento
+- Valor publicado = media sobre las repeticiones con muestras y valor finito; ``n`` = cuántas. Una repetición sin
+  movimiento no tiene SPARC (NaN) y no cuenta para él; si ninguna lo tiene, ``no_data``. Cada repetición lee el segmento
   (``boot_id``) con más muestras en su ventana: nunca se unen dos arranques.
 
 Motivos de ``skipped`` en orden: ``stream_missing``, la calibración (``no_calibration``/``calibration_expired``),
 ``no_data`` (sin segmentos con UTC o sin muestras en ninguna repetición), ``too_few_repetitions`` (ninguna). El
 de SPARC por frecuencia de muestreo se da antes que estos dos últimos. Nunca lanza.
+
+Limitación conocida: SPARC usa una sola frecuencia por segmento, la de su chunk más lento. Si un mismo ``boot_id``
+mezcla dos frecuencias de 50 Hz o más, el eje de frecuencias del espectro de las muestras rápidas es incorrecto (el
+simulador no lo genera; el ROM sí integra cada muestra con el periodo de su chunk).
 """
 
 import math
@@ -220,7 +225,9 @@ def _compute(
     skipped: list[SkippedFeature] = []
 
     def add(feature_id: str, per_rep: Sequence[float]) -> None:
-        computed.append(ComputedFeature(feature_id, float(np.mean(per_rep)), (stream_id,), n=n))
+        # media sobre las repeticiones con valor finito (SPARC sin movimiento es NaN); sin ninguna, NaN -> no_data
+        finite = [value for value in per_rep if math.isfinite(value)]
+        computed.append(ComputedFeature(feature_id, float(np.mean(finite)) if finite else math.nan, (stream_id,), n=len(finite) or n))
 
     for plane, (rom_id, peak_id, sparc_id) in ids.items():
         found = plane_channel(calibration.mounting, plane)

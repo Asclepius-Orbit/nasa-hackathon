@@ -87,7 +87,7 @@ Basada en el giroscopi, així que no depèn de la gravetat i és comparable entr
 - **`imu.{nivell}.{pla}.smoothness_sparc`:** SPARC de `|ω|` amb la FFT de numpy i els valors per defecte publicats (farciment de zeros 2^4, tall a 10 Hz, llindar d'amplitud del 5 %; Balasubramanian et al. 2015). Només si tots els chunks del stream van a 50 Hz o més (el requisit del catàleg); si no, `skipped` amb `insufficient_sample_rate`. Sense moviment SPARC no està definit i acaba a `no_data`.
 - **`imu.{nivell}.accel_rms_g`:** RMS de la magnitud de l'acceleració després de treure a cada eix la seva mitjana a la repetició (la component estàtica: gravetat i biaix de l'acceleròmetre).
 
-Cada valor és la mitjana sobre les repeticions amb mostres, i `n` les compta; una repetició llegeix el segment (`boot_id`) amb més mostres a la seva finestra. Motius de `skipped`, en ordre: `stream_missing`, `no_calibration`/`calibration_expired`, després `no_data` (sense rellotge o sense mostres a cap repetició) o `too_few_repetitions` (cap repetició); l'`insufficient_sample_rate` de SPARC es decideix abans que aquests dos últims.
+Cada valor és la mitjana sobre les repeticions amb mostres i valor finit, i `n` les compta (una repetició sense moviment no té SPARC i no compta per a ell; si cap no en té, `no_data`); una repetició llegeix el segment (`boot_id`) amb més mostres a la seva finestra. Motius de `skipped`, en ordre: `stream_missing`, `no_calibration`/`calibration_expired`, després `no_data` (sense rellotge o sense mostres a cap repetició) o `too_few_repetitions` (cap repetició); l'`insufficient_sample_rate` de SPARC es decideix abans que aquests dos últims.
 
 ## Configuració
 

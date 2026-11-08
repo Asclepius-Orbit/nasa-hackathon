@@ -378,6 +378,18 @@ def test_values_are_the_mean_over_repetitions_and_n_counts_them():
     assert {f.n for f in result.computed} == {2}
 
 
+def test_sparc_averages_only_the_repetitions_where_it_is_defined():
+    # la 2.ª repetición no se mueve: su SPARC no está definido y no anula el de las otras dos
+    gyro_y = with_bias("gyro_y", [0.0] * 200 + bend(RATE, 2.0, 20.0) + [0.0] * 600 + bend(RATE, 2.0, 10.0) + [0.0] * 200)
+    reps = [rep(1, 2.0, 4.0), rep(2, 6.0, 8.0), rep(3, 10.0, 12.0)]
+    result = run(reps, make_context(chunks_for({"gyro_y": gyro_y})))
+
+    by_id = {f.feature_id: f for f in result.computed}
+    expected = (sparc(np.abs(np.array(bend(RATE, 2.0, 20.0))), RATE) + sparc(np.abs(np.array(bend(RATE, 2.0, 10.0))), RATE)) / 2
+    assert (by_id["imu.l3.sagittal.smoothness_sparc"].value, by_id["imu.l3.sagittal.smoothness_sparc"].n) == (pytest.approx(expected), 2)
+    assert by_id["imu.l3.sagittal.rom_deg"].n == 3
+
+
 def test_a_repetition_without_samples_does_not_count():
     result = run([rep(1, 2.0, 4.0), rep(2, 100.0, 102.0)], sagittal_context())
 

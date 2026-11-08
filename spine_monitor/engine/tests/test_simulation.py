@@ -119,3 +119,29 @@ def test_non_finite_result_is_rejected(mode):
 def test_non_finite_set_is_rejected():
     with pytest.raises(InvalidOverrideError):
         apply_overrides(BASE, [Override.model_construct(feature_id=PEAK, mode=Mode.SET, value=math.nan)])
+
+
+def test_unknown_feature_message_names_the_feature_and_the_catalog():
+    with pytest.raises(UnknownFeatureError) as caught:
+        apply_overrides(BASE, [Override(feature_id="stretch.not.in_catalog", mode=Mode.SET, value=1)])
+
+    assert str(caught.value) == "The feature 'stretch.not.in_catalog' is not in the catalog."
+
+
+def test_feature_without_a_value_message_names_the_feature():
+    absent = "emg.latissimus_dorsi.left.rms_pct_mvc"
+    base = BASE.model_copy(deep=True)
+    for fs in base.feature_sets:
+        fs.features = [f for f in fs.features if f.feature_id != absent]
+
+    with pytest.raises(UnknownFeatureError) as caught:
+        apply_overrides(base, [Override(feature_id=absent, mode=Mode.SET, value=1)])
+
+    assert str(caught.value) == f"The feature '{absent}' has no value in the base to override."
+
+
+def test_non_finite_message_names_the_feature():
+    with pytest.raises(InvalidOverrideError) as caught:
+        apply_overrides(BASE, [Override.model_construct(feature_id=PEAK, mode=Mode.SET, value=math.inf)])
+
+    assert str(caught.value) == f"The override on '{PEAK}' does not give a finite value."

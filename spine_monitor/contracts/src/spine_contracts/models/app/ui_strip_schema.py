@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import date
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, confloat, constr
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, confloat, constr
 
 from .. import common_schema
 
@@ -60,6 +60,15 @@ class StripHarness(BaseModel):
         description='Streams that are not sending (device-status stream state stalled or disabled). Empty when every stream is active.',
     )
     degraded: bool = Field(..., description='True when the device status is degraded.')
+    stale: bool = Field(
+        ...,
+        description="True when the last device status is older than the app's staleness threshold (settings stale_device_hours): the other fields are then the last known ones, not the current state.",
+    )
+    last_seen_at: AwareDatetime = Field(
+        ...,
+        description='Timestamp of the device status the other fields come from.',
+        examples=['2026-11-13T10:00:00.250Z'],
+    )
 
 
 class ReportsDue(BaseModel):
@@ -91,7 +100,7 @@ class StripView(BaseModel):
     )
     harness: StripHarness | None = Field(
         ...,
-        description='Last known status of the paired harness; null while no harness is paired.',
+        description='Last known status of the paired harness; null while no harness is paired or its last status is offline. A device whose last status is old is still listed, with stale true.',
     )
     ground_link: None = Field(
         ...,

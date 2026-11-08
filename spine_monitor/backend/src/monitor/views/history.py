@@ -46,9 +46,9 @@ def _day_length_delta(feature_sets: Sequence[Payload], baseline: Payload | None)
     return lumbar_delta_mm(value, baseline_entry(baseline, protocol_id, gravity))
 
 
-def _preflight_range(feature_sets: Sequence[Payload], baseline: Payload | None) -> dict[str, float] | None:
-    """Range of the baseline entry of the protocol and gravity of the most recent measure (any date); the first lumbar entry without measures."""
-    latest = latest_elongation(feature_sets)
+def _preflight_range(measures: Sequence[Payload], baseline: Payload | None) -> dict[str, float] | None:
+    """Range of the baseline entry of the protocol and gravity of the most recent measure; the first lumbar entry without measures."""
+    latest = latest_elongation(measures)
     if latest is None:
         return preflight_range_mm(first_lumbar_entry(baseline))
     _, protocol_id, gravity = latest
@@ -84,12 +84,15 @@ def build_history(
     self_reports: Sequence[Payload],
     sessions: Sequence[SessionRow],
     baseline: Payload | None,
+    latest_feature_set: Payload | None = None,
 ) -> dict[str, Any]:
     """HistoryView for [from_date, to_date], both inclusive, oldest day first. Raises ValueError if from_date > to_date.
 
-    `preflight_range_mm` is the range of the baseline lumbar entry for the protocol and gravity of the most
-    recent elongation among ALL `feature_sets` (also outside the window); with no measure at all it is the first
-    lumbar entry of the baseline; null without baseline or entry.
+    `feature_sets` are the ones that can fall inside the window. `latest_feature_set` is the most recent set with the
+    lumbar elongation at any date (a bounded store query, so the pre-flight range does not read the whole history).
+    `preflight_range_mm` is the range of the baseline lumbar entry for the protocol and gravity of the most recent
+    elongation among both; with no measure at all it is the first lumbar entry of the baseline; null without
+    baseline or entry.
     """
     if from_date > to_date:
         raise ValueError(f"from ({from_date}) is after to ({to_date})")
@@ -118,6 +121,6 @@ def build_history(
         "from": from_date.isoformat(),
         "to": to_date.isoformat(),
         "today_day": mission_day_of(today),
-        "preflight_range_mm": _preflight_range(feature_sets, baseline),
+        "preflight_range_mm": _preflight_range([*feature_sets, *([] if latest_feature_set is None else [latest_feature_set])], baseline),
         "days": days,
     }

@@ -12,7 +12,9 @@ info:
 
     Views carry codes and data, never prose: recommendation codes (`REC_*`), task codes (`TASK_*`),
     feature ids, missing reasons, red-flag codes and protocol fit-item ids. The UI writes the words.
-    Missing data is an explicit `null` or level `nodata`, never a default.
+    Missing data is an explicit `null` or level `nodata`, never a default. The crew views answer 200 with
+    `nodata`/nulls for an astronaut without data (there is no 404 for them: an astronaut id with no data
+    is not an error); only the session view answers 404, for an unknown session.
 
     Response bodies are the JSON Schemas in `schemas/v1/app/ui-*.schema.json`, which are the source of
     truth. Errors are RFC 9457 problem details with the same `app/error` schema as the read-only API
@@ -36,8 +38,6 @@ paths:
             application/json:
               schema:
                 $ref: 'schemas/v1/app/ui-strip.schema.json'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/Error'
         default:
@@ -56,8 +56,6 @@ paths:
             application/json:
               schema:
                 $ref: 'schemas/v1/app/ui-today.schema.json'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/Error'
         default:
@@ -66,7 +64,7 @@ paths:
     get:
       operationId: getHistoryView
       summary: History screen, one row per day
-      description: Days of the window, oldest first. Without `from`/`to` the app picks the default window.
+      description: Days of the window, oldest first. Without `from`/`to` the app picks the default window. The window is at most 366 days (`to` - `from` + 1), otherwise `invalid_range`.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
         - $ref: '#/components/parameters/FromDate'
@@ -78,10 +76,8 @@ paths:
             application/json:
               schema:
                 $ref: 'schemas/v1/app/ui-history.schema.json'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '422':
-          $ref: '#/components/responses/Error'
+          $ref: '#/components/responses/InvalidRange'
         default:
           $ref: '#/components/responses/Error'
   /ui/crew/{astronaut_id}/views/baseline:
@@ -98,8 +94,6 @@ paths:
             application/json:
               schema:
                 $ref: 'schemas/v1/app/ui-baseline.schema.json'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/Error'
         default:
@@ -118,8 +112,6 @@ paths:
             application/json:
               schema:
                 $ref: 'schemas/v1/app/ui-first-day.schema.json'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/Error'
         default:
@@ -169,18 +161,24 @@ components:
       name: to
       in: query
       required: false
-      description: Last day of the window, inclusive (ISO 8601 date). Not before `from`, otherwise `invalid_range`.
+      description: Last day of the window, inclusive (ISO 8601 date). Not before `from`, and at most 365 days after it (a window of 366 days), otherwise `invalid_range`.
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/date'
   responses:
     NotFound:
-      description: The astronaut or the session does not exist (problem details, type `not_found`).
+      description: The session does not exist (problem details, type `not_found`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    InvalidRange:
+      description: Problem details, type `invalid_range`, or `invalid_request` for a malformed parameter. `invalid_range` when `from` is after `to`, when the window is longer than 366 days (`to` - `from` + 1 > 366) or when a date is out of range.
       content:
         application/problem+json:
           schema:
             $ref: 'schemas/v1/app/error.schema.json'
     Error:
-      description: Problem details (invalid parameter, invalid range, internal error).
+      description: Problem details (invalid parameter, internal error).
       content:
         application/problem+json:
           schema:

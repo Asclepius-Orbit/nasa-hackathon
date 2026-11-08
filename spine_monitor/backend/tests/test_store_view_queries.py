@@ -79,3 +79,33 @@ def test_assessments_between_is_inclusive_oldest_first_and_unbounded(store):
     found = store.assessments_between("AST-01", at(10), at(11, 9))
 
     assert [a["as_of"] for a in found] == ["2026-11-10T09:00:00Z", "2026-11-11T09:00:00Z"]
+
+
+ELONGATION = "stretch.lumbar.peak_elongation_mm"
+
+
+def feature_set(n: int, *, astronaut: str = "AST-01", feature_id: str = ELONGATION, value: float | None = 5.0) -> dict:
+    payload = copy.deepcopy(example("domain/feature-set.preflight"))
+    payload.update(session_id=f"3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a{n:02d}", astronaut_id=astronaut)
+    payload["features"] = [{"feature_id": feature_id, "value": value, "unit": "mm", "quality": {"score": 1.0, "flags": []}}]
+    return payload
+
+
+def test_latest_feature_set_with_is_the_most_recent_that_has_a_value_for_the_feature(store):
+    store.put_feature_set(feature_set(1), phase="preflight", anchor_at="2026-11-10T10:00:00Z")
+    store.put_feature_set(feature_set(2), phase="preflight", anchor_at="2026-11-12T10:00:00Z")
+    store.put_feature_set(feature_set(3, feature_id="emg.x"), phase="preflight", anchor_at="2026-11-13T10:00:00Z")
+    store.put_feature_set(feature_set(4, value=None), phase="preflight", anchor_at="2026-11-13T11:00:00Z")
+    store.put_feature_set(feature_set(5, astronaut="AST-02"), phase="preflight", anchor_at="2026-11-13T12:00:00Z")
+
+    latest = store.latest_feature_set_with("AST-01", ELONGATION)
+
+    assert latest is not None
+    assert latest["session_id"].endswith("02")
+
+
+def test_latest_feature_set_with_is_none_without_a_set_for_the_feature(store):
+    store.put_feature_set(feature_set(1, feature_id="emg.x"), phase="preflight", anchor_at="2026-11-10T10:00:00Z")
+
+    assert store.latest_feature_set_with("AST-01", ELONGATION) is None
+    assert store.latest_feature_set_with("AST-09", "emg.x") is None

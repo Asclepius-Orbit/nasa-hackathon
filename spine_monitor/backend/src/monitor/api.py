@@ -14,6 +14,7 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
 """
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -32,13 +33,15 @@ from monitor.settings import AppSettings
 from monitor.views.baseline import build_baseline, build_first_day
 from monitor.views.due import reports_due
 from monitor.views.history import build_history
-from monitor.views.lumbar import baseline_entry, latest_elongation, lumbar_delta_mm
+from monitor.views.lumbar import ELONGATION_FEATURE, latest_lumbar_delta
 from monitor.views.mission import mission_day_of, mission_for
 from monitor.views.protocol_catalog import protocol_entry, total_reps_for
 from monitor.views.session import build_session_view
 from monitor.views.strip import build_strip
 from monitor.views.tasks import tasks_for
 from monitor.views.today import build_today
+
+logger = logging.getLogger(__name__)
 
 PROBLEM = "application/problem+json"
 TITLES = {
@@ -114,9 +117,9 @@ def _same(body: dict[str, Any], key: str, value: Any) -> None:
         raise Problem(422, f"{key} in the body ({body[key]!r}) does not match the path ({value!r})")
 
 
-# Feature sets are read from here when a view needs "every measure so far" (the pre-flight range of the history).
-_EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 _DAY = timedelta(days=1)
+# Longest history window (`to` - `from` + 1 days); a longer one is an `invalid_range` (ui-openapi.yaml).
+MAX_HISTORY_DAYS = 366
 
 
 @dataclass(frozen=True)
@@ -127,10 +130,19 @@ class ViewSettings:
     baseline_plan_offsets_days: tuple[int, ...]
     baseline_protocol_id: str
     history_window_days: int
+    stale_session_hours: float
+    stale_device_hours: float
 
     @classmethod
     def from_app(cls, settings: AppSettings) -> ViewSettings:
-        return cls(settings.baseline_required, tuple(settings.baseline_plan_offsets_days), settings.baseline_protocol_id, settings.history_window_days)
+        return cls(
+            settings.baseline_required,
+            tuple(settings.baseline_plan_offsets_days),
+            settings.baseline_protocol_id,
+            settings.history_window_days,
+            settings.stale_session_hours,
+            settings.stale_device_hours,
+        )
 
 
 def _day_span(first: date, last: date) -> tuple[datetime, datetime]:
@@ -144,10 +156,14 @@ def _launch_date(profile: dict[str, Any] | None) -> date | None:
 
 
 def _conforming(schema: str, view: dict[str, Any]) -> dict[str, Any]:
-    """The view after checking it against its schema: a view that does not conform is a bug and is never served."""
+    """The view after checking it against its schema: a view that does not conform is a bug and is never served.
+
+    The validation error goes to the log only; the client gets a generic message.
+    """
     found = validation.errors(schema, view)
     if found:
-        raise Problem(500, f"the {schema} view does not conform to its schema: {found[0]}", type_="internal")
+        logger.error("the %s view does not conform to its schema: %s", schema, found[0])
+        raise Problem(500, "the view could not be built", type_="internal")
     return view
 
 
@@ -343,6 +359,7 @@ def build_router(
             store.latest_self_report(astronaut_id, "weekly_odi"),
             clock(),
             odi_interval_days,
+            views.stale_device_hours,
         )
         return _conforming("app/ui-strip", view)
 
@@ -353,12 +370,12 @@ def build_router(
         profile = store.profile(astronaut_id)
         # "Recent" measures: the history window ending now; an older measure no longer says how the spine is today.
         recent = store.feature_sets_between(astronaut_id, now - timedelta(days=views.history_window_days), now)
-        latest = latest_elongation(recent)
-        delta = None if latest is None else lumbar_delta_mm(latest[0], baseline_entry(store.latest_baseline(astronaut_id), latest[1], latest[2]))
+        lumbar = latest_lumbar_delta(recent, store.latest_baseline(astronaut_id))
         last = store.latest_session(astronaut_id)
         in_progress = None if last is None else (last, total_reps_for(last.payload["protocol_id"]))
         tasks = open_tasks(astronaut_id, profile, baseline_view(astronaut_id, profile), now)
-        return _conforming("app/ui-today", build_today(store.latest_assessment(astronaut_id), delta, in_progress, tasks))
+        view = build_today(store.latest_assessment(astronaut_id), lumbar, in_progress, tasks, now, views.stale_session_hours)
+        return _conforming("app/ui-today", view)
 
     @router.get("/crew/{astronaut_id}/views/history")
     async def history_view(
@@ -373,9 +390,13 @@ def build_router(
             first = last - timedelta(days=views.history_window_days - 1) if from_date is None else from_date
             if first > last:
                 raise Problem(422, f"from ({first}) is after to ({last})", type_="invalid_range")
+            if (last - first).days + 1 > MAX_HISTORY_DAYS:
+                raise Problem(422, f"the window from {first} to {last} is longer than {MAX_HISTORY_DAYS} days", type_="invalid_range")
             start, end = _day_span(first, last)
-            # The pre-flight range looks at every measure so far, also outside the window. The window is not capped: a wide one reads more rows.
-            feature_sets = store.feature_sets_between(astronaut_id, _EPOCH, max(end, now) + _DAY)
+            # Feature sets are anchored at the start of their session, a day is told by the start of their window: read one day more
+            # on each side. The pre-flight range needs the latest measure at any date: one bounded query, not the whole history.
+            feature_sets = store.feature_sets_between(astronaut_id, start - _DAY, end + _DAY)
+            latest_feature_set = store.latest_feature_set_with(astronaut_id, ELONGATION_FEATURE)
         except OverflowError:
             raise Problem(422, "date out of range", type_="invalid_range") from None
         view = build_history(
@@ -388,6 +409,7 @@ def build_router(
             store.self_reports_between(astronaut_id, start, end),
             store.session_rows(astronaut_id, start=start, end=end),
             store.latest_baseline(astronaut_id),
+            latest_feature_set,
         )
         return _conforming("app/ui-history", view)
 
@@ -420,6 +442,8 @@ def build_router(
             store.session_commands(session_id, "calibrate"),
             store.device_status(payload["astronaut_id"], payload["device_id"]),
             protocol_entry(payload["protocol_id"]),
+            clock(),
+            views.stale_device_hours,
         )
         return _conforming("app/ui-session", view)
 

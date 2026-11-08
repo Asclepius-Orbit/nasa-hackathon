@@ -105,6 +105,11 @@ class SessionView(BaseModel):
     session_id: constr(
         pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     ) = Field(..., description='RFC 4122 UUID, lowercase.')
+    astronaut_id: constr(pattern=r'^AST-[0-9]{2,3}$') = Field(
+        ...,
+        description='astronaut_id of the session, so the client can check that the session belongs to the crew member on screen.',
+        examples=['AST-01'],
+    )
     state: ui_common_schema.SessionState
     protocol_id: constr(pattern=r'^[a-z0-9][a-z0-9_]{1,63}$') = Field(
         ...,

@@ -67,6 +67,24 @@ def add_feature_set(harness, n: int, start: str, elongation: float) -> None:
     harness.store.put_feature_set(fs, phase="preflight", anchor_at=start)
 
 
+def add_bare_feature_set(harness, n: int, start: str, elongation: float) -> None:
+    """A feature set stored without protocol_id nor gravity_environment."""
+    fs = harness.example("domain/feature-set.preflight")
+    fs.update(session_id=session_id(n), window={"start": start, "end": start})
+    fs.pop("protocol_id", None)
+    fs.pop("gravity_environment", None)
+    for feature in fs["features"]:
+        if feature["feature_id"] == ELONGATION:
+            feature["value"] = elongation
+    harness.store.put_feature_set(fs, phase="preflight", anchor_at=start)
+
+
+def add_microgravity_feature_set(harness, n: int, start: str) -> None:
+    fs = harness.example("domain/feature-set.preflight")
+    fs.update(session_id=session_id(n), gravity_environment="microgravity", window={"start": start, "end": start})
+    harness.store.put_feature_set(fs, phase="inflight", anchor_at=start)
+
+
 def add_assessment(harness, as_of: str, level: str = "amber") -> None:
     assessment = harness.example("domain/assessment.amber")
     assessment.update(as_of=as_of, level=level)
@@ -112,6 +130,23 @@ async def test_strip_with_profile_device_and_reports(harness):
     assert strip["harness"]["device_id"] == "wb-01"
     assert strip["harness"]["degraded"] is True
     assert strip["reports_due"] == {"daily": False, "weekly_odi": True}
+
+
+async def test_strip_a_fresh_device_is_not_stale(harness):
+    harness.store.put_device_status(harness.example("telemetry/device-status.degraded") | {"timestamp": "2026-11-13T09:50:00Z"})
+
+    harness_view = (await get(harness, url("strip"), "app/ui-strip"))["harness"]
+
+    assert (harness_view["stale"], harness_view["last_seen_at"]) == (False, "2026-11-13T09:50:00Z")
+
+
+async def test_strip_an_old_device_status_is_listed_as_stale_not_null(harness):
+    harness.store.put_device_status(harness.example("telemetry/device-status.degraded") | {"timestamp": "2026-11-13T09:00:00Z"})
+
+    harness_view = (await get(harness, url("strip"), "app/ui-strip"))["harness"]
+
+    assert harness_view is not None
+    assert (harness_view["stale"], harness_view["last_seen_at"], harness_view["device_id"]) == (True, "2026-11-13T09:00:00Z", "wb-01")
 
 
 async def test_strip_rejects_a_bad_astronaut_id(harness):
@@ -181,6 +216,59 @@ async def test_today_baseline_task_needs_preflight_and_fewer_than_required(harne
     assert "TASK_BASELINE_SESSION" not in complete["also_today"]
 
 
+async def test_today_lumbar_measured_at_is_the_instant_of_the_measure(harness):
+    add_baseline(harness)
+    add_feature_set(harness, 1, "2026-11-12T10:00:00Z", 8.0)
+
+    today = await get(harness, url("today"), "app/ui-today")
+
+    assert today["lumbar_delta_mm"] is not None
+    assert today["lumbar_measured_at"] == "2026-11-12T10:00:00Z"
+
+
+async def test_today_without_a_lumbar_delta_has_no_measure_instant(harness):
+    add_feature_set(harness, 1, "2026-11-12T10:00:00Z", 8.0)  # a measure, but no baseline
+
+    today = await get(harness, url("today"), "app/ui-today")
+
+    assert (today["lumbar_delta_mm"], today["lumbar_measured_at"]) == (None, None)
+
+
+async def test_today_a_microgravity_measure_is_compared_with_the_earth_baseline(harness):
+    baseline = add_baseline(harness)
+    assert {e["gravity_environment"] for e in baseline["entries"] if e["feature_id"] == ELONGATION} == {"earth_1g"}
+    add_microgravity_feature_set(harness, 1, "2026-11-12T10:00:00Z")
+
+    today = await get(harness, url("today"), "app/ui-today")
+
+    assert today["lumbar_delta_mm"] is not None
+
+
+async def test_today_a_feature_set_without_protocol_is_a_null_delta_not_a_500(harness):
+    add_baseline(harness)
+    add_bare_feature_set(harness, 1, "2026-11-12T10:00:00Z", 8.0)
+
+    today = await get(harness, url("today"), "app/ui-today")
+
+    assert (today["lumbar_delta_mm"], today["lumbar_measured_at"]) == (None, None)
+
+
+async def test_today_a_session_that_never_ended_is_not_shown_as_in_progress(harness):
+    add_session(harness, 1, "2026-11-10T09:30:00Z", "running")  # 3 days old, past stale_session_hours (48)
+
+    today = await get(harness, url("today"), "app/ui-today")
+
+    assert today["session_in_progress"] is None
+
+
+async def test_today_a_recent_running_session_is_in_progress(harness):
+    add_session(harness, 1, "2026-11-12T09:30:00Z", "running")  # 24 hours old
+
+    today = await get(harness, url("today"), "app/ui-today")
+
+    assert today["session_in_progress"]["session_id"] == session_id(1)
+
+
 async def test_today_the_lumbar_delta_ignores_measures_older_than_the_history_window(harness):
     add_baseline(harness)
     add_feature_set(harness, 1, "2026-09-01T10:00:00Z", 8.0)
@@ -232,6 +320,61 @@ async def test_history_preflight_range_uses_a_measure_outside_the_window(harness
 
     assert history["preflight_range_mm"] == {"lo": -1.0, "hi": 2.0}
     assert all(d["length_delta_mm"] is None for d in history["days"])
+
+
+async def test_history_preflight_range_follows_the_latest_measure_not_an_older_one(harness):
+    baseline = add_baseline(harness)
+    other = next(e for e in baseline["entries"] if e["feature_id"] == ELONGATION) | {"protocol_id": "other_v1", "min": 0.0, "max": 100.0}
+    harness.store.put_baseline(baseline | {"baseline_id": "b0b0b0b0-0000-4000-8000-000000000002", "version": 2, "entries": [*baseline["entries"], other]})
+    add_feature_set(harness, 1, "2026-01-01T10:00:00Z", 7.0)
+    add_feature_set(harness, 2, "2026-03-01T10:00:00Z", 9.0)
+
+    history = await get(harness, url("history"), "app/ui-history", **{"from": "2026-11-12", "to": "2026-11-13"})
+
+    assert history["preflight_range_mm"] == {"lo": -1.0, "hi": 2.0}
+
+
+async def test_history_a_microgravity_measure_gets_a_delta_from_the_earth_baseline(harness):
+    add_baseline(harness)
+    add_microgravity_feature_set(harness, 1, "2026-11-12T10:00:00Z")
+
+    history = await get(harness, url("history"), "app/ui-history", **{"from": "2026-11-12", "to": "2026-11-12"})
+
+    assert history["days"][0]["length_delta_mm"] is not None
+    assert history["preflight_range_mm"] is not None
+
+
+async def test_history_a_feature_set_without_protocol_is_a_null_delta_not_a_500(harness):
+    add_baseline(harness)
+    add_bare_feature_set(harness, 1, "2026-11-12T10:00:00Z", 8.0)
+
+    history = await get(harness, url("history"), "app/ui-history", **{"from": "2026-11-12", "to": "2026-11-12"})
+
+    assert history["days"][0]["length_delta_mm"] is None
+    assert history["preflight_range_mm"] is None
+
+
+async def test_history_a_window_of_366_days_is_served(harness):
+    history = await get(harness, url("history"), "app/ui-history", **{"from": "2025-11-13", "to": "2026-11-13"})
+
+    assert len(history["days"]) == 366
+
+
+async def test_history_a_window_of_367_days_is_an_invalid_range(harness):
+    response = await harness.http.get(url("history"), params={"from": "2025-11-12", "to": "2026-11-13"})
+
+    assert response.status_code == 422
+    body = response.json()
+    assert (body["type"], body["status"]) == ("invalid_range", 422)
+    assert "366" in body["detail"]
+    assert validation.errors("app/error", body) == []
+
+
+async def test_history_an_open_ended_window_over_the_cap_is_an_invalid_range(harness):
+    response = await harness.http.get(url("history"), params={"from": "2020-01-01"})
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "invalid_range"
 
 
 async def test_history_from_after_to_is_an_invalid_range(harness):
@@ -335,6 +478,23 @@ async def test_session_view_without_device_status_has_no_sensor_checks(harness):
     assert view["calibration"] is None
 
 
+async def test_session_view_carries_the_astronaut_of_the_session(harness):
+    payload = add_session(harness, 1, "2026-11-13T09:30:00Z", "running")
+
+    view = await get(harness, f"/ui/sessions/{payload['session_id']}/view", "app/ui-session")
+
+    assert view["astronaut_id"] == payload["astronaut_id"] == AST
+
+
+async def test_session_view_with_a_stale_device_status_does_not_pass_the_check(harness):
+    payload = add_session(harness, 1, "2026-11-13T09:30:00Z", "running")
+    harness.store.put_device_status(harness.example("telemetry/device-status.degraded") | {"timestamp": "2026-11-13T09:00:00Z", "status": "ok"})
+
+    view = await get(harness, f"/ui/sessions/{payload['session_id']}/view", "app/ui-session")
+
+    assert [s["status"] for s in view["steps"]][:2] == ["done", "now"]
+
+
 async def test_session_view_follows_the_flow_through_the_real_session_endpoints(harness):
     await harness.setup_astronaut()
     harness.store.put_device_status(harness.example("telemetry/device-status.degraded") | {"timestamp": harness.clock().isoformat()})
@@ -369,4 +529,20 @@ async def test_a_view_that_does_not_conform_is_a_500_problem(harness, monkeypatc
 
     assert response.status_code == 500
     assert response.headers["content-type"].startswith("application/problem+json")
-    assert response.json()["type"] == "internal"
+    body = response.json()
+    assert body["type"] == "internal"
+    assert validation.errors("app/error", body) == []
+
+
+async def test_the_500_detail_is_generic_and_the_validation_error_only_goes_to_the_log(harness, monkeypatch, caplog):
+    import monitor.api as api
+
+    monkeypatch.setattr(api, "build_strip", lambda *args, **kwargs: {"leaked_field_name": True})
+
+    with caplog.at_level("ERROR", logger="monitor.api"):
+        response = await harness.http.get(url("strip"))
+
+    assert response.status_code == 500
+    assert "leaked_field_name" not in response.text
+    assert "app/ui-strip" not in response.json().get("detail", "")
+    assert any("leaked_field_name" in record.getMessage() or "app/ui-strip" in record.getMessage() for record in caplog.records)

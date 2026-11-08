@@ -198,11 +198,52 @@ def test_preflight_range_is_the_entry_of_the_most_recent_measure():
     assert view(feature_sets=sets, baseline=base)["preflight_range_mm"] == {"lo": -2.0, "hi": 3.0}
 
 
-def test_preflight_range_considers_measures_outside_the_window():
+def test_preflight_range_uses_the_latest_feature_set_given_apart_from_the_window_ones():
     base = {"entries": [*baseline(6.0, 4.0, 9.0)["entries"], *baseline(10.0, 8.0, 11.0, protocol="other_v1")["entries"]]}
-    result = view(feature_sets=[feature_set("2029-12-01T09:00:00Z", 7.0, protocol="other_v1")], baseline=base)
+    result = view(latest_feature_set=feature_set("2029-12-01T09:00:00Z", 7.0, protocol="other_v1"), baseline=base)
 
     assert result["preflight_range_mm"] == {"lo": -2.0, "hi": 1.0}
+
+
+def test_preflight_range_takes_the_most_recent_of_the_window_sets_and_the_latest_one():
+    base = {"entries": [*baseline(6.0, 4.0, 9.0)["entries"], *baseline(10.0, 8.0, 11.0, protocol="other_v1")["entries"]]}
+    older = feature_set("2029-12-01T09:00:00Z", 7.0, protocol="other_v1")
+    newer = feature_set("2030-01-09T09:00:00Z", 7.0)
+
+    assert view(feature_sets=[newer], latest_feature_set=older, baseline=base)["preflight_range_mm"] == {"lo": -2.0, "hi": 3.0}
+    assert view(feature_sets=[older], latest_feature_set=newer, baseline=base)["preflight_range_mm"] == {"lo": -2.0, "hi": 3.0}
+
+
+def test_preflight_range_of_a_microgravity_measure_falls_back_to_the_earth_entry():
+    result = view(latest_feature_set=feature_set("2030-01-09T09:00:00Z", 7.0, gravity="microgravity"), baseline=baseline(6.0, 4.0, 9.0))
+
+    assert result["preflight_range_mm"] == {"lo": -2.0, "hi": 3.0}
+
+
+def test_a_microgravity_measure_with_an_earth_only_baseline_has_a_delta():
+    result = view(feature_sets=[feature_set("2030-01-09T09:00:00Z", 8.0, gravity="microgravity")], baseline=baseline(mean=6.0))
+
+    assert day_of(result, "2030-01-09")["length_delta_mm"] == 2.0
+
+
+def test_a_feature_set_without_protocol_or_gravity_gives_a_null_delta_and_no_range_never_an_error():
+    bare = feature_set("2030-01-09T09:00:00Z", 8.0)
+    del bare["protocol_id"], bare["gravity_environment"]
+
+    result = view(feature_sets=[bare], latest_feature_set=bare, baseline=baseline())
+
+    assert day_of(result, "2030-01-09")["length_delta_mm"] is None
+    assert result["preflight_range_mm"] is None
+    assert validation.errors("app/ui-history", result) == []
+
+
+def test_baseline_entries_without_protocol_or_gravity_never_match():
+    entry = {k: v for k, v in baseline()["entries"][0].items() if k not in ("protocol_id", "gravity_environment")}
+    measure = feature_set("2030-01-09T09:00:00Z", 8.0)
+    result = view(feature_sets=[measure], latest_feature_set=measure, baseline={"entries": [entry]})
+
+    assert day_of(result, "2030-01-09")["length_delta_mm"] is None
+    assert result["preflight_range_mm"] is None
 
 
 def test_preflight_range_falls_back_to_the_first_lumbar_entry_without_measures():

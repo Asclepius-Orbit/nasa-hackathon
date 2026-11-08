@@ -5,6 +5,7 @@ commands with their acks and the last device status. Live repetitions are not pa
 """
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timedelta
 from typing import Any
 
 from spine_contracts import SCHEMA_VERSION
@@ -37,11 +38,18 @@ def _mvc_done(calibrations: Sequence[CommandRow], protocol_entry: Mapping[str, A
     return any(_acked_at(c) is not None and (not needs_emg or c.payload["calibration_type"] == "emg_mvc") for c in calibrations)
 
 
-def _sensors_ok(device_status: Mapping[str, Any] | None) -> bool:
-    """A device that is not offline and none of whose streams is stalled or disabled."""
+def _sensors_ok(device_status: Mapping[str, Any] | None, now: datetime, stale_device_hours: float) -> bool:
+    """A recent device status that is not offline and reports at least one stream, none of them stalled or disabled.
+
+    A device that reports no streams has nothing to check, so it does not pass; neither does an old status
+    (older than `stale_device_hours`), which says nothing about the sensors now.
+    """
     if device_status is None or device_status["status"] == "offline":
         return False
-    return all(stream["state"] == "active" for stream in device_status.get("streams", []))
+    if now - instant(device_status["timestamp"]) > timedelta(hours=stale_device_hours):
+        return False
+    streams = device_status.get("streams")
+    return bool(streams) and all(stream["state"] == "active" for stream in streams)
 
 
 def _steps(state: str, sensors_ok: bool, calibrated: bool) -> list[dict[str, str]]:
@@ -71,6 +79,8 @@ def build_session_view(
     commands_with_acks: Sequence[CommandRow],
     device_status: Mapping[str, Any] | None,
     protocol_entry: Mapping[str, Any] | None,
+    now: datetime,
+    stale_device_hours: float,
 ) -> dict[str, Any]:
     """SessionView. `protocol_entry` is the catalog entry of the session protocol (band, total_reps, rest_seconds,
     fit_items as `[{id}]`); without it those fields are null / empty. `calibration` is the latest calibrate command
@@ -84,6 +94,7 @@ def build_session_view(
     return {
         "schema_version": SCHEMA_VERSION,
         "session_id": payload["session_id"],
+        "astronaut_id": payload["astronaut_id"],
         "state": session.state,
         "protocol_id": payload["protocol_id"],
         "band": None if band is None else dict(band),
@@ -91,7 +102,7 @@ def build_session_view(
         "rest_seconds": entry.get("rest_seconds"),
         "fit_items": [item["id"] for item in entry.get("fit_items", [])],
         "started_at": payload.get("started_at"),
-        "steps": _steps(session.state, _sensors_ok(device_status), _mvc_done(calibrations, protocol_entry)),
+        "steps": _steps(session.state, _sensors_ok(device_status, now, stale_device_hours), _mvc_done(calibrations, protocol_entry)),
         "sensor_checks": [{"stream": s["stream_id"], "status": "good" if s["state"] == "active" else "weak", "state": s["state"]} for s in streams],
         "calibration": None
         if latest is None

@@ -6,7 +6,9 @@
     "device_id": "wb-01",
     "battery_pct": 18,
     "weak_streams": [{ "stream": "stretch_lumbar", "state": "stalled" }],
-    "degraded": true
+    "degraded": true,
+    "stale": false,
+    "last_seen_at": "2026-11-15T09:58:00Z"
   },
   "ground_link": null,
   "last_contact_min_ago": null,

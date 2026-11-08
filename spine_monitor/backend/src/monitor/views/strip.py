@@ -1,7 +1,7 @@
 """Strip view (`app/ui-strip`): mission day, harness, ground link and reports due."""
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from spine_contracts import SCHEMA_VERSION
@@ -18,7 +18,7 @@ def _latest_device(astronaut_id: str, statuses: Sequence[Mapping[str, Any]]) -> 
     return max(own, key=lambda s: (datetime.fromisoformat(s["timestamp"]), s["device_id"]), default=None)
 
 
-def _harness(status: Mapping[str, Any] | None) -> dict[str, Any] | None:
+def _harness(status: Mapping[str, Any] | None, now: datetime, stale_device_hours: float) -> dict[str, Any] | None:
     if status is None or status["status"] == "offline":
         return None
     weak = [{"stream": s["stream_id"], "state": s["state"]} for s in status.get("streams", []) if s["state"] in WEAK_STATES]
@@ -27,6 +27,8 @@ def _harness(status: Mapping[str, Any] | None) -> dict[str, Any] | None:
         "battery_pct": status.get("battery_pct"),
         "weak_streams": weak,
         "degraded": status["status"] == "degraded",
+        "stale": now - datetime.fromisoformat(status["timestamp"]) > timedelta(hours=stale_device_hours),
+        "last_seen_at": status["timestamp"],
     }
 
 
@@ -38,19 +40,21 @@ def build_strip(
     last_odi: Mapping[str, Any] | None,
     now: datetime,
     odi_interval_days: int,
+    stale_device_hours: float,
 ) -> dict[str, Any]:
     """The strip of `astronaut_id` at `now`.
 
     The harness is the device of the astronaut with the most recent status timestamp (several devices:
-    the latest wins, ties go to the greater device_id); null when there is none or it is offline. The
-    ground link and the last contact are not modelled yet (issue #62) and are always null.
+    the latest wins, ties go to the greater device_id); null when there is none or it is offline. A device whose
+    last status is older than `stale_device_hours` is still listed, with `stale` true and `last_seen_at` the
+    timestamp of that status. The ground link and the last contact are not modelled yet (issue #62) and are always null.
     """
     daily_due, odi_due = reports_due(last_daily, last_odi, now, odi_interval_days)
     return {
         "schema_version": SCHEMA_VERSION,
         "astronaut_id": astronaut_id,
         "mission": mission_for(profile, now.date()),
-        "harness": _harness(_latest_device(astronaut_id, device_statuses)),
+        "harness": _harness(_latest_device(astronaut_id, device_statuses), now, stale_device_hours),
         "ground_link": None,
         "last_contact_min_ago": None,
         "reports_due": {"daily": daily_due, "weekly_odi": odi_due},

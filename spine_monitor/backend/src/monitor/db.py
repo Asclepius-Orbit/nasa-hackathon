@@ -459,6 +459,16 @@ class Store:
             utc_key(end),
         )
 
+    def latest_feature_set_with(self, astronaut_id: str, feature_id: str) -> dict[str, Any] | None:
+        """The most recent feature set (by `anchor_at`) that has a non-null value for `feature_id`; one row at most."""
+        return self._one(
+            "SELECT payload FROM feature_sets WHERE astronaut_id = ? AND EXISTS ("
+            "SELECT 1 FROM json_each(payload, '$.features') WHERE json_extract(value, '$.feature_id') = ? AND json_extract(value, '$.value') IS NOT NULL"
+            ") ORDER BY anchor_at DESC LIMIT 1",
+            astronaut_id,
+            feature_id,
+        )
+
     def feature_sets_window(self, astronaut_id: str, start: datetime, end: datetime, limit: int) -> tuple[list[dict[str, Any]], bool]:
         return self._window("feature_sets", "anchor_at", "astronaut_id = ?", (astronaut_id,), start, end, limit)
 

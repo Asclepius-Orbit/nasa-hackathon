@@ -82,8 +82,12 @@
       "description": "Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.",
       "type": ["number", "null"]
     },
+    "lumbar_measured_at": {
+      "description": "Instant of the measure behind lumbar_delta_mm: start of the window of the feature set (computed_at when it has none). Null exactly when lumbar_delta_mm is null.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    },
     "session_in_progress": {
-      "description": "Session currently running; null when there is none.",
+      "description": "Session currently starting or running; null when there is none or the latest one is older than the staleness threshold (settings stale_session_hours), so a session that never ended is not shown as live.",
       "oneOf": [
         {
           "title": "SessionInProgress",
@@ -113,7 +117,14 @@
   },
   "required": [
     "schema_version", "level", "assessment_id", "assessed_at", "recommendations", "reasons", "trust",
-    "lumbar_delta_mm", "session_in_progress", "also_today"
+    "lumbar_delta_mm", "lumbar_measured_at", "session_in_progress", "also_today"
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "lumbar_delta_mm": { "type": "null" } }, "required": ["lumbar_delta_mm"] },
+      "then": { "properties": { "lumbar_measured_at": { "type": "null" } } },
+      "else": { "properties": { "lumbar_measured_at": { "type": "string" } } }
+    }
   ],
   "if": { "properties": { "level": { "const": "nodata" } }, "required": ["level"] },
   "then": {

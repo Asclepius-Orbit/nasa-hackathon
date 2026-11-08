@@ -28,7 +28,7 @@
       "additionalProperties": false
     },
     "harness": {
-      "description": "Last known status of the paired harness; null while no harness is paired.",
+      "description": "Last known status of the paired harness; null while no harness is paired or its last status is offline. A device whose last status is old is still listed, with stale true.",
       "oneOf": [
         {
           "title": "StripHarness",
@@ -58,9 +58,17 @@
             "degraded": {
               "description": "True when the device status is degraded.",
               "type": "boolean"
+            },
+            "stale": {
+              "description": "True when the last device status is older than the app's staleness threshold (settings stale_device_hours): the other fields are then the last known ones, not the current state.",
+              "type": "boolean"
+            },
+            "last_seen_at": {
+              "description": "Timestamp of the device status the other fields come from.",
+              "$ref": "../common.schema.json#/$defs/utc_timestamp"
             }
           },
-          "required": ["device_id", "battery_pct", "weak_streams", "degraded"],
+          "required": ["device_id", "battery_pct", "weak_streams", "degraded", "stale", "last_seen_at"],
           "additionalProperties": false
         },
         { "type": "null" }

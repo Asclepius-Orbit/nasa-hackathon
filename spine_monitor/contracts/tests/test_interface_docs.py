@@ -201,8 +201,22 @@ def test_ui_errors_are_problem_details_with_the_app_error_schema():
         assert response["content"]["application/problem+json"]["schema"] == {"$ref": "schemas/v1/app/error.schema.json"}, name
     for path, item in document["paths"].items():
         responses = item["get"]["responses"]
-        assert {"200", "404", "422"} <= set(responses), path
+        assert {"200", "422"} <= set(responses), path
         assert all(responses[code]["$ref"].startswith("#/components/responses/") for code in responses if code != "200"), path
+
+
+def test_ui_only_the_session_view_answers_404():
+    """The crew views answer 200 with `nodata`/nulls for an astronaut without data; only an unknown session is a 404."""
+    for path, item in load("ui-openapi.yaml")["paths"].items():
+        assert ("404" in item["get"]["responses"]) == (path == "/ui/sessions/{session_id}/view"), path
+
+
+def test_ui_history_documents_invalid_range_with_the_366_day_cap():
+    document = load("ui-openapi.yaml")
+    item = document["paths"]["/ui/crew/{astronaut_id}/views/history"]["get"]
+    assert item["responses"]["422"] == {"$ref": "#/components/responses/InvalidRange"}
+    description = document["components"]["responses"]["InvalidRange"]["description"]
+    assert "invalid_range" in description and "366" in description
 
 
 @pytest.mark.parametrize("path", sorted(UI_VIEWS))

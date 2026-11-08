@@ -3,10 +3,12 @@
 import json
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+from monitor.views.lumbar import LumbarDelta
 from monitor.views.today import build_today
 from spine_contracts import validation
 
@@ -17,7 +19,10 @@ def example(name: str) -> dict[str, Any]:
     return json.loads((EXAMPLES / f"{name}.json").read_text(encoding="utf-8"))
 
 
-SESSION = example("domain/session.exercise")
+SESSION = example("domain/session.exercise")  # started 2026-11-13T10:02:31Z
+NOW = datetime(2026, 11, 13, 10, 30, tzinfo=UTC)
+MEASURED_AT = datetime(2026, 11, 12, 10, 0, tzinfo=UTC)
+STALE_SESSION_HOURS = 48.0
 
 
 @dataclass(frozen=True)
@@ -26,8 +31,12 @@ class Row:
     state: str
 
 
-def today(assessment: Any, lumbar: float | None = None, session: Any = None, also: list[str] | None = None) -> dict[str, Any]:
-    view = build_today(assessment, lumbar, session, also or [])
+def delta(value: float | None, measured_at: datetime = MEASURED_AT) -> LumbarDelta | None:
+    return None if value is None else LumbarDelta(value, measured_at)
+
+
+def today(assessment: Any, lumbar: float | None = None, session: Any = None, also: list[str] | None = None, now: datetime = NOW) -> dict[str, Any]:
+    view = build_today(assessment, delta(lumbar), session, also or [], now, STALE_SESSION_HOURS)
     assert validation.errors("app/ui-today", view) == []
     return view
 
@@ -42,6 +51,7 @@ def test_no_assessment_is_nodata_with_everything_null_or_empty() -> None:
         "reasons": [],
         "trust": None,
         "lumbar_delta_mm": None,
+        "lumbar_measured_at": None,
         "session_in_progress": None,
         "also_today": [],
     }
@@ -123,6 +133,42 @@ def test_lumbar_delta_is_passed_through_including_zero_and_none() -> None:
     assert today(None, 0.0)["lumbar_delta_mm"] == 0.0
     assert today(None, -2.5)["lumbar_delta_mm"] == -2.5
     assert today(None, None)["lumbar_delta_mm"] is None
+
+
+def test_lumbar_measured_at_is_the_instant_of_the_measure_in_utc() -> None:
+    view = today(None, 1.5)
+
+    assert view["lumbar_measured_at"] == "2026-11-12T10:00:00Z"
+
+
+def test_lumbar_measured_at_is_null_exactly_when_the_delta_is() -> None:
+    assert today(None, None)["lumbar_measured_at"] is None
+    assert today(None, 0.0)["lumbar_measured_at"] == "2026-11-12T10:00:00Z"
+
+
+def test_lumbar_measured_at_is_normalised_to_utc_whatever_the_offset() -> None:
+    plus_two = datetime.fromisoformat("2026-11-12T12:00:00+02:00")
+
+    view = build_today(None, LumbarDelta(1.0, plus_two), None, [], NOW, STALE_SESSION_HOURS)
+
+    assert view["lumbar_measured_at"] == "2026-11-12T10:00:00Z"
+    assert validation.errors("app/ui-today", view) == []
+
+
+def test_a_session_older_than_the_staleness_threshold_is_not_in_progress() -> None:
+    started = datetime.fromisoformat(SESSION["started_at"])
+
+    assert today(None, None, (Row(SESSION, "running"), 10), now=started + timedelta(hours=48))["session_in_progress"] is not None
+    assert today(None, None, (Row(SESSION, "running"), 10), now=started + timedelta(hours=48, seconds=1))["session_in_progress"] is None
+    assert today(None, None, (Row(SESSION, "starting"), 10), now=started + timedelta(days=30))["session_in_progress"] is None
+
+
+def test_the_session_staleness_threshold_is_the_one_given() -> None:
+    now = datetime.fromisoformat(SESSION["started_at"]) + timedelta(hours=5)
+    row = (Row(SESSION, "running"), 10)
+
+    assert build_today(None, None, row, [], now, 4.0)["session_in_progress"] is None
+    assert build_today(None, None, row, [], now, 6.0)["session_in_progress"] is not None
 
 
 def test_does_not_mutate_the_assessment() -> None:

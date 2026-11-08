@@ -478,6 +478,49 @@ export type SessionState =
  */
 export type FitItemId = string;
 /**
+ * Response of GET /ui/crew/{astronaut_id}/views/today: the Today screen of the desktop UI, built from the latest assessment. Codes and data only (recommendation codes, feature ids, missing reasons, task codes); the UI writes the words. Without an assessment the level is 'nodata' and every assessment field is null or empty, never a reassuring default.
+ */
+export type TodayView = {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  level: DayLevel;
+  assessment_id: string | null;
+  /**
+   * as_of of the assessment.
+   */
+  assessed_at: string | null;
+  /**
+   * recommendations of the assessment, in order.
+   */
+  recommendations: string[];
+  /**
+   * drivers of the assessment, most influential first.
+   */
+  reasons: TodayReason[];
+  /**
+   * How much to trust the level: confidence and completeness of the assessment. Null without an assessment.
+   */
+  trust: TrustFacts | null;
+  /**
+   * Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.
+   */
+  lumbar_delta_mm: number | null;
+  /**
+   * Instant of the measure behind lumbar_delta_mm: start of the window of the feature set (computed_at when it has none). Null exactly when lumbar_delta_mm is null.
+   */
+  lumbar_measured_at: string | null;
+  /**
+   * Session currently starting or running; null when there is none or the latest one is older than the staleness threshold (settings stale_session_hours), so a session that never ended is not shown as live.
+   */
+  session_in_progress: SessionInProgress | null;
+  /**
+   * Other things still to do today.
+   */
+  also_today: TaskCode[];
+};
+/**
  * A calibration is an entity with its own id and date; sessions and chunks reference it by calibration_id. Three kinds: stretch (cord rest resistance and resistance->length curve), emg_mvc (maximum voluntary contraction, to express EMG as %MVC and compare days/sessions despite electrode re-placement and skin changes) and imu (bias, configured ranges and mounting on the body).
  */
 export type Calibration = StretchCalibration | EmgMvcCalibration | ImuCalibration;
@@ -1640,6 +1683,10 @@ export interface SessionView {
    * RFC 4122 UUID, lowercase.
    */
   session_id: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
   state: SessionState;
   /**
    * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
@@ -1733,7 +1780,7 @@ export interface StripView {
   astronaut_id: string;
   mission: StripMission;
   /**
-   * Last known status of the paired harness; null while no harness is paired.
+   * Last known status of the paired harness; null while no harness is paired or its last status is offline. A device whose last status is old is still listed, with stale true.
    */
   harness: StripHarness | null;
   /**
@@ -1777,6 +1824,14 @@ export interface StripHarness {
    * True when the device status is degraded.
    */
   degraded: boolean;
+  /**
+   * True when the last device status is older than the app's staleness threshold (settings stale_device_hours): the other fields are then the last known ones, not the current state.
+   */
+  stale: boolean;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  last_seen_at: string;
 }
 export interface WeakStream {
   /**
@@ -1791,45 +1846,6 @@ export interface WeakStream {
 export interface ReportsDue {
   daily: boolean;
   weekly_odi: boolean;
-}
-/**
- * Response of GET /ui/crew/{astronaut_id}/views/today: the Today screen of the desktop UI, built from the latest assessment. Codes and data only (recommendation codes, feature ids, missing reasons, task codes); the UI writes the words. Without an assessment the level is 'nodata' and every assessment field is null or empty, never a reassuring default.
- */
-export interface TodayView {
-  /**
-   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
-   */
-  schema_version: string;
-  level: DayLevel;
-  assessment_id: string | null;
-  /**
-   * as_of of the assessment.
-   */
-  assessed_at: string | null;
-  /**
-   * recommendations of the assessment, in order.
-   */
-  recommendations: string[];
-  /**
-   * drivers of the assessment, most influential first.
-   */
-  reasons: TodayReason[];
-  /**
-   * How much to trust the level: confidence and completeness of the assessment. Null without an assessment.
-   */
-  trust: TrustFacts | null;
-  /**
-   * Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.
-   */
-  lumbar_delta_mm: number | null;
-  /**
-   * Session currently running; null when there is none.
-   */
-  session_in_progress: SessionInProgress | null;
-  /**
-   * Other things still to do today.
-   */
-  also_today: TaskCode[];
 }
 export interface TodayReason {
   /**

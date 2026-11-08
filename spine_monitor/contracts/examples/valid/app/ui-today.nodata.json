@@ -7,6 +7,7 @@
   "reasons": [],
   "trust": null,
   "lumbar_delta_mm": null,
+  "lumbar_measured_at": null,
   "session_in_progress": {
     "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
     "protocol_id": "lat_pulldown_standing_v1",

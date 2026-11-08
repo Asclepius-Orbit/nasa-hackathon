@@ -1,6 +1,7 @@
 """Session view: protocol facts from the catalog, the five guided steps, sensor checks and calibration."""
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +18,14 @@ CATALOG = json.loads((Path(__file__).resolve().parents[2] / "contracts" / "catal
 ENTRIES = {e["protocol_id"]: e for e in CATALOG["entries"]}
 LAT, REST = ENTRIES["lat_pulldown_standing_v1"], ENTRIES["spine_length_rest_v1"]
 SESSION_ID = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"
+NOW = datetime(2026, 11, 13, 10, 5, tzinfo=UTC)
+STALE_DEVICE_HOURS = 0.25  # 15 minutes
 STATES = ["starting", "running", "rejected", "ended", "processing", "processed", "processing_failed"]
 IDS = ["fit", "check", "mvc", "reps", "finish"]
 
 
 def session(state: str = "running", protocol: str = "lat_pulldown_standing_v1", started_at: str | None = "2026-11-13T10:02:31Z") -> SessionRow:
-    payload: dict[str, Any] = {"session_id": SESSION_ID, "protocol_id": protocol}
+    payload: dict[str, Any] = {"session_id": SESSION_ID, "astronaut_id": "AST-01", "protocol_id": protocol}
     if started_at is not None:
         payload["started_at"] = started_at
     return SessionRow(payload, state, None)
@@ -44,9 +47,9 @@ def calibrate(
     return CommandRow(payload, ack_status or "sent", acks)
 
 
-def device(status: str = "ok", states: tuple[str, ...] = ("active", "active")) -> dict[str, Any]:
+def device(status: str = "ok", states: tuple[str, ...] = ("active", "active"), age: timedelta = timedelta(minutes=1)) -> dict[str, Any]:
     streams = [{"stream_id": f"s{i}", "stream_kind": "emg", "state": state} for i, state in enumerate(states)]
-    return {"status": status, "streams": streams}
+    return {"status": status, "timestamp": (NOW - age).isoformat(), "streams": streams}
 
 
 def statuses(view: dict[str, Any]) -> list[str]:
@@ -57,7 +60,7 @@ def statuses(view: dict[str, Any]) -> list[str]:
 def build(
     state: str = "running", commands: list[CommandRow] | None = None, status: dict[str, Any] | None = None, entry: dict[str, Any] | None = LAT, **kw: Any
 ):
-    return build_session_view(session(state, **kw), commands or [], status, entry)
+    return build_session_view(session(state, **kw), commands or [], status, entry, NOW, STALE_DEVICE_HOURS)
 
 
 GOOD, ACKED = device(), [calibrate("c0ffee00-0000-4000-8000-000000000004", "2026-11-13T10:00:00Z")]
@@ -68,13 +71,15 @@ GOOD, ACKED = device(), [calibrate("c0ffee00-0000-4000-8000-000000000004", "2026
 
 def test_a_running_session_with_everything_ready_matches_the_contract_example():
     stream_states = {"emg_lat_left": "active", "imu_l3": "active", "stretch_lumbar": "stalled"}
-    status = {"status": "degraded", "streams": [{"stream_id": k, "stream_kind": "emg", "state": v} for k, v in stream_states.items()]}
+    streams = [{"stream_id": k, "stream_kind": "emg", "state": v} for k, v in stream_states.items()]
+    status = {"status": "degraded", "timestamp": "2026-11-13T10:04:00Z", "streams": streams}
     result = build(commands=ACKED, status=status)
 
     assert validation.errors("app/ui-session", result) == []
     assert result == {
         "schema_version": SCHEMA_VERSION,
         "session_id": SESSION_ID,
+        "astronaut_id": "AST-01",
         "state": "running",
         "protocol_id": "lat_pulldown_standing_v1",
         "band": {"color": "blue", "nominal_kg": 15},
@@ -147,8 +152,40 @@ def test_check_stays_now_with_an_offline_device_or_a_stalled_or_disabled_stream(
     assert statuses(build("running", status=bad)) == ["done", "now", "todo", "todo", "todo"]
 
 
-def test_a_device_without_streams_that_is_not_offline_passes_the_check():
-    assert statuses(build("running", status={"status": "ok"})) == ["done", "done", "now", "todo", "todo"]
+@pytest.mark.parametrize("no_streams", [{}, {"streams": []}])
+def test_a_device_that_reports_no_streams_does_not_pass_the_check(no_streams):
+    status = {"status": "ok", "timestamp": (NOW - timedelta(minutes=1)).isoformat(), **no_streams}
+
+    assert statuses(build("running", status=status)) == ["done", "now", "todo", "todo", "todo"]
+
+
+def test_a_stale_device_status_does_not_pass_the_check():
+    assert statuses(build("running", status=device(age=timedelta(minutes=16)))) == ["done", "now", "todo", "todo", "todo"]
+
+
+def test_a_device_status_exactly_at_the_threshold_is_not_stale():
+    assert statuses(build("running", status=device(age=timedelta(minutes=15)))) == ["done", "done", "now", "todo", "todo"]
+
+
+def test_the_staleness_threshold_is_the_one_given():
+    status = device(age=timedelta(hours=2))
+
+    assert statuses(build_session_view(session(), [], status, LAT, NOW, 1.0))[1] == "now"
+    assert statuses(build_session_view(session(), [], status, LAT, NOW, 3.0))[1] == "done"
+
+
+def test_a_stale_device_still_shows_its_last_sensor_checks():
+    result = build("running", status=device(states=("active",), age=timedelta(hours=3)))
+
+    assert result["sensor_checks"] == [{"stream": "s0", "status": "good", "state": "active"}]
+
+
+def test_a_stale_device_does_not_undo_an_acked_calibration():
+    assert statuses(build("running", commands=ACKED, status=device(age=timedelta(hours=3)))) == ["done", "done", "done", "now", "todo"]
+
+
+def test_the_view_carries_the_astronaut_of_the_session():
+    assert build()["astronaut_id"] == "AST-01"
 
 
 def test_mvc_is_done_with_an_acked_calibration_and_reps_is_now_while_running():
@@ -187,9 +224,9 @@ def test_fit_is_done_from_running_onward():
 
 def test_a_starting_session_matches_the_spine_check_contract_example():
     example = json.loads((EXAMPLES / "ui-session.spine-check.json").read_text(encoding="utf-8"))
-    row = SessionRow({"session_id": example["session_id"], "protocol_id": "spine_length_rest_v1"}, "starting", None)
+    row = SessionRow({"session_id": example["session_id"], "astronaut_id": "AST-01", "protocol_id": "spine_length_rest_v1"}, "starting", None)
 
-    result = build_session_view(row, [], None, REST)
+    result = build_session_view(row, [], None, REST, NOW, STALE_DEVICE_HOURS)
 
     assert result == example
 
@@ -256,7 +293,7 @@ def test_no_device_status_means_no_sensor_checks():
 
 
 def test_a_device_without_streams_has_no_sensor_checks():
-    assert build(status={"status": "ok"})["sensor_checks"] == []
+    assert build(status={"status": "ok", "timestamp": "2026-11-13T10:04:00Z"})["sensor_checks"] == []
 
 
 @pytest.mark.parametrize(("state", "expected"), [("active", "good"), ("stalled", "weak"), ("disabled", "weak")])

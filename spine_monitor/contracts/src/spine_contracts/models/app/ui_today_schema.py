@@ -115,8 +115,13 @@ class TodayView(BaseModel):
         ...,
         description='Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.',
     )
+    lumbar_measured_at: AwareDatetime | None = Field(
+        ...,
+        description='Instant of the measure behind lumbar_delta_mm: start of the window of the feature set (computed_at when it has none). Null exactly when lumbar_delta_mm is null.',
+    )
     session_in_progress: SessionInProgress | None = Field(
-        ..., description='Session currently running; null when there is none.'
+        ...,
+        description='Session currently starting or running; null when there is none or the latest one is older than the staleness threshold (settings stale_session_hours), so a session that never ended is not shown as live.',
     )
     also_today: list[ui_common_schema.TaskCode] = Field(
         ..., description='Other things still to do today.'

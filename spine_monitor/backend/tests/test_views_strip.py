@@ -13,6 +13,7 @@ from spine_contracts import validation
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
 NOW = datetime(2026, 11, 13, 10, 0, tzinfo=UTC)
 AST = "AST-01"
+STALE_DEVICE_HOURS = 0.25  # 15 minutes
 PROFILE = {"launch_date": "2026-11-15", "landing_date": "2027-05-15"}
 
 
@@ -26,7 +27,7 @@ def status(device_id: str = "wb-01", *, timestamp: str = "2026-11-13T09:59:00Z",
 
 
 def strip(statuses: list[dict[str, Any]], profile: dict[str, Any] | None = PROFILE, daily: Any = None, odi: Any = None) -> dict[str, Any]:
-    view = build_strip(AST, profile, statuses, daily, odi, NOW, 7)
+    view = build_strip(AST, profile, statuses, daily, odi, NOW, 7, STALE_DEVICE_HOURS)
     assert validation.errors("app/ui-strip", view) == []
     return view
 
@@ -49,7 +50,41 @@ def test_mission_comes_from_the_profile_and_now() -> None:
 
 
 def test_harness_ok_with_battery() -> None:
-    assert strip([status(battery_pct=71.5)])["harness"] == {"device_id": "wb-01", "battery_pct": 71.5, "weak_streams": [], "degraded": False}
+    assert strip([status(battery_pct=71.5)])["harness"] == {
+        "device_id": "wb-01",
+        "battery_pct": 71.5,
+        "weak_streams": [],
+        "degraded": False,
+        "stale": False,
+        "last_seen_at": "2026-11-13T09:59:00Z",
+    }
+
+
+def test_a_fresh_device_is_not_stale_and_carries_its_timestamp() -> None:
+    harness = strip([status(timestamp="2026-11-13T09:45:00Z")])["harness"]  # exactly at the threshold
+
+    assert (harness["stale"], harness["last_seen_at"]) == (False, "2026-11-13T09:45:00Z")
+
+
+def test_an_old_device_still_appears_marked_stale_with_its_last_known_state() -> None:
+    streams = [{"stream_id": "stretch_lumbar", "stream_kind": "stretch", "state": "stalled"}]
+    harness = strip([status(timestamp="2026-11-13T09:44:59Z", state="degraded", battery_pct=40, streams=streams)])["harness"]
+
+    assert harness is not None
+    assert (harness["stale"], harness["last_seen_at"]) == (True, "2026-11-13T09:44:59Z")
+    assert (harness["device_id"], harness["battery_pct"], harness["degraded"]) == ("wb-01", 40, True)
+    assert harness["weak_streams"] == [{"stream": "stretch_lumbar", "state": "stalled"}]
+
+
+def test_a_stale_offline_device_is_still_null() -> None:
+    assert strip([status(timestamp="2026-11-12T09:00:00Z", state="offline")])["harness"] is None
+
+
+def test_the_staleness_threshold_is_the_one_given() -> None:
+    old = status(timestamp="2026-11-13T07:00:00Z")  # 3 hours old
+
+    assert build_strip(AST, PROFILE, [old], None, None, NOW, 7, 1.0)["harness"]["stale"] is True
+    assert build_strip(AST, PROFILE, [old], None, None, NOW, 7, 4.0)["harness"]["stale"] is False
 
 
 def test_missing_battery_is_null_not_zero() -> None:

@@ -1,5 +1,6 @@
 """Lumbar length helpers of the UI views: baseline lookup, delta, own pre-flight range and latest measure."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -7,9 +8,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 from monitor.views.lumbar import (
     ELONGATION_FEATURE,
+    LumbarDelta,
     baseline_entry,
     first_lumbar_entry,
     latest_elongation,
+    latest_lumbar_delta,
     lumbar_delta_mm,
     preflight_range_mm,
 )
@@ -57,9 +60,9 @@ def test_baseline_entry_finds_the_lumbar_entry_of_the_protocol_and_gravity():
     assert baseline_entry(baseline, PROTOCOL, GRAVITY) is wanted
 
 
-@pytest.mark.parametrize(("protocol", "gravity"), [("other_v1", GRAVITY), (PROTOCOL, "microgravity")])
-def test_baseline_entry_is_none_when_protocol_or_gravity_differ(protocol, gravity):
-    assert baseline_entry({"entries": [entry()]}, protocol, gravity) is None
+@pytest.mark.parametrize("gravity", [GRAVITY, "microgravity"])
+def test_baseline_entry_is_none_when_the_protocol_differs(gravity):
+    assert baseline_entry({"entries": [entry()]}, "other_v1", gravity) is None
 
 
 def test_baseline_entry_is_none_without_baseline_or_entries():
@@ -74,6 +77,42 @@ def test_first_lumbar_entry_skips_other_features_and_is_none_without_one():
     assert first_lumbar_entry(baseline) is first
     assert first_lumbar_entry({"entries": [entry(feature_id="emg.x")]}) is None
     assert first_lumbar_entry(None) is None
+
+
+# --- gravity fallback (same rule as the engine's reference_entry) ---------------------------------
+
+
+def test_baseline_entry_falls_back_to_earth_when_there_is_none_for_the_gravity():
+    earth = entry(mean=1.0)
+
+    assert baseline_entry({"entries": [earth]}, PROTOCOL, "microgravity") is earth
+
+
+def test_baseline_entry_prefers_the_entry_of_the_own_gravity_over_earth():
+    own = entry(mean=2.0, gravity_environment="microgravity")
+
+    assert baseline_entry({"entries": [entry(mean=1.0), own]}, PROTOCOL, "microgravity") is own
+
+
+def test_baseline_entry_fallback_still_needs_the_same_protocol_and_feature():
+    baseline = {"entries": [entry(protocol_id="other_v1"), entry(feature_id="emg.x")]}
+
+    assert baseline_entry(baseline, PROTOCOL, "microgravity") is None
+
+
+def test_baseline_entry_without_declared_gravity_or_protocol_has_no_reference():
+    baseline = {"entries": [entry()]}
+
+    assert baseline_entry(baseline, PROTOCOL, None) is None
+    assert baseline_entry(baseline, None, GRAVITY) is None
+
+
+def test_baseline_entry_tolerates_entries_without_protocol_or_gravity_and_never_matches_them():
+    bare = {"feature_id": ELONGATION_FEATURE, "n": 3, "mean": 1.0}
+    without_gravity = {k: v for k, v in entry().items() if k != "gravity_environment"}
+    without_protocol = {k: v for k, v in entry().items() if k != "protocol_id"}
+
+    assert baseline_entry({"entries": [bare, without_gravity, without_protocol]}, PROTOCOL, GRAVITY) is None
 
 
 # --- lumbar_delta_mm -----------------------------------------------------------------------------
@@ -154,6 +193,54 @@ def test_latest_elongation_keeps_the_last_of_equal_instants():
     sets = [feature_set(1.0, "2030-01-01T10:00:00Z"), feature_set(2.0, "2030-01-01T10:00:00Z")]
 
     assert latest_elongation(sets) == (2.0, PROTOCOL, GRAVITY)
+
+
+def test_latest_elongation_tolerates_a_set_without_protocol_or_gravity():
+    bare = feature_set(4.0, "2030-01-01T10:00:00Z")
+    del bare["protocol_id"], bare["gravity_environment"]
+
+    assert latest_elongation([bare]) == (4.0, None, None)
+
+
+# --- latest_lumbar_delta -------------------------------------------------------------------------
+
+
+def test_latest_lumbar_delta_has_the_delta_and_the_instant_of_the_measure_used():
+    sets = [feature_set(9.0, "2030-01-03T10:00:00Z"), feature_set(7.0, "2030-01-05T11:30:00+02:00")]
+
+    assert latest_lumbar_delta(sets, {"entries": [entry(mean=6.0)]}) == LumbarDelta(1.0, datetime(2030, 1, 5, 9, 30, tzinfo=UTC))
+
+
+def test_latest_lumbar_delta_instant_is_computed_at_for_a_set_without_window():
+    bare = {**feature_set(7.0, "2030-01-01T10:00:00Z"), "computed_at": "2030-01-02T08:00:00Z"}
+    del bare["window"]
+
+    assert latest_lumbar_delta([bare], {"entries": [entry(mean=6.0)]}) == LumbarDelta(1.0, datetime(2030, 1, 2, 8, tzinfo=UTC))
+
+
+def test_latest_lumbar_delta_of_a_microgravity_measure_uses_the_earth_baseline():
+    sets = [feature_set(9.0, "2030-01-03T10:00:00Z", gravity="microgravity")]
+
+    delta = latest_lumbar_delta(sets, {"entries": [entry(mean=6.0)]})
+
+    assert delta is not None
+    assert delta.delta_mm == 3.0
+
+
+def test_latest_lumbar_delta_is_none_without_measure_baseline_or_entry():
+    sets = [feature_set(9.0, "2030-01-03T10:00:00Z")]
+
+    assert latest_lumbar_delta([], {"entries": [entry()]}) is None
+    assert latest_lumbar_delta(sets, None) is None
+    assert latest_lumbar_delta(sets, {"entries": [entry(protocol_id="other_v1")]}) is None
+    assert latest_lumbar_delta(sets, {"entries": [entry(mean=None)]}) is None
+
+
+def test_latest_lumbar_delta_is_none_for_a_set_without_protocol_or_gravity():
+    bare = feature_set(9.0, "2030-01-03T10:00:00Z")
+    del bare["protocol_id"], bare["gravity_environment"]
+
+    assert latest_lumbar_delta([bare], {"entries": [entry()]}) is None
 
 
 # --- properties ----------------------------------------------------------------------------------

@@ -33,6 +33,7 @@ _MISSING_REASON_BY_SKIP = {
     "signal_not_raw": MissingReason.SIGNAL_NOT_RAW,
     "too_few_repetitions": MissingReason.NO_DATA,
     "stream_missing": MissingReason.SENSOR_OFFLINE,
+    "insufficient_sample_rate": MissingReason.NO_DATA,
 }
 
 

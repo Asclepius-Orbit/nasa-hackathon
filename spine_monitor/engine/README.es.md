@@ -20,7 +20,7 @@ El contrato es `contracts/openapi.yaml`; cuerpos y errores son los JSON Schemas 
 | `GET /health` | - | `{"status": "ok"}` | real |
 | `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41; las familias EMG, IMU y cordón llegan en #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de las sesiones de referencia) | `Baseline` | real |
-| `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline; modelo de riesgo y triaje nulos (nivel siempre verde) |
+| `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline y modelo de riesgo genérico (`risk_score`, `confidence`, `drivers`); triaje nulo (nivel siempre verde) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: no aplica `overrides`, `reference` y `scenario` son la misma evaluación |
 
 Los errores son problem details (`application/problem+json`, `engine/error.schema.json`): `422` con `invalid_request` (con un JSON Pointer por problema), `unsupported_schema_version` o `insufficient_data`, y `500` con `internal`. Los cuerpos se validan contra el JSON Schema además de Pydantic, así que se aplican las reglas condicionales.
@@ -48,6 +48,7 @@ Los ejemplos de `contracts/examples/valid/engine/` son peticiones válidas de ca
 | `VotePolicy` | `AllAgreeVote` | los detectores deben coincidir (AND), en el mismo sentido |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construye la baseline |
 | `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (`exercise`, #41; EMG, IMU y cordón en #42-#45) |
+| `RiskModel` | `DeviationRiskModel` | suma el \|z\| de las desviaciones sostenidas, ponderado por dominio y por persistencia (`n_points`), saturado a [0, 1) con `1 - exp(-suma / escala)`; sin rangos clínicos, cualquier sentido cuenta como peor y el signo queda en el `deviation_z` de cada driver. `drivers` lleva la cuota del score de cada feature, la mayor primero; `confidence` es la completitud. Pesos, persistencia y escala: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION` |
 
 Los detectores solo ven una serie de z-scores: no saben qué métrica es, así que no dependen del modelo teórico. `Deviation` lleva el z-score, la gravedad de referencia y si el cambio es sostenido y en qué sentido; el modelo de riesgo lo lee de ahí.
 

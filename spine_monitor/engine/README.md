@@ -20,7 +20,7 @@ The contract is `contracts/openapi.yaml`; bodies and errors are the JSON Schemas
 | `GET /health` | - | `{"status": "ok"}` | real |
 | `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | `features` from the registered families: `exercise` since #41; the EMG, IMU and strap families follow in #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets of the reference sessions) | `Baseline` | real |
-| `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison; null risk model and triage (level always green) |
+| `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison and generic risk model (`risk_score`, `confidence`, `drivers`); null triage (level always green) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: `overrides` are not applied, `reference` and `scenario` are the same assessment |
 
 Errors are problem details (`application/problem+json`, `engine/error.schema.json`): `422` with `invalid_request` (with a JSON Pointer per problem), `unsupported_schema_version` or `insufficient_data`, and `500` with `internal`. Request bodies are checked against the JSON Schema as well as Pydantic, so the conditional rules are enforced.
@@ -48,6 +48,7 @@ The examples in `contracts/examples/valid/engine/` are valid requests for every 
 | `VotePolicy` | `AllAgreeVote` | the detectors must agree (AND), in the same direction |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | builds the baseline |
 | `FeatureExtractor` | `CompositeFeatureExtractor` | raw data to features: runs the registered feature families (`exercise`, #41; EMG, IMU and strap in #42-#45) |
+| `RiskModel` | `DeviationRiskModel` | adds up the \|z\| of sustained deviations, weighted by domain and by persistence (`n_points`), saturated to [0, 1) with `1 - exp(-sum / scale)`; no clinical ranges, so either direction counts as worse and the sign stays in each driver's `deviation_z`. `drivers` hold each feature's share of the score, largest first; `confidence` is the completeness. Weights, persistence and scale: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION` |
 
 The detectors see only a series of z-scores: they do not know which metric it is, so they do not depend on the theoretical model. `Deviation` carries the z-score, the reference gravity and whether the change is sustained and in which direction; the risk model reads it from there.
 

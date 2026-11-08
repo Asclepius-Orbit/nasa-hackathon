@@ -22,8 +22,12 @@ class DeviationRiskModel:
     def __init__(self, domain_weights: Mapping[AssessmentDomain, float], persistence_points: int, saturation: float) -> None:
         if persistence_points < 1:
             raise ValueError("persistence_points must be at least 1")
+        if not math.isfinite(saturation):
+            raise ValueError("saturation must be finite")
         if saturation <= 0:
             raise ValueError("saturation must be positive")
+        if not all(math.isfinite(weight) for weight in domain_weights.values()):
+            raise ValueError("domain weights must be finite")
         if any(weight < 0 for weight in domain_weights.values()):
             raise ValueError("domain weights must not be negative")
         self._weights = dict(domain_weights)

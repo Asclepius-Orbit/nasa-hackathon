@@ -103,3 +103,15 @@ def test_a_domain_left_out_of_the_weights_adds_no_risk():
     partial = DeviationRiskModel({AssessmentDomain.MUSCLE: 1.0}, persistence_points=4, saturation=2.0)
 
     assert partial.score([dev(STRETCH)], 1.0).score == 0.0
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_rejects_a_non_finite_saturation(value):
+    with pytest.raises(ValueError, match="^saturation must be finite$"):
+        DeviationRiskModel(WEIGHTS, persistence_points=4, saturation=value)
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_rejects_non_finite_domain_weights(value):
+    with pytest.raises(ValueError, match="^domain weights must be finite$"):
+        DeviationRiskModel({**WEIGHTS, AssessmentDomain.MUSCLE: value}, persistence_points=4, saturation=2.0)

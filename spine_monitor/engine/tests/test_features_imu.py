@@ -542,6 +542,15 @@ def test_the_slowest_chunk_of_the_stream_decides_the_sample_rate():
     assert skipped(result) == dict.fromkeys(sparc_ids(), Reason.INSUFFICIENT_SAMPLE_RATE)
 
 
+def test_the_range_of_motion_integrates_each_sample_with_the_period_of_its_own_chunk():
+    # mismo arranque con un chunk lento al final: la flexión a 100 Hz se integra a 10 ms, no al periodo del chunk lento
+    fast = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 200 + bend(RATE, 2.0, 20.0) + [0.0] * 200)})
+    slow = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 10)}, rate=10.0, seq0=60, t0_device_ms=6000)
+    result = run([rep(1, 2.0, 4.0)], make_context(fast + slow))
+
+    assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(20.0)
+
+
 def test_a_slow_stream_without_repetitions_still_says_why_sparc_is_skipped():
     result = run([], sagittal_context(rate=10.0))
 

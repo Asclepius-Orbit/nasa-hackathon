@@ -8,7 +8,8 @@ IMU declarado en la sesión, con su ``placement.spine_level`` (nunca fijado aqu�
   (``left``, ``anterior``, ``cranial`` positivos). Sin eje del sensor para un plano: ese plano es ``no_calibration``.
 - ``gyro_bias_dps`` de la calibración se resta a cada eje del sensor.
 - Por repetición (ventana activa, ``start <= t < end``) y plano: ``rom_deg`` = recorrido (máx − mín) del ángulo
-  integrado desde 0 antes de la primera muestra; ``peak_angular_velocity_dps`` = máximo de ``|ω|``;
+  integrado (cada muestra con el periodo de su chunk) desde
+  0 antes de la primera muestra; ``peak_angular_velocity_dps`` = máximo de ``|ω|``;
   ``smoothness_sparc`` = SPARC de ``|ω|`` (solo con todos los chunks del stream a ``SPARC_MIN_SAMPLE_RATE_HZ`` o
   más; si no, ``insufficient_sample_rate``). Sin movimiento SPARC no está definido (NaN -> ``no_data``).
 - ``accel_rms_g`` = RMS de la magnitud del acelerómetro tras quitar a cada eje su media en la repetición (la
@@ -23,7 +24,7 @@ de SPARC por frecuencia de muestreo se da antes que estos dos últimos. Nunca la
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from numpy.typing import NDArray
@@ -78,8 +79,11 @@ def plane_channel(mounting: Mounting, plane: AnatomicalPlane) -> tuple[str, floa
     return None
 
 
-def range_of_motion_deg(omega_dps: Signal, rate_hz: float) -> float:
-    """Recorrido del ángulo integrado (rectángulos de ``1/rate_hz``), con ángulo 0 antes de la primera muestra."""
+def range_of_motion_deg(omega_dps: Signal, rate_hz: float | Signal) -> float:
+    """Recorrido del ángulo integrado (rectángulos de ``1/rate_hz``), con ángulo 0 antes de la primera muestra.
+
+    ``rate_hz`` puede ser una frecuencia por muestra: cada una se integra con el periodo de su chunk.
+    """
     angle = np.concatenate(([0.0], np.cumsum(omega_dps / rate_hz)))
     return float(angle.max() - angle.min())
 
@@ -116,7 +120,8 @@ def accel_rms_g(ax: Signal, ay: Signal, az: Signal) -> float:
 
 @dataclass(frozen=True, slots=True)
 class _RepSamples:
-    rate_hz: float
+    rate_hz: float  # el chunk más lento del segmento: el de SPARC
+    sample_rates_hz: Signal  # la frecuencia del chunk de cada muestra: la de la integración del ROM
     channels: dict[str, Signal]
 
 
@@ -179,13 +184,24 @@ def _merge(first: FamilyResult, second: FamilyResult) -> FamilyResult:
 
 def _rep_samples(context: ExtractionContext, segments: Sequence[Segment], window: RepWindow) -> _RepSamples | None:
     best: _RepSamples | None = None
-    best_n = 0
     for segment in segments:
-        samples = segment_samples(context.clock, segment, _GYRO + _ACCEL, window.active)
-        if len(samples.times) > best_n:
-            best_n = len(samples.times)
-            best = _RepSamples(min(c.sample_rate_hz for c in segment.chunks), samples.channels)
+        found = _segment_rep(context, segment, window)
+        if len(found.sample_rates_hz) > (0 if best is None else len(best.sample_rates_hz)):
+            best = found
     return best
+
+
+def _segment_rep(context: ExtractionContext, segment: Segment, window: RepWindow) -> _RepSamples:
+    """Muestras de la ventana en un segmento, chunk a chunk para conocer la frecuencia de cada una."""
+    rates: list[float] = []
+    parts: dict[str, list[Signal]] = {name: [] for name in _GYRO + _ACCEL}
+    for chunk in segment.chunks:
+        samples = segment_samples(context.clock, replace(segment, chunks=(chunk,)), _GYRO + _ACCEL, window.active)
+        rates += [chunk.sample_rate_hz] * len(samples.times)
+        for name, values in samples.channels.items():
+            parts[name].append(values)
+    channels = {name: np.concatenate(values) for name, values in parts.items()}
+    return _RepSamples(min(c.sample_rate_hz for c in segment.chunks), np.asarray(rates, dtype=np.float64), channels)
 
 
 def _compute(
@@ -213,7 +229,7 @@ def _compute(
             continue
         channel, sign = found
         omegas = [(sign * (r.channels[channel] - offsets[channel]), r.rate_hz) for r in reps]
-        add(rom_id, [range_of_motion_deg(omega, rate) for omega, rate in omegas])
+        add(rom_id, [range_of_motion_deg(omega, r.sample_rates_hz) for (omega, _), r in zip(omegas, reps, strict=True)])
         add(peak_id, [peak_angular_velocity_dps(omega) for omega, _ in omegas])
         if sparc_ok:
             add(sparc_id, [sparc(np.abs(omega), rate) for omega, rate in omegas])

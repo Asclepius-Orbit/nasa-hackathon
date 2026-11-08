@@ -108,3 +108,42 @@ it.each([
 ] as const)('redirectFor(%s, %s) -> %s', (status, path, expected) => {
   expect(redirectFor(status, path)).toBe(expected);
 });
+
+it('refresh re-reads main: a session that main now holds locked becomes locked', async () => {
+  const api = new FakeAsclepiusApi();
+  api.session = { crewId: 'AST-01', locked: false };
+  const { result } = setup(api);
+  await waitFor(() => {
+    expect(result.current.status).toBe('signed-in');
+  });
+  api.session = { crewId: 'AST-01', locked: true };
+  act(() => {
+    result.current.refresh();
+  });
+  await waitFor(() => {
+    expect(result.current).toMatchObject({ status: 'locked', crewId: 'AST-01' });
+  });
+});
+
+it('refresh to a session main no longer has signs out, and an unreadable session counts as signed out', async () => {
+  const api = new FakeAsclepiusApi();
+  api.session = { crewId: 'AST-01', locked: false };
+  const { result } = setup(api);
+  await waitFor(() => {
+    expect(result.current.status).toBe('signed-in');
+  });
+  api.session = null;
+  act(() => {
+    result.current.refresh();
+  });
+  await waitFor(() => {
+    expect(result.current.status).toBe('signed-out');
+  });
+  api.auth.current = () => Promise.reject(new Error('unavailable'));
+  act(() => {
+    result.current.refresh();
+  });
+  await waitFor(() => {
+    expect(result.current.status).toBe('signed-out');
+  });
+});

@@ -29,10 +29,11 @@ export function lumbarCentres(lumbarLengthMm: number): number[] {
 const n = (value: number): string => String(Math.round(value));
 
 /** Side view of the spine, drawn from the lumbar length: the lumbar vertebrae and the stretch cord stretch with it. */
-export function SpineFigure({ lumbarLengthMm }: { lumbarLengthMm: number }): React.JSX.Element {
+/** `lumbarLengthMm` null = no measurement: the column is drawn at the preflight spacing and the length reads No data. */
+export function SpineFigure({ lumbarLengthMm }: { lumbarLengthMm: number | null }): React.JSX.Element {
   const { formatLength } = useSettings();
-  const length = formatLength(lumbarLengthMm);
-  const y = lumbarCentres(lumbarLengthMm);
+  const length = lumbarLengthMm === null ? spine.noLength : formatLength(lumbarLengthMm);
+  const y = lumbarCentres(lumbarLengthMm ?? 0);
   const [l1, , l3, l4, l5] = y as [number, number, number, number, number];
   const cordTop = l1 - 6;
   const cordBottom = l5 + 5;
@@ -40,10 +41,12 @@ export function SpineFigure({ lumbarLengthMm }: { lumbarLengthMm: number }): Rea
   return (
     <figure className={styles.figure}>
       <svg viewBox="0 0 340 560" role="img" aria-label={spine.label(length)}>
-        <path
-          className={styles.today}
+        {lumbarLengthMm !== null && (
+          <path
+            className={styles.today}
           d={`M150 30 C 141 72, 141 104, 151 136 S 188 248, 177 300 S 150 ${n(l3 + 15)}, 156 ${n(l5 + 3)} S 168 500, 172 534`}
-        />
+          />
+        )}
         <g className={styles.thoracic}>
           {THORACIC.map(([cx, cy, rx, ry]) => (
             <ellipse key={cy} cx={cx} cy={cy} rx={rx} ry={ry} />
@@ -103,10 +106,14 @@ export function SpineFigure({ lumbarLengthMm }: { lumbarLengthMm: number }): Rea
           <text x="50" y="531">
             {spine.preflight}
           </text>
-          <line x1="140" y1="526" x2="166" y2="526" className={styles.today} />
-          <text x="172" y="531">
-            {spine.today}
-          </text>
+          {lumbarLengthMm !== null && (
+            <>
+              <line x1="140" y1="526" x2="166" y2="526" className={styles.today} />
+              <text x="172" y="531">
+                {spine.today}
+              </text>
+            </>
+          )}
         </g>
       </svg>
       <figcaption>{spine.caption}</figcaption>

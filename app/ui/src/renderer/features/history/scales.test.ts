@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DayRecord } from '../../data/types';
-import { buildLengthChart, buildPainChart, dayAxisTicks, deltaBetween, spotPosition } from './scales';
+import { buildLengthChart, buildPainChart, dayAxisTicks, dayName, deltaBetween, spotPosition } from './scales';
 
 const day = (n: number, lengthMm: number | null, pain: number | null): DayRecord => ({
+  date: `2026-11-${String(n).padStart(2, '0')}`,
   day: n,
   level: lengthMm === null ? 'nodata' : 'green',
   lengthMm,
   pain,
-  session: '',
-  report: '',
-  note: '',
+  session: null,
+  report: null,
 });
 
 const days = [day(1, 0, 2), day(2, 1, 4), day(3, null, null), day(4, null, null), day(5, -1, 0)];
@@ -28,8 +28,8 @@ describe('buildLengthChart', () => {
     const chart = buildLengthChart(days, range);
     const [a, b] = chart.segments[0]?.points ?? [];
     expect(b?.y).toBeLessThan(a?.y ?? 0);
-    expect(chart.band.height).toBeGreaterThan(0);
-    expect(chart.band.y).toBeLessThan(a?.y ?? 0);
+    expect(chart.band?.height).toBeGreaterThan(0);
+    expect(chart.band?.y).toBeLessThan(a?.y ?? 0);
     expect(a?.x).toBeLessThan(b?.x ?? 0);
   });
 
@@ -59,7 +59,7 @@ describe('buildLengthChart', () => {
 describe('buildPainChart', () => {
   it('draws a bar only for reported days, taller for more pain, and no bar for null', () => {
     const chart = buildPainChart(days);
-    expect(chart.bars.map((b) => b.day)).toEqual([1, 2, 5]);
+    expect(chart.bars.map((b) => b.date)).toEqual(['2026-11-01', '2026-11-02', '2026-11-05']);
     const [one, two] = chart.bars;
     expect(two?.height).toBeGreaterThan(one?.height ?? 0);
     expect(chart.gaps).toHaveLength(1);
@@ -67,7 +67,7 @@ describe('buildPainChart', () => {
 
   it('keeps a reported zero as an empty bar position, not a gap', () => {
     const chart = buildPainChart(days);
-    expect(chart.bars.find((b) => b.day === 5)?.height).toBe(0);
+    expect(chart.bars.find((b) => b.date === '2026-11-05')?.height).toBe(0);
     expect(chart.gaps[0]?.label).toBe('3 to 4');
   });
 });
@@ -101,5 +101,31 @@ describe('deltaBetween', () => {
   });
   it('has nothing to compare against a missing value', () => {
     expect(deltaBetween(1, null, 1)).toBeNull();
+  });
+});
+
+describe('days without a launch date and ranges without a reference', () => {
+  const undated = { ...day(1, null, null), day: null };
+
+  it('names a day by its mission day, or by its calendar date when there is no mission day', () => {
+    expect(dayName(day(7, 0, 0))).toBe('7');
+    expect(dayName(undated)).toBe('2026-11-01');
+  });
+
+  it('labels gaps and ticks with the date when the mission day is not known', () => {
+    const chart = buildLengthChart([undated, { ...day(2, 0, 0), day: null }], range);
+    expect(chart.gaps[0]?.label).toBe('2026-11-01');
+    expect(chart.xTicks[0]?.label).toBe('2026-11-01');
+    expect(dayAxisTicks([undated], null)[0]?.label).toBe('2026-11-01');
+  });
+
+  it('draws no reference band and no range ticks without a preflight range, and never a zero line of data', () => {
+    const chart = buildLengthChart(days, null);
+    expect(chart.band).toBeNull();
+    expect(chart.yTicks.map((t) => t.mm)).toEqual([3, 0]);
+  });
+
+  it('never marks a day as today when today is not known', () => {
+    expect(dayAxisTicks([day(1, 0, 0), day(2, 0, 0)], null).some((t) => t.isToday)).toBe(false);
   });
 });

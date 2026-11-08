@@ -13,6 +13,8 @@ export interface AuthApi {
   signIn: (result: PinResult) => void;
   /** Locks through main, then shows the lock screen. */
   lock: () => Promise<void>;
+  /** Re-reads the session from main (for example after a view answered `locked`): the gate then sends the user to the lock or login screen. */
+  refresh: () => void;
   /** Drops the local session only (used by the dev Mock screens menu); main keeps its own. */
   signOut: () => void;
 }
@@ -63,11 +65,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     setState((prev) => ({ ...prev, status: 'locked' }));
   }, [api]);
 
+  const refresh = useCallback(() => {
+    api.auth.current().then(
+      (session) => {
+        if (session === null) setState({ status: 'signed-out', crewId: null });
+        else setState({ status: session.locked ? 'locked' : 'signed-in', crewId: session.crewId });
+      },
+      () => {
+        setState({ status: 'signed-out', crewId: null });
+      },
+    );
+  }, [api]);
+
   const signOut = useCallback(() => {
     setState({ status: 'signed-out', crewId: null });
   }, []);
 
-  const value = useMemo<AuthApi>(() => ({ ...state, signIn, lock, signOut }), [state, signIn, lock, signOut]);
+  const value = useMemo<AuthApi>(() => ({ ...state, signIn, lock, refresh, signOut }), [state, signIn, lock, refresh, signOut]);
   return <AuthContext value={value}>{children}</AuthContext>;
 }
 

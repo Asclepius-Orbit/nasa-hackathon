@@ -1,29 +1,32 @@
 import { useNavigate } from 'react-router';
 
 import { Button } from '../../components/ui/Button';
-import type { TodoItem } from '../../data/types';
+import type { TaskCode } from '../../data/types';
+import { taskText } from '../../strings/codes';
 import styles from './TodoRows.module.css';
 
-/** "To do" rows: title, detail and one action. An action without a screen yet stays visible but disabled. */
-export function TodoRows({ items }: { items: readonly TodoItem[] }): React.JSX.Element {
+/** "To do" rows from task codes: title, detail and one action. An action without a screen yet stays visible but disabled. */
+export function TodoRows({ items }: { items: readonly TaskCode[] }): React.JSX.Element {
   const navigate = useNavigate();
   return (
     <ul className={styles.todo}>
-      {items.map((item) => {
-        const { route, label, kind } = item.action;
+      {items.map((code) => {
+        const { title, detail, action } = taskText(code);
         return (
-          <li key={item.id} className={styles.row}>
+          <li key={code} className={styles.row}>
             <p>
-              {item.title}
-              <small>{item.detail}</small>
+              {title}
+              {detail !== '' && <small>{detail}</small>}
             </p>
-            <Button
-              variant={kind}
-              disabled={route === null}
-              onClick={route === null ? undefined : () => void navigate(route)}
-            >
-              {label}
-            </Button>
+            {action !== null && (
+              <Button
+                variant={action.kind}
+                disabled={action.route === null}
+                onClick={action.route === null ? undefined : () => void navigate(action.route ?? '')}
+              >
+                {action.label}
+              </Button>
+            )}
           </li>
         );
       })}

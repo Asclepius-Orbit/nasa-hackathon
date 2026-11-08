@@ -27,6 +27,10 @@ describe('formatTime', () => {
   it('appends mission elapsed time as days and HH:MM', () => {
     expect(formatTime(now, 'gmt_met', start)).toBe('13:40, MET 86 d 13:40');
   });
+  it('does not invent a mission elapsed time without a launch date', () => {
+    expect(formatTime(now, 'gmt_met', null)).toBe('13:40, MET not known');
+    expect(formatTime(now, 'gmt', null)).toBe('13:40');
+  });
   it('marks a time before the mission start', () => {
     expect(formatTime(new Date('2026-08-10T22:30:00Z'), 'gmt_met', start)).toBe('22:30, MET −0 d 01:30');
   });

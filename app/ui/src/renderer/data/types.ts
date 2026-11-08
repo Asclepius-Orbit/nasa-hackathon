@@ -1,4 +1,4 @@
-import type { Assessment, DailySelfReport } from '../../contracts/v1';
+import type { Assessment, DailySelfReport, HistoryDaySession, StripView, TaskCode as ContractTaskCode, TodayView } from '../../contracts/v1';
 
 /** Traffic light of an assessment (contract `Assessment.level`). */
 export type Level = Assessment['level'];
@@ -23,95 +23,124 @@ export interface SymptomCatalog {
 
 export type GroundLink = { state: 'up' } | { state: 'down'; backInMin: number | null };
 
-export interface HarnessStatus {
-  id: string;
-  batteryPct: number;
-  /** Weak-channel note such as "EMG right weak"; `null` when everything is good. */
-  note: string | null;
+/** Flight phase code (contract `mission_phase`); the words live in strings/codes. */
+export type MissionPhase = NonNullable<StripView['mission']['phase']>;
+export type TaskCode = ContractTaskCode;
+export type SessionState = HistoryDaySession['state'];
+export type MissingReason = NonNullable<TodayView['trust']>['missing'][number]['reason'];
+
+/** A stream that is not sending (device status stalled or disabled). */
+export interface WeakStream {
+  stream: string;
+  state: 'stalled' | 'disabled';
 }
 
-/** Facts shown in the always-visible strip and the offline banner. */
+export interface HarnessStatus {
+  id: string;
+  /** `null` when the device did not report it. */
+  batteryPct: number | null;
+  /** Streams that are not sending; empty when every stream is active. */
+  weakStreams: readonly WeakStream[];
+  degraded: boolean;
+}
+
+/** Facts shown in the always-visible strip and the offline banner. Every unknown is `null`, never a default. */
 export interface StripData {
-  missionDay: number;
-  /** ISO time of mission start; MET is measured from here. */
-  missionStart: string;
-  flightPhase: string;
+  /** `null` without a launch date. */
+  missionDay: number | null;
+  /** Launch date (`YYYY-MM-DD`); MET is measured from here. `null` when unknown. */
+  missionStart: string | null;
+  flightPhase: MissionPhase | null;
   /** `null` until a harness is paired. */
   harness: HarnessStatus | null;
-  groundLink: GroundLink;
-  /** `null` when there has been no contact at all. */
+  /** `null` = unknown (the backend does not model the ground link yet): never shown as up. */
+  groundLink: GroundLink | null;
+  /** `null` = unknown. */
   lastContactMinAgo: number | null;
-  /** Reports still due today; the badge on the Report tab (0 hides it). */
+  /** Reports still due today (daily and weekly Oswestry); the badge on the Report tab (0 hides it). */
   reportsDue: number;
 }
 
-export interface PlanItem {
-  id: string;
-  title: string;
-  detail: string;
-  /** Recommendation code from the engine catalogue, e.g. `REC_LUMBAR_STAB_01`. */
-  recommendation: string;
-  action: { label: string; route: string | null; kind: 'quiet' | 'primary' };
-}
-
+/** One driver of the level, as codes and numbers; the words come from strings/codes. */
 export interface Reason {
-  label: string;
-  text: string;
+  featureId: string;
+  deviationZ: number | null;
+  contribution: number | null;
 }
 
 export interface TrustFacts {
   confidencePct: number;
   dataAvailable: number;
   dataTotal: number;
-  /** Plain-words list of the missing data. */
-  missing: string;
-  assessedMinAgo: number;
-}
-
-export interface TodoItem {
-  id: string;
-  title: string;
-  detail: string;
-  action: { label: string; route: string | null; kind: 'quiet' | 'primary' };
+  missing: readonly { what: string; reason: MissingReason }[];
+  /** ISO time the assessment was made. */
+  assessedAt: string;
 }
 
 export interface TodayData {
-  level: Level;
-  /** What the level means, in the engine words. */
-  meaning: string;
-  whatToDo: string;
-  plan: readonly PlanItem[];
+  /** `nodata` when there is no assessment: every assessment field is then empty or `null`. */
+  level: DayLevel;
+  /** Recommendation codes (`REC_*`) of the assessment, in order. */
+  recommendations: readonly string[];
   reasons: readonly Reason[];
-  trust: TrustFacts;
-  alsoToday: readonly TodoItem[];
-  /** Lumbar length change vs preflight, shown on the spine figure. */
-  lumbarLengthMm: number;
+  trust: TrustFacts | null;
+  /** Other things still to do today. */
+  alsoToday: readonly TaskCode[];
+  /** Lumbar length change vs the astronaut reference; `null` = no data (never 0). */
+  lumbarLengthMm: number | null;
   /** A session in progress, if any (live rep count comes from `subscribeReps`). */
-  sessionInProgress: { title: string; sinceGmt: string; totalReps: number } | null;
+  sessionInProgress: { sessionId: string; protocolId: string; startedAt: string; totalReps: number | null } | null;
+}
+
+export interface BaselineSession {
+  /** `null` for a planned session. */
+  sessionId: string | null;
+  protocolId: string;
+  status: 'complete' | 'planned';
+  /** Days relative to launch: L-30 is -30. */
+  offsetDays: number;
+  /** `null` when it cannot be derived. */
+  date: string | null;
+}
+
+export interface BaselineData {
+  recorded: number;
+  required: number;
+  /** `null` while no reference was built. */
+  referenceVersion: number | null;
+  builtFromSessions: number;
+  sessions: readonly BaselineSession[];
 }
 
 export interface FirstDayData {
   crewFirstName: string;
-  todo: readonly TodoItem[];
+  /** Tasks still to do, in the order to show them. */
+  todo: readonly TaskCode[];
+  baseline: BaselineData;
 }
 
 export interface DayRecord {
-  day: number;
+  /** Calendar date, `YYYY-MM-DD`: the key of a day. */
+  date: string;
+  /** Mission day; `null` without a launch date. */
+  day: number | null;
   level: DayLevel;
-  /** Lumbar length vs preflight in mm; `null` = no data (never 0). */
+  /** Lumbar length vs reference in mm; `null` = no data (never 0). */
   lengthMm: number | null;
   /** Daily-report pain 0-10; `null` = no report. */
   pain: number | null;
-  session: string;
-  report: string;
-  note: string;
+  session: { sessionId: string; state: SessionState; protocolId: string } | null;
+  report: { kind: 'daily' | 'weekly_odi' | 'red_flag'; redFlags: readonly RedFlagCode[] } | null;
 }
 
 export interface HistoryData {
+  from: string;
+  to: string;
+  /** Mission day of today; `null` without a launch date. */
+  todayDay: number | null;
+  /** The astronaut own preflight range for lumbar length, in mm; `null` without a reference. */
+  preflightRangeMm: { lo: number; hi: number } | null;
   days: readonly DayRecord[];
-  todayDay: number;
-  /** The astronaut own preflight range for lumbar length, in mm. */
-  preflightRangeMm: { lo: number; hi: number };
 }
 
 export interface ChoiceOption<Value> {
@@ -135,31 +164,36 @@ export type StepStatus = 'done' | 'now' | 'todo';
 
 export interface SessionStep {
   id: 'fit' | 'check' | 'mvc' | 'reps' | 'finish';
-  label: string;
   status: StepStatus;
 }
 
 export interface SensorCheck {
-  sensor: string;
+  stream: string;
   status: 'good' | 'weak';
-  detail: string;
+  state: 'active' | 'stalled' | 'disabled';
 }
 
 export interface SessionData {
-  title: string;
-  band: { color: string; nominalKg: number };
-  stretchedCm: number;
-  totalReps: number;
-  startedGmt: string;
-  plannedGmt: string;
-  minutesBeforePlan: number;
+  sessionId: string;
+  state: SessionState;
+  protocolId: string;
+  /** `null` when the protocol uses no band. */
+  band: { color: string; nominalKg: number } | null;
+  /** `null` when the protocol has no repetitions. */
+  totalReps: number | null;
+  /** `null` when the protocol has no rest. */
+  restSeconds: number | null;
+  fitItems: readonly string[];
+  /** `null` before the gateway started the session. */
+  startedAt: string | null;
   steps: readonly SessionStep[];
-  fit: { items: readonly { id: string; label: string; detail: string }[]; fittedGmt: string };
-  checks: { items: readonly SensorCheck[]; continuedWithoutGmt: string | null };
-  calibration: { pulls: number; savedGmt: string; note: string };
-  countingBy: string;
-  backup: string;
-  restSeconds: number;
+  sensorChecks: readonly SensorCheck[];
+  /** `null` when no calibrate command was sent. */
+  calibration: { commandId: string; acked: boolean; ackedAt: string | null } | null;
+  /** Reserved by the backend: `null` for now. */
+  stretchedCm: number | null;
+  /** Reserved by the backend: `null` for now. */
+  plannedAt: string | null;
 }
 
 export interface RepState {
@@ -183,22 +217,6 @@ export interface StoppedData {
   groundLink: GroundLink;
   crewMedicalOfficerOnBoard: boolean;
   contacts: readonly ContactEntry[];
-}
-
-export interface BaselineSession {
-  label: string;
-  protocol: string;
-  status: 'complete' | 'planned';
-  /** When it happened or is planned, e.g. `L-30`. */
-  when: string;
-}
-
-export interface BaselineData {
-  recorded: number;
-  required: number;
-  sessions: readonly BaselineSession[];
-  referenceVersion: number;
-  builtFromSessions: number;
 }
 
 export interface OdiItem {

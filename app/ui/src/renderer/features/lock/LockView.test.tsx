@@ -81,3 +81,24 @@ describe('LockView', () => {
     expect(api.calls).not.toContain('auth.verifyPin');
   });
 });
+
+describe('LockView without a launch date', () => {
+  it('shows the time but no mission day', async () => {
+    const api = new FakeAsclepiusApi();
+    const world = setup(api);
+    world.data.getStrip = () =>
+      Promise.resolve({
+      missionDay: null,
+      missionStart: null,
+      flightPhase: null,
+      harness: null,
+      groundLink: null,
+      lastContactMinAgo: null,
+      reportsDue: 0,
+    });
+    world.unmount();
+    renderInWorld(<LockView />, { api, route: '/lock', data: world.data });
+    expect(await screen.findByText('13:40')).toBeInTheDocument();
+    expect(screen.queryByText(/mission day/)).not.toBeInTheDocument();
+  });
+});

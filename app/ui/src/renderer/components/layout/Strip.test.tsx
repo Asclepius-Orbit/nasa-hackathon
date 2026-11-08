@@ -1,9 +1,12 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
 
+import { RealDataSource } from '../../data/real/RealDataSource';
 import { MockDataSource } from '../../data/mock/MockDataSource';
 import type { StripData } from '../../data/types';
+import type { StripView } from '../../../shared/api';
+import { example } from '../../test/contract-examples';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import { renderInWorld } from '../../test/providers';
 import { Strip } from './Strip';
@@ -24,7 +27,7 @@ it('shows who is signed in and the mission facts from the data source', async ()
   expect(screen.getByText('Mission day')).toBeInTheDocument();
   expect(screen.getByText('In flight, microgravity')).toBeInTheDocument();
   expect(screen.getByText('Harness wb-01')).toBeInTheDocument();
-  expect(screen.getByText('64 %, EMG right weak')).toBeInTheDocument();
+  expect(screen.getByText('64 %, EMG right latissimus stalled')).toBeInTheDocument();
   expect(screen.getByText('Ground link')).toBeInTheDocument();
   expect(screen.getByText('Down, back in 12 min')).toBeInTheDocument();
 });
@@ -82,4 +85,49 @@ it('locks the tablet from the strip, hiding health data behind the PIN', async (
   renderInWorld(<Strip />, { api });
   await userEvent.click(await screen.findByRole('button', { name: 'Lock' }));
   expect(await api.auth.current()).toMatchObject({ locked: true });
+});
+
+it('shows an unknown ground link as Not known, never as up', async () => {
+  renderInWorld(<Strip />, { data: new StripVariant({ groundLink: null }) });
+  expect(await screen.findByText('Not known')).toBeInTheDocument();
+  expect(screen.queryByText('Up')).not.toBeInTheDocument();
+});
+
+it('shows a weak battery reading, degraded status and weak streams as data from the backend', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.strip = example<StripView>('ui-strip');
+  renderInWorld(<Strip />, { api, data: new RealDataSource(api.views) });
+  expect(await screen.findByText('18 %, degraded, Stretch cord L1 to L5 stalled')).toBeInTheDocument();
+  expect(screen.getByText('Not known')).toBeInTheDocument();
+  expect(screen.getByText('87')).toBeInTheDocument();
+  expect(screen.getByText('In flight, microgravity')).toBeInTheDocument();
+});
+
+it('shows no data for what the backend does not know: no launch date, no phase, no battery', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.strip = example<StripView>('ui-strip.unpaired');
+  api.settingsValue = { ...api.settingsValue, timeFormat: 'gmt_met' };
+  renderInWorld(<Strip />, { api, data: new RealDataSource(api.views) });
+  expect(await screen.findByText('Not paired yet')).toBeInTheDocument();
+  expect(screen.getAllByText('No data')).toHaveLength(2);
+  expect(screen.getByText('13:40, MET not known')).toBeInTheDocument();
+});
+
+it('says there is no connection to the monitor when the backend is down, and still offers Urgent', async () => {
+  const api = new FakeAsclepiusApi();
+  renderInWorld(<Strip />, { api, data: new RealDataSource(api.views) });
+  expect(await screen.findByText('No connection to the monitor')).toBeInTheDocument();
+  expect(screen.queryByText('Mission day')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Urgent symptom' })).toBeInTheDocument();
+});
+
+it('on a locked bridge the strip does not claim the monitor is down', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewErrors = { strip: 'locked' };
+  renderInWorld(<Strip />, { api, data: new RealDataSource(api.views) });
+  await screen.findByRole('button', { name: 'Urgent symptom' });
+  await waitFor(() => {
+    expect(api.calls.filter((c) => c === 'auth.current').length).toBeGreaterThan(1);
+  });
+  expect(screen.queryByText('No connection to the monitor')).not.toBeInTheDocument();
 });

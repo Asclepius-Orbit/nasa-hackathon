@@ -1,6 +1,7 @@
 import { NoData, Panel } from '../../components/ui/Panel';
 import type { DataSource } from '../../data/DataSource';
 import { useLoad } from '../../data/useLoad';
+import { LoadFailure } from '../../components/layout/NoMonitor';
 import { firstDay } from '../../strings/firstday';
 import { TodoRows } from '../today/TodoRows';
 import styles from './FirstDayView.module.css';
@@ -13,7 +14,7 @@ export function FirstDayView(): React.JSX.Element {
   return (
     <section aria-labelledby="firstday-title" data-testid="firstday-view">
       <h1 id="firstday-title">{data === null ? firstDay.loading : firstDay.welcome(data.crewFirstName)}</h1>
-      {error !== null && <p role="alert">{firstDay.error}</p>}
+      {error !== null && <LoadFailure error={error} fallback={firstDay.error} />}
       {data !== null && (
         <>
           <p className={styles.lede}>{firstDay.lede}</p>

@@ -7,7 +7,8 @@ import type { DataSource } from '../../data/DataSource';
 import type { DayLevel, DayRecord, HistoryData } from '../../data/types';
 import { useLoad } from '../../data/useLoad';
 import { levelLabel } from '../../strings/common';
-import { changeWhen, daysSummary, history, showDayLabel } from '../../strings/history';
+import { changeWhen, dayNote, daysSummary, history, showDayLabel } from '../../strings/history';
+import { LoadFailure } from '../../components/layout/NoMonitor';
 import { LengthChartFigure, PainChartFigure } from './Charts';
 import { DayDetail } from './DayDetail';
 import { DayStrip, type DayFilter } from './DayStrip';
@@ -49,22 +50,22 @@ function changesOf(days: readonly DayRecord[]): Change[] {
   return runs.reverse();
 }
 
-function Changes({ days, onShow }: { days: readonly DayRecord[]; onShow: (day: number) => void }): React.JSX.Element {
+function Changes({ days, onShow }: { days: readonly DayRecord[]; onShow: (date: string) => void }): React.JSX.Element {
   return (
     <Panel as="section" aria-labelledby="history-changes-title" className={styles.card}>
       <h2 id="history-changes-title">{history.changesTitle}</h2>
       <ol className={styles.changes} aria-labelledby="history-changes-title">
         {changesOf(days).map(({ first, last, isFirstRun }) => (
-          <li key={first.day}>
+          <li key={first.date}>
             <span className={cx(styles.node, SWATCH[first.level])} aria-hidden="true" />
-            <span className={styles.when}>{changeWhen(first.day, last.day, isFirstRun, first.level)}</span>
+            <span className={styles.when}>{changeWhen(first, last, isFirstRun, first.level)}</span>
             <span>
-              <span className={cx(styles.tag, SWATCH[first.level])}>{levelLabel(first.level)}</span>. {first.note}
+              <span className={cx(styles.tag, SWATCH[first.level])}>{levelLabel(first.level)}</span>. {dayNote(first.level)}
             </span>
             <Button
               variant="quiet"
-              aria-label={showDayLabel(first.day)}
-              onClick={() => { onShow(first.day); }}
+              aria-label={showDayLabel(first)}
+              onClick={() => { onShow(first.date); }}
             >
               {history.showDay}
             </Button>
@@ -77,9 +78,9 @@ function Changes({ days, onShow }: { days: readonly DayRecord[]; onShow: (day: n
 
 function HistoryBody({ data }: { data: HistoryData }): React.JSX.Element {
   const { days, todayDay, preflightRangeMm } = data;
-  const [selectedDay, setSelectedDay] = useState(todayDay);
+  const [selectedDay, setSelectedDay] = useState(() => (days.find((d) => d.day !== null && d.day === todayDay) ?? days[days.length - 1])?.date ?? '');
   const [filter, setFilter] = useState<DayFilter>('all');
-  const selectedIndex = Math.max(0, days.findIndex((d) => d.day === selectedDay));
+  const selectedIndex = Math.max(0, days.findIndex((d) => d.date === selectedDay));
   const selected = days[selectedIndex];
   const previous = days.slice(0, selectedIndex).reverse().find((d) => d.level !== 'nodata') ?? null;
   return (
@@ -117,7 +118,7 @@ export function HistoryView(): React.JSX.Element {
   return (
     <section aria-labelledby="history-title" data-testid="history-view">
       <h1 id="history-title">{history.title}</h1>
-      {error ? <p role="alert">{history.loadFailed}</p> : null}
+      {error ? <LoadFailure error={error} fallback={history.loadFailed} /> : null}
       {!data && !error ? <p role="status">{history.loading}</p> : null}
       {data ? <HistoryBody data={data} /> : null}
     </section>

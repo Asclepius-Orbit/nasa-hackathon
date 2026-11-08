@@ -4,6 +4,9 @@ import { expect, it } from 'vitest';
 
 import { MockDataSource } from '../../data/mock/MockDataSource';
 import type { DayRecord, HistoryData } from '../../data/types';
+import { RealDataSource } from '../../data/real/RealDataSource';
+import type { HistoryView as HistoryPayload } from '../../../shared/api';
+import { example } from '../../test/contract-examples';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import { FakeScheduler } from '../../test/fake-scheduler';
 import { renderInWorld } from '../../test/providers';
@@ -148,22 +151,22 @@ it('shows a loading state until the data arrives', () => {
 });
 
 class HistorySource extends MockDataSource {
-  constructor(private readonly days: readonly DayRecord[], private readonly todayDay: number) {
+  constructor(private readonly days: readonly DayRecord[], private readonly todayDay: number | null, private readonly range: HistoryData['preflightRangeMm'] = { lo: -1, hi: 1 }) {
     super({ now: () => new Date('2026-11-05T13:40:00Z'), scheduler: new FakeScheduler() });
   }
   override getHistory(): Promise<HistoryData> {
-    return Promise.resolve({ days: this.days, todayDay: this.todayDay, preflightRangeMm: { lo: -1, hi: 1 } });
+    return Promise.resolve({ from: '', to: '', days: this.days, todayDay: this.todayDay, preflightRangeMm: this.range });
   }
 }
 
-const rec = (day: number, lengthMm: number | null, pain: number | null): DayRecord => ({
+const rec = (day: number | null, lengthMm: number | null, pain: number | null, date = `2026-11-${String(day ?? 0).padStart(2, '0')}`): DayRecord => ({
+  date,
   day,
   level: lengthMm === null ? 'nodata' : 'green',
   lengthMm,
   pain,
-  session: 'S',
-  report: 'Done',
-  note: 'N',
+  session: null,
+  report: { kind: 'daily', redFlags: [] },
 });
 
 it('describes a month with no gaps, a value below the range and one lone missing day', async () => {
@@ -197,4 +200,57 @@ it('shows an alert when the history cannot be loaded', async () => {
   }
   renderInWorld(<HistoryView />, { data: new Broken({ now: () => new Date(), scheduler: new FakeScheduler() }) });
   expect(await screen.findByRole('alert')).toHaveTextContent('The history could not be loaded.');
+});
+
+const realHistory = (view: HistoryPayload | null): void => {
+  const api = new FakeAsclepiusApi();
+  if (view) api.viewData.history = view;
+  renderInWorld(<HistoryView />, { api, data: new RealDataSource(api.views) });
+};
+
+it('shows the backend example: nodata day empty, the report written from codes, red flags named', async () => {
+  const view = example<HistoryPayload>('ui-history');
+  const last = view.days[2];
+  if (!last) throw new Error('example changed');
+  realHistory({ ...view, days: [view.days[0], view.days[1], { ...last, report: { kind: 'red_flag', red_flags: ['leg_weakness'] } }] as HistoryPayload['days'] });
+  await screen.findByTestId('day-detail');
+  expect(within(detail()).getByText('Day 87')).toBeInTheDocument();
+  expect(within(detail()).getByText('Warning symptom reported: Leg weakness')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /^Day 85,/ }));
+  expect(within(detail()).getAllByText('No data').length).toBeGreaterThanOrEqual(3);
+  expect(within(detail()).getByText('Not done')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /^Day 86,/ }));
+  expect(within(detail()).getByText(/standing lat pulldown, complete/)).toBeInTheDocument();
+  expect(within(detail()).getByText('Daily report done')).toBeInTheDocument();
+});
+
+it('with no launch date every day is named by its date and none is marked as today', async () => {
+  const view = example<HistoryPayload>('ui-history');
+  realHistory({ ...view, today_day: null, days: view.days.map((d) => ({ ...d, mission_day: null })) });
+  await screen.findByTestId('day-detail');
+  expect(within(detail()).getByText('2027-02-09')).toBeInTheDocument();
+  expect(within(detail()).queryByText('today')).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: /Mission days 2027-02-07 to 2027-02-09/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Show day 2027-02-07' })).toBeInTheDocument();
+});
+
+it('says there is no preflight range yet instead of drawing one', async () => {
+  const view = example<HistoryPayload>('ui-history');
+  realHistory({ ...view, preflight_range_mm: null });
+  await screen.findByTestId('day-detail');
+  expect(screen.getByText(/No preflight reference yet/)).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: /with no preflight range yet/ })).toBeInTheDocument();
+});
+
+it('shows an empty window as empty, not as a green month', async () => {
+  realHistory(example<HistoryPayload>('ui-history.empty'));
+  expect(await screen.findByRole('img', { name: /Lumbar length/ })).toBeInTheDocument();
+  expect(screen.queryByTestId('day-detail')).not.toBeInTheDocument();
+  expect(screen.queryAllByTestId('length-segment')).toHaveLength(0);
+});
+
+it('says there is no connection to the monitor when the backend is down', async () => {
+  realHistory(null);
+  expect(await screen.findByTestId('no-monitor')).toBeInTheDocument();
+  expect(screen.queryByTestId('day-detail')).not.toBeInTheDocument();
 });

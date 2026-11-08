@@ -7,8 +7,10 @@ import type { DataSource } from '../../data/DataSource';
 import { useLoad } from '../../data/useLoad';
 import { useUrgent } from '../../features/urgent/UrgentContext';
 import { useSettings } from '../../settings/SettingsProvider';
-import { groundLinkValue, harnessValue, lockButton, strip, urgentButton } from '../../strings/common';
+import { groundLinkValue, harnessValue, lockButton, noData, noMonitor, strip, urgentButton } from '../../strings/common';
+import { phaseText } from '../../strings/codes';
 import { BatteryIcon, GroundLinkIcon } from './icons';
+import { isNoMonitor, useSessionRecheck } from './NoMonitor';
 import styles from './Strip.module.css';
 
 const selectStrip = (data: DataSource): ReturnType<DataSource['getStrip']> => data.getStrip();
@@ -48,7 +50,8 @@ function useCrewName(crewId: string | null): string | null {
 export function Strip(): React.JSX.Element {
   const { crewId, lock } = useAuth();
   const name = useCrewName(crewId);
-  const { data } = useLoad(selectStrip);
+  const { data, error } = useLoad(selectStrip);
+  useSessionRecheck(error);
   const now = useNow();
   const { formatTime } = useSettings();
   const { open } = useUrgent();
@@ -58,9 +61,9 @@ export function Strip(): React.JSX.Element {
       <span className={styles.who}>{name}</span>
       {data !== null && (
         <>
-          <Fact label={strip.missionDay} value={String(data.missionDay)} />
-          <Fact label={strip.gmt} value={formatTime(now, new Date(data.missionStart))} />
-          <Fact label={strip.phase} value={data.flightPhase} />
+          <Fact label={strip.missionDay} value={data.missionDay === null ? noData : String(data.missionDay)} />
+          <Fact label={strip.gmt} value={formatTime(now, data.missionStart === null ? null : new Date(data.missionStart))} />
+          <Fact label={strip.phase} value={data.flightPhase === null ? noData : phaseText(data.flightPhase)} />
           <span className={styles.grow} />
           <span className={styles.status}>
             <BatteryIcon />
@@ -73,6 +76,7 @@ export function Strip(): React.JSX.Element {
         </>
       )}
       {data === null && <span className={styles.grow} />}
+      {error !== null && isNoMonitor(error) && <span role="alert">{noMonitor.title}</span>}
       <button
         type="button"
         className={styles.lock}

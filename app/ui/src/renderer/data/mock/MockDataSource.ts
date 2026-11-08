@@ -15,7 +15,7 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { BASELINE, buildDays, CATALOG, FIRST_DAY, ODI, REPORT_FORM, SESSION, TODAY } from './mock-data';
+import { BASELINE, buildDays, CATALOG, FIRST_DAY, ODI, REPORT_FORM, SESSION, todayData } from './mock-data';
 
 const REP_TICK_MS = 450;
 const CYCLE_TICKS = 10;
@@ -51,9 +51,9 @@ export class MockDataSource implements DataSource {
     const midnight = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
     return Promise.resolve({
       missionDay: MISSION_DAY,
-      missionStart: new Date(midnight - (MISSION_DAY - 1) * MS_PER_DAY).toISOString(),
-      flightPhase: 'In flight, microgravity',
-      harness: { id: 'wb-01', batteryPct: 64, note: 'EMG right weak' },
+      missionStart: new Date(midnight - (MISSION_DAY - 1) * MS_PER_DAY).toISOString().slice(0, 10),
+      flightPhase: 'inflight',
+      harness: { id: 'wb-01', batteryPct: 64, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }], degraded: false },
       groundLink: { state: 'down', backInMin: 12 },
       lastContactMinAgo: 4,
       reportsDue: 1,
@@ -61,7 +61,7 @@ export class MockDataSource implements DataSource {
   }
 
   getToday(): Promise<TodayData> {
-    return Promise.resolve(TODAY);
+    return Promise.resolve(todayData(this.now()));
   }
 
   getFirstDay(): Promise<FirstDayData> {
@@ -69,14 +69,21 @@ export class MockDataSource implements DataSource {
   }
 
   getHistory(): Promise<HistoryData> {
-    return Promise.resolve({ days: buildDays(), todayDay: MISSION_DAY, preflightRangeMm: { lo: -1, hi: 1 } });
+    const days = buildDays(this.now());
+    return Promise.resolve({
+      from: days[0]?.date ?? '',
+      to: days.at(-1)?.date ?? '',
+      days,
+      todayDay: MISSION_DAY,
+      preflightRangeMm: { lo: -1, hi: 1 },
+    });
   }
 
   getReportForm(): Promise<ReportFormData> {
     return Promise.resolve(REPORT_FORM);
   }
 
-  getSession(): Promise<SessionData> {
+  getSession(): Promise<SessionData | null> {
     return Promise.resolve(SESSION);
   }
 

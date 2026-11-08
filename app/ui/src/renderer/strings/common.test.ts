@@ -14,10 +14,13 @@ it('describes the ground link, never hiding that it is down', () => {
   expect(groundLinkValue({ state: 'down', backInMin: 12 })).toBe('Down, back in 12 min');
   expect(groundLinkValue({ state: 'down', backInMin: null })).toBe('Down');
   expect(groundLinkValue({ state: 'up' })).toBe('Up');
+  expect(groundLinkValue(null)).toBe('Not known');
 });
 it('describes the harness battery and its weak channels', () => {
-  expect(harnessValue({ batteryPct: 64, note: 'EMG right weak' })).toBe('64 %, EMG right weak');
-  expect(harnessValue({ batteryPct: 64, note: null })).toBe('64 %');
+  const ok = { batteryPct: 64, degraded: false, weakStreams: [] };
+  expect(harnessValue({ ...ok, weakStreams: [{ stream: 'emg_lat_right', state: 'stalled' }] })).toBe('64 %, EMG right latissimus stalled');
+  expect(harnessValue(ok)).toBe('64 %');
+  expect(harnessValue({ ...ok, batteryPct: null, degraded: true })).toBe('Battery not reported, degraded');
   expect(harnessValue(null)).toBe('Not paired yet');
 });
 it('labels levels, with no-data explicit', () => {

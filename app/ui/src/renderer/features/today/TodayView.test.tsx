@@ -1,10 +1,15 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocation } from 'react-router';
 import { expect, it } from 'vitest';
 
 import { MockDataSource } from '../../data/mock/MockDataSource';
-import { TODAY } from '../../data/mock/mock-data';
+import { todayData } from '../../data/mock/mock-data';
+import { RealDataSource } from '../../data/real/RealDataSource';
+import { example } from '../../test/contract-examples';
+import type { TodayView as TodayViewPayload } from '../../../shared/api';
+
+const TODAY = todayData(new Date('2026-11-05T13:40:00Z'));
 import type { TodayData } from '../../data/types';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import { renderInWorld } from '../../test/providers';
@@ -111,15 +116,18 @@ it('says why amber and how far to trust it', async () => {
   setup();
   expect(await screen.findByRole('heading', { name: 'Why amber' })).toBeInTheDocument();
   expect(screen.getByText('Lumbar length')).toBeInTheDocument();
-  expect(screen.getByText(/2\.1 mm above your preflight reference in 1 g\./)).toBeInTheDocument();
+  expect(screen.getByText(/2\.4 standard deviations above your preflight reference\./)).toBeInTheDocument();
+  expect(screen.getByText(/1\.5 standard deviations below your preflight reference\./)).toBeInTheDocument();
   expect(screen.getByText('Confidence').parentElement).toHaveTextContent('70 %');
   expect(screen.getByText('Data available').parentElement).toHaveTextContent('8 of 10');
-  expect(screen.getByText(/Missing: right latissimus EMG/)).toBeInTheDocument();
+  expect(
+    screen.getByText("Missing: Right latissimus EMG frequency (sensor offline); Today's report (no data)"),
+  ).toBeInTheDocument();
   expect(screen.getByText('Assessed').parentElement).toHaveTextContent('42 min ago');
 });
 
 it('does not invent a missing-data line when everything is available', async () => {
-  const today: TodayData = { ...TODAY, trust: { ...TODAY.trust, dataAvailable: 10, missing: '' } };
+  const today: TodayData = { ...TODAY, trust: { ...(TODAY.trust as NonNullable<TodayData['trust']>), dataAvailable: 10, missing: [] } };
   setup({ data: new WithToday(today) });
   await screen.findByRole('heading', { name: 'Why amber' });
   expect(screen.queryByText(/Missing:/)).not.toBeInTheDocument();
@@ -146,4 +154,69 @@ it('says so when today cannot be loaded', async () => {
   }
   setup({ data: new Failing() });
   expect(await screen.findByRole('alert')).toHaveTextContent('Today could not be loaded.');
+});
+
+const realSetup = (today: TodayViewPayload | null): ReturnType<typeof renderInWorld> => {
+  const api = new FakeAsclepiusApi();
+  if (today) api.viewData.today = today;
+  return setup({ api, data: new RealDataSource(api.views) });
+};
+
+it('shows a real amber day from the backend example: plan from codes, an unknown code kept as it is', async () => {
+  const view = example<TodayViewPayload>('ui-today');
+  realSetup({ ...view, recommendations: [...view.recommendations, 'REC_FUTURE_99'] });
+  expect(await screen.findByRole('heading', { level: 1, name: 'Amber' })).toBeInTheDocument();
+  expect(screen.getByText('Lumbar stabilisation exercises, 10 min')).toBeInTheDocument();
+  expect(screen.getByText('Add resistive exercise (ARED) time')).toBeInTheDocument();
+  expect(screen.getByText('REC_FUTURE_99')).toBeInTheDocument();
+  expect(screen.getByText('Confidence').parentElement).toHaveTextContent('74 %');
+  expect(screen.getByRole('img', { name: /\+6\.4 mm/ })).toBeInTheDocument();
+});
+
+it('shows no data explicitly: no level colour word, no confidence, no length, no plan, and says nothing is assessed', async () => {
+  realSetup(example<TodayViewPayload>('ui-today.nodata'));
+  expect(await screen.findByRole('heading', { level: 1, name: 'No data' })).toHaveAttribute('data-level', 'nodata');
+  expect(screen.getByText(/It does not mean everything is fine/)).toBeInTheDocument();
+  expect(screen.getByText(/There is no assessment yet/)).toBeInTheDocument();
+  expect(screen.queryByText('Confidence')).not.toBeInTheDocument();
+  expect(screen.queryByText('Assessed')).not.toBeInTheDocument();
+  const figure = screen.getByRole('img', { name: /Side view of the spine. Lumbar length No data/ });
+  expect(within(figure).getAllByText('No data').length).toBeGreaterThan(0);
+  expect(screen.getByRole('heading', { name: 'Why no data' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Start daily report' })).toBeInTheDocument();
+});
+
+it('lists a running session even when no recommendation points to it', async () => {
+  realSetup(example<TodayViewPayload>('ui-today.nodata'));
+  const row = (await screen.findByText('Session in progress')).closest('li') as HTMLElement;
+  await userEvent.click(within(row).getByRole('button', { name: 'Return to session' }));
+  expect(screen.getByTestId('where')).toHaveTextContent('/session');
+});
+
+it('says there is no connection to the monitor when the backend is down', async () => {
+  realSetup(null);
+  expect(await screen.findByTestId('no-monitor')).toHaveTextContent('No connection to the monitor');
+  expect(screen.queryByRole('heading', { level: 1, name: 'Amber' })).not.toBeInTheDocument();
+});
+
+it('on a locked bridge it does not claim the monitor is down: it re-reads the session and the lock flow takes over', async () => {
+  const api = new FakeAsclepiusApi();
+  api.views.today = () => {
+    api.session = { crewId: 'AST-01', locked: true };
+    return Promise.reject(new Error('locked'));
+  };
+  setup({ api, data: new RealDataSource(api.views) });
+  await screen.findByRole('status');
+  await waitFor(() => {
+    expect(api.calls.filter((c) => c === 'auth.current').length).toBeGreaterThan(1);
+  });
+  expect(screen.queryByTestId('no-monitor')).not.toBeInTheDocument();
+});
+
+it('with the backend it never shows a simulated rep count: only the title, start and total from the contract', async () => {
+  const { scheduler } = realSetup(example<TodayViewPayload>('ui-today.nodata'));
+  const row = (await screen.findByText('Session in progress')).closest('li') as HTMLElement;
+  expect(row).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
+  expect(row).not.toHaveTextContent(/rep \d+ of/);
+  expect(scheduler.active).toBe(0);
 });

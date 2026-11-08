@@ -21,7 +21,7 @@ export interface SettingsApi {
   /** Signed length in the chosen unit, e.g. `+2.1 mm`. */
   formatLength: (mm: number) => string;
   /** Clock time in the chosen format (GMT, or GMT plus mission elapsed time). */
-  formatTime: (date: Date, missionStart: Date) => string;
+  formatTime: (date: Date, missionStart: Date | null) => string;
 }
 
 const SettingsContext = createContext<SettingsApi | null>(null);

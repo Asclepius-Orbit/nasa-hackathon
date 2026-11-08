@@ -53,8 +53,8 @@ export function LockView(): React.JSX.Element {
   return (
     <section aria-labelledby="lock-title" data-testid="lock-view" className={styles.lock}>
       <div className={styles.inner}>
-        <div className={styles.time}>{data === null ? <NoData /> : formatTime(now, 'gmt', new Date(data.missionStart))}</div>
-        {data !== null && <p className={styles.day}>{lock.gmtLine(data.missionDay)}</p>}
+        <div className={styles.time}>{data === null ? <NoData /> : formatTime(now, 'gmt', null)}</div>
+        {data?.missionDay != null && <p className={styles.day}>{lock.gmtLine(data.missionDay)}</p>}
         <h1 id="lock-title" className={styles.title}>
           {lock.title}
         </h1>

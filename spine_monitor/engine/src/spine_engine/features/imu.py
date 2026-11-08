@@ -21,6 +21,7 @@ Motivos de ``skipped`` en orden: ``stream_missing``, la calibración (``no_calib
 de SPARC por frecuencia de muestreo se da antes que estos dos últimos. Nunca lanza.
 """
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -69,7 +70,7 @@ type Signal = NDArray[np.float64]
 def plane_channel(mounting: Mounting, plane: AnatomicalPlane) -> tuple[str, float] | None:
     """Canal del giróscopo que mide la rotación del plano y su signo; ``None`` si el montaje no lo cubre."""
     positive, negative = _PLANE_AXES[plane]
-    for channel, axis in zip(_GYRO, (mounting.sensor_x, mounting.sensor_y, mounting.sensor_z), strict=True):
+    for channel, axis in (("gyro_x", mounting.sensor_x), ("gyro_y", mounting.sensor_y), ("gyro_z", mounting.sensor_z)):
         if axis is positive:
             return channel, 1.0
         if axis is negative:
@@ -89,19 +90,22 @@ def peak_angular_velocity_dps(omega_dps: Signal) -> float:
 
 
 def sparc(speed: Signal, rate_hz: float) -> float:
-    """SPARC (longitud de arco espectral) de un perfil de velocidad; ≤ 0, más cerca de 0 = más suave. NaN si es nulo."""
+    """SPARC (longitud de arco espectral) de un perfil de velocidad ``>= 0``; ≤ 0, más cerca de 0 = más suave. NaN si es nulo.
+
+    Con velocidades no negativas el máximo del espectro es el de 0 Hz (la suma), así que el tramo sobre el umbral
+    empieza siempre en 0 Hz y solo se recorta por arriba, como en la implementación publicada.
+    """
     nfft = 2 ** (int(np.ceil(np.log2(len(speed)))) + SPARC_PAD_LEVEL)
     magnitude = np.abs(np.fft.rfft(speed, nfft))
     peak = magnitude.max()
     if peak == 0.0:
-        return float("nan")
+        return math.nan
     freqs = np.arange(len(magnitude)) * rate_hz / nfft
     keep = freqs <= SPARC_CUTOFF_HZ
     freqs, magnitude = freqs[keep], magnitude[keep] / peak
-    above = np.nonzero(magnitude >= SPARC_AMPLITUDE_THRESHOLD)[0]
-    freqs, magnitude = freqs[above[0] : above[-1] + 1], magnitude[above[0] : above[-1] + 1]
-    span = freqs[-1] - freqs[0]
-    return -float(np.sum(np.sqrt((np.diff(freqs) / span) ** 2 + np.diff(magnitude) ** 2)))
+    last = np.nonzero(magnitude >= SPARC_AMPLITUDE_THRESHOLD)[0][-1]
+    freqs, magnitude = freqs[: last + 1], magnitude[: last + 1]
+    return -float(np.sum(np.sqrt((np.diff(freqs) / freqs[last]) ** 2 + np.diff(magnitude) ** 2)))
 
 
 def accel_rms_g(ax: Signal, ay: Signal, az: Signal) -> float:
@@ -194,7 +198,7 @@ def _compute(
     sparc_ok: bool,
 ) -> FamilyResult:
     bias = calibration.gyro_bias_dps
-    offsets: dict[str, float] = dict(zip(_GYRO, (bias.x, bias.y, bias.z), strict=True))
+    offsets = {"gyro_x": bias.x, "gyro_y": bias.y, "gyro_z": bias.z}
     n = len(reps)
     computed: list[ComputedFeature] = []
     skipped: list[SkippedFeature] = []

@@ -253,6 +253,14 @@ def test_sparc_matches_the_reference_implementation(n: int, fs: float):
     assert sparc(speed, fs) == pytest.approx(reference_sparc(speed, fs), rel=1e-12)
 
 
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_sparc_of_a_broadband_profile_matches_the_reference_up_to_the_cutoff(seed: int):
+    # espectro sobre el umbral más allá de 10 Hz; a 128 Hz con 128 muestras hay un bin justo en 10 Hz (se incluye)
+    speed = np.abs(np.random.default_rng(seed).normal(0.0, 1.0, 128))
+
+    assert sparc(speed, 128.0) == pytest.approx(reference_sparc(speed, 128.0), rel=1e-12)
+
+
 def test_a_minimum_jerk_profile_is_smoother_than_the_same_profile_with_a_tremor():
     speed = min_jerk_speed(200)
     shaky = speed + 0.3 * np.abs(np.sin(np.linspace(0.0, 2 * np.pi * 6, 200)))
@@ -414,6 +422,49 @@ def test_the_mounting_of_the_calibration_picks_the_axis_and_its_sign():
     got = values(result)
     assert got["imu.l3.sagittal.rom_deg"] == pytest.approx(20.0)
     assert got["imu.l3.frontal.rom_deg"] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_a_mounting_without_two_planes_skips_both_and_a_slow_stream_keeps_the_sparc_reason():
+    def broken(raw: dict[str, Any]) -> None:
+        imu_calibration(raw)["mounting"] = {"sensor_x": "anterior", "sensor_y": "anterior", "sensor_z": "anterior"}
+
+    result = run([rep(1, 2.0, 4.0)], sagittal_context(rate=49.0, edit=broken))
+
+    expected = {f"imu.l3.{plane}.{name}": Reason.NO_CALIBRATION for plane in ("sagittal", "transverse") for name in ("rom_deg", "peak_angular_velocity_dps")}
+    expected |= dict.fromkeys(sparc_ids(), Reason.INSUFFICIENT_SAMPLE_RATE)
+    assert skipped(result) == expected
+    assert len(result.skipped) == len(expected)
+    assert list(values(result)) == ["imu.l3.frontal.rom_deg", "imu.l3.frontal.peak_angular_velocity_dps", "imu.l3.accel_rms_g"]
+
+
+def test_a_repetition_with_a_single_sample_counts():
+    result = run([rep(1, 2.0, 2.005)], sagittal_context())
+
+    assert {f.n for f in result.computed} == {1}
+    assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(0.2)
+
+
+def test_a_non_imu_stream_with_a_spine_level_is_ignored():
+    def emg_with_level(raw: dict[str, Any]) -> None:
+        emg = next(s for s in raw["session"]["streams"] if s["stream_kind"] == "emg")
+        emg["placement"] = {**emg["placement"], "spine_level": "t5"}
+
+    result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=emg_with_level))
+
+    assert [f.feature_id for f in result.computed] == ids_for("l3")
+    assert result.skipped == ()
+
+
+def test_the_skips_of_every_stream_are_kept():
+    def expired_and_second(raw: dict[str, Any]) -> None:
+        imu_calibration(raw)["valid_until"] = "2026-11-13T09:00:00Z"
+        decl = next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_l3")
+        raw["session"]["streams"].append({**decl, "stream_id": "imu_t12", "placement": {"spine_level": "t12"}})
+
+    result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=expired_and_second))
+
+    expected = [(i, Reason.CALIBRATION_EXPIRED) for i in ids_for("l3")] + [(i, Reason.STREAM_MISSING) for i in ids_for("t12")]
+    assert [(s.feature_id, s.reason) for s in result.skipped] == expected
 
 
 def test_a_mounting_without_a_plane_skips_that_plane_as_no_calibration():

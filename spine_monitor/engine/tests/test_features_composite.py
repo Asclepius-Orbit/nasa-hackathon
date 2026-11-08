@@ -74,11 +74,10 @@ def extract_json(extractor: CompositeFeatureExtractor, request: FeaturesRequest)
     return result
 
 
-def test_the_default_registry_is_empty_and_yields_an_honest_empty_feature_set():
-    assert list(default_registry()) == []
+def test_an_empty_registry_yields_an_honest_empty_feature_set():
     request = make_request()
 
-    result = extract_json(CompositeFeatureExtractor(default_registry()), request)
+    result = extract_json(CompositeFeatureExtractor(ExtractorRegistry()), request)
 
     assert result["features"] == []
     assert result.get("skipped", []) == []

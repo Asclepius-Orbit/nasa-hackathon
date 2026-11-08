@@ -18,7 +18,7 @@ El contracte és `contracts/openapi.yaml`; cossos i errors són els JSON Schemas
 | Endpoint | Cos d'entrada | Cos de sortida | Avui |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` buit amb les metadades de la sessió, fins que arribi l'extracció |
+| `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` de les famílies registrades: `exercise` des de #41; les famílies EMG, IMU i cordó arriben a #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de les sessions de referència) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparació real amb la baseline; model de risc i triatge nuls (nivell sempre verd) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: no aplica `overrides`, `reference` i `scenario` són la mateixa avaluació |
@@ -47,13 +47,13 @@ Els exemples de `contracts/examples/valid/engine/` són peticions vàlides de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | canvi sostingut sobre l'històric (mateix protocol i gravetat); un pic aïllat mai compta |
 | `VotePolicy` | `AllAgreeVote` | els detectors han de coincidir (AND), en el mateix sentit |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construeix la baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (el registre és buit fins a #41-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (`exercise`, #41; EMG, IMU i cordó a #42-#45) |
 
 Els detectors només veuen una sèrie de z-scores: no saben quina mètrica és, així que no depenen del model teòric. `Deviation` porta el z-score, la gravetat de referència i si el canvi és sostingut i en quin sentit; el model de risc ho llegeix d'allà.
 
 ## Extracció de features
 
-`POST /features` executa `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de famílies de features (`FeatureFamilyExtractor`: un nom `family`, els `feature_ids` del catàleg que declara i `extract(context) -> FamilyResult` amb features `computed` i `skipped`). El registre per defecte és buit, així que avui la resposta és un `FeatureSet` buit i honest; les mètriques arriben família a família. `NullFeatureExtractor` es manté a `stubs.py` per als tests.
+`POST /features` executa `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de famílies de features (`FeatureFamilyExtractor`: un nom `family`, els `feature_ids` del catàleg que declara i `extract(context) -> FamilyResult` amb features `computed` i `skipped`). `default_registry()` registra la família `exercise` (#41), així que avui ja es calculen les mètriques de repeticions; les dels altres sensors arriben família a família (#42-#45). `NullFeatureExtractor` es manté a `stubs.py` per als tests.
 
 Abans d'executar les famílies, el motor prepara una sola vegada un `ExtractionContext`:
 
@@ -63,6 +63,20 @@ Abans d'executar les famílies, el motor prepara una sola vegada un `ExtractionC
 - **Qualitat:** `score = cobertura x (1 - fracció saturada)`, `assessed_by = "engine"`, amb flags de forats (`packet_gap`), saturació (`saturated_adc`, `clipping`), calibratge caducat (`out_of_calibration`) i, si es configura `clock_uncertain_ms`, `clock_uncertain`. La saturació només es jutja on les dades ho permeten (bits de l'ADC, rangs de la IMU); no hi ha llindars clínics.
 
 El compost omple `unit` des del catàleg de features i la qualitat sobre els streams que cada feature ha declarat usar. Un id fora del catàleg és un error de programació de la família i llança `UnknownFeatureIdError`. El que no es pot calcular va a `skipped` amb motiu: `stream_missing` (stream declarat sense chunks), `no_calibration`, `calibration_expired` i `no_data` (cobertura 0, sense UTC o valor no finit), entre d'altres; la petició mai es rebutja per incoherent. `features` i `skipped` surten ordenades, així que el resultat no depèn de l'ordre de registre.
+
+### Repeticions i la família `exercise`
+
+`exercise.rep_count`, `exercise.rep_duration_s_mean` i `exercise.rep_duration_cv_pct` (CV en %, desviació típica mostral n-1) necessiten almenys 2 repeticions vàlides. Amb menys, les tres surten a `skipped` amb `too_few_repetitions`.
+
+`RepetitionService` resol les finestres de repetició (`RepWindow`): inici, fi, la fase activa (rep_start→rep_end) i el repòs (rep_end→següent rep_start). L'última repetició només té repòs si després hi ha un esdeveniment `rest_end`. `default_registry()` crea un sol servei i se'l passa a les famílies, perquè les famílies EMG, IMU i cordó (#42-#45) el reutilitzin.
+
+L'origen, en aquest ordre:
+
+1. Els esdeveniments `rep_start`/`rep_end` de la sessió (que registra la comanda `mark_event`), ordenats per temps i aparellats per ordre. Els orfes, els duplicats i les finestres amb fi <= inici es descarten.
+2. Si no en queda cap de vàlida, recurs de reserva per IMU que usa només el giroscopi (en microgravetat l'acceleròmetre no veu la gravetat): lòbuls de velocitat angular de signe contrari a l'eix dominant, per `boot_id`, amb rellotge UTC. Sense senyal no retorna res.
+3. Si tampoc hi ha res, no hi ha repeticions.
+
+Qualitat: les features per esdeveniments avaluen la qualitat comuna sobre tots els streams declarats; les de recurs de reserva IMU, sobre els streams IMU. Sense chunks amb àncora de rellotge, surten `no_data`.
 
 ## Configuració
 

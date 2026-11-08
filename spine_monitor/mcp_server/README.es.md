@@ -4,7 +4,7 @@
 
 ## Descripción
 
-Servidor MCP (stdio) que expone 7 herramientas de solo lectura y simulación al agente LLM local. Nunca escribe datos, nunca toca la base de datos de la app y nunca diagnostica. Hoy funciona con mocks construidos a partir de los ejemplos del contrato (`spine_monitor/contracts/examples/valid/`), detrás de tres Protocols (`AppReader`, `Simulator` y `AssessBaseSource` en `ports.py`) para que los clientes HTTP reales puedan sustituirlos más adelante.
+Servidor MCP (stdio) que expone 7 herramientas de solo lectura y simulación al agente LLM local. Nunca escribe datos, nunca toca la base de datos de la app y nunca diagnostica. Por defecto funciona con mocks construidos a partir de los ejemplos del contrato (`spine_monitor/contracts/examples/valid/`); con `--dataset http` lee de la API de lectura real de la app. En ambos casos los datos entran detrás de tres Protocols (`AppReader`, `Simulator` y `AssessBaseSource` en `ports.py`), así que la fuente se puede sustituir.
 
 ## Ejecución
 
@@ -38,15 +38,22 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 - `start` y `end` son timestamps RFC 3339 con desfase UTC. `limit` va de 1 a 500.
 - `compare_periods` lee ambos periodos con `limit` 500 y calcula la comparación en el servidor. Los deltas son B menos A.
 - `overrides` es una lista opcional (vacía por defecto) de cambios con `feature_id`, `mode` (`set`, `add` o `scale`) y `value`; vacía u omitida significa sin cambios, así que se proyecta la trayectoria actual tal como está. `project_days` va de 1 a 365.
-- `simulate_scenario` es solo hipotético y nunca cambia datos reales.
+- `simulate_scenario` es solo hipotético y nunca cambia datos reales. Con `--dataset http` devuelve un error de herramienta hasta que la API de la app tenga un endpoint de simulación.
 
 ## Datasets
 
 `python -m spine_mcp_server` sirve por defecto un **dataset de demo**: los últimos 14 días del astronauta `AST-01`, generados en relación con el reloj para que los datos terminen siempre «ahora». Está en verde los primeros 8 días y en ámbar los últimos 6, con un risk score creciente (de 0,18 a 0,62), una evaluación al día, una sesión de ejercicio cada 2 días más algunos chequeos de columna, un autoinforme diario (dolor NRS de 2 a 5) y un informe ODI semanal. `explain_assessment` funciona para todas las evaluaciones de ese histórico, `compare_periods` tiene datos en las dos semanas y `simulate_scenario` responde a los «¿y si…?» con un modelo lineal simple sobre la elongación lumbar (una aproximación, no el motor). `AST-01` es el único astronauta; cualquier otro id devuelve un error de herramienta «not found».
 
+Para leer la app real, usa `--dataset http`. Llama a la API de lectura de la app en la URL de `SPINE_APP_URL` (por defecto `http://127.0.0.1:8002`). En este modo no hay mocks: los payloads son lo que devuelva la app.
+
+```bash
+SPINE_APP_URL=http://127.0.0.1:8002 uv run python -m spine_mcp_server --dataset http
+```
+
 | Opción | Significado |
 |---|---|
-| `--dataset demo\|examples` | `demo` (por defecto), o `examples`: la foto estática única de `contracts/examples/valid/` que usan los tests de contratos |
+| `--dataset demo\|examples\|http` | `demo` (por defecto); `examples`: la foto estática única de `contracts/examples/valid/` que usan los tests de contratos; `http`: la API de lectura real de la app en `SPINE_APP_URL` |
+| `SPINE_APP_URL` | URL base de la API de lectura de la app que usa `http` (por defecto `http://127.0.0.1:8002`) |
 | `--now 2026-11-13T12:00:00Z` | Fija el reloj del demo (ISO 8601 con zona horaria, redondeado a la hora) para demos y tests reproducibles; sin él se usa el reloj de pared |
 
 Los datos del demo se generan de forma determinista: el mismo `--now` da siempre los mismos payloads e ids.
@@ -54,6 +61,18 @@ Los datos del demo se generan de forma determinista: el mismo `--now` da siempre
 ## Errores
 
 Un fallo de la app o del motor (por ejemplo 404 no encontrado o 422 rango no válido) se convierte en un error de herramienta MCP (`isError: true`) con el mensaje `título: detalle`.
+
+En `--dataset http`, los fallos de la API de la app se traducen así:
+
+| Fallo upstream | Error de herramienta MCP |
+|---|---|
+| 4xx con problem details (por ejemplo 404 o 422) | `título: detalle`, se conserva el estado upstream; sin `detail`, lo sustituyen los errores de campo (`pointer: message`); recortado a 500 caracteres |
+| Otros no éxitos por debajo de 500 (4xx, 3xx), sin cuerpo problem | `App API request rejected`, se conserva el estado upstream |
+| 5xx | `App API error: HTTP <estado>`, se conserva el estado upstream; no se reenvía el detalle upstream |
+| Cuerpo de respuesta que no cumple el contrato | 502, `App API returned an invalid response` |
+| Sin respuesta en 10 segundos | 504, `App API timeout` |
+| Fallo de conexión | 503, `App API unavailable` |
+| `simulate_scenario` (aún sin endpoint) | 501, `Assessment base not available` o `Simulation not available` |
 
 ## Notas de compare_periods
 
@@ -65,4 +84,5 @@ Un fallo de la app o del motor (por ejemplo 404 no encontrado o 422 rango no vá
 
 ## Fuera de alcance por ahora
 
-- Clientes HTTP reales, a la espera de la API de la app (issue #17).
+- `simulate_scenario` y la base de valoración por HTTP: la API de la app aún no tiene endpoint para ellos, así que devuelven 501.
+- El demo sigue siendo el dataset por defecto hasta que el motor sea real.

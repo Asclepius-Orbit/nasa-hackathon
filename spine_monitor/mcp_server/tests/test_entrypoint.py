@@ -1,13 +1,20 @@
 """Punto de entrada del servidor: opciones (`parse_args`), conversión de `--now` y elección de dataset/reloj en `build_server`."""
 
 import argparse
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta, timezone
 
+import httpx
 import pytest
 import spine_mcp_server
 from mcp.client.client import Client
+from mcp.server.mcpserver import MCPServer
+from mcp.types import TextContent
 from spine_mcp_server import _aware_iso, build_server, parse_args  # pyright: ignore[reportPrivateUsage] -- se prueba el conversor de `--now`
+from spine_mcp_server.http_client import HttpAppReader
 
+real_client = httpx.Client
 AST = "AST-01"
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
@@ -28,6 +35,7 @@ def test_dataset_examples_is_accepted_and_demo_can_be_explicit():
     assert parse_args(["--dataset", "examples"]).dataset == "examples"
     assert parse_args(["--dataset", "demo"]).dataset == "demo"
     assert parse_args(["--dataset=examples"]).dataset == "examples"
+    assert parse_args(["--dataset", "http"]).dataset == "http"
 
 
 def test_invalid_dataset_exits_with_status_2_and_lists_the_choices(capsys: pytest.CaptureFixture[str]):
@@ -36,7 +44,7 @@ def test_invalid_dataset_exits_with_status_2_and_lists_the_choices(capsys: pytes
     assert caught.value.code == 2
     err = capsys.readouterr().err
     assert "spine_mcp_server: error: argument --dataset: invalid choice: 'other'" in err
-    assert "'demo'" in err and "'examples'" in err
+    assert "'demo'" in err and "'examples'" in err and "'http'" in err
 
 
 def test_now_accepts_z_and_offsets_and_converts_to_utc():
@@ -80,10 +88,13 @@ def test_help_documents_every_option_choice_and_text(monkeypatch: pytest.MonkeyP
         parse_args(["--help"])
     assert caught.value.code == 0
     out = " ".join(capsys.readouterr().out.split())
-    assert out.startswith("usage: spine_mcp_server [-h] [--dataset {demo,examples}] [--now NOW]")
+    assert out.startswith("usage: spine_mcp_server [-h] [--dataset {demo,examples,http}] [--now NOW]")
     assert "Servidor MCP de Asclepius Orbit por stdio." in out
-    assert "--dataset {demo,examples}" in out
-    assert "demo: 14 días de AST-01 relativos al reloj (por defecto); examples: la foto única de los ejemplos de los contratos." in out
+    assert "--dataset {demo,examples,http}" in out
+    assert (
+        "demo: 14 días de AST-01 relativos al reloj (por defecto); examples: la foto única de los ejemplos de los contratos; "
+        "http: la API de lectura de la app en la URL de SPINE_APP_URL (por defecto http://127.0.0.1:8002); sin simulación." in out
+    )
     assert "--now NOW" in out
     assert "Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z)." in out
 
@@ -182,3 +193,73 @@ async def test_demo_server_wires_the_demo_simulator_and_assess_base():
     scenario = result.structured_content["scenario"]
     assert (scenario["risk_score"], scenario["level"]) == (0.88, "red")
     assert result.structured_content["reference"]["risk_score"] == 0.62
+
+
+def test_building_the_server_does_not_import_jsonschema():
+    # Cold start: jsonschema (via rfc3987_syntax) costs ~1.4 s and nothing validates against schemas until a tool runs.
+    code = "import sys, spine_mcp_server; spine_mcp_server.build_server(['--dataset', 'examples']); print('jsonschema' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
+    assert out == "False"
+
+
+def _reader(server: MCPServer) -> HttpAppReader:
+    """El `AppReader` con el que `create_server` ha cableado la tool `get_current_status`."""
+    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- `_tool_manager` y los cierres no son API pública
+    assert closure is not None
+    readers = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpAppReader)]
+    assert len(readers) == 1
+    return readers[0]
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_http_dataset_reads_status_from_the_url_in_spine_app_url(monkeypatch: pytest.MonkeyPatch):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(404, json={"type": "not_found", "title": "Not found", "status": 404})
+
+    monkeypatch.setenv("SPINE_APP_URL", "http://app.test:9000")
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    async with Client(build_server(["--dataset", "http"])) as client:
+        result = await client.call_tool("get_current_status", {"astronaut_id": AST})
+    assert seen == ["http://app.test:9000/crew/AST-01/status"]
+    assert result.is_error
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_http_dataset_simulation_is_reported_as_unavailable(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SPINE_APP_URL", "http://app.test:9000")
+    async with Client(build_server(["--dataset", "http"])) as client:
+        result = await client.call_tool("simulate_scenario", {"astronaut_id": AST, "overrides": []})
+    assert result.is_error
+    assert isinstance(result.content[0], TextContent)
+    assert "not available in http mode" in result.content[0].text
+
+
+def test_http_dataset_defaults_to_the_local_app_url(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SPINE_APP_URL", raising=False)
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_http_dataset_uses_the_default_url_when_spine_app_url_is_blank(monkeypatch: pytest.MonkeyPatch, blank: str):
+    monkeypatch.setenv("SPINE_APP_URL", blank)
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+
+
+def test_http_dataset_reads_the_env_var_when_building_not_when_importing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SPINE_APP_URL", "http://other.test:1234/")
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://other.test:1234"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+    monkeypatch.setenv("SPINE_APP_URL", "http://second.test")
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://second.test"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_spine_app_url_is_ignored_by_the_demo_dataset(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SPINE_APP_URL", "http://unreachable.invalid")
+    status = await _status(["--now", "2026-11-13T12:00:00Z"])
+    assert status["generated_at"] == "2026-11-13T12:00:00Z"

@@ -23,7 +23,7 @@ chunks ``stream_missing``. La simetría hace falta con la MVC de ambos lados: si
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from numpy.typing import NDArray
@@ -44,6 +44,8 @@ PEAK_PCT_MVC = "emg.{muscle}.{side}.peak_pct_mvc"
 SYMMETRY_INDEX_PCT = "emg.{muscle}.symmetry_index_pct"
 
 _CHANNEL = "emg"
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_MICROSECOND = timedelta(microseconds=1)
 _TEMPLATES = {"rms_mv": RMS_MV, "rest_rms_mv": REST_RMS_MV, "rms_pct_mvc": RMS_PCT_MVC, "peak_pct_mvc": PEAK_PCT_MVC}
 
 
@@ -81,14 +83,38 @@ def _emg_streams(context: ExtractionContext) -> tuple[_EmgStream, ...]:
     return tuple(found.values())
 
 
-def _pieces(context: ExtractionContext, stream_id: str, spans: Sequence[tuple[datetime, datetime]]) -> tuple[_Piece, ...]:
-    """Muestras de cada tramo UTC, un trozo por (tramo, segmento) que tenga muestras."""
+@dataclass(frozen=True, slots=True)
+class _Read:
+    """Muestras de un segmento leídas una sola vez: instante UTC en microsegundos enteros y valor."""
+
+    micros: NDArray[np.int64]
+    values: NDArray[np.float64]
+    rate_hz: float
+
+
+def _micros(instant: datetime) -> int:
+    """Microsegundos UTC desde la época, enteros: compara igual que los ``datetime`` (sin redondeo de float)."""
+    return (instant - _EPOCH) // _MICROSECOND
+
+
+def _read(context: ExtractionContext, stream_id: str) -> tuple[_Read, ...]:
+    """Lee cada segmento del stream una vez: el coste es lineal en las muestras, no en muestras por repeticiones."""
+    reads: list[_Read] = []
+    for segment in context.segments(stream_id):
+        samples = segment_samples(context.clock, segment, (_CHANNEL,))
+        micros = np.fromiter((_micros(t) for t in samples.times), dtype=np.int64, count=len(samples.times))
+        reads.append(_Read(micros, samples.channels[_CHANNEL], segment.chunks[0].sample_rate_hz))
+    return tuple(reads)
+
+
+def _pieces(reads: Sequence[_Read], spans: Sequence[tuple[datetime, datetime]]) -> tuple[_Piece, ...]:
+    """Muestras de cada tramo UTC (``inicio <= t < fin``), un trozo por (tramo, segmento) que tenga muestras."""
     pieces: list[_Piece] = []
-    for index, span in enumerate(spans):
-        for segment in context.segments(stream_id):
-            values = segment_samples(context.clock, segment, (_CHANNEL,), span).channels[_CHANNEL]
+    for index, (start, end) in enumerate(spans):
+        for read in reads:
+            values = read.values[(read.micros >= _micros(start)) & (read.micros < _micros(end))]
             if values.size:
-                pieces.append(_Piece(index, values, segment.chunks[0].sample_rate_hz))
+                pieces.append(_Piece(index, values, read.rate_hz))
     return tuple(pieces)
 
 
@@ -164,9 +190,9 @@ class EmgFamily:
                 skip(name, Reason.STREAM_MISSING)
             return Reason.STREAM_MISSING
 
-        active = _pieces(context, stream.stream_id, [w.active for w in windows])
-        rests = [rest for w in windows if (rest := w.rest) is not None]
-        rest = _pieces(context, stream.stream_id, rests)
+        reads = _read(context, stream.stream_id)
+        active = _pieces(reads, [w.active for w in windows])
+        rest = _pieces(reads, [rest for w in windows if (rest := w.rest) is not None])
         no_active = Reason.TOO_FEW_REPETITIONS if not windows else Reason.NO_DATA
         mvc = _mvc(context.calibration(stream.stream_id))
         rms_mv = _rms(active) if active else None

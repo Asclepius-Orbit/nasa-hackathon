@@ -18,6 +18,7 @@ from spine_contracts import FeaturesRequest
 from spine_contracts.catalog import all_feature_ids, expand_template
 from spine_contracts.models.domain.feature_set_schema import Reason
 from spine_engine.features.calibrations import CalibrationResolution, CalibrationStatus
+from spine_engine.features.clock import DeviceClock
 from spine_engine.features.context import ExtractionContext, build_context
 from spine_engine.features.emg import EmgFamily
 from spine_engine.features.registry import ComputedFeature, FamilyResult, SkippedFeature, default_registry
@@ -455,6 +456,29 @@ def test_the_default_registry_registers_the_emg_family_after_exercise():
     families = list(default_registry())
 
     assert [f.family for f in families] == ["exercise", "emg"]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class CountingClock(DeviceClock):
+    """El reloj del contexto, anotando cada conversión a UTC (el coste por muestra de leer un stream)."""
+
+    calls: list[int] = dataclasses.field(default_factory=list[int])
+
+    def to_utc(self, boot_id: int, device_ms: int) -> datetime | None:
+        self.calls.append(device_ms)
+        return DeviceClock.to_utc(self, boot_id, device_ms)
+
+
+def test_the_samples_are_converted_to_utc_a_fixed_number_of_times_whatever_the_number_of_repetitions():
+    # una sesión EMG a 1000 Hz tiene cientos de miles de muestras: recorrerlas una vez por repetición la hace lenta
+    context = make_context({LEFT: LEFT_SIGNAL}, [calibration(LEFT, "left", LEFT_MVC)])
+
+    def conversions(*windows: RepWindow) -> int:
+        clock = CountingClock(context.clock.fits)
+        family_for(*windows).extract(dataclasses.replace(context, clock=clock))
+        return len(clock.calls)
+
+    assert conversions(*TWO_REPS) == conversions(TWO_REPS[0])
 
 
 def test_skipped_and_computed_items_are_the_registry_dataclasses():

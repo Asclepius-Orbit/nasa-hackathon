@@ -2411,6 +2411,18 @@ export interface SimulateResponse {
   reference: Assessment;
   scenario: Assessment;
   hypothetical: true;
+  /**
+   * Present when the hypothetical scenario was projected into the future.
+   */
+  projection?: {
+    project_days: number;
+    /**
+     * Feature IDs held at their latest value because fewer than two distinct dates were available.
+     *
+     * Items: Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
+     */
+    unprojected_features: string[];
+  };
 }
 /**
  * Output of the MCP tool compare_periods. The MCP server calls GET /crew/{astronaut_id}/history twice (period A, period B) and computes this comparison; there is no HTTP endpoint for it. Every delta is B minus A (positive means B is higher than A; whether higher is better or worse depends on the feature). Absence is never good news: a missing value is null, never omitted and never 0. Check warnings before interpreting the numbers.

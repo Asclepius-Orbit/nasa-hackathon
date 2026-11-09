@@ -1,4 +1,6 @@
 import json
+from copy import deepcopy
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -155,6 +157,44 @@ def test_simulate_without_overrides_gives_a_copy_of_the_reference(client):
     body = client.post("/simulate", json=example("simulate-request.no-overrides")).json()
 
     assert body["scenario"] == body["reference"]
+    assert "projection" not in body
+
+
+def test_simulate_reports_projection_and_reevaluates_projected_values():
+    pipeline = RecordingPipeline()
+    app = create_app(pipeline=pipeline, baseline_builder=default_baseline_builder(), feature_extractor=NullFeatureExtractor())
+    request = example("simulate-request")
+    request["project_days"] = 1
+    latest = request["base"]["feature_sets"][0]
+    older = deepcopy(latest)
+    older["computed_at"] = (datetime.fromisoformat(latest["computed_at"].replace("Z", "+00:00")) - timedelta(days=1)).isoformat()
+    for feature in older["features"]:
+        feature["value"] = 1
+    for feature in latest["features"]:
+        feature["value"] = 3
+    request["base"]["feature_sets"] = [latest, older]
+
+    response = TestClient(app).post("/simulate", json=request)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert validation.errors("engine/simulate-response", body) == []
+    assert body["hypothetical"] is True
+    assert body["projection"] == {"project_days": 1, "unprojected_features": []}
+    peak = "stretch.lumbar.peak_elongation_mm"
+    assert next(f.value for f in pipeline.seen[1].feature_sets[0].features if f.feature_id == peak) == pytest.approx(15)
+
+
+def test_simulate_rejects_projection_beyond_history(client):
+    request = example("simulate-request")
+    latest = request["base"]["feature_sets"][0]
+    older = deepcopy(latest)
+    older["computed_at"] = (datetime.fromisoformat(latest["computed_at"].replace("Z", "+00:00")) - timedelta(days=1)).isoformat()
+    request["base"]["feature_sets"].append(older)
+    request["project_days"] = 2
+
+    body = assert_problem(client.post("/simulate", json=request), 422, "invalid_request")
+    assert "detail" in body
 
 
 def test_simulate_unknown_feature_is_a_problem(client):

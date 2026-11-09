@@ -21,7 +21,9 @@ El contrato es `contracts/openapi.yaml`; cuerpos y errores son los JSON Schemas 
 | `POST /features` | `FeaturesRequest` (datos crudos de sesión) | `FeatureSet` | familias registradas: `exercise`, `emg`, `imu`, `emg_spectral` y `stretch` |
 | `POST /baseline` | `BaselineRequest` (feature sets de las sesiones de referencia) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline y modelo de riesgo genérico (`risk_score`, `confidence`, `drivers`); triaje nulo (nivel siempre verde) |
-| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) al último valor de cada feature y reevalúa; `project_days` aún no se aplica |
+| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) al último valor de cada feature, proyecta tendencias opcionalmente y reevalúa |
+
+Cuando se indica `project_days`, el motor ordena las observaciones de cada feature por `computed_at`, aplica los overrides a su último valor, ajusta una regresión lineal al historial resultante y proyecta desde ese último valor durante los días solicitados antes de reevaluar. El horizonte no puede superar el intervalo temporal de ninguna feature con al menos dos fechas de observación distintas; de lo contrario se devuelve un error. Las features con menos de dos fechas distintas conservan su último valor y se enumeran en `projection.unprojected_features`. El objeto opcional `projection` de la respuesta también indica `project_days`. El resultado es hipotético y no es una predicción clínica. Sin `project_days`, se conserva el comportamiento de simulación con solo overrides y se omite `projection`.
 
 Los errores son problem details (`application/problem+json`, `engine/error.schema.json`): `422` con `invalid_request` (con un JSON Pointer por problema), `unsupported_schema_version` o `insufficient_data`, y `500` con `internal`. Los cuerpos se validan contra el JSON Schema además de Pydantic, así que se aplican las reglas condicionales.
 

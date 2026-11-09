@@ -21,7 +21,9 @@ The contract is `contracts/openapi.yaml`; bodies and errors are the JSON Schemas
 | `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | registered families: `exercise`, `emg`, `imu`, `emg_spectral` and `stretch` |
 | `POST /baseline` | `BaselineRequest` (feature sets of the reference sessions) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison and generic risk model (`risk_score`, `confidence`, `drivers`); null triage (level always green) |
-| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | applies `overrides` (`set`, `add`, `scale`) to the latest value of each feature and re-assesses; `project_days` is not applied yet |
+| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | applies `overrides` (`set`, `add`, `scale`) to the latest value of each feature, optionally projects trends and re-assesses |
+
+When `project_days` is provided, the engine orders each feature's observations by `computed_at`, applies the overrides to its latest value, fits a linear regression to the resulting history, and projects from that latest value over the requested number of days before re-assessment. The horizon must not exceed the time span of any feature with at least two distinct observation times; otherwise the request returns an error. Features with fewer than two distinct times retain their latest value and are listed in `projection.unprojected_features`. The optional `projection` response object also reports `project_days`. The result is hypothetical, not a clinical forecast. Without `project_days`, simulation retains its existing override-only behavior and omits `projection`.
 
 Errors are problem details (`application/problem+json`, `engine/error.schema.json`): `422` with `invalid_request` (with a JSON Pointer per problem), `unsupported_schema_version` or `insufficient_data`, and `500` with `internal`. Request bodies are checked against the JSON Schema as well as Pydantic, so the conditional rules are enforced.
 

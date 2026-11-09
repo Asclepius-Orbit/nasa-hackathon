@@ -6,6 +6,7 @@ el histórico queda igual. Los overrides se aplican en orden, así que varios so
 
 import math
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 from spine_contracts import AssessRequest, catalog
 from spine_contracts.models.domain.feature_set_schema import Feature
@@ -48,3 +49,36 @@ def apply_overrides(base: AssessRequest, overrides: Sequence[Override]) -> Asses
             raise InvalidOverrideError(f"The override on {override.feature_id!r} does not give a finite value.")
         feature.value = new_value
     return result
+
+
+def project_features(base: AssessRequest, overrides: Sequence[Override], days: int) -> tuple[AssessRequest, list[str]]:
+    """Proyecta desde el último valor modificado usando la pendiente del historial."""
+    result = apply_overrides(base, overrides)
+    history: dict[str, list[tuple[datetime, Feature]]] = {}
+    for feature_set in sorted(result.feature_sets, key=lambda item: item.computed_at):
+        for feature in feature_set.features:
+            history.setdefault(feature.feature_id, []).append((feature_set.computed_at, feature))
+
+    unprojected = []
+    for feature_id, observations in sorted(history.items()):
+        start, end = observations[0][0], observations[-1][0]
+        if start == end:
+            unprojected.append(feature_id)
+            continue
+        if timedelta(days=days) > end - start:
+            raise InvalidOverrideError(f"Projection of {feature_id!r} for {days} days exceeds its history of {end - start}.")
+        xs = [(at - start).total_seconds() / 86400 for at, _ in observations]
+        ys = [feature.value for _, feature in observations]
+        try:
+            x_mean = math.fsum(xs) / len(xs)
+            y_mean = math.fsum(ys) / len(ys)
+            slope = math.fsum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys, strict=True)) / math.fsum(
+                (x - x_mean) ** 2 for x in xs
+            )
+            projected = ys[-1] + slope * days
+        except (OverflowError, ValueError):
+            raise InvalidOverrideError(f"Projection of {feature_id!r} does not give a finite value.") from None
+        if not math.isfinite(projected):
+            raise InvalidOverrideError(f"Projection of {feature_id!r} does not give a finite value.")
+        observations[-1][1].value = projected
+    return result, unprojected

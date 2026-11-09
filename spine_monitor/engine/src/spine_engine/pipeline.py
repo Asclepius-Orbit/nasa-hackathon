@@ -15,6 +15,7 @@ from spine_contracts import (
     MissingReason,
 )
 
+from spine_engine.features.symptoms import symptom_feature_set
 from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriagePolicy
 
 # Dominio de evaluación según el prefijo del feature_id (hasta que el catálogo lo diga).
@@ -66,8 +67,10 @@ class AssessmentPipeline:
         self._triage_policy = triage_policy
 
     def evaluate(self, request: AssessRequest) -> Assessment:
-        deviations = self._baseline_strategy.deviations(request.baseline, request.feature_sets)
-        completeness = _completeness(request.feature_sets, deviations)
+        symptoms = symptom_feature_set(request.self_reports or [], request.daily_context or [], request.as_of, request.astronaut_id)
+        feature_sets = [*request.feature_sets, symptoms]
+        deviations = self._baseline_strategy.deviations(request.baseline, feature_sets)
+        completeness = _completeness(feature_sets, deviations)
         risk = self._risk_model.score(deviations, completeness.score)
         triage = self._triage_policy.decide(risk, deviations)
 

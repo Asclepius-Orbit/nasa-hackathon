@@ -100,6 +100,15 @@ async def test_session_is_processed_once(store, engine, analysis):
     assert store.session(session_id).state == "processed"
 
 
+async def test_baseline_receives_reports_within_preflight_windows(store, engine, analysis):
+    session_id = ended_session(store)
+    report = example("domain/self-report.daily") | {"timestamp": "2026-11-12T08:00:00Z"}
+    store.put_self_report(report)
+    await analysis.process_session(session_id)
+    request = next(body for name, body in engine.calls if name == "baseline")
+    assert request["self_reports"] == [report]
+
+
 async def test_features_request_carries_what_the_session_cites(store, engine, analysis):
     session_id = ended_session(store)
     store.put_calibration(example("domain/calibration.stretch"))

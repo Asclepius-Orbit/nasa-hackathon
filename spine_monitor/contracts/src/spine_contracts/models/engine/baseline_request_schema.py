@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, conint, constr
 
-from ..domain import feature_set_schema
+from ..domain import feature_set_schema, self_report_schema
 
 
 class BaselineRequest(BaseModel):
@@ -23,6 +23,14 @@ class BaselineRequest(BaseModel):
         examples=['AST-01'],
     )
     feature_sets: list[feature_set_schema.FeatureSet] = Field(..., min_length=1)
+    self_reports: (
+        list[
+            self_report_schema.DailySelfReport
+            | self_report_schema.WeeklyOdiReport
+            | self_report_schema.RedFlagReport
+        ]
+        | None
+    ) = Field([], validate_default=True)
     previous_baseline_version: conint(ge=1) | None = Field(
         None,
         description='Version of the baseline being replaced; the new one gets version + 1. Absent for the first baseline.',

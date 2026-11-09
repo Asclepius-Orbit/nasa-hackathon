@@ -114,6 +114,10 @@ Computed from ADC counts, so it needs no raw signal beyond the chunk. For each d
 - **Recovery wait:** the wait is `stretch_calibration.recovery_wait_s` when present; otherwise `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` (default 120 s), PROVISIONAL until #46 (the protocol sets the real value).
 - **Calibration:** as everywhere, the chunk's `calibration_id` wins over the session's. No calibration: `skipped` with `no_calibration`; expired: `calibration_expired`.
 
+### Symptoms
+
+`/assess` derives seven-day symptom features from the astronaut's self-reports and daily context at `as_of`; unavailable values are reported as missing. Baselines derive the same aggregates for each reference session, ending at its feature window (or its computation time when absent), using that session's gravity. The backend supplies reports covering those windows. These aggregates are provisional and are not clinical thresholds.
+
 ## Configuration
 
 Environment variables (or a `.env`), all optional:

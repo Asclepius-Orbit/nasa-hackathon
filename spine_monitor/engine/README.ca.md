@@ -114,6 +114,10 @@ Es calcula des de comptes ADC, així que no necessita senyal crua més enllà de
 - **Espera de recuperació:** el cordó recupera en 1-2 min. L'espera és `stretch_calibration.recovery_wait_s` si ve; si no, `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` (per defecte 120 s), PROVISIONAL fins a #46 (el valor real el fixa el protocol).
 - **Calibratge:** com a la resta, el `calibration_id` del chunk mana sobre el de la sessió. Sense calibratge: `skipped` amb `no_calibration`; caducat: `calibration_expired`.
 
+### Símptomes
+
+`/assess` calcula features de símptomes de set dies a partir dels autoinformes i el context diari de l'astronauta fins a `as_of`; els valors absents consten com a dades mancants. La baseline calcula els mateixos agregats per a cada sessió de referència fins al final de la seva finestra (o la data de càlcul si no existeix), amb la gravetat de la sessió. El backend aporta els informes d'aquestes finestres. Els agregats són provisionals i no són llindars clínics.
+
 ## Configuració
 
 Variables d'entorn (o un `.env`), totes opcionals:

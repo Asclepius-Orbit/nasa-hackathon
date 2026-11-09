@@ -114,6 +114,10 @@ Se calcula desde cuentas ADC, así que no necesita señal cruda más allá del c
 - **Espera de recuperación:** el cordón recupera en 1-2 min. La espera es `stretch_calibration.recovery_wait_s` si viene; si no, `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` (defecto 120 s), PROVISIONAL hasta #46 (el valor real lo fija el protocolo).
 - **Calibración:** como en el resto, el `calibration_id` del chunk manda sobre el de la sesión. Sin calibración: `skipped` con `no_calibration`; caducada: `calibration_expired`.
 
+### Síntomas
+
+`/assess` calcula features de síntomas de siete días a partir de los autoinformes y el contexto diario del astronauta hasta `as_of`; los valores ausentes figuran como datos faltantes. La baseline calcula los mismos agregados para cada sesión de referencia hasta el final de su ventana (o su fecha de cálculo si no existe), con la gravedad de la sesión. El backend aporta los informes de esas ventanas. Los agregados son provisionales y no son umbrales clínicos.
+
 ## Configuración
 
 Variables de entorno (o un `.env`), todas opcionales:

@@ -188,3 +188,17 @@ def test_future_daily_symptom_and_red_flag_do_not_trigger_rules():
     assert result.level == Level.GREEN
     assert result.fired_rules == []
     assert not result.escalation.required
+
+
+@pytest.mark.parametrize("recommendation", ["REC_", "REC_bad", "REC_BAD-1"])
+def test_invalid_recommendation_codes_are_rejected_at_configuration(recommendation):
+    with pytest.raises(ValueError):
+        PolicyConfig(rules=[{"rule_id": "RULE_TEST", "datum": "risk", "level": "red",
+                             "recommendations": [recommendation]}])
+
+
+def test_rule_id_used_for_escalation_must_fit_a_reason():
+    with pytest.raises(ValueError):
+        PolicyConfig(rules=[{"rule_id": "RULE_" + "A" * 196, "datum": "risk", "level": "red", "urgency": "priority"}])
+    config = PolicyConfig(rules=[{"rule_id": "RULE_" + "A" * 195, "datum": "risk", "level": "red", "urgency": "priority"}])
+    assert DeclarativeTriagePolicy(config).decide(context(1)).escalation.required

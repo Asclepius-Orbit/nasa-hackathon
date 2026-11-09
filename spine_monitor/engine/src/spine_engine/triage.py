@@ -1,5 +1,6 @@
 """Configurable triage mechanics; policy content must be clinically reviewed."""
 
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -34,8 +35,10 @@ class Rule(BaseModel):
             raise ValueError("red flag rules belong to the safety domain")
         if self.datum == "self_report" and self.key not in {"pain_nrs", "pain_nrs_worst_24h", "stiffness_nrs"}:
             raise ValueError("unsupported self report field")
-        if any(not recommendation.startswith("REC_") for recommendation in self.recommendations):
-            raise ValueError("recommendations must start with REC_")
+        if self.urgency is not None and len(self.rule_id) > 200:
+            raise ValueError("rule id used as escalation reason must not exceed 200 characters")
+        if any(re.fullmatch(r"REC_[A-Z0-9_]+", recommendation) is None for recommendation in self.recommendations):
+            raise ValueError("invalid recommendation code")
         return self
 
 

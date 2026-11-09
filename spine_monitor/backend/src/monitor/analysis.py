@@ -99,6 +99,8 @@ class Analysis:
         if not feature_sets:
             return None
         request: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "astronaut_id": astronaut_id, "feature_sets": feature_sets}
+        anchors = [datetime.fromisoformat((fs.get("window") or {}).get("end", fs["computed_at"])) for fs in feature_sets]
+        request["self_reports"] = self._store.self_reports_between(astronaut_id, min(anchors) - timedelta(days=7), max(anchors))
         if (previous := self._store.latest_baseline(astronaut_id)) is not None:
             request["previous_baseline_version"] = previous["version"]
         try:

@@ -96,6 +96,10 @@ Basada en el giroscopi, així que no depèn de la gravetat i és comparable entr
 
 Cada valor és la mitjana sobre les repeticions amb mostres i valor finit, i `n` les compta (una repetició sense moviment no té SPARC i no compta per a ell; si cap no en té, `no_data`); una repetició llegeix el segment (`boot_id`) amb més mostres a la seva finestra. Motius de `skipped`, en ordre: `stream_missing`, `no_calibration`/`calibration_expired`, després `no_data` (sense rellotge o sense mostres a cap repetició) o `too_few_repetitions` (cap repetició); l'`insufficient_sample_rate` de SPARC es decideix abans que aquests dos últims.
 
+### Símptomes
+
+`/assess` calcula features de símptomes de set dies a partir dels autoinformes i el context diari de l'astronauta fins a `as_of`; els valors absents consten com a dades mancants. La baseline calcula els mateixos agregats per a cada sessió de referència fins al final de la seva finestra (o la data de càlcul si no existeix), amb la gravetat de la sessió. El backend aporta els informes d'aquestes finestres. Els agregats són provisionals i no són llindars clínics.
+
 ## Configuració
 
 Variables d'entorn (o un `.env`), totes opcionals:

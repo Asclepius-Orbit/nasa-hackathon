@@ -113,7 +113,7 @@ def test_plugs_into_the_pipeline_and_the_assessment_still_conforms_to_the_schema
     assessment = pipeline.evaluate(request())
 
     assert validation.errors("domain/assessment", dump(assessment)) == []
-    assert assessment.completeness.score == 0.8
+    assert assessment.completeness.score == 0.4
     assert assessment.drivers == []
 
 

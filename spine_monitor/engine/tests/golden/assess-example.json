@@ -5,13 +5,33 @@
   "as_of": "<time>",
   "mission_day": 87,
   "level": "green",
-  "risk_score": 0.0,
-  "confidence": 0.8,
+  "risk_score": -0.0,
+  "confidence": 0.4,
   "completeness": {
-    "score": 0.8,
+    "score": 0.4,
     "missing": [
       {
         "what": "exercise.rep_count",
+        "reason": "no_baseline"
+      },
+      {
+        "what": "symptoms.pain_nrs_7d_max",
+        "reason": "no_baseline"
+      },
+      {
+        "what": "symptoms.pain_nrs_7d_mean",
+        "reason": "no_baseline"
+      },
+      {
+        "what": "symptoms.red_flag_count_7d",
+        "reason": "no_baseline"
+      },
+      {
+        "what": "symptoms.sleep_hours_7d_mean",
+        "reason": "no_baseline"
+      },
+      {
+        "what": "symptoms.stiffness_nrs_7d_mean",
         "reason": "no_baseline"
       }
     ]

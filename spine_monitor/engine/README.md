@@ -96,6 +96,10 @@ Gyroscope-based, so it does not depend on gravity and stays comparable between E
 
 Each value is the mean over the repetitions that have samples and a finite value, and `n` counts them (a repetition without motion has no SPARC and does not count for it; if none has one, `no_data`); a repetition reads the `boot_id` segment with most samples in its window. Skip reasons, in order: `stream_missing`, `no_calibration`/`calibration_expired`, then `no_data` (no clock or no samples in any repetition) or `too_few_repetitions` (no repetition); `insufficient_sample_rate` for SPARC is decided before these last two.
 
+### Symptoms
+
+`/assess` derives seven-day symptom features from the astronaut's self-reports and daily context at `as_of`; unavailable values are reported as missing. Baselines derive the same aggregates for each reference session, ending at its feature window (or its computation time when absent), using that session's gravity. The backend supplies reports covering those windows. These aggregates are provisional and are not clinical thresholds.
+
 ## Configuration
 
 Environment variables (or a `.env`), all optional:

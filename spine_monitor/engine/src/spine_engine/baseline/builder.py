@@ -8,6 +8,7 @@ from uuid import uuid4
 from spine_contracts import SCHEMA_VERSION, Baseline, BaselineEntry, BaselineRequest
 
 from spine_engine.errors import InsufficientDataError
+from spine_engine.features.symptoms import symptom_feature_set
 
 
 class StatisticalBaselineBuilder:
@@ -28,6 +29,11 @@ class StatisticalBaselineBuilder:
                 groups[(feature.feature_id, feature_set.protocol_id, feature_set.gravity_environment)].append(feature.value)
                 if feature_set.session_id is not None:
                     sessions.add(feature_set.session_id)
+            if feature_set.session_id is not None and request.self_reports:
+                anchor = feature_set.window.end if feature_set.window is not None else feature_set.computed_at
+                symptoms = symptom_feature_set(request.self_reports, [], anchor, request.astronaut_id)
+                for feature in symptoms.features:
+                    groups[(feature.feature_id, None, feature_set.gravity_environment)].append(feature.value)
         if not groups or not sessions:
             raise InsufficientDataError("no feature set with a gravity environment and a session to build a baseline from")
 

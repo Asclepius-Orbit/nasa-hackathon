@@ -50,6 +50,18 @@ def test_statistics_per_feature():
     assert (entry.min, entry.max) == (27.6, 28.4)
 
 
+def test_baseline_includes_reports_in_session_window():
+    from spine_contracts import AssessRequest
+
+    assess = EXAMPLE.with_name("assess-request.json")
+    report = AssessRequest.model_validate_json(assess.read_text(encoding="utf-8")).self_reports[0]
+    req = request()
+    report.timestamp = req.feature_sets[0].window.end
+    req.self_reports = [report]
+    entry = entry_of(StatisticalBaselineBuilder().build(req), "symptoms.pain_nrs_7d_mean")
+    assert entry.mean == report.pain_nrs
+
+
 def test_median_and_mad_resist_an_outlier_session():
     req = request()
     template = req.feature_sets[0]

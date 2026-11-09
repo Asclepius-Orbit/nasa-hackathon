@@ -3,6 +3,7 @@ from spine_engine.interfaces import (
     Deviation,
     RiskModel,
     RiskResult,
+    TriageContext,
     TriageDecision,
     TriagePolicy,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "NullTriagePolicy",
     "RiskModel",
     "RiskResult",
+    "TriageContext",
     "TriageDecision",
     "TriagePolicy",
     "stub_pipeline",

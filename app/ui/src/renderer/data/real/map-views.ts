@@ -123,7 +123,13 @@ export function toRepState(view: RepStateView): RepState {
   };
 }
 
-/** The last known counter when the stream drops: no phase and no bar (they would be stale), flagged `lost`. Before any state, rep 0 and no total: nothing is invented. */
-export function toLostRepState(previous: RepState | null): RepState {
-  return { rep: previous?.rep ?? 0, total: previous?.total ?? null, phase: null, barPercent: null, last: previous?.last ?? null, signal: 'lost' };
+/** The final count when the session ends: the backend's `end` state, flagged `ended`, with no phase or bar (nothing is moving any more). */
+export function toEndedRepState(view: RepStateView): RepState {
+  return { ...toRepState(view), phase: null, barPercent: null, signal: 'ended' };
+}
+
+/** The last known counter when the stream drops: no phase and no bar (they would be stale), flagged `lost`. Before any state there is nothing to keep, so `null`: no rep 0 is invented. */
+export function toLostRepState(previous: RepState | null): RepState | null {
+  if (previous === null) return null;
+  return { rep: previous.rep, total: previous.total, phase: null, barPercent: null, last: previous.last, signal: 'lost' };
 }

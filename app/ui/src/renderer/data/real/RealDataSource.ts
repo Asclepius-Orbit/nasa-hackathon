@@ -17,7 +17,7 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { toBaseline, toFirstDay, toHistory, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
+import { toBaseline, toFirstDay, toHistory, toEndedRepState, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
 
 /** Rejection of a view whose backend does not exist yet: `not_built`, so the screen says so instead of "no connection". */
 const notBuilt = (): Promise<never> => Promise.reject(new Error('not_built'));
@@ -92,7 +92,8 @@ export class RealDataSource implements DataSource {
 
   /**
    * The live counter of `sessionId` from the backend stream (`api.reps`), mapped in `map-views`. `lost` keeps the last
-   * known counter flagged as not live; `end` delivers the last state and stops listening; an `error` is final and is
+   * known counter flagged as not live (or says `reconnecting` when there is none yet); `end` delivers the final count flagged
+   * `ended` and stops listening; an `error` is final and is
    * reported as `none` (no reps / unknown session), `unavailable` or `locked`. The mock never stands in here.
    */
   subscribeReps(sessionId: string, cb: (update: RepsUpdate) => void): () => void {
@@ -107,14 +108,16 @@ export class RealDataSource implements DataSource {
       if (done) return;
       switch (event.kind) {
         case 'state':
-        case 'end':
           last = toRepState(event.state);
           cb({ kind: 'state', state: last });
-          if (event.kind === 'end') stop();
+          return;
+        case 'end':
+          cb({ kind: 'state', state: toEndedRepState(event.state) });
+          stop();
           return;
         case 'lost':
           last = toLostRepState(last);
-          cb({ kind: 'state', state: last });
+          cb(last === null ? { kind: 'reconnecting' } : { kind: 'state', state: last });
           return;
         case 'error':
           cb({ kind: event.code === 'unavailable' ? 'unavailable' : event.code === 'locked' ? 'locked' : 'none' });

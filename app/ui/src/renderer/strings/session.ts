@@ -85,6 +85,10 @@ export const stages = {
     /** The stream to the monitor dropped; main is retrying. */
     lost: 'Reconnecting to the monitor',
     lostHint: 'The count below is the last one received.',
+    /** Reconnecting before any count arrived: there is no count to point at. */
+    lostNoCountHint: 'No count has been received yet.',
+    /** The session is over: the number is the final one, not a live one. */
+    finalCount: 'Final count',
     stale: 'Last count, not live',
     unavailable: 'The live count is not available',
     unavailableHint: 'The monitor is not answering. Count the reps yourself and tell the crew medical officer if something hurts.',

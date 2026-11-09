@@ -59,7 +59,7 @@ export const inProgressSince = (sinceGmt: string, total: number | null): string 
   total === null ? `In progress since ${sinceGmt} GMT.` : `In progress since ${sinceGmt} GMT, ${String(total)} reps.`;
 
 export const inProgressLine = (sinceGmt: string, rep: number, total: number | null): string =>
-  total === null
+  total === null || rep > total
     ? `In progress since ${sinceGmt} GMT, rep ${String(rep)}.`
     : `In progress since ${sinceGmt} GMT, rep ${String(rep)} of ${String(total)}.`;
 

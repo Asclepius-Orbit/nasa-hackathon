@@ -333,11 +333,43 @@ describe('with the backend views', () => {
       expect(screen.getByText('Pulling down')).toBeInTheDocument();
     });
 
-    it('end keeps the last state on screen and stops listening', async () => {
+    it('end shows the final count (rep, total, last) and nothing that looks live', async () => {
       const { api } = await openReps();
-      push(api, { kind: 'end', state: rep('ui-rep-state') });
-      expect(screen.getByText('of 10')).toBeInTheDocument();
+      push(api, { kind: 'state', state: rep('ui-rep-state') });
+      push(api, { kind: 'end', state: { ...rep('ui-rep-state'), phase: null, progress_pct: null } });
+      expect(screen.getByText('Final count')).toBeInTheDocument();
+      expect(screen.getByText('of 10').parentElement).toHaveTextContent('3 of 10');
+      expect(screen.getByText('Rep 2, 4.2 s, recorded by the harness')).toBeInTheDocument();
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pulling down')).not.toBeInTheDocument();
+      expect(screen.queryByText('No signal from the sensor')).not.toBeInTheDocument();
+      expect(screen.queryByText('Last count, not live')).not.toBeInTheDocument();
       expect(api.repsListenerCount(REP_SID)).toBe(0);
+    });
+
+    it('a live state without phase (before end) shows the rep with no phase and no bar', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), phase: null, progress_pct: 40 } });
+      expect(screen.getByText('of 10').parentElement).toHaveTextContent('3 of 10');
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(screen.queryByText('No signal from the sensor')).not.toBeInTheDocument();
+      expect(screen.queryByText('Final count')).not.toBeInTheDocument();
+    });
+
+    it('a rep past the total shows the number without "of N"', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), rep: 11 } });
+      expect(screen.getByText('11')).toBeInTheDocument();
+      expect(screen.queryByText('of 10')).not.toBeInTheDocument();
+    });
+
+    it('lost before any count: says it is reconnecting and draws no number', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'lost' });
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting to the monitor');
+      expect(screen.queryByText('0')).not.toBeInTheDocument();
+      expect(screen.queryByText('Last count, not live')).not.toBeInTheDocument();
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
 
     it.each(['no_reps', 'not_found'] as const)('error %s: no counter, says so', async (code) => {

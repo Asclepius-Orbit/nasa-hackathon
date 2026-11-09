@@ -59,9 +59,14 @@ function setup() {
   let session: AuthSession | null = { crewId: 'AST-01', locked: false };
   const opened: OpenedStream[] = [];
   const membership: string[] = [];
-  const hooks: { failMembership: Error | null; beforeMembershipAnswers: () => void } = {
+  const hooks: {
+    failMembership: Error | null;
+    beforeMembershipAnswers: () => void;
+    membershipAnswer: (() => Promise<never>) | null;
+  } = {
     failMembership: null,
     beforeMembershipAnswers: () => undefined,
+    membershipAnswer: null,
   };
   const logged: unknown[] = [];
   let ids = 0;
@@ -80,6 +85,7 @@ function setup() {
       session: (sessionId) => {
         membership.push(sessionId);
         hooks.beforeMembershipAnswers();
+        if (hooks.membershipAnswer !== null) return hooks.membershipAnswer();
         return hooks.failMembership === null ? Promise.resolve({} as never) : Promise.reject(hooks.failMembership);
       },
     },
@@ -191,15 +197,39 @@ describe('createRepsService', () => {
     expect(opened[0]?.closed).toBe(false);
   });
 
-  it('keeps one subscription per window and session: the newer one replaces the older', async () => {
+  it('keeps several subscriptions to the same session in one window: a newer one does not replace the older', async () => {
     const { service, sender, opened } = setup();
     const first = await service.subscribe(sender, SESSION);
     const second = await service.subscribe(sender, SESSION);
     expect(second).not.toBe(first);
-    expect(opened.map((stream) => stream.closed)).toEqual([true, false]);
+    expect(opened.map((stream) => stream.closed)).toEqual([false, false]);
     opened[0]?.emit({ kind: 'lost' });
     opened[1]?.emit({ kind: 'lost' });
-    expect(sender.sent.map(({ payload }) => payload.subscriptionId)).toEqual([second]);
+    expect(sender.sent.map(({ payload }) => payload.subscriptionId)).toEqual([first, second]);
+    service.unsubscribe(sender, first);
+    expect(opened.map((stream) => stream.closed)).toEqual([true, false]);
+  });
+
+  it('two near-simultaneous subscribes whose membership checks answer in reverse order both stay alive', async () => {
+    const { service, sender, opened, hooks } = setup();
+    const answers: (() => void)[] = [];
+    hooks.membershipAnswer = () =>
+      new Promise<never>((resolve) => {
+        answers.push(() => {
+          resolve({} as never);
+        });
+      });
+    const first = service.subscribe(sender, SESSION);
+    const second = service.subscribe(sender, SESSION);
+    answers[1]?.();
+    const secondId = await second;
+    answers[0]?.();
+    const firstId = await first;
+    expect(opened).toHaveLength(2);
+    expect(opened.map((stream) => stream.closed)).toEqual([false, false]);
+    opened[0]?.emit({ kind: 'lost' });
+    opened[1]?.emit({ kind: 'lost' });
+    expect(sender.sent.map(({ payload }) => payload.subscriptionId).sort()).toEqual([firstId, secondId].sort());
   });
 
   it('caps the streams a single window can hold', async () => {
@@ -209,6 +239,17 @@ describe('createRepsService', () => {
     }
     await expect(service.subscribe(sender, SESSION)).rejects.toMatchObject({ code: 'unavailable' });
     expect(opened).toHaveLength(MAX_SUBSCRIPTIONS_PER_SENDER);
+    expect(opened.every((stream) => !stream.closed)).toBe(true);
+  });
+
+  it('a window over the cap is refused with an explicit cause for the log, and the live ones keep receiving', async () => {
+    const { service, sender, opened } = setup();
+    for (let i = 0; i < MAX_SUBSCRIPTIONS_PER_SENDER; i += 1) await service.subscribe(sender, SESSION);
+    const refused: unknown = await service.subscribe(sender, SESSION).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ViewsError);
+    expect((refused as ViewsError).cause).toBeInstanceOf(Error);
+    opened[0]?.emit({ kind: 'lost' });
+    expect(sender.events).toEqual([{ kind: 'lost' }]);
   });
 
   it('closeAll (the lock screen) stops every stream of every window', async () => {

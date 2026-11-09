@@ -111,6 +111,17 @@ function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
       </Panel>
     );
   }
+  if (update?.kind === 'reconnecting') {
+    // The stream dropped before any count arrived: say so, and draw no number.
+    return (
+      <Panel className={styles.stage} role="status" aria-live="polite">
+        <div className={styles.repAlert}>
+          <p>{copy.lost}</p>
+          <p className={styles.hint}>{copy.lostNoCountHint}</p>
+        </div>
+      </Panel>
+    );
+  }
   // No state yet, no reps, unknown session or locked: no counter is drawn, never a made-up one.
   if (update?.kind !== 'state') {
     return (
@@ -120,11 +131,14 @@ function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
     );
   }
   const { state } = update;
+  const ended = state.signal === 'ended';
   const live = state.signal === 'ok';
   const phaseText = { pulling: copy.pulling, letting_up: copy.lettingUp, resting: copy.resting } as const;
+  // A rep past the planned total ("11 of 10") would contradict itself: the number stands alone.
+  const total = state.total !== null && state.rep <= state.total ? state.total : null;
   return (
-    <Panel className={styles.stage} aria-live="polite" role={live ? undefined : 'status'}>
-      {!live && (
+    <Panel className={styles.stage} aria-live="polite" role={live || ended ? undefined : 'status'}>
+      {!live && !ended && (
         <div className={styles.repAlert}>
           <p>{state.signal === 'lost' ? copy.lost : copy.noSignal}</p>
           <p className={styles.hint}>{state.signal === 'lost' ? copy.lostHint : copy.noSignalHint}</p>
@@ -133,17 +147,18 @@ function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
       <div className={styles.repLine} data-live={live}>
         <span className={styles.repCount}>
           {state.rep}
-          {state.total !== null && (
+          {total !== null && (
             <>
               {' '}
-              <small>{copy.of(state.total)}</small>
+              <small>{copy.of(total)}</small>
             </>
           )}
         </span>
         {live && state.phase !== null && <span className={styles.phase}>{phaseText[state.phase]}</span>}
-        {!live && <span className={styles.stale}>{copy.stale}</span>}
+        {ended && <span className={styles.stale}>{copy.finalCount}</span>}
+        {!live && !ended && <span className={styles.stale}>{copy.stale}</span>}
       </div>
-      {live && state.barPercent !== null && (
+      {live && state.phase !== null && state.barPercent !== null && (
         <div
           role="progressbar"
           aria-label={copy.progress}
@@ -163,10 +178,12 @@ function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
         <dt>{copy.backup}</dt>
         <dd>{sessionCopy.backup}</dd>
       </dl>
-      <div className={styles.minor}>
-        <Button variant="quiet">{copy.artefact}</Button>
-        <Button variant="quiet">{copy.recount}</Button>
-      </div>
+      {!ended && (
+        <div className={styles.minor}>
+          <Button variant="quiet">{copy.artefact}</Button>
+          <Button variant="quiet">{copy.recount}</Button>
+        </div>
+      )}
     </Panel>
   );
 }

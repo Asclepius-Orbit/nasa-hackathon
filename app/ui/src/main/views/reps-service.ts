@@ -6,8 +6,10 @@
  *   for a session of that astronaut; anything else is `not_found`, so a compromised renderer cannot open a
  *   stream of someone else's session. With nobody signed in, or behind the lock screen, it is `locked` before
  *   any request is made.
- * - A subscription belongs to one window (webContents) and one session; a newer one for the same pair replaces
- *   the older. A window holds at most `MAX_SUBSCRIPTIONS_PER_SENDER`, and can only end its own.
+ * - A subscription belongs to one window (webContents) and one session. A window may hold several, even for the
+ *   same session (a newer one never replaces an older one: two near-simultaneous subscribes can resolve in either
+ *   order), up to `MAX_SUBSCRIPTIONS_PER_SENDER`. Past that the new one is refused (`unavailable`, with the cause
+ *   logged in main) and the live ones are left alone. A window can only end its own.
  * - Every event is checked against the current sign-in right before it is pushed, so even if the lock screen
  *   went up without anyone calling `closeAll`, nothing is delivered to a locked or different astronaut and the
  *   stream is closed. Streams also end with the window (`destroyed`), on unsubscribe, and after `end` or `error`.
@@ -121,11 +123,12 @@ export function createRepsService({
       if (sender.isDestroyed()) throw new ViewsError('unavailable');
 
       let state = senders.get(sender);
-      const previous = [...(state?.subscriptions.values() ?? [])].find((s) => s.sessionId === sessionId);
-      if (previous !== undefined) remove(sender, previous);
-      else if ((state?.subscriptions.size ?? 0) >= MAX_SUBSCRIPTIONS_PER_SENDER) throw new ViewsError('unavailable');
+      if ((state?.subscriptions.size ?? 0) >= MAX_SUBSCRIPTIONS_PER_SENDER) {
+        throw new ViewsError('unavailable', {
+          cause: new Error(`window already holds ${String(MAX_SUBSCRIPTIONS_PER_SENDER)} live rep subscriptions`),
+        });
+      }
 
-      state = senders.get(sender);
       if (state === undefined) {
         const onDestroyed = (): void => {
           removeAllOf(sender);

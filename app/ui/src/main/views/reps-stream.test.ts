@@ -182,6 +182,19 @@ describe('createRepsStreamClient', () => {
     expect(backend.calls).toHaveLength(1);
   });
 
+  it.each([408, 429])('answers %i as a passing hiccup: one lost, then it reconnects', async (status) => {
+    const live = liveStream();
+    const { backend, clock, events } = setup();
+    backend.next(problem(status)).next(respond(live));
+    await flush();
+    expect(events).toEqual([{ kind: 'lost' }]);
+    await clock.advance(1000);
+    expect(backend.calls).toHaveLength(2);
+    live.push(frame('state'));
+    await flush();
+    expect(kinds(events)).toEqual(['lost', 'state']);
+  });
+
   it.each([
     ['not an event stream', () => new Response('x', { headers: { 'content-type': 'text/html' } })],
     ['an invalid state', () => new Response(frame('state', { ...STATE, rep: -1 }), { headers: SSE_HEADERS })],

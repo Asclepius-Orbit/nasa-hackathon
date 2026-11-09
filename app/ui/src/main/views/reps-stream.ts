@@ -13,7 +13,7 @@
  * session lasts as long as it lasts. A stream that drops without `end` (network, server restart, silence) is
  * reported as `lost` once and reopened with a capped backoff, for as long as the caller keeps it open; the backend
  * resends the current state when it reconnects. `end`, a 404 (`not_found`), a 409 (`no_reps`) and other 4xx
- * answers are final: nothing is retried.
+ * answers are final: nothing is retried, except 408 and 429, which are retried like a server error.
  */
 import type { RepsEvent } from '../../shared/api';
 import { repStateSchema } from '../../shared/ipc-schema';
@@ -140,7 +140,8 @@ export function createRepsStreamClient({
         };
         if (response.status === 404) return finalError('not_found');
         if (response.status === 409) return finalError('no_reps');
-        if (response.status >= 400 && response.status < 500) {
+        // 408 (request timeout) and 429 (too many requests) are passing conditions: retried like a 5xx.
+        if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
           return finalError('unavailable', new Error(`reps stream refused with status ${String(response.status)}`));
         }
         if (response.status !== 200 || response.body === null) {

@@ -10,7 +10,7 @@ import { example } from '../../test/contract-examples';
 import type { RepStateView, TodayView as TodayViewPayload } from '../../../shared/api';
 
 const TODAY = todayData(new Date('2026-11-05T13:40:00Z'));
-import type { TodayData } from '../../data/types';
+import type { RepsUpdate, TodayData } from '../../data/types';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import { renderInWorld } from '../../test/providers';
 import { TodayView } from './TodayView';
@@ -308,6 +308,50 @@ describe('live rep on Today (real data)', () => {
     expect(row()).toHaveTextContent('rep 3 of 10');
     act(() => {
       world.api.emitReps(SID, { kind: 'lost' });
+    });
+    expect(row()).not.toHaveTextContent('rep 3');
+  });
+
+  it('end goes back to the line without a counter, and a rep past the total drops "of N"', async () => {
+    const world = realSetup(example<TodayViewPayload>('ui-today.nodata'));
+    await line();
+    const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
+    act(() => {
+      world.api.emitReps(SID, { kind: 'state', state: { ...rep('ui-rep-state'), rep: 11 } });
+    });
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, rep 11.');
+    act(() => {
+      world.api.emitReps(SID, { kind: 'end', state: { ...rep('ui-rep-state'), phase: null, progress_pct: null } });
+    });
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
+  });
+
+  it('forgets the live rep when the session in progress changes', async () => {
+    const SECOND = '5a6b7c8d-1111-4222-8333-444455556666';
+    const listeners = new Map<string, (update: RepsUpdate) => void>();
+    let loads = 0;
+    class TwoSessions extends WithToday {
+      override getToday(): ReturnType<MockDataSource['getToday']> {
+        loads += 1;
+        return Promise.resolve({ ...TODAY, recommendations: [], sessionInProgress: { ...(TODAY.sessionInProgress as NonNullable<TodayData['sessionInProgress']>), sessionId: loads === 1 ? SID : SECOND } });
+      }
+      override subscribeReps(sessionId: string, cb: (update: RepsUpdate) => void): () => void {
+        listeners.set(sessionId, cb);
+        return () => listeners.delete(sessionId);
+      }
+    }
+    setup({ data: new TwoSessions(TODAY) });
+    const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
+    await screen.findByText('Session in progress');
+    act(() => {
+      listeners.get(SID)?.({ kind: 'state', state: { rep: 3, total: 10, phase: 'pulling', barPercent: 10, last: null, signal: 'ok' } });
+    });
+    expect(row()).toHaveTextContent('rep 3 of 10');
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => {
+      expect(listeners.has(SECOND)).toBe(true);
     });
     expect(row()).not.toHaveTextContent('rep 3');
   });

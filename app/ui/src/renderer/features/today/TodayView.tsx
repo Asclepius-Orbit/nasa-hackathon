@@ -31,18 +31,20 @@ const selectCatalog = (d: DataSource): ReturnType<DataSource['getCatalog']> => d
 
 /**
  * Live rep of the running session, `null` until the data source reports one and whenever it is not live (no signal,
- * lost, no counter): then the verdict falls back to the line without a count. Unsubscribes on unmount.
+ * lost, ended, no counter): then the verdict falls back to the line without a count. Unsubscribes on unmount.
  */
 function useLiveRep(sessionId: string | null): number | null {
   const source = useData();
-  const [rep, setRep] = useState<number | null>(null);
+  // Keyed by session: a rep seen for one session is never shown for the next one while it has not reported yet.
+  const [seen, setSeen] = useState<{ sessionId: string; rep: number | null } | null>(null);
   useEffect(() => {
     if (sessionId === null) return undefined;
     return source.subscribeReps(sessionId, (update) => {
-      setRep(update.kind === 'state' && update.state.signal === 'ok' && update.state.rep > 0 ? update.state.rep : null);
+      const rep = update.kind === 'state' && update.state.signal === 'ok' && update.state.rep > 0 ? update.state.rep : null;
+      setSeen({ sessionId, rep });
     });
   }, [source, sessionId]);
-  return sessionId === null ? null : rep;
+  return sessionId !== null && seen?.sessionId === sessionId ? seen.rep : null;
 }
 
 function PlanRow({ item, extra }: { item: PlanText; extra: string | null }): React.JSX.Element {

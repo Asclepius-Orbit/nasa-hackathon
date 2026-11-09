@@ -303,16 +303,18 @@ describe('subscribeReps', () => {
     expect(seen[2]).toMatchObject({ state: { phase: 'resting', signal: 'ok' } });
   });
 
-  it('lost before any state has no invented count: rep 0, no total', () => {
+  it('lost before any state invents no count: it says it is reconnecting, without a rep', () => {
     const { seen } = listen();
     api.emitReps(SID, { kind: 'lost' });
-    expect(seen).toEqual([{ kind: 'state', state: { rep: 0, total: null, phase: null, barPercent: null, last: null, signal: 'lost' } }]);
+    expect(seen).toEqual([{ kind: 'reconnecting' }]);
   });
 
-  it('end delivers the last state and stops listening', () => {
+  it('end delivers the final count as ended (no phase, no bar, not live) and stops listening', () => {
     const { seen } = listen();
-    api.emitReps(SID, { kind: 'end', state: view() });
-    expect(seen).toHaveLength(1);
+    api.emitReps(SID, { kind: 'end', state: { ...view(), phase: null, progress_pct: null } });
+    expect(seen).toEqual([
+      { kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ended' } },
+    ]);
     expect(api.repsListenerCount(SID)).toBe(0);
   });
 

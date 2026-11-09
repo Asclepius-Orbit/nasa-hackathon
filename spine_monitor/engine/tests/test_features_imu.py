@@ -1,7 +1,7 @@
-﻿"""Familia ``imu`` (#44): rango de movimiento, velocidad angular pico y suavidad (SPARC) por plano, y RMS del acelerÃ³metro.
+"""Familia ``imu`` (#44): rango de movimiento, velocidad angular pico y suavidad (SPARC) por plano, y RMS del acelerómetro.
 
-Las seÃ±ales son sintÃ©ticas y con valores exactos: el girÃ³scopo trae el sesgo de la calibraciÃ³n del ejemplo
-(``x 0.31, y -0.12, z 0.05`` deg/s) mÃ¡s la velocidad angular del plano, y el montaje del ejemplo es
+Las señales son sintéticas y con valores exactos: el giróscopo trae el sesgo de la calibración del ejemplo
+(``x 0.31, y -0.12, z 0.05`` deg/s) más la velocidad angular del plano, y el montaje del ejemplo es
 ``sensor_x anterior, sensor_y left, sensor_z cranial`` (sagital = ``gyro_y``, frontal = ``gyro_x``, transversal = ``gyro_z``).
 """
 
@@ -90,7 +90,7 @@ def chunks_for(
     seq0: int = 0,
     t0_device_ms: int = 0,
 ) -> list[dict[str, Any]]:
-    """Chunks IMU con los canales dados; los que faltan valen el sesgo (giro) o 0 (acelerÃ³metro)."""
+    """Chunks IMU con los canales dados; los que faltan valen el sesgo (giro) o 0 (acelerómetro)."""
     n = len(next(iter(channels.values())))
     full = {name: list(channels.get(name, [BIAS.get(name, 0.0)] * n)) for name in ("accel_x", "accel_y", "accel_z", "gyro_x", "gyro_y", "gyro_z")}
     out: list[dict[str, Any]] = []
@@ -140,7 +140,7 @@ def make_context(
     edit: Callable[[dict[str, Any]], None] | None = None,
 ) -> ExtractionContext:
     raw = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
-    # se conservan los chunks EMG y stretch del ejemplo: la peticiÃ³n exige al menos uno
+    # se conservan los chunks EMG y stretch del ejemplo: la petición exige al menos uno
     raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] != "imu"] + chunks
     raw["clock_syncs"] = [sync()] if syncs is None else syncs
     raw["session"]["events"] = []
@@ -206,12 +206,12 @@ def test_a_mounting_without_the_plane_axis_has_no_channel():
 
 
 def test_the_range_of_motion_is_the_span_of_the_integrated_angle():
-    # Ã¡ngulo 0, 1, 2, 1, 0 -> rango 2
+    # ángulo 0, 1, 2, 1, 0 -> rango 2
     assert range_of_motion_deg(np.array([10.0, 10.0, -10.0, -10.0]), 10.0) == pytest.approx(2.0)
 
 
 def test_the_range_of_motion_starts_from_zero_before_the_first_sample():
-    # Ã¡ngulo 0, 3: un Ãºnico sentido sigue contando desde el inicio
+    # ángulo 0, 3: un único sentido sigue contando desde el inicio
     assert range_of_motion_deg(np.array([30.0]), 10.0) == pytest.approx(3.0)
     assert range_of_motion_deg(np.array([-30.0]), 10.0) == pytest.approx(3.0)
 
@@ -225,7 +225,7 @@ def test_the_peak_angular_velocity_is_the_largest_absolute_value():
 
 
 def reference_sparc(speed: np.ndarray, fs: float) -> float:
-    """ImplementaciÃ³n de referencia publicada (Balasubramanian et al. 2015), con FFT completa."""
+    """Implementación de referencia publicada (Balasubramanian et al. 2015), con FFT completa."""
     nfft = int(2 ** (np.ceil(np.log2(len(speed))) + SPARC_PAD_LEVEL))
     f = np.arange(0, fs, fs / nfft)
     mf = np.abs(np.fft.fft(speed, nfft))
@@ -256,7 +256,7 @@ def test_sparc_matches_the_reference_implementation(n: int, fs: float):
 
 @pytest.mark.parametrize("seed", [1, 2, 3])
 def test_sparc_of_a_broadband_profile_matches_the_reference_up_to_the_cutoff(seed: int):
-    # espectro sobre el umbral mÃ¡s allÃ¡ de 10 Hz; a 128 Hz con 128 muestras hay un bin justo en 10 Hz (se incluye)
+    # espectro sobre el umbral más allá de 10 Hz; a 128 Hz con 128 muestras hay un bin justo en 10 Hz (se incluye)
     speed = np.abs(np.random.default_rng(seed).normal(0.0, 1.0, 128))
 
     assert sparc(speed, 128.0) == pytest.approx(reference_sparc(speed, 128.0), rel=1e-12)
@@ -318,7 +318,7 @@ def test_the_default_registry_registers_the_imu_family_after_exercise_sharing_th
 def sagittal_context(
     speed: float = 20.0, *, rate: float = RATE, seconds: float = 6.0, edit: Callable[[dict[str, Any]], None] | None = None
 ) -> ExtractionContext:
-    """Quieto 2 s, una flexiÃ³n de 2 s a ``speed`` en el plano sagital y quieto hasta ``seconds``."""
+    """Quieto 2 s, una flexión de 2 s a ``speed`` en el plano sagital y quieto hasta ``seconds``."""
     lead = round(2.0 * rate)
     moving = bend(rate, 2.0, speed)
     tail = round(seconds * rate) - lead - len(moving)
@@ -354,12 +354,12 @@ def test_sparc_is_computed_per_plane_from_the_angular_speed_of_the_repetition():
     got = values(result)
     expected = sparc(np.abs(np.array(bend(RATE, 2.0, 20.0))), RATE)
     assert got["imu.l3.sagittal.smoothness_sparc"] == pytest.approx(expected)
-    # sin movimiento la suavidad no estÃ¡ definida: el compuesto lo pasa a no_data
+    # sin movimiento la suavidad no está definida: el compuesto lo pasa a no_data
     assert math.isnan(got["imu.l3.frontal.smoothness_sparc"])
 
 
 def test_a_plane_without_any_defined_sparc_is_nan_without_numpy_warnings():
-    # sin ninguna repeticiÃ³n con SPARC finito no se promedia una lista vacÃ­a (numpy avisarÃ­a): NaN directo
+    # sin ninguna repetición con SPARC finito no se promedia una lista vacía (numpy avisaría): NaN directo
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         result = run([rep(1, 2.0, 4.0)], sagittal_context())
@@ -368,7 +368,7 @@ def test_a_plane_without_any_defined_sparc_is_nan_without_numpy_warnings():
 
 
 def test_the_window_is_half_open_start_sample_in_end_sample_out():
-    # un pico justo en el fin de la ventana no cuenta; el del inicio sÃ­
+    # un pico justo en el fin de la ventana no cuenta; el del inicio sí
     gyro_y = with_bias("gyro_y", [0.0] * 600)
     gyro_y[200] += 7.0
     gyro_y[400] += 50.0
@@ -389,7 +389,7 @@ def test_values_are_the_mean_over_repetitions_and_n_counts_them():
 
 
 def test_sparc_averages_only_the_repetitions_where_it_is_defined():
-    # la 2.Âª repeticiÃ³n no se mueve: su SPARC no estÃ¡ definido y no anula el de las otras dos
+    # la 2.ª repetición no se mueve: su SPARC no está definido y no anula el de las otras dos
     gyro_y = with_bias("gyro_y", [0.0] * 200 + bend(RATE, 2.0, 20.0) + [0.0] * 600 + bend(RATE, 2.0, 10.0) + [0.0] * 200)
     reps = [rep(1, 2.0, 4.0), rep(2, 6.0, 8.0), rep(3, 10.0, 12.0)]
     result = run(reps, make_context(chunks_for({"gyro_y": gyro_y})))
@@ -425,7 +425,7 @@ def test_the_gyro_bias_of_the_calibration_is_subtracted():
     def no_bias(raw: dict[str, Any]) -> None:
         imu_calibration(raw)["gyro_bias_dps"] = {"x": 0.0, "y": 0.0, "z": 0.0}
 
-    # con sesgo 0 el sesgo real del girÃ³scopo queda en la seÃ±al y se suma al pico de cada plano
+    # con sesgo 0 el sesgo real del giróscopo queda en la señal y se suma al pico de cada plano
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=no_bias))
 
     assert values(result)["imu.l3.sagittal.peak_angular_velocity_dps"] == pytest.approx(20.12)
@@ -565,7 +565,7 @@ def test_the_slowest_chunk_of_the_stream_decides_the_sample_rate():
 
 
 def test_the_range_of_motion_integrates_each_sample_with_the_period_of_its_own_chunk():
-    # mismo arranque con un chunk lento al final: la flexiÃ³n a 100 Hz se integra a 10 ms, no al periodo del chunk lento
+    # mismo arranque con un chunk lento al final: la flexión a 100 Hz se integra a 10 ms, no al periodo del chunk lento
     fast = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 200 + bend(RATE, 2.0, 20.0) + [0.0] * 200)})
     slow = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 10)}, rate=10.0, seq0=60, t0_device_ms=6000)
     result = run([rep(1, 2.0, 4.0)], make_context(fast + slow))
@@ -675,4 +675,3 @@ def test_shifting_the_session_in_time_does_not_change_the_values(shift_s: int, s
             assert math.isnan(moved[feature_id])
         else:
             assert moved[feature_id] == pytest.approx(value)
-

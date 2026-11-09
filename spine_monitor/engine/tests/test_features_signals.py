@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import numpy as np
-from spine_contracts import ClockSync, ImuChunk
+from spine_contracts import ClockSync, EmgChunk, ImuChunk
 from spine_engine.features.clock import DeviceClock
 from spine_engine.features.ordering import Segment
 from spine_engine.features.signals import SegmentSamples, segment_samples
@@ -161,3 +161,54 @@ def test_non_finite_values_are_kept_as_they_come():
     values = segment_samples(CLOCK, segment, ("gyro_x",)).channels["gyro_x"]
     assert np.isnan(values[1])
     assert values[[0, 2]].tolist() == [1.0, 3.0]
+
+
+def _emg_chunk(t0_device_ms: int, seq: int, values: list[float]) -> EmgChunk:
+    raw: dict[str, Any] = {
+        "schema_version": "1.0.0",
+        "astronaut_id": "AST-01",
+        "device_id": "wb-01",
+        "stream_id": "emg_lat_left",
+        "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+        "source": "device",
+        "boot_id": BOOT,
+        "seq": seq,
+        "t0_device_ms": t0_device_ms,
+        "received_at": T0.isoformat(),
+        "sample_rate_hz": 10.0,
+        "n_samples": len(values),
+        "stream_kind": "emg",
+        "signal_kind": "raw",
+        "units": {"emg": "mV"},
+        "data": {"emg": values},
+        "quality": {"emg": {"score": 1.0, "flags": [], "assessed_by": "gateway"}},
+    }
+    return EmgChunk.model_validate(raw)
+
+
+def test_an_emg_chunk_whose_channel_is_a_plain_list_gives_its_values():
+    # el canal ``emg`` del contrato es una lista simple (los del IMU son RootModel): ambos deben funcionar
+    segment = Segment("emg_lat_left", BOOT, (_emg_chunk(1000, 0, [1.0, -2.0, 3.0]),), 3, 0)
+
+    got = segment_samples(CLOCK, segment, ("emg",))
+
+    assert got.times == (ms(0), ms(100), ms(200))
+    assert got.channels["emg"].tolist() == [1.0, -2.0, 3.0]
+
+
+def test_a_chunk_without_a_requested_channel_does_not_stop_the_chunks_after_it():
+    segment = Segment("emg_lat_left", BOOT, (_chunk(1000, 0, 10.0, {"gyro_x": [1.0]}), _emg_chunk(1100, 1, [5.0, 6.0])), 3, 0)
+
+    got = segment_samples(CLOCK, segment, ("emg",))
+
+    assert got.channels["emg"].tolist() == [5.0, 6.0]
+
+
+def test_a_sample_whose_end_has_no_utc_is_dropped():
+    # ancla a 50 ms del mayor instante representable: la muestra empieza dentro y su fin (+100 ms) se sale
+    clock = DeviceClock.from_syncs([_sync(BOOT, 1000, datetime.max.replace(tzinfo=UTC) - timedelta(milliseconds=50))])
+    segment = _segment(_chunk(1000, 0, 10.0, {"gyro_x": [1.0]}))
+
+    got = segment_samples(clock, segment, ("gyro_x",))
+
+    assert (got.times, got.ends, got.channels["gyro_x"].tolist()) == ((), (), [])

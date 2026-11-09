@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0.0",
+  "assessment_id": "<assessment_id>",
+  "astronaut_id": "AST-01",
+  "as_of": "<time>",
+  "mission_day": 87,
+  "level": "green",
+  "risk_score": 0.0,
+  "confidence": 0.8,
+  "completeness": {
+    "score": 0.8,
+    "missing": [
+      {
+        "what": "exercise.rep_count",
+        "reason": "no_baseline"
+      }
+    ]
+  },
+  "domains": [
+    {
+      "domain": "spine_length",
+      "level": "green",
+      "evaluated": true
+    },
+    {
+      "domain": "muscle",
+      "level": "green",
+      "evaluated": true
+    },
+    {
+      "domain": "kinematics",
+      "level": "green",
+      "evaluated": true
+    },
+    {
+      "domain": "symptoms",
+      "level": "green",
+      "evaluated": false
+    }
+  ],
+  "drivers": [],
+  "fired_rules": [],
+  "recommendations": [],
+  "escalation": {
+    "required": false,
+    "reasons": []
+  },
+  "based_on": {
+    "baseline_id": "b45e11e0-0000-4000-8000-0000000000b1",
+    "baseline_version": 1,
+    "session_ids": [
+      "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03"
+    ],
+    "self_report_ids": [
+      "5e1f0e90-0000-4000-8000-000000000001"
+    ]
+  }
+}

@@ -4,10 +4,11 @@ from pathlib import Path
 import pytest
 import yaml
 from fastapi.testclient import TestClient
-from spine_contracts import openapi_drift, validation
+from spine_contracts import AssessRequest, openapi_drift, validation
 from spine_engine.api import create_app, create_default_app
 from spine_engine.factory import default_baseline_builder
-from spine_engine.stubs import NullFeatureExtractor, stub_pipeline
+from spine_engine.pipeline import AssessmentPipeline
+from spine_engine.stubs import NullBaselineStrategy, NullFeatureExtractor, NullRiskModel, NullTriagePolicy, stub_pipeline
 
 CONTRACTS = Path(__file__).resolve().parents[2] / "contracts"
 EXAMPLES = CONTRACTS / "examples" / "valid" / "engine"
@@ -119,6 +120,62 @@ def test_simulate_without_overrides_projects_the_base_unchanged(client):
     assert body["scenario"] == body["reference"]
 
 
+class RecordingPipeline(AssessmentPipeline):
+    """Pipeline de los stubs que además guarda lo que se le pide evaluar."""
+
+    def __init__(self) -> None:
+        super().__init__(NullBaselineStrategy(), NullRiskModel(), NullTriagePolicy())
+        self.seen: list[AssessRequest] = []
+
+    def evaluate(self, request):
+        self.seen.append(request.model_copy(deep=True))
+        return super().evaluate(request)
+
+
+def test_simulate_reevaluates_the_base_with_the_overrides_applied():
+    pipeline = RecordingPipeline()
+    app = create_app(pipeline=pipeline, baseline_builder=default_baseline_builder(), feature_extractor=NullFeatureExtractor())
+    request = example("simulate-request")
+
+    response = TestClient(app).post("/simulate", json=request)
+
+    assert response.status_code == 200
+    assert response.json()["hypothetical"] is True
+    reference, scenario = pipeline.seen
+    feature_id = "stretch.lumbar.peak_elongation_mm"
+    value = lambda req: next(f.value for f in req.feature_sets[-1].features if f.feature_id == feature_id)  # noqa: E731
+    assert value(scenario) == pytest.approx(value(reference) + 5)
+
+
+def test_simulate_without_overrides_gives_a_copy_of_the_reference(client):
+    body = client.post("/simulate", json=example("simulate-request.no-overrides")).json()
+
+    assert body["scenario"] == body["reference"]
+
+
+def test_simulate_unknown_feature_is_a_problem(client):
+    request = example("simulate-request")
+    request["overrides"] = [{"feature_id": "stretch.not.in_catalog", "mode": "set", "value": 1}]
+
+    assert_problem(client.post("/simulate", json=request), 422, "unknown_feature")
+
+
+def test_simulate_feature_without_value_in_the_base_is_a_problem(client):
+    request = example("simulate-request")
+    request["overrides"] = [{"feature_id": "emg.latissimus_dorsi.left.rms_pct_mvc", "mode": "set", "value": 1}]
+    for fs in request["base"]["feature_sets"]:
+        fs["features"] = [f for f in fs["features"] if f["feature_id"] != "emg.latissimus_dorsi.left.rms_pct_mvc"]
+
+    assert_problem(client.post("/simulate", json=request), 422, "unknown_feature")
+
+
+def test_simulate_non_finite_override_is_a_problem(client):
+    request = example("simulate-request")
+    request["overrides"] = [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "scale", "value": 1e308}] * 2
+
+    assert_problem(client.post("/simulate", json=request), 422, "invalid_request")
+
+
 def test_assess_and_baseline_chain_without_the_caller_touching_the_data(client):
     baseline = client.post("/baseline", json=example("baseline-request")).json()
     request = example("assess-request") | {"baseline": baseline}
@@ -200,3 +257,26 @@ def test_routes_match_the_openapi_contract():
     contract = yaml.safe_load((CONTRACTS / "openapi.yaml").read_text(encoding="utf-8"))
 
     assert openapi_drift.diff(contract, create_default_app().openapi()) == []
+
+
+def test_app_metadata_matches_the_contract_info():
+    info = create_default_app().openapi()["info"]
+    contract = yaml.safe_load((CONTRACTS / "openapi.yaml").read_text(encoding="utf-8"))["info"]
+
+    assert info["title"] == contract["title"] == "Spine engine API"
+    assert info["version"] == contract["version"] == "1.0.0"
+    assert info["description"] == "Local HTTP API of the stateless prediction engine. Contract: contracts/openapi.yaml."
+
+
+def test_simulate_problems_carry_title_and_detail(client):
+    request = example("simulate-request")
+    request["overrides"] = [{"feature_id": "stretch.not.in_catalog", "mode": "set", "value": 1}]
+    unknown = assert_problem(client.post("/simulate", json=request), 422, "unknown_feature")
+
+    request["overrides"] = [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "scale", "value": 1e308}] * 2
+    invalid = assert_problem(client.post("/simulate", json=request), 422, "invalid_request")
+
+    assert (unknown["title"], unknown["status"]) == ("Unknown feature", 422)
+    assert unknown["detail"] == "The feature 'stretch.not.in_catalog' is not in the catalog."
+    assert (invalid["title"], invalid["status"]) == ("Invalid request", 422)
+    assert invalid["detail"] == "The override on 'stretch.lumbar.peak_elongation_mm' does not give a finite value."

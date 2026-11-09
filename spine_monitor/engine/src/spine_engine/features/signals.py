@@ -42,7 +42,8 @@ def segment_samples(
     values: dict[str, list[float]] = {name: [] for name in channels}
     for chunk in segment.chunks:
         found = [getattr(chunk.data, name, None) for name in channels]
-        columns = [channel.root for channel in found if channel is not None]
+        # los canales del IMU son RootModel (``.root``); el ``emg`` del contrato es ya una lista
+        columns = [getattr(channel, "root", channel) for channel in found if channel is not None]
         if len(columns) < len(found):
             continue
         n = min(len(column) for column in columns)

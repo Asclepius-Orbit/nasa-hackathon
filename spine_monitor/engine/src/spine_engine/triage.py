@@ -118,14 +118,18 @@ class DeclarativeTriagePolicy:
             urgencies.append(self.config.unknown_flag_urgency)
             reasons.append(flag)
             level = max(level, Level.RED, key=_LEVEL.__getitem__)
-            fired.append(FiredRule(rule_id="RULE_UNKNOWN_RED_FLAG", domain=Domain2.SAFETY, level=Level.RED,
-                overrides_model=_LEVEL[Level.RED] > _LEVEL[model_level], description=f"Unrecognized red flag: {flag}", evidence=None))
+            fired.append(FiredRule.model_validate({"rule_id": "RULE_UNKNOWN_RED_FLAG", "domain": Domain2.SAFETY,
+                "level": Level.RED, "overrides_model": _LEVEL[Level.RED] > _LEVEL[model_level],
+                "description": f"Unrecognized red flag: {flag}"}))
         if context.completeness.score < 1 or context.completeness.missing:
             level = max(level, Level.AMBER, key=_LEVEL.__getitem__)
             evidence = (Evidence(datum="completeness", value=context.completeness.score, operator=Operator.field__1, threshold=1)
                         if context.completeness.score < 1 else None)
-            fired.append(FiredRule(rule_id="RULE_INCOMPLETE_DATA", domain=Domain2.SAFETY, level=Level.AMBER,
-                overrides_model=_LEVEL[Level.AMBER] > _LEVEL[model_level], description="Incomplete data", evidence=evidence))
+            fields: dict[str, object] = {"rule_id": "RULE_INCOMPLETE_DATA", "domain": Domain2.SAFETY, "level": Level.AMBER,
+                      "overrides_model": _LEVEL[Level.AMBER] > _LEVEL[model_level], "description": "Incomplete data"}
+            if evidence is not None:
+                fields["evidence"] = evidence
+            fired.append(FiredRule.model_validate(fields))
             for item in context.completeness.missing:
                 domain = domain_of(item.what)
                 if domain is None:

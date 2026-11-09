@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from spine_contracts import AssessmentDomain, Completeness, DailySelfReport, Level, MissingItem, MissingReason, RedFlagReport, Source, Urgency
+from spine_contracts import AssessmentDomain, Completeness, DailySelfReport, Level, MissingItem, MissingReason, RedFlagReport, Source, Urgency, dump
 from spine_engine.factory import default_pipeline
 from spine_engine.interfaces import RiskResult, TriageContext
 from spine_engine.settings import EngineSettings
@@ -35,6 +35,7 @@ def test_unknown_flags_escalate_and_future_reports_are_ignored():
     assert decision.level == Level.RED
     assert decision.escalation.required and decision.escalation.urgency == Urgency.IMMEDIATE
     assert any(rule.domain.value == "safety" for rule in decision.fired_rules)
+    assert "evidence" not in dump(decision.fired_rules[0])
     past = datetime(2025, 1, 1, tzinfo=UTC)
     assert not policy.decide(TriageContext(ctx.risk, [], ctx.completeness, [report], past)).escalation.required
 
@@ -146,6 +147,7 @@ def test_missing_even_with_full_score_raises_floor_and_affected_domain():
     assert result.domain_levels[AssessmentDomain.MUSCLE] == Level.GREEN
     fired = next(rule for rule in result.fired_rules if rule.rule_id == "RULE_INCOMPLETE_DATA")
     assert fired.domain.value == "safety" and fired.evidence is None and fired.overrides_model
+    assert "evidence" not in dump(fired)
     assert not result.escalation.required
 
 

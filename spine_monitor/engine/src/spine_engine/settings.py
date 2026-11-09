@@ -13,6 +13,10 @@ class EngineSettings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8001
 
+    # Valores provisionales del protocolo hasta #46.
+    stretch_recovery_wait_s: float = Field(default=120.0, ge=0, allow_inf_nan=False)
+    stretch_recovery_fraction: float = Field(default=0.1, ge=0, le=1, allow_inf_nan=False)
+
     # z robusto: suelo de la escala, como fracción de la mediana, cuando MAD y desviación son ~0.
     scale_floor: float = 0.05
 

@@ -474,7 +474,7 @@ export type DayLevel = "green" | "amber" | "red" | "nodata";
 export type SessionState =
   "starting" | "running" | "rejected" | "ended" | "processing" | "processed" | "processing_failed";
 /**
- * Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept.
+ * Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept. A session that is over has signal ok (it did not lose its sensor) with phase and progress_pct null, rep and last kept, in both its final `state` and its `end`.
  */
 export type RepStateView = {
   /**
@@ -494,11 +494,11 @@ export type RepStateView = {
    */
   total: number | null;
   /**
-   * pulling, letting_up or resting (between repetitions); null when there is no signal.
+   * pulling, letting_up or resting (between repetitions); null when there is no signal or the session is over.
    */
   phase: ("pulling" | "letting_up" | "resting") | null;
   /**
-   * Movement angle relative to the peak of the previous repetition, 0 to 100; null in the first repetition (the range is not known yet), while resting and when there is no signal.
+   * Movement angle relative to the peak of the previous repetition, 0 to 100; null in the first repetition (the range is not known yet), while resting, when there is no signal and when the session is over.
    */
   progress_pct: number | null;
   /**

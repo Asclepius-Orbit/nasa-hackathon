@@ -315,3 +315,77 @@ async def test_a_stored_chunk_the_detector_cannot_read_does_not_stop_the_rebuild
         assert harness.store.add_chunk(chunk)
     assert only_view(restarted_hub(harness).subscribe(session_id))["rep"] == 0
     assert "rebuild" in caplog.text
+
+
+# --- cache of the final state ------------------------------------------------------------------------
+
+
+class CountingStore:
+    """The real store, counting the reads of chunks: the rebuild is what must not be repeated."""
+
+    def __init__(self, store) -> None:
+        self._store = store
+        self.reads = 0
+
+    def session(self, session_id: str):
+        return self._store.session(session_id)
+
+    def stream_chunks(self, *args: str):
+        self.reads += 1
+        return self._store.stream_chunks(*args)
+
+
+def final_view(subscription: Subscription) -> dict[str, Any]:
+    messages = drain(subscription)
+    assert [message.event for message in messages] == ["state", "end"]
+    assert messages[0].view == messages[1].view
+    assert messages[0].view is not None
+    return messages[0].view
+
+
+async def test_the_final_state_is_kept_by_finish_and_by_the_first_rebuild_and_a_late_chunk_drops_it(harness) -> None:
+    session_id = await running_session(harness)
+    chunks = harness.imu_chunks(session_id)
+    await harness.send_stream_chunks(chunks[:140])
+    store = CountingStore(harness.store)
+    live_hub = RepHub(store, harness.clock, no_signal_s=2.0)
+    subscriber = live_hub.subscribe(session_id)
+    assert store.reads == 1
+    assert harness.store.transition_session(session_id, ("running",), "ended")
+    live_hub.finish(session_id)
+    end = drain(subscriber)[-1].view
+
+    # After finish: no read, and only the time is new.
+    harness.clock.advance(seconds=5)
+    view = final_view(live_hub.subscribe(session_id))
+    assert store.reads == 1
+    assert {**view, "as_of": None} == {**end, "as_of": None}
+    assert view["as_of"] == harness.clock().isoformat()
+
+    # After a restart: one read, once.
+    restarted = RepHub(store, harness.clock, no_signal_s=2.0)
+    assert final_view(restarted.subscribe(session_id))["rep"] == end["rep"]
+    assert final_view(restarted.subscribe(session_id))["rep"] == end["rep"]
+    assert store.reads == 2
+
+    # A chunk stored after the end changes what a rebuild gives, so the kept state is no longer true.
+    restarted.on_chunk(harness.store.session(session_id), chunks[140])
+    final_view(restarted.subscribe(session_id))
+    assert store.reads == 3
+
+
+async def test_only_the_most_recently_used_final_states_are_kept(harness) -> None:
+    session_id = await running_session(harness)
+    other = {**harness.store.session(session_id).payload, "session_id": OTHER_SESSION}
+    harness.store.insert_session(other, "ended")
+    assert harness.store.transition_session(session_id, ("running",), "ended")
+    store = CountingStore(harness.store)
+    hub = RepHub(store, harness.clock, no_signal_s=2.0, final_states_kept=1)
+
+    hub.subscribe(session_id)
+    hub.subscribe(session_id)
+    assert store.reads == 1
+    hub.subscribe(OTHER_SESSION)
+    assert store.reads == 2
+    hub.subscribe(session_id)
+    assert store.reads == 3

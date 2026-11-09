@@ -450,3 +450,99 @@ def test_the_bias_follows_a_slow_shift_at_rest_with_its_time_constant() -> None:
     rep2_angle = 29.9 + 1.5 * residual * 0.995**186
     rep1_peak = 30.0 + 2.5 * residual
     assert detector.snapshot()["progress_pct"] == pytest.approx(rep2_angle / rep1_peak * 100.0, abs=0.02)
+
+
+# --- a boot that starts moving, and a bias that goes wrong --------------------------------------------
+
+
+def _minimum_jerk_cycles(start_s: float, cycles: int) -> list[tuple[float, float]]:
+    """Segments of `start_s` of stillness and then the simulated cycle: 0 -> 30 -> 0 deg in 4 s, then 4 s of rest."""
+    half = [30.0 / 2.0 * 30.0 * u**2 * (1.0 - u) ** 2 for u in ((i + 0.5) / 200 for i in range(200))]
+    cycle = [(0.01, rate) for rate in (*half, *(-rate for rate in half))] + [(4.0, 0.0)]
+    return [(start_s, 0.0), *cycle * cycles]
+
+
+def _durations(chunks: Iterable[Chunk]) -> dict[int, float]:
+    detector = RepDetector(RepDetectorParams.default())
+    durations: dict[int, float] = {}
+    for chunk in chunks:
+        detector.feed(chunk)
+        last = detector.snapshot()["last"]
+        if last is not None:
+            durations[last["rep"]] = last["duration_s"]
+    return durations
+
+
+@pytest.mark.parametrize("start_s", [0.3, 0.5])
+def test_a_boot_that_starts_moving_skips_that_rep_and_then_counts_every_other_one(start_s: float) -> None:
+    chunks = _signal(_minimum_jerk_cycles(start_s, 6))
+    # The first rest is the first second of stillness: nothing is counted before it ends, 1 s after the rep.
+    assert all(time_s >= start_s + 4.0 + 1.0 for time_s, _, _ in _transitions(chunks))
+    detector = _run(chunks)
+    assert (detector.snapshot()["rep"], detector.snapshot()["phase"]) == (5, "resting")
+    durations = _durations(chunks)
+    assert sorted(durations) == [1, 2, 3, 4, 5]
+    assert all(abs(duration - 4.0) <= DURATION_TOLERANCE_S for duration in durations.values())
+
+
+def test_a_real_session_cut_in_the_middle_of_a_rep_counts_the_rest_of_them() -> None:
+    chunks = _cached_chunks(PREFLIGHT_DAY)
+    first_rep = rep_schedule(_protocol())[0]
+    cut = chunks[_chunk_index_after(chunks, first_rep.start_s + 0.5) :]
+    detector = _run(cut)
+    expected = _protocol().planned_reps - 1
+    assert (detector.snapshot()["rep"], detector.snapshot()["phase"]) == (expected, "resting")
+    durations = _durations(cut)
+    assert sorted(durations) == list(range(1, expected + 1))
+    assert all(abs(duration - _protocol().rep_duration_s) <= DURATION_TOLERANCE_S for duration in durations.values())
+
+
+def test_a_gap_is_not_rest_for_the_first_bias_estimate() -> None:
+    # 0.6 s + 0.6 s still, 1 s apart: no second of real rest, so this rep is not counted.
+    chunks = _with_gap(_signal(_minimum_jerk_cycles(1.2, 1)[:-1]), at_s=0.6, gap_s=1.0)
+    assert _transitions(chunks) == []
+
+
+def test_a_rep_that_never_ends_is_cut_at_max_rep_s_and_the_bias_is_estimated_again() -> None:
+    """A lasting 8 dps shift of the sensor: the rate never reverses, so with no limit rep 1 would stay in `pulling` for good."""
+    shift = 8.0
+    segments = [(2.0, 0.0), (15.0, shift), (1.5, shift + 20.0), (0.5, shift), (1.5, shift - 20.0), (2.0, shift)]
+    transitions = _transitions(_signal(segments))
+    # 8 * (1 - (5/6)^j) passes on_dps from j = 8 (2.07 s), plus the hold. The rep starts at 2.00 s, its last still sample.
+    assert transitions[:2] == [(pytest.approx(2.17), 1, "pulling"), (pytest.approx(14.01), 1, "resting")]
+    assert [(rep, phase) for _, rep, phase in transitions[2:]] == [(2, "pulling"), (2, "letting_up"), (2, "resting")]
+    detector = _run(_signal(segments))
+    last = detector.snapshot()["last"]
+    assert last is not None
+    assert last["rep"] == 2
+    assert last["duration_s"] == pytest.approx(3.5, abs=0.3)
+
+
+# --- non-finite samples -------------------------------------------------------------------------------
+
+
+def _with_nan_in(chunk: Chunk) -> Chunk:
+    gyro = list(chunk["data"]["gyro_y"])
+    gyro[len(gyro) // 2] = math.nan
+    return {**chunk, "data": {**chunk["data"], "gyro_y": gyro}}
+
+
+def test_a_chunk_with_a_non_finite_rate_is_dropped_whole_and_logged_once(caplog) -> None:
+    chunks = _cached_chunks(PREFLIGHT_DAY)
+    rep1 = rep_schedule(_protocol())[0]
+    at = {_chunk_index_after(chunks, _protocol().lead_in_s / 2), _chunk_index_after(chunks, rep1.start_s + 1.0)}
+    clean = _run(c for i, c in enumerate(chunks) if i not in at).snapshot()
+
+    detector = RepDetector(RepDetectorParams.default())
+    for index, chunk in enumerate(chunks):
+        if index in at:
+            before = detector.snapshot()
+            assert detector.feed(_with_nan_in(chunk)) is False
+            assert detector.snapshot() == before
+        else:
+            detector.feed(chunk)
+
+    assert detector.snapshot() == clean
+    records = [record for record in caplog.records if "non-finite" in record.getMessage()]
+    assert len(records) == 1
+    assert SESSION_ID in records[0].getMessage()

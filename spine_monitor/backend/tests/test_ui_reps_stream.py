@@ -6,12 +6,14 @@ itself (a session already over, the refusals) goes through the route.
 
 import asyncio
 import json
+import math
 import signal
 from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from monitor.live.stream import RepEventResponse, RepStream, next_message
+from monitor.live.reps import RepDetector, RepDetectorParams
+from monitor.live.stream import RepEventResponse, RepStream, closing_on_exit_signal, next_message
 from monitor.main import create_app
 from monitor.settings import AppSettings
 from spine_contracts import validation
@@ -164,7 +166,10 @@ async def test_end_carries_the_last_state_and_closes_without_a_leak(harness) -> 
 
     event, view = parse(await next_frame(events))
     assert event == "end"
-    assert {k: v for k, v in view.items() if k != "as_of"} == {k: v for k, v in first.items() if k != "as_of"}
+    assert first["phase"] == "resting"
+    # A finished session did not lose its sensor: `ok`, with no phase, whatever the last chunk was.
+    expected = {**first, "phase": None, "progress_pct": None, "signal": "ok"}
+    assert {k: v for k, v in view.items() if k != "as_of"} == {k: v for k, v in expected.items() if k != "as_of"}
     await assert_closed(events)
     assert harness.runtime.hub.tracked_sessions() == set()
 
@@ -212,8 +217,9 @@ async def test_route_on_a_finished_session_sends_final_state_and_end_with_sse_he
     assert response.headers["cache-control"] == "no-cache"
     frames = [frame + "\n\n" for frame in response.text.split("\n\n") if frame]
     assert [parse(frame)[0] for frame in frames] == ["state", "end"]
-    _, view = parse(frames[1])
-    assert (view["signal"], view["phase"], view["total"], view["session_id"]) == ("no_signal", None, 10, session_id)
+    for frame in frames:
+        _, view = parse(frame)
+        assert (view["signal"], view["phase"], view["progress_pct"], view["total"], view["session_id"]) == ("ok", None, None, 10, session_id)
     assert harness.runtime.hub.tracked_sessions() == set()
 
 
@@ -355,3 +361,38 @@ async def test_a_session_unknown_to_the_hub_closes_the_stream_and_nothing_stays(
     harness.runtime.hub.refresh(UNKNOWN)
     harness.runtime.hub.finish(UNKNOWN)
     assert harness.runtime.hub.tracked_sessions() == set()
+
+
+async def test_a_chunk_with_nan_in_the_middle_of_a_rep_neither_closes_the_stream_nor_stops_the_counter(harness) -> None:
+    """A non-finite progress could not be sent, and the stream would close: the client would reconnect to the same state, for good."""
+    session_id, _ = await running(harness)
+    chunks = harness.imu_chunks(session_id)
+    detector = RepDetector(RepDetectorParams.default())
+    second_rep = next(i for i, c in enumerate(chunks) if detector.feed(c) and detector.snapshot()["rep"] == 2)
+    bad = chunks[second_rep + 1]
+    broken = {name: [math.nan, *bad["data"][name][1:]] for name in ("gyro_x", "gyro_y", "gyro_z")}
+    await harness.send_stream_chunks(chunks[: second_rep + 1])
+    events = stream(harness).events(session_id)
+    assert parse(await next_frame(events))[1]["progress_pct"] is not None
+
+    await harness.send_stream_chunks([{**bad, "data": {**bad["data"], **broken}}, *chunks[second_rep + 2 : second_rep + 4]])
+
+    event, view = parse(await next_frame(events))
+    assert (event, view["rep"], view["signal"]) == ("state", 2, "ok")
+    assert view["progress_pct"] is not None
+    await events.aclose()
+
+
+def test_the_previous_signal_handler_runs_even_if_close_fails() -> None:
+    calls: list[int] = []
+
+    def close() -> None:
+        raise RuntimeError("close failed")
+
+    original = signal.signal(signal.SIGINT, lambda number, _frame: calls.append(number))
+    try:
+        with closing_on_exit_signal(close), pytest.raises(RuntimeError, match="close failed"):
+            signal.raise_signal(signal.SIGINT)
+        assert calls == [signal.SIGINT]
+    finally:
+        signal.signal(signal.SIGINT, original)

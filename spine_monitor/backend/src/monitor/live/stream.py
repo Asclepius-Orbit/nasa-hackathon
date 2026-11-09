@@ -119,8 +119,10 @@ def closing_on_exit_signal(close: Callable[[], Any]) -> Iterator[None]:
     previous: dict[int, Callable[[int, FrameType | None], Any]] = {}
 
     def on_signal(number: int, frame: FrameType | None) -> None:
-        close()
-        previous[number](number, frame)
+        try:
+            close()
+        finally:
+            previous[number](number, frame)
 
     for number in _EXIT_SIGNALS:
         handler = signal.getsignal(number)

@@ -58,11 +58,11 @@ class RepStateView(BaseModel):
     )
     phase: Phase | None = Field(
         ...,
-        description='pulling, letting_up or resting (between repetitions); null when there is no signal.',
+        description='pulling, letting_up or resting (between repetitions); null when there is no signal or the session is over.',
     )
     progress_pct: confloat(ge=0.0, le=100.0) | None = Field(
         ...,
-        description='Movement angle relative to the peak of the previous repetition, 0 to 100; null in the first repetition (the range is not known yet), while resting and when there is no signal.',
+        description='Movement angle relative to the peak of the previous repetition, 0 to 100; null in the first repetition (the range is not known yet), while resting, when there is no signal and when the session is over.',
     )
     last: LastRep | None = Field(
         ..., description='Last completed repetition; null when none is complete.'

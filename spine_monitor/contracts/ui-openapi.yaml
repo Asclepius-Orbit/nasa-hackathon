@@ -150,7 +150,9 @@ paths:
             (`schemas/v1/app/ui-rep-state.schema.json`). `event: state` is sent when the client connects
             and at every change of the state. `event: end` is sent when the session ends: its `data:` is
             the last `RepStateView` and the server then closes the stream. For a session that has already
-            ended the stream is a final `state` followed by `end`.
+            ended the stream is a final `state` followed by `end`. In a session that is over, both the final
+            `state` and `end` have `signal: ok` and null `phase` and `progress_pct`, and keep `rep` and `last`:
+            the end of a session is not a loss of the sensor.
           content:
             text/event-stream:
               schema:

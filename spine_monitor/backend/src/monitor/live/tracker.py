@@ -6,11 +6,12 @@ cannot arrive in the middle of a rebuild or between a subscription and the check
 
 A subscriber has a bounded queue. When it is full the oldest message goes, so a slow client never blocks ingestion and
 always ends up with the latest state. A tracker lives while its session does: the end of the session removes it, and a
-client that connects later gets a rebuild that is not kept.
+client that connects later gets a view kept in a small LRU, or after a restart a rebuild, once, that goes into it.
 """
 
 import asyncio
 import logging
+from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,6 +29,8 @@ REP_STREAM_ID = "imu_l3"
 TERMINAL_STATES = frozenset({"ended", "processing", "processed", "processing_failed", "rejected"})
 # At most one state per chunk (10 per second): about a second behind; older states are worth nothing to a counter.
 _QUEUE_SIZE = 8
+# A view is a few hundred bytes; this covers the sessions someone reopens in a sitting, and an older one only costs a rebuild.
+_FINAL_STATES_KEPT = 32
 
 type RepStateView = dict[str, Any]
 
@@ -79,6 +82,10 @@ class RepTracker:
             "as_of": now.isoformat(),
         }
 
+    def final_view(self) -> RepStateView:
+        """The state of a session that is over: nothing is going on, and that is not a failure of the sensor."""
+        return {**self.view(), "phase": None, "progress_pct": None, "signal": "ok"}
+
 
 @dataclass(frozen=True, slots=True)
 class RepMessage:
@@ -119,20 +126,25 @@ def _offer(queue: asyncio.Queue[RepMessage], message: RepMessage) -> None:
 
 
 class RepHub:
-    def __init__(self, store: ChunkSource, clock: Callable[[], datetime], *, no_signal_s: float) -> None:
+    def __init__(self, store: ChunkSource, clock: Callable[[], datetime], *, no_signal_s: float, final_states_kept: int = _FINAL_STATES_KEPT) -> None:
         self._store = store
         self._clock = clock
         self._no_signal_s = no_signal_s
         self._live: dict[str, _Live] = {}
         self._closed = False
+        self._final_states: OrderedDict[str, RepStateView] = OrderedDict()
+        self._final_states_kept = final_states_kept
 
     # --- ingestion ---------------------------------------------------------------------------------
 
     def on_chunk(self, session: SessionRow, chunk: Mapping[str, Any]) -> None:
         """`chunk` was just stored for the first time and belongs to the rep stream of `session`."""
-        if self._closed or session.state in TERMINAL_STATES or not has_live_reps(session.payload):
-            return
         session_id = chunk["session_id"]
+        if session.state in TERMINAL_STATES:
+            self._final_states.pop(session_id, None)  # a late chunk is in the store: a rebuild would count it
+            return
+        if self._closed or not has_live_reps(session.payload):
+            return
         if (live := self._live.get(session_id)) is None:
             # The rebuild reads this very chunk from the store: feeding it again would be counting it twice.
             live = self._track(session)
@@ -145,7 +157,9 @@ class RepHub:
         """The session reached a terminal state: its subscribers get `end` and the tracker goes."""
         if (live := self._live.pop(session_id, None)) is None:
             return
-        end = RepMessage("end", live.tracker.view())
+        view = live.tracker.final_view()
+        self._keep_final_state(session_id, view)
+        end = RepMessage("end", view)
         for subscription in live.subscribers:
             _offer(subscription.queue, end)
         live.subscribers.clear()
@@ -159,7 +173,7 @@ class RepHub:
         if row is None:
             subscription.queue.put_nowait(_CLOSE)
         elif row.state in TERMINAL_STATES:
-            view = self._rebuilt(row).view()
+            view = self._final_view(row)
             subscription.queue.put_nowait(RepMessage("state", view))
             subscription.queue.put_nowait(RepMessage("end", view))
         else:
@@ -210,6 +224,20 @@ class RepHub:
                 # Same as live, where the ingestion logs it and goes on: one bad chunk must not leave the session without a counter.
                 _log.exception("rebuild of the repetition state of session %s: chunk skipped", payload["session_id"])
         return tracker
+
+    def _final_view(self, session: SessionRow) -> RepStateView:
+        session_id = session.payload["session_id"]
+        view = self._final_states.get(session_id)
+        if view is None:
+            view = self._rebuilt(session).final_view()
+        self._keep_final_state(session_id, view)
+        return {**view, "as_of": self._clock().isoformat()}
+
+    def _keep_final_state(self, session_id: str, view: RepStateView) -> None:
+        self._final_states[session_id] = view
+        self._final_states.move_to_end(session_id)
+        while len(self._final_states) > self._final_states_kept:
+            self._final_states.popitem(last=False)
 
     def _track(self, session: SessionRow) -> _Live:
         tracker = self._rebuilt(session)

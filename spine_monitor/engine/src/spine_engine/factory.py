@@ -8,7 +8,7 @@ from spine_engine.interfaces import BaselineBuilder
 from spine_engine.pipeline import AssessmentPipeline
 from spine_engine.risk import DeviationRiskModel
 from spine_engine.settings import EngineSettings
-from spine_engine.stubs import NullTriagePolicy
+from spine_engine.triage import DeclarativeTriagePolicy, PolicyConfig
 
 
 def default_baseline_strategy(settings: EngineSettings) -> StatisticalBaselineStrategy:
@@ -30,9 +30,10 @@ def default_baseline_strategy(settings: EngineSettings) -> StatisticalBaselineSt
 
 
 def default_pipeline(settings: EngineSettings) -> AssessmentPipeline:
-    """Baseline estadística y modelo de riesgo genérico reales; el triaje sigue siendo nulo."""
+    """Construye la evaluación estadística y la política de triaje configurable."""
     risk = DeviationRiskModel(settings.risk_domain_weights, settings.risk_persistence_points, settings.risk_saturation)
-    return AssessmentPipeline(default_baseline_strategy(settings), risk, NullTriagePolicy())
+    config = PolicyConfig.from_file(settings.triage_policy_file) if settings.triage_policy_file else PolicyConfig()
+    return AssessmentPipeline(default_baseline_strategy(settings), risk, DeclarativeTriagePolicy(config))
 
 
 def default_baseline_builder() -> BaselineBuilder:

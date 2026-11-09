@@ -112,3 +112,8 @@ Environment variables (or a `.env`), all optional:
 ```bash
 uv run pytest engine
 ```
+# Declarative triage
+
+`SPINE_ENGINE_TRIAGE_POLICY_FILE` optionally points to a JSON policy. Without a file, risk has a provisional green model level, incomplete inputs raise the global level to amber, and unrecognized red flags require immediate escalation and raise it to red. Reports after `as_of` are ignored. A missing feature also raises its identifiable domain to amber. No clinical cutoffs or clinical rules are supplied: these require clinical review in #53.
+
+The JSON object accepts `amber_cutoff` and `red_cutoff` together (inclusive, between 0 and 1), `unknown_flag_urgency`, and a `rules` array. Each rule contains `rule_id`, `datum` (`risk`, `deviation`, `self_report`, or `red_flag`), `key`, `operator`, `threshold`, `level`, `domain`, `recommendations`, and optional `urgency`; flag rules require an urgency. Self-report keys are `pain_nrs`, `pain_nrs_worst_24h`, and `stiffness_nrs`. Examples belong in tests and are fictional.

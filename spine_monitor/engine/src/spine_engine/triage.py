@@ -30,6 +30,8 @@ class Rule(BaseModel):
     def valid_flag_rule(self):
         if self.datum == "red_flag" and (not self.key or self.urgency is None):
             raise ValueError("red flag rules require a flag and an urgency")
+        if self.datum == "red_flag" and self.domain != "safety":
+            raise ValueError("red flag rules belong to the safety domain")
         if self.datum == "self_report" and self.key not in {"pain_nrs", "pain_nrs_worst_24h", "stiffness_nrs"}:
             raise ValueError("unsupported self report field")
         if any(not recommendation.startswith("REC_") for recommendation in self.recommendations):

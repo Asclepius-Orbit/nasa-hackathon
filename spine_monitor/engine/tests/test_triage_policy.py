@@ -49,6 +49,9 @@ def test_invalid_configuration_is_rejected():
 def test_red_flag_rules_require_urgency():
     with pytest.raises(ValueError):
         PolicyConfig(rules=[{"rule_id": "RULE_TEST", "datum": "red_flag", "key": "leg_weakness", "level": "red"}])
+    with pytest.raises(ValueError):
+        PolicyConfig(rules=[{"rule_id": "RULE_TEST", "datum": "red_flag", "key": "leg_weakness", "level": "red",
+                             "urgency": "priority", "domain": "symptoms"}])
 
 
 def test_default_pipeline_uses_the_declarative_policy():

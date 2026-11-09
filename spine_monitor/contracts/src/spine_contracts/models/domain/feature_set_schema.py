@@ -54,6 +54,7 @@ class Reason(str, Enum):
     SIGNAL_NOT_RAW = 'signal_not_raw'
     TOO_FEW_REPETITIONS = 'too_few_repetitions'
     STREAM_MISSING = 'stream_missing'
+    INSUFFICIENT_SAMPLE_RATE = 'insufficient_sample_rate'
 
 
 class SkippedItem(BaseModel):

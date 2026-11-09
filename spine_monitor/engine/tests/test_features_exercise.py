@@ -184,7 +184,7 @@ def test_composite_with_enough_reps_returns_values_with_catalog_units():
     result = extract_json(make_request(events_for([3.0, 4.0, 5.0])))
 
     by_id = {f["feature_id"]: f for f in result["features"]}
-    assert [f["feature_id"] for f in result["features"]] == sorted(ALL_IDS)
+    assert [f["feature_id"] for f in result["features"] if f["feature_id"] in ALL_IDS] == sorted(ALL_IDS)
     assert (by_id[COUNT]["value"], by_id[MEAN]["value"], by_id[CV]["value"]) == (3.0, 4.0, 25.0)
     assert all(by_id[i]["unit"] == unit_for(i) for i in ALL_IDS)
     assert all(by_id[i]["n"] == 3 and by_id[i]["quality"]["assessed_by"] == "engine" for i in ALL_IDS)

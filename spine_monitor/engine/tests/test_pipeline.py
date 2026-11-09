@@ -102,6 +102,15 @@ def test_calibration_expired_counts_as_missing_data():
     assert MissingItem(what="emg.latissimus_dorsi.right.rms_pct_mvc", reason=MissingReason.NO_DATA) in completeness.missing
 
 
+def test_insufficient_sample_rate_counts_as_missing_data():
+    req = request()
+    req.feature_sets[0].skipped = [SkippedItem(feature_id="imu.l3.sagittal.smoothness_sparc", reason="insufficient_sample_rate")]
+
+    completeness = stub_pipeline().evaluate(req).completeness
+
+    assert MissingItem(what="imu.l3.sagittal.smoothness_sparc", reason=MissingReason.NO_DATA) in completeness.missing
+
+
 def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
     # The schema allows `skipped: null`; the completeness must read it as "none skipped".
     req = request()

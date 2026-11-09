@@ -18,7 +18,7 @@ The contract is `contracts/openapi.yaml`; bodies and errors are the JSON Schemas
 | Endpoint | Body in | Body out | Today |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | `features` from the registered families: `exercise` since #41 and `emg` (amplitude) since #42; the IMU and strap families follow in #43-#45 |
+| `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | `features` from the registered families: `exercise` since #41, `emg` (amplitude) since #42 and `imu` since #44; the strap families follow in #43 and #45 |
 | `POST /baseline` | `BaselineRequest` (feature sets of the reference sessions) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison and generic risk model (`risk_score`, `confidence`, `drivers`); null triage (level always green) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | applies `overrides` (`set`, `add`, `scale`) to the latest value of each feature and re-assesses; `project_days` is not applied yet |
@@ -47,14 +47,14 @@ The examples in `contracts/examples/valid/engine/` are valid requests for every 
 | `ChangeDetector` | `CompositeDetector` of `CusumDetector` + `KalmanDetector` | sustained change over the history (same protocol and gravity); a single spike never counts |
 | `VotePolicy` | `AllAgreeVote` | the detectors must agree (AND), in the same direction |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | builds the baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | raw data to features: runs the registered feature families (`exercise`, #41; `emg` amplitude, #42; IMU and strap in #43-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | raw data to features: runs the registered feature families (`exercise`, #41; `emg` amplitude, #42; `imu`, #44; strap in #43 and #45) |
 | `RiskModel` | `DeviationRiskModel` | adds up the \|z\| of sustained deviations, weighted by domain and by persistence (`n_points`), saturated to [0, 1] with `1 - exp(-sum / scale)`; no clinical ranges, so either direction counts as worse and the sign stays in each driver's `deviation_z`. `drivers` hold each feature's share of the score, largest first; `confidence` is the completeness. Weights, persistence and scale: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION`. A partial weights map is completed with 1.0 for the missing domains. `n_points` is the length of the series, not of its deviated tail, so with a persistence value at or below the detector's minimum points the factor is always 1 (as with the default) |
 
 The detectors see only a series of z-scores: they do not know which metric it is, so they do not depend on the theoretical model. `Deviation` carries the z-score, the reference gravity and whether the change is sustained and in which direction; the risk model reads it from there.
 
 ## Feature extraction
 
-`POST /features` runs `CompositeFeatureExtractor` over an `ExtractorRegistry` of feature families (`FeatureFamilyExtractor`: a `family` name, the catalog `feature_ids` it declares and `extract(context) -> FamilyResult` with `computed` and `skipped` features). `default_registry()` registers the `exercise` (#41) and `emg` amplitude (#42) families, so the repetition and EMG amplitude metrics are computed today; the metrics of the other sensors arrive family by family (#43-#45). `NullFeatureExtractor` stays in `stubs.py` for tests.
+`POST /features` runs `CompositeFeatureExtractor` over an `ExtractorRegistry` of feature families (`FeatureFamilyExtractor`: a `family` name, the catalog `feature_ids` it declares and `extract(context) -> FamilyResult` with `computed` and `skipped` features). `default_registry()` registers the `exercise` (#41), `emg` amplitude (#42) and `imu` (#44) families, so the repetition, EMG amplitude and IMU metrics are computed today; the metrics of the other sensors arrive family by family (#43, #45). `NullFeatureExtractor` stays in `stubs.py` for tests.
 
 Before the families run, the engine prepares an `ExtractionContext` once:
 
@@ -84,6 +84,17 @@ Quality: the event-based features evaluate the common quality over all declared 
 For every declared EMG stream with a muscle and a side, `emg.{muscle}.{side}.rms_mv` is the RMS of the active-phase samples of all repetitions and `rest_rms_mv` the RMS of their rest windows. `rms_pct_mvc` divides `rms_mv` by `mvc_rms_mv` of the stream's `emg_mvc` calibration; `peak_pct_mvc` is the highest windowed RMS (window = the calibration's `window_ms`, never crossing from one repetition or `boot_id` to another) over the same MVC. `emg.{muscle}.symmetry_index_pct` is 100·|L-R| / ((L+R)/2) over the two `rms_pct_mvc`. The amplitude needs no raw signal: the computation is the same; the value matches for raw and rectified, not for the envelope. `n` is the number of repetitions that contributed samples. The MVC is only used when it belongs to the stream's muscle and side and was measured on a signal kind compatible with every chunk of the stream (raw and rectified with each other, envelope only with envelope); otherwise the %MVC features and the symmetry are `skipped` with `no_calibration`, while `rms_mv` and `rest_rms_mv` are still computed.
 
 What cannot be computed goes to `skipped`: `no_calibration` / `calibration_expired` for what needs the MVC (the symmetry needs both sides; a missing one wins over an expired one), `too_few_repetitions` without repetitions, `no_data` without samples in the windows (or with an empty mean in the symmetry, or a rest without a rest window), and `stream_missing` for a declared stream without chunks or a muscle with a single declared side.
+
+### The `imu` family
+
+Gyroscope-based, so it does not depend on gravity and stays comparable between Earth and microgravity. For each declared IMU stream, with the `spine_level` of its `placement` in the session (never fixed in the code), and for each repetition window (active phase, `start <= t < end`):
+
+- **Planes:** all three are emitted. `calibration.imu.mounting` maps each sensor axis to a body axis: sagittal = rotation about the left-right axis, frontal = about the anterior axis, transverse = about the cranial axis (same frame as the simulator). A mounting with no sensor axis for a plane skips that plane as `no_calibration`. The calibration's `gyro_bias_dps` is subtracted from each sensor axis.
+- **`imu.{level}.{plane}.rom_deg`:** span (max - min) of the integrated angle (each sample with the period of its own chunk), starting at 0 before the first sample. **`peak_angular_velocity_dps`:** largest `|ω|`.
+- **`imu.{level}.{plane}.smoothness_sparc`:** SPARC of `|ω|` with numpy's FFT and the published defaults (zero padding 2^4, 10 Hz cutoff, 5 % amplitude threshold; Balasubramanian et al. 2015). Only when every chunk of the stream is at 50 Hz or more (the catalog's requirement); otherwise `skipped` with `insufficient_sample_rate`. Without motion SPARC is undefined and ends as `no_data`.
+- **`imu.{level}.accel_rms_g`:** RMS of the acceleration magnitude after removing each axis' mean over the repetition (the static component: gravity and the accelerometer bias).
+
+Each value is the mean over the repetitions that have samples and a finite value, and `n` counts them (a repetition without motion has no SPARC and does not count for it; if none has one, `no_data`); a repetition reads the `boot_id` segment with most samples in its window. Skip reasons, in order: `stream_missing`, `no_calibration`/`calibration_expired`, then `no_data` (no clock or no samples in any repetition) or `too_few_repetitions` (no repetition); `insufficient_sample_rate` for SPARC is decided before these last two.
 
 ## Configuration
 

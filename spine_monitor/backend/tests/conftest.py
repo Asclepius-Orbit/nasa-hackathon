@@ -20,6 +20,7 @@ from typing import Any
 import aiomqtt
 import httpx
 import pytest
+import spine_physiology
 from monitor.main import create_app
 from monitor.settings import AppSettings
 from spine_contracts import FeatureSet, FeaturesRequest, topics
@@ -35,7 +36,8 @@ from spine_physiology.signals import exercise_duration_s
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
 ASTRONAUT, DEVICE = "AST-01", "wb-01"
 NOW = datetime(2026, 11, 13, 10, 0, tzinfo=UTC)
-SIM_CONFIG = Path(__file__).resolve().parents[2] / "physiology" / "configs" / "example-mission.yaml"
+# From the installed simulator package, not this file: mutmut runs a copy of the tests in another directory.
+SIM_CONFIG = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 SIM_PROTOCOL = "lat_pulldown_standing_v1"
 SIM_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 

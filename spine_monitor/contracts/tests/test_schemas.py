@@ -258,6 +258,40 @@ MUTATIONS = [
     ("app/ui-baseline", "unknown session status", lambda d: d["sessions"][0].update(status="skipped")),
     ("app/ui-baseline", "complete session without id", lambda d: d["sessions"][0].update(session_id=None)),
     ("app/ui-baseline", "offset as a label", lambda d: d["sessions"][0].update(offset_days="L-30")),
+    ("app/ui-strip", "ground link with an unknown state", lambda d: d.update(ground_link={"state": "degraded"})),
+    ("app/ui-strip", "ground link down without back_in_min", lambda d: d["ground_link"].pop("back_in_min")),
+    ("app/ui-strip.unpaired", "ground link up with a return time", lambda d: d["ground_link"].update(back_in_min=3)),
+    ("app/ground-summary", "revision zero", lambda d: d.update(revision=0)),
+    ("app/ground-summary", "date that is a timestamp", lambda d: d.update(date="2027-02-09T00:00:00Z")),
+    ("app/ground-summary", "confidence above 1", lambda d: d.update(confidence=1.2)),
+    ("app/ground-summary", "unknown red flag", lambda d: d.update(red_flags=["sad"])),
+    ("app/ground-summary", "prose recommendation", lambda d: d.update(recommendations=["Do the set"])),
+    ("app/ground-summary", "driver without its deviation", lambda d: d["drivers"][0].pop("deviation_z")),
+    ("app/ground-summary", "escalation reason in prose", lambda d: d["escalation"].update(reasons=["Numb legs"])),
+    ("app/ground-summary", "required escalation without urgency", lambda d: d["escalation"].update(required=True)),
+    ("app/ground-summary", "contacts filled before they are modelled", lambda d: d.update(contacts={})),
+    ("app/ground-summary", "personal data in the summary", lambda d: d.update(date_of_birth="1980-01-01")),
+    ("app/ground-summary", "astronaut id that is not a pseudonym", lambda d: d.update(astronaut_id="Ana")),
+    ("app/ground-summary.nodata", "nodata with an assessment id", lambda d: d.update(assessment_id="a55e55e0-0000-4000-8000-0000000000a1")),
+    ("app/ground-summary.nodata", "nodata with a confidence", lambda d: d.update(confidence=1)),
+    ("app/ground-summary.nodata", "nodata with data counts", lambda d: d.update(data_available=0, data_total=0)),
+    ("app/ground-summary.nodata", "nodata with drivers", lambda d: d.update(drivers=[{"feature_id": "a.b", "deviation_z": None}])),
+    ("app/ground-summary.nodata", "nodata with recommendations", lambda d: d.update(recommendations=["REC_LUMBAR_STAB_01"])),
+    ("app/ground-summary.nodata", "nodata with an escalation", lambda d: d.update(escalation={"required": False, "urgency": None, "reasons": []})),
+    ("app/ui-houston", "summary omitted instead of null", lambda d: d.pop("summary")),
+    ("app/ui-houston", "ground link omitted instead of null", lambda d: d.pop("ground_link")),
+    ("app/ui-houston", "link down with negative minutes", lambda d: d["ground_link"].update(back_in_min=-1)),
+    ("app/ui-houston", "last contact without offset", lambda d: d.update(last_contact_at="2027-02-09T06:00:02")),
+    ("app/ui-houston", "real transport", lambda d: d.update(transport="satcom")),
+    ("app/ui-houston", "content declared validated", lambda d: d.update(content_validated=True)),
+    ("app/ui-houston", "summary that is not a summary", lambda d: d["summary"].update(level="yellow")),
+    ("app/ui-outbox", "queued item already received", lambda d: d["items"][0].update(received_at="2027-02-09T09:00:05Z")),
+    ("app/ui-outbox", "sent item without received_at", lambda d: d["items"][1].update(received_at=None)),
+    ("app/ui-outbox", "unknown item state", lambda d: d["items"][0].update(state="failed")),
+    ("app/ui-outbox", "negative attempts", lambda d: d["items"][0].update(attempts=-1)),
+    ("app/ui-outbox", "revision zero", lambda d: d["items"][0].update(revision=0)),
+    ("app/ui-outbox", "clinical payload in an item", lambda d: d["items"][0].update(summary={})),
+    ("app/ui-outbox", "ground link omitted instead of null", lambda d: d.pop("ground_link")),
     ("app/ui-first-day", "unknown task code", lambda d: d.update(todo=["TASK_PROFILE_NAME"])),
     ("app/ui-first-day", "crew name in the view", lambda d: d.update(crew_first_name="Ana")),
     ("app/ui-first-day", "baseline progress omitted", lambda d: d.pop("baseline")),
@@ -541,3 +575,25 @@ def test_example_feature_ids_exist_in_catalog(catalog, common):
     for path in example_files("valid"):
         for feature_id in walk(json.loads(path.read_text(encoding="utf-8"))):
             assert feature_id in known, f"{path.name}: {feature_id} not in catalog"
+
+
+GROUND_SCHEMAS = ["app/ground-summary", "app/ui-houston", "app/ui-outbox"]
+NOT_FOR_GROUND = {"date_of_birth", "sex_at_birth", "gender_identity", "anthropometry", "spine_history", "space_history", "fitness", "notes"}
+
+
+def property_names(node):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "properties" and isinstance(value, dict):
+                yield from value
+            yield from property_names(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from property_names(item)
+
+
+@pytest.mark.parametrize("rel", GROUND_SCHEMAS)
+def test_ground_schemas_carry_no_personal_profile_data(rel, schemas):
+    profile = set(load_json(SCHEMAS_DIR / "domain" / "astronaut-profile.schema.json")["properties"])
+    banned = NOT_FOR_GROUND | (profile - {"schema_version", "astronaut_id", "updated_at", "launch_date", "landing_date"})
+    assert not banned & set(property_names(schemas[SCHEMAS_DIR / f"{rel}.schema.json"]))

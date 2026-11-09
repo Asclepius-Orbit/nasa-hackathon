@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "ground_link": {
+    "state": "down",
+    "back_in_min": 12
+  },
+  "last_contact_at": "2027-02-09T06:00:02Z",
+  "items": [
+    {
+      "date": "2027-02-09",
+      "mission_day": 87,
+      "revision": 2,
+      "state": "queued",
+      "enqueued_at": "2027-02-09T09:00:00Z",
+      "received_at": null,
+      "attempts": 3
+    },
+    {
+      "date": "2027-02-09",
+      "mission_day": 87,
+      "revision": 1,
+      "state": "sent",
+      "enqueued_at": "2027-02-09T06:00:00Z",
+      "received_at": "2027-02-09T06:00:02Z",
+      "attempts": 1
+    },
+    {
+      "date": "2027-02-08",
+      "mission_day": 86,
+      "revision": 1,
+      "state": "sent",
+      "enqueued_at": "2027-02-08T09:00:00Z",
+      "received_at": "2027-02-08T09:05:00Z",
+      "attempts": 2
+    }
+  ]
+}

@@ -116,6 +116,42 @@ paths:
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/houston:
+    get:
+      operationId: getHoustonView
+      summary: Houston screen
+      description: Latest summary prepared for the ground station, state of the link and last confirmed contact. `summary` is null while the astronaut has nothing yet. The transport is simulated (`transport` is `simulated`) and the content is pending validation by Aguado (`content_validated` is false).
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The Houston view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-houston.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/outbox:
+    get:
+      operationId: getOutboxView
+      summary: Ground outbox
+      description: Summaries queued for or sent to the ground station, most recent first, without clinical content. Empty `items` for an astronaut without summaries.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The outbox view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-outbox.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /ui/sessions/{session_id}/view:
     get:
       operationId: getSessionView

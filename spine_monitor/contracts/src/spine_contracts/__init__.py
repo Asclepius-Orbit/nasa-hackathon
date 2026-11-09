@@ -21,14 +21,17 @@ from spine_contracts.messages import (
 from spine_contracts.models.app.assessment_list_schema import AssessmentList
 from spine_contracts.models.app.error_schema import AppErrorResponse
 from spine_contracts.models.app.explanation_schema import Explanation
+from spine_contracts.models.app.ground_summary_schema import GroundSummary
 from spine_contracts.models.app.history_schema import History
 from spine_contracts.models.app.self_report_list_schema import SelfReportList
 from spine_contracts.models.app.session_list_schema import SessionList
 from spine_contracts.models.app.status_schema import Status
 from spine_contracts.models.app.ui_baseline_schema import BaselineView
-from spine_contracts.models.app.ui_common_schema import DayLevel, SessionState, TaskCode
+from spine_contracts.models.app.ui_common_schema import DayLevel, GroundLinkDown, GroundLinkUp, OutboxState, SessionState, TaskCode
 from spine_contracts.models.app.ui_first_day_schema import FirstDayView
 from spine_contracts.models.app.ui_history_schema import HistoryView
+from spine_contracts.models.app.ui_houston_schema import HoustonView
+from spine_contracts.models.app.ui_outbox_schema import OutboxView
 from spine_contracts.models.app.ui_rep_state_schema import RepStateView
 from spine_contracts.models.app.ui_session_schema import SessionView
 from spine_contracts.models.app.ui_strip_schema import StripView
@@ -126,8 +129,12 @@ __all__ = [
     "FiredRule",
     "FirstDayView",
     "GravityEnvironment",
+    "GroundLinkDown",
+    "GroundLinkUp",
+    "GroundSummary",
     "History",
     "HistoryView",
+    "HoustonView",
     "ImuChunk",
     "ImuCalibration",
     "Level",
@@ -136,6 +143,8 @@ __all__ = [
     "MissingReason",
     "MissionPhase",
     "Muscle",
+    "OutboxState",
+    "OutboxView",
     "Quality",
     "QualityFlag",
     "RedFlagReport",

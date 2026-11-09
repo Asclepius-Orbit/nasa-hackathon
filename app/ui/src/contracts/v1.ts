@@ -332,6 +332,15 @@ export type RedFlagReport = ReportBase & {
   onset?: string;
   note?: string;
 };
+/**
+ * Traffic-light level of a day or of today, or 'nodata' when there is no assessment. Never a green by default.
+ */
+export type DayLevel = "green" | "amber" | "red" | "nodata";
+/**
+ * Lifecycle of a session in the app: starting (start command sent), running (acked by the gateway), rejected (refused, timed out or bus down), ended, processing (features and assessment being computed), processed, processing_failed.
+ */
+export type SessionState =
+  "starting" | "running" | "rejected" | "ended" | "processing" | "processed" | "processing_failed";
 export type StreamDeclaration = {
   /**
    * Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.
@@ -465,14 +474,13 @@ export type Placement = (
  */
 export type TaskCode = "TASK_DAILY_REPORT" | "TASK_ODI" | "TASK_BASELINE_SESSION" | "TASK_SESSION";
 /**
- * Traffic-light level of a day or of today, or 'nodata' when there is no assessment. Never a green by default.
+ * State of the link with the ground station. 'up': the link works. 'down': it does not; back_in_min is the minutes until it is expected back, null when that is not known. A view that has no ground link configured or known carries null instead of this object.
  */
-export type DayLevel = "green" | "amber" | "red" | "nodata";
+export type GroundLink = GroundLinkUp | GroundLinkDown;
 /**
- * Lifecycle of a session in the app: starting (start command sent), running (acked by the gateway), rejected (refused, timed out or bus down), ended, processing (features and assessment being computed), processed, processing_failed.
+ * State of a ground summary in the outbox: queued (not yet confirmed received by the ground station) or sent (receipt confirmed by the ground station).
  */
-export type SessionState =
-  "starting" | "running" | "rejected" | "ended" | "processing" | "processed" | "processing_failed";
+export type OutboxState = "queued" | "sent";
 /**
  * Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept. A session that is over has signal ok (it did not lose its sensor) with phase and progress_pct null, rep and last kept, in both its final `state` and its `end`.
  */
@@ -878,6 +886,7 @@ export interface ContractsV1 {
   "app/assessment-list"?: AssessmentList;
   "app/error"?: AppErrorResponse;
   "app/explanation"?: Explanation;
+  "app/ground-summary"?: GroundSummary;
   "app/history"?: History;
   "app/self-report-list"?: SelfReportList;
   "app/session-list"?: SessionList;
@@ -886,6 +895,8 @@ export interface ContractsV1 {
   "app/ui-common"?: UIViewDefinitions;
   "app/ui-first-day"?: FirstDayView;
   "app/ui-history"?: HistoryView;
+  "app/ui-houston"?: HoustonView;
+  "app/ui-outbox"?: OutboxView;
   "app/ui-rep-state"?: RepStateView;
   "app/ui-session"?: SessionView;
   "app/ui-strip"?: StripView;
@@ -1276,6 +1287,116 @@ export interface ReportBase {
 export interface PainLocation {
   region: "cervical" | "thoracic" | "thoracolumbar" | "lumbar" | "sacral";
   side?: "left" | "right" | "midline" | "bilateral";
+}
+/**
+ * What travels to the ground station: one revision of the summary of one day of one astronaut. PROVISIONAL content, pending validation by Aguado: which fields go to the ground and how is not decided yet. Codes and numbers only, never prose; every unknown is an explicit null. Carries no personal data of the astronaut profile, only the pseudonymous astronaut id. A day without an assessment has level 'nodata' and null or empty assessment fields, never a reassuring default.
+ */
+export interface GroundSummary {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  /**
+   * Calendar date, ISO 8601.
+   */
+  date: string;
+  /**
+   * Mission day of the date; null without a launch date.
+   */
+  mission_day: number | null;
+  /**
+   * Revision of the summary of this day, starting at 1; a newer assessment of the same day gives a new revision.
+   */
+  revision: number;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  as_of: string;
+  level: DayLevel;
+  /**
+   * Assessment the summary comes from; null for level 'nodata'.
+   */
+  assessment_id: string | null;
+  /**
+   * confidence of the assessment, 0-1; null for level 'nodata'.
+   */
+  confidence: number | null;
+  /**
+   * Expected inputs that were available; null for level 'nodata'.
+   */
+  data_available: number | null;
+  /**
+   * Expected inputs; null for level 'nodata'.
+   */
+  data_total: number | null;
+  /**
+   * Features that pushed the risk, most influential first; empty for level 'nodata'.
+   */
+  drivers: GroundDriver[];
+  /**
+   * Red flags reported that day; empty when none.
+   *
+   * Items: Symptoms that suggest nerve involvement or an emergency. Any one of them escalates, regardless of the model.
+   */
+  red_flags: (
+    | "radiating_leg_pain"
+    | "numbness_or_tingling"
+    | "leg_weakness"
+    | "bladder_or_bowel_dysfunction"
+    | "saddle_numbness"
+    | "severe_night_pain"
+    | "fever_with_back_pain"
+    | "trauma_event"
+  )[];
+  /**
+   * Sessions of the day.
+   */
+  sessions: GroundSession[];
+  /**
+   * recommendations of the assessment, in order; empty for level 'nodata'.
+   */
+  recommendations: string[];
+  /**
+   * Escalation of the assessment; null for level 'nodata'. Reasons are rule ids, not text.
+   */
+  escalation: GroundEscalation | null;
+  /**
+   * Reserved for the contacts the ground may reach the astronaut with (issue #63). Always null until that is modelled; its content is not part of this schema yet.
+   */
+  contacts: null;
+}
+export interface GroundDriver {
+  /**
+   * Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.
+   */
+  feature_id: string;
+  deviation_z: number | null;
+}
+export interface GroundSession {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  state: SessionState;
+  /**
+   * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
+   */
+  protocol_id: string;
+}
+export interface GroundEscalation {
+  required: boolean;
+  /**
+   * Urgency of the escalation; null when it is not required.
+   */
+  urgency: ("routine" | "priority" | "immediate") | null;
+  /**
+   * Rules that justify the escalation (rule_id of the fired rules of the assessment); empty when none.
+   */
+  reasons: string[];
 }
 /**
  * Response of GET /crew/{astronaut_id}/history; backs the MCP tool get_history (and, with two calls, compare_periods, which the MCP server computes). Feature sets and assessments of a time window. Feature sets are filtered by the start of their session, assessments by as_of. limit caps each collection; truncated says some collection had more, and the most recent items are kept.
@@ -1713,6 +1834,98 @@ export interface HistoryDayReport {
     | "trauma_event"
   )[];
 }
+/**
+ * Response of GET /ui/crew/{astronaut_id}/houston: what goes to the ground station and the state of the link, for the Houston screen of the desktop UI. Codes and data only; every unknown is an explicit null. The transport is simulated and the content is not yet validated by Aguado: the UI shows both.
+ */
+export interface HoustonView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  /**
+   * Latest summary prepared for the ground; null while the astronaut has nothing yet.
+   */
+  summary: GroundSummary | null;
+  /**
+   * State of the link with the ground station; null when not configured or unknown.
+   */
+  ground_link: GroundLink | null;
+  /**
+   * Instant of the last confirmed send to the ground station; null when there is none yet.
+   */
+  last_contact_at: string | null;
+  /**
+   * How the summaries reach the ground. Today always 'simulated': the UI marks it as such.
+   */
+  transport: "simulated";
+  /**
+   * Whether the content of the summary has been validated by Aguado. Today always false: the UI shows it as pending.
+   */
+  content_validated: false;
+}
+export interface GroundLinkUp {
+  state: "up";
+}
+export interface GroundLinkDown {
+  state: "down";
+  /**
+   * Minutes until the link is expected back; null when unknown.
+   */
+  back_in_min: number | null;
+}
+/**
+ * Response of GET /ui/crew/{astronaut_id}/outbox: the summaries queued for or sent to the ground station, most recent first. Carries no clinical content, only what identifies each summary and its delivery state. Every unknown is an explicit null.
+ */
+export interface OutboxView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  /**
+   * State of the link with the ground station; null when not configured or unknown.
+   */
+  ground_link: GroundLink | null;
+  /**
+   * Instant of the last confirmed send to the ground station; null when there is none yet.
+   */
+  last_contact_at: string | null;
+  /**
+   * One entry per summary revision, most recent first (by day, then revision).
+   */
+  items: OutboxItem[];
+}
+export interface OutboxItem {
+  /**
+   * Calendar date, ISO 8601.
+   */
+  date: string;
+  /**
+   * Mission day of the date; null without a launch date.
+   */
+  mission_day: number | null;
+  revision: number;
+  state: OutboxState;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  enqueued_at: string;
+  /**
+   * When the ground station confirmed receipt; null exactly while the state is queued.
+   */
+  received_at: string | null;
+  /**
+   * Times the send was tried.
+   */
+  attempts: number;
+}
 export interface LastRep {
   rep: number;
   duration_s: number;
@@ -1830,11 +2043,11 @@ export interface StripView {
    */
   harness: StripHarness | null;
   /**
-   * State of the link with the ground station. Reserved: always null until the ground link is modelled (issue #62).
+   * State of the link with the ground station. Null when the link is not configured or its state is unknown.
    */
-  ground_link: null;
+  ground_link: GroundLink | null;
   /**
-   * Minutes since the last contact with the ground station; null when unknown (always null until issue #62).
+   * Minutes since the last confirmed send to the ground station (the latest summary of the outbox in state sent); null when there is none yet or it is unknown.
    */
   last_contact_min_ago: number | null;
   reports_due: ReportsDue;

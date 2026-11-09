@@ -10,7 +10,7 @@
     "stale": false,
     "last_seen_at": "2026-11-15T09:58:00Z"
   },
-  "ground_link": null,
-  "last_contact_min_ago": null,
+  "ground_link": { "state": "down", "back_in_min": 12 },
+  "last_contact_min_ago": 45,
   "reports_due": { "daily": true, "weekly_odi": false }
 }

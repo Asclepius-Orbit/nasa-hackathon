@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "date": "2027-02-10",
+  "mission_day": null,
+  "revision": 1,
+  "as_of": "2027-02-10T09:00:00Z",
+  "level": "nodata",
+  "assessment_id": null,
+  "confidence": null,
+  "data_available": null,
+  "data_total": null,
+  "drivers": [],
+  "red_flags": [],
+  "sessions": [],
+  "recommendations": [],
+  "escalation": null,
+  "contacts": null
+}

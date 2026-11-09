@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-houston.schema.json",
+  "title": "HoustonView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/houston: what goes to the ground station and the state of the link, for the Houston screen of the desktop UI. Codes and data only; every unknown is an explicit null. The transport is simulated and the content is not yet validated by Aguado: the UI shows both.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "summary": {
+      "description": "Latest summary prepared for the ground; null while the astronaut has nothing yet.",
+      "oneOf": [{ "$ref": "ground-summary.schema.json" }, { "type": "null" }]
+    },
+    "ground_link": {
+      "description": "State of the link with the ground station; null when not configured or unknown.",
+      "oneOf": [{ "$ref": "ui-common.schema.json#/$defs/ground_link" }, { "type": "null" }]
+    },
+    "last_contact_at": {
+      "description": "Instant of the last confirmed send to the ground station; null when there is none yet.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    },
+    "transport": {
+      "description": "How the summaries reach the ground. Today always 'simulated': the UI marks it as such.",
+      "const": "simulated"
+    },
+    "content_validated": {
+      "description": "Whether the content of the summary has been validated by Aguado. Today always false: the UI shows it as pending.",
+      "const": false
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "summary", "ground_link", "last_contact_at", "transport", "content_validated"],
+  "additionalProperties": false
+}

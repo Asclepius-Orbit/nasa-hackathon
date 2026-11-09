@@ -4,6 +4,7 @@ Every message is validated with `spine_contracts.validation` (the full JSON Sche
 conditional rules Pydantic does not capture) and the ids of the payload must match those of the
 topic: a message cannot write on behalf of another astronaut or device. Whatever fails is stored in
 `rejected_messages` (bounded) and logged; ingestion never crashes because of a message.
+A new imu_l3 chunk of a known session is also told to the live repetition counter, after it is stored.
 
 `Bus` keeps the connection (reconnection with backoff, persistent session so QoS 1 messages are not
 lost during an outage) and publishes the commands of `Control`.
@@ -22,7 +23,8 @@ from jsonschema.exceptions import ValidationError
 from spine_contracts import topics, validation
 
 from monitor.control import Control
-from monitor.db import Store
+from monitor.db import SessionRow, Store
+from monitor.live.tracker import REP_STREAM_ID
 
 _log = logging.getLogger(__name__)
 
@@ -50,11 +52,16 @@ class Rejected(Exception):
     pass
 
 
+class ChunkListener(Protocol):
+    def on_chunk(self, session: SessionRow, chunk: dict[str, Any]) -> None: ...
+
+
 class Ingest:
-    def __init__(self, store: Store, control: Control, *, store_unknown_session_chunks: bool = True) -> None:
+    def __init__(self, store: Store, control: Control, *, store_unknown_session_chunks: bool = True, live: ChunkListener | None = None) -> None:
         self._store = store
         self._control = control
         self._store_unknown = store_unknown_session_chunks
+        self._live = live
         self.counts: dict[str, int] = {"accepted": 0, "duplicate": 0, "rejected": 0, "dropped": 0}
 
     def handle(self, topic: str, payload: bytes) -> None:
@@ -99,7 +106,20 @@ class Ingest:
             return "dropped"
         if session is not None and (session.payload["astronaut_id"], session.payload["device_id"]) != (chunk["astronaut_id"], chunk["device_id"]):
             raise Rejected("chunk of a session that belongs to another device")
-        return "accepted" if self._store.add_chunk(chunk) else "duplicate"
+        if not self._store.add_chunk(chunk):
+            return "duplicate"
+        if session is not None and chunk["stream_id"] == REP_STREAM_ID:
+            self._tell_live(session, chunk)
+        return "accepted"
+
+    def _tell_live(self, session: SessionRow, chunk: dict[str, Any]) -> None:
+        """The chunk is already safe in the store: whatever goes wrong here only affects the live counter."""
+        if self._live is None:
+            return
+        try:
+            self._live.on_chunk(session, chunk)
+        except Exception:
+            _log.exception("live repetition state of session %s not updated", chunk["session_id"])
 
     def _on_status(self, status: dict[str, Any]) -> str:
         return "accepted" if self._store.put_device_status(status) else "duplicate"

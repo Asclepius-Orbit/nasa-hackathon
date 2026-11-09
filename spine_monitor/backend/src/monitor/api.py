@@ -11,6 +11,7 @@ The app fills in what it owns (ids, `schema_version`, instants, `source`) and va
 against the JSON Schema of the entity. Errors are problem details shaped like `app/error`.
 - Views (`GET /ui/crew/{id}/views/*`, `GET /ui/sessions/{id}/view`, `ui-openapi.yaml`): the stored data fed to the pure
   builders of `monitor.views`; each result is validated against its schema before it is served.
+- Live repetition counter (`GET /ui/sessions/{id}/reps`, `ui-openapi.yaml`): server-sent events from `monitor.live.stream`.
 """
 
 import json
@@ -27,7 +28,9 @@ from spine_contracts import SCHEMA_VERSION, topics, validation
 
 from monitor.analysis import Analysis
 from monitor.control import CommandError, Control
-from monitor.db import Store
+from monitor.db import SessionRow, Store
+from monitor.live.stream import RepEventResponse, RepStream
+from monitor.live.tracker import has_live_reps
 from monitor.models import CalibrateBody, EventBody, StopBody
 from monitor.settings import AppSettings
 from monitor.views.baseline import build_baseline, build_first_day
@@ -47,10 +50,13 @@ PROBLEM = "application/problem+json"
 TITLES = {
     "invalid_request": "Invalid request",
     "not_found": "Not found",
+    "no_reps": "No repetitions",
     "conflict": "Conflict",
     "unavailable": "Service unavailable",
     "internal": "Internal error",
 }
+
+CONTRACT_PROBLEMS = ("invalid_request", "invalid_range", "not_found", "no_reps", "unsupported_schema_version", "internal")
 
 
 class Problem(Exception):
@@ -64,7 +70,7 @@ class Problem(Exception):
 
 def problem_response(status: int, type_: str, detail: str | None = None, errors: list[dict[str, str]] | None = None) -> JSONResponse:
     # `app/error` only enumerates these types; a conflict or a bus outage is expressed by the status.
-    contract_type = type_ if type_ in ("invalid_request", "invalid_range", "not_found", "unsupported_schema_version", "internal") else "invalid_request"
+    contract_type = type_ if type_ in CONTRACT_PROBLEMS else "invalid_request"
     body: dict[str, Any] = {"type": contract_type, "title": TITLES.get(type_, "Error"), "status": status}
     if detail:
         body["detail"] = detail
@@ -169,7 +175,7 @@ def _conforming(schema: str, view: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_router(
-    store: Store, control: Control, analysis: Analysis, *, odi_interval_days: int, views: ViewSettings, clock=lambda: datetime.now(UTC)
+    store: Store, control: Control, analysis: Analysis, *, odi_interval_days: int, views: ViewSettings, reps: RepStream, clock=lambda: datetime.now(UTC)
 ) -> APIRouter:
     router = APIRouter(prefix="/ui", tags=["ui"])
 
@@ -426,8 +432,7 @@ def build_router(
         baseline = baseline_view(astronaut_id, profile)
         return _conforming("app/ui-first-day", build_first_day(open_tasks(astronaut_id, profile, baseline, clock()), baseline))
 
-    @router.get("/sessions/{session_id}/view")
-    async def session_view(session_id: str) -> dict[str, Any]:
+    def known_session(session_id: str) -> SessionRow:
         try:
             canonical = str(uuid.UUID(session_id))
         except ValueError:
@@ -437,6 +442,11 @@ def build_router(
         row = store.session(session_id)
         if row is None:
             raise Problem(404, f"unknown session {session_id}", type_="not_found")
+        return row
+
+    @router.get("/sessions/{session_id}/view")
+    async def session_view(session_id: str) -> dict[str, Any]:
+        row = known_session(session_id)
         payload = row.payload
         view = build_session_view(
             row,
@@ -447,5 +457,11 @@ def build_router(
             views.stale_device_hours,
         )
         return _conforming("app/ui-session", view)
+
+    @router.get("/sessions/{session_id}/reps", status_code=200, response_class=RepEventResponse)
+    async def rep_events(session_id: str) -> RepEventResponse:
+        if not has_live_reps(known_session(session_id).payload):
+            raise Problem(409, f"session {session_id} has no repetitions to count live", type_="no_reps")
+        return RepEventResponse(reps.events(session_id))
 
     return router

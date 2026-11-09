@@ -24,6 +24,8 @@ from monitor.control import Control
 from monitor.db import Store
 from monitor.engine import EngineClient
 from monitor.ingest import Bus, ClientFactory, Ingest
+from monitor.live.stream import RepStream, closing_on_exit_signal
+from monitor.live.tracker import RepHub
 from monitor.settings import AppSettings
 
 _log = logging.getLogger(__name__)
@@ -36,6 +38,8 @@ class Runtime:
     control: Control
     analysis: Analysis
     ingest: Ingest
+    hub: RepHub
+    reps: RepStream
 
 
 def create_app(
@@ -58,17 +62,23 @@ def create_app(
     store = Store(settings.db_path)
     http = httpx.AsyncClient(base_url=settings.engine_url, timeout=settings.engine_timeout_s, transport=engine_transport)
     analysis = Analysis(store, EngineClient(http), window_days=settings.assess_window_days, clock=clock)
+    hub = RepHub(store, clock, no_signal_s=settings.live_no_signal_s)
     bus = Bus(factory, reconnect_min_s=settings.mqtt_reconnect_min_s, reconnect_max_s=settings.mqtt_reconnect_max_s)
-    control = Control(store, bus, analysis.process_session, ack_timeout_s=settings.ack_timeout_s, clock=clock)
-    ingest = Ingest(store, control, store_unknown_session_chunks=settings.store_unknown_session_chunks)
-    runtime = Runtime(store, bus, control, analysis, ingest)
+    control = Control(store, bus, analysis.process_session, ack_timeout_s=settings.ack_timeout_s, clock=clock, on_session_closed=hub.finish)
+    ingest = Ingest(store, control, store_unknown_session_chunks=settings.store_unknown_session_chunks, live=hub)
+    reps = RepStream(hub, tick_s=settings.live_tick_s, heartbeat_s=settings.live_heartbeat_s)
+    runtime = Runtime(store, bus, control, analysis, ingest, hub, reps)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         bus_task = asyncio.create_task(bus.run(ingest), name="mqtt-bus")
+        loop = asyncio.get_running_loop()
         try:
-            yield
+            # A signal handler runs between two bytecodes of whatever the loop was doing: the hub is closed from the loop.
+            with closing_on_exit_signal(lambda: loop.call_soon_threadsafe(hub.close)):
+                yield
         finally:
+            hub.close()
             bus_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await bus_task
@@ -81,7 +91,9 @@ def create_app(
     app.state.runtime = runtime
     install_problem_handlers(app)
     app.include_router(
-        build_router(store, control, analysis, odi_interval_days=settings.weekly_odi_interval_days, views=ViewSettings.from_app(settings), clock=clock)
+        build_router(
+            store, control, analysis, odi_interval_days=settings.weekly_odi_interval_days, views=ViewSettings.from_app(settings), reps=reps, clock=clock
+        )
     )
 
     @app.get("/health")

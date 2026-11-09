@@ -103,7 +103,7 @@ async def test_view_routes_cover_exactly_the_paths_and_methods_of_ui_openapi(har
     served = (await harness.http.get("/openapi.json")).json()["paths"]
 
     def views(paths: dict[str, Any]) -> set[tuple[str, str]]:
-        return {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith("/view") for m in item}
+        return {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith(("/view", "/reps")) for m in item}
 
     assert views(served) == {(p, m) for p, item in contract["paths"].items() for m in item}
 

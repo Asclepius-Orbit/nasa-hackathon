@@ -10,6 +10,7 @@ concurrent writes. WAL so that an external reader (e.g. the read-only API) does 
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -256,6 +257,19 @@ class Store:
             astronaut_id,
             session_id,
         )
+
+    def stream_chunks(self, astronaut_id: str, device_id: str, session_id: str, stream_id: str) -> Iterator[dict[str, Any]]:
+        """One stream of one session in the order it happened, read lazily (a long session has thousands of chunks).
+
+        boot_id is random and seq only means something inside a boot: boots go by the instant their first chunk reached the gateway.
+        """
+        cursor = self._db.execute(
+            "SELECT payload FROM chunks WHERE session_id = ? AND astronaut_id = ? AND device_id = ? AND stream_id = ? "
+            "ORDER BY MIN(received_at) OVER (PARTITION BY boot_id), boot_id, seq",
+            (session_id, astronaut_id, device_id, stream_id),
+        )
+        for row in cursor:
+            yield json.loads(row["payload"])
 
     # --- device status and clock anchors ---------------------------------------------
 

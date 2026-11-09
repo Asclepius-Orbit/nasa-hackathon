@@ -43,6 +43,7 @@ contra su schema. Los errores son problem details de `app/error`.
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` con un motivo |
+| GET | `/ui/sessions/{session_id}/reps` | Server-sent events con el contador de repeticiones en vivo (`ui-openapi.yaml`): `state` en cada cambio, `end` al terminar la sesión |
 | GET | `/ui/commands/{command_id}` | Estado del comando y sus acks (la UI lo consulta para pasar al siguiente paso) |
 | GET | `/health` | Vida, conexión MQTT y contadores de mensajes |
 
@@ -74,7 +75,7 @@ Arrancarla sola: `uv run uvicorn --factory monitor.readonly:create_read_app --po
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
-`DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`,
+`DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
 `WEEKLY_ODI_INTERVAL_DAYS`. En Docker Compose la base de datos vive en el volumen `backend_data`
 (`/data/spine_monitor.db`).
 

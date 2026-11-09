@@ -42,6 +42,7 @@ its schema. Errors are `app/error` problem details.
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` with a reason |
+| GET | `/ui/sessions/{session_id}/reps` | Server-sent events with the live repetition counter (`ui-openapi.yaml`): `state` at each change, `end` when the session ends |
 | GET | `/ui/commands/{command_id}` | Command state and acks (the UI polls it to move to the next step) |
 | GET | `/health` | Liveness, MQTT connection and message counters |
 
@@ -71,7 +72,7 @@ Run it alone: `uv run uvicorn --factory monitor.readonly:create_read_app --port 
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 Settings are `SPINE_APP_*` variables (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`, `DB_PATH`,
-`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `WEEKLY_ODI_INTERVAL_DAYS`. In
+`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`, `WEEKLY_ODI_INTERVAL_DAYS`. In
 Docker Compose the database lives in the `backend_data` volume (`/data/spine_monitor.db`).
 
 ## TypeScript types for the UI

@@ -12,6 +12,11 @@
       "minItems": 1,
       "items": { "$ref": "../domain/feature-set.schema.json" }
     },
+    "self_reports": {
+      "type": "array",
+      "items": { "$ref": "../domain/self-report.schema.json" },
+      "default": []
+    },
     "previous_baseline_version": {
       "description": "Version of the baseline being replaced; the new one gets version + 1. Absent for the first baseline.",
       "type": "integer",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { IPC_CHANNELS } from './ipc-channels';
+import { IPC_CHANNELS, IPC_EVENT_CHANNELS } from './ipc-channels';
 import {
   createCrewInputSchema,
   crewIdSchema,
@@ -8,6 +8,8 @@ import {
   sessionInputSchema,
   nameSchema,
   pinSchema,
+  repsMessageSchema,
+  repsUnsubscribeInputSchema,
   settingsPatchSchema,
   settingsSchema,
   verifyPinInputSchema,
@@ -31,8 +33,14 @@ describe('IPC_CHANNELS', () => {
       'asclepius:views:baseline',
       'asclepius:views:first-day',
       'asclepius:views:session',
+      'asclepius:reps:subscribe',
+      'asclepius:reps:unsubscribe',
     ]);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('keeps main-to-renderer event channels apart from the invoke channels', () => {
+    expect(IPC_EVENT_CHANNELS).toEqual({ repsEvent: 'asclepius:reps:event' });
   });
 });
 
@@ -160,5 +168,61 @@ describe('sessionInputSchema', () => {
     ['extra keys', { sessionId: '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b', x: 1 }],
   ])('rejects %s', (_label, input) => {
     expect(sessionInputSchema.safeParse(input).success).toBe(false);
+  });
+});
+
+const SUBSCRIPTION = '0b9c3d4e-1f2a-4b5c-8d6e-7f8091a2b3c4';
+const SESSION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
+const REP_STATE = {
+  schema_version: '1.0.0',
+  session_id: SESSION,
+  rep: 2,
+  total: 10,
+  phase: 'pulling',
+  progress_pct: 40.5,
+  last: { rep: 1, duration_s: 3.2 },
+  signal: 'ok',
+  as_of: '2026-11-08T10:00:00Z',
+};
+const message = (event: unknown, extra: object = {}) => ({ subscriptionId: SUBSCRIPTION, sessionId: SESSION, event, ...extra });
+
+describe('repsUnsubscribeInputSchema', () => {
+  it('accepts { subscriptionId } with a UUID only', () => {
+    expect(repsUnsubscribeInputSchema.safeParse({ subscriptionId: SUBSCRIPTION }).success).toBe(true);
+    expect(repsUnsubscribeInputSchema.safeParse({ subscriptionId: 'abc' }).success).toBe(false);
+    expect(repsUnsubscribeInputSchema.safeParse({ subscriptionId: SUBSCRIPTION, x: 1 }).success).toBe(false);
+  });
+});
+
+describe('repsMessageSchema', () => {
+  it.each([
+    ['state', { kind: 'state', state: REP_STATE }],
+    ['end', { kind: 'end', state: { ...REP_STATE, signal: 'no_signal', phase: null, progress_pct: null, total: null, last: null } }],
+    ['lost', { kind: 'lost' }],
+    ['error', { kind: 'error', code: 'no_reps' }],
+    ['error', { kind: 'error', code: 'not_found' }],
+  ])('accepts a %s event with the subscription and session ids', (_kind, event) => {
+    expect(repsMessageSchema.safeParse(message(event)).success).toBe(true);
+  });
+
+  it('drops fields the contract does not know instead of forwarding them', () => {
+    const parsed = repsMessageSchema.parse(message({ kind: 'state', state: { ...REP_STATE, secret: 'x', last: { rep: 1, duration_s: 3.2, y: 1 } } }));
+    expect(parsed.event).toEqual({ kind: 'state', state: REP_STATE });
+  });
+
+  it.each([
+    ['an unknown kind', message({ kind: 'other' })],
+    ['an error code that is not public', message({ kind: 'error', code: 'forbidden' })],
+    ['a lost event with a payload', message({ kind: 'lost', code: 'x' })],
+    ['a missing session id', { subscriptionId: SUBSCRIPTION, event: { kind: 'lost' } }],
+    ['an uppercase session id', message({ kind: 'lost' }, { sessionId: SESSION.toUpperCase() })],
+    ['a state of another contract major', message({ kind: 'state', state: { ...REP_STATE, schema_version: '2.0.0' } })],
+    ['a negative rep', message({ kind: 'state', state: { ...REP_STATE, rep: -1 } })],
+    ['a progress above 100', message({ kind: 'state', state: { ...REP_STATE, progress_pct: 101 } })],
+    ['an unknown phase', message({ kind: 'state', state: { ...REP_STATE, phase: 'flying' } })],
+    ['a timestamp without offset', message({ kind: 'state', state: { ...REP_STATE, as_of: '2026-11-08T10:00:00' } })],
+    ['a state without signal', message({ kind: 'state', state: { ...REP_STATE, signal: undefined } })],
+  ])('rejects %s', (_label, input) => {
+    expect(repsMessageSchema.safeParse(input).success).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type { AsclepiusApi } from '../shared/api';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
+import { createRepsBridge } from '../shared/reps-bridge';
 import { viewsCall } from '../shared/views-errors';
 
 const api: AsclepiusApi = Object.freeze({
@@ -34,6 +35,8 @@ const api: AsclepiusApi = Object.freeze({
     firstDay: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsFirstDay)),
     session: (sessionId) => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsSession, { sessionId })),
   } satisfies AsclepiusApi['views']),
+  // Live push. The bridge hands the callback plain events only: never `ipcRenderer` or Electron's event object.
+  reps: Object.freeze(createRepsBridge(ipcRenderer)),
 });
 
 contextBridge.exposeInMainWorld('asclepius', api);

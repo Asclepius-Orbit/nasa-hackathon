@@ -7,6 +7,7 @@ import type {
   FirstDayResult,
   HistoryView,
   PinResult,
+  RepsEvent,
   SessionView,
   Settings,
   StripView,
@@ -121,6 +122,34 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     firstDay: () => this.view('firstDay', this.viewData.firstDay),
     session: (sessionId: string) => this.view('session', this.viewData.sessions?.[sessionId]),
   };
+
+  private repsListeners = new Map<string, Set<(event: RepsEvent) => void>>();
+
+  /** Live counter: registers a listener per session; tests push events with `emitReps`. */
+  reps = {
+    subscribe: (sessionId: string, onEvent: (event: RepsEvent) => void): (() => void) => {
+      this.calls.push('reps.subscribe');
+      const listeners = this.repsListeners.get(sessionId) ?? new Set();
+      listeners.add(onEvent);
+      this.repsListeners.set(sessionId, listeners);
+      let active = true;
+      return () => {
+        if (!active) return;
+        active = false;
+        this.calls.push('reps.unsubscribe');
+        listeners.delete(onEvent);
+      };
+    },
+  };
+
+  /** Pushes an event to every listener subscribed to `sessionId`, as main would. */
+  emitReps(sessionId: string, event: RepsEvent): void {
+    for (const listener of [...(this.repsListeners.get(sessionId) ?? [])]) listener(event);
+  }
+
+  repsListenerCount(sessionId: string): number {
+    return this.repsListeners.get(sessionId)?.size ?? 0;
+  }
 
   private view<T>(name: keyof FakeAsclepiusApi['viewErrors'], data: T | undefined): Promise<T> {
     this.calls.push(`views.${name}`);

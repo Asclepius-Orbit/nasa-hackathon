@@ -10,6 +10,7 @@ import {
   IPC_CHANNELS,
   createCrewInputSchema,
   historyInputSchema,
+  repsUnsubscribeInputSchema,
   sessionInputSchema,
   settingsPatchSchema,
   verifyPinInputSchema,
@@ -18,6 +19,7 @@ import type { AuthService } from './auth/auth-service';
 import type { IpcEventLike } from './security/app-url';
 import type { CrewStore } from './store/crew-store';
 import type { SettingsStore } from './store/settings-store';
+import type { RepsService } from './views/reps-service';
 import { ViewsError } from './views/views-error';
 import type { ViewsService } from './views/views-service';
 
@@ -31,6 +33,7 @@ export interface IpcServices {
   auth: AuthService;
   settings: SettingsStore;
   views: ViewsService;
+  reps: RepsService;
 }
 
 class UnavailableError extends Error {
@@ -46,7 +49,7 @@ function orUnavailable<T>(value: T | null): T {
 
 export function registerIpc(
   ipcMain: IpcMainLike,
-  { crew, auth, settings, views }: IpcServices,
+  { crew, auth, settings, views, reps }: IpcServices,
   isTrustedSender: (event: IpcEventLike) => boolean,
   logError: (error: unknown) => void = console.error,
 ): void {
@@ -77,12 +80,16 @@ export function registerIpc(
     });
   }
 
-  function withInput<S extends z.ZodType, T>(channel: string, schema: S, task: (input: z.output<S>) => Promise<T>): void {
+  function withInput<S extends z.ZodType, T>(
+    channel: string,
+    schema: S,
+    task: (input: z.output<S>, event: IpcEventLike) => Promise<T> | T,
+  ): void {
     ipcMain.handle(channel, (event, ...args) => {
       guard(event);
       const parsed = args.length === 1 ? schema.safeParse(args[0]) : null;
       if (!parsed?.success) throw new Error('invalid input');
-      return run(() => task(parsed.data));
+      return run(() => task(parsed.data, event));
     });
   }
 
@@ -99,6 +106,8 @@ export function registerIpc(
   withInput(IPC_CHANNELS.authVerifyPin, verifyPinInputSchema, (input) => auth.verifyPin(input));
   withoutInput(IPC_CHANNELS.authLock, () => {
     auth.lock();
+    // The astronaut behind the lock screen must stop receiving live data at once.
+    reps.closeAll();
   });
   withoutInput(IPC_CHANNELS.authCurrent, () => auth.current());
 
@@ -111,4 +120,9 @@ export function registerIpc(
   withoutInput(IPC_CHANNELS.viewsBaseline, () => views.baseline());
   withoutInput(IPC_CHANNELS.viewsFirstDay, () => views.firstDay());
   withInput(IPC_CHANNELS.viewsSession, sessionInputSchema, ({ sessionId }) => views.session(sessionId));
+  // Live push: the handlers only start and stop it; events travel on `IPC_EVENT_CHANNELS.repsEvent` (see RepsService).
+  withInput(IPC_CHANNELS.repsSubscribe, sessionInputSchema, ({ sessionId }, event) => reps.subscribe(event.sender, sessionId));
+  withInput(IPC_CHANNELS.repsUnsubscribe, repsUnsubscribeInputSchema, ({ subscriptionId }, event) => {
+    reps.unsubscribe(event.sender, subscriptionId);
+  });
 }

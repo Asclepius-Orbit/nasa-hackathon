@@ -17,6 +17,13 @@ export const IPC_CHANNELS = Object.freeze({
   viewsBaseline: 'asclepius:views:baseline',
   viewsFirstDay: 'asclepius:views:first-day',
   viewsSession: 'asclepius:views:session',
+  repsSubscribe: 'asclepius:reps:subscribe',
+  repsUnsubscribe: 'asclepius:reps:unsubscribe',
+} as const);
+
+/** Channels main pushes to the renderer (`webContents.send`). They have no handler: the renderer cannot call them. */
+export const IPC_EVENT_CHANNELS = Object.freeze({
+  repsEvent: 'asclepius:reps:event',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

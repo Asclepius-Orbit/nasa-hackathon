@@ -61,4 +61,21 @@ describe('FakeAsclepiusApi honours the AsclepiusApi contract', () => {
     expect((await api.settings.get()).textSize).toBe('large');
     expect(await api.settings.update({ footPedal: true })).toMatchObject({ footPedal: true, textSize: 'large' });
   });
+
+  it('reps: delivers emitted events to the listeners of that session until they unsubscribe', () => {
+    const api = new FakeAsclepiusApi();
+    const mine: unknown[] = [];
+    const other: unknown[] = [];
+    const stop = api.reps.subscribe('s1', (event) => mine.push(event));
+    api.reps.subscribe('s2', (event) => other.push(event));
+    api.emitReps('s1', { kind: 'lost' });
+    stop();
+    stop();
+    api.emitReps('s1', { kind: 'error', code: 'no_reps' });
+    expect(mine).toEqual([{ kind: 'lost' }]);
+    expect(other).toEqual([]);
+    expect(api.calls).toEqual(['reps.subscribe', 'reps.subscribe', 'reps.unsubscribe']);
+    expect(api.repsListenerCount('s1')).toBe(0);
+    expect(api.repsListenerCount('s2')).toBe(1);
+  });
 });

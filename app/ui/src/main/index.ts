@@ -18,6 +18,8 @@ import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
 import { BACKEND_URL_ENV, resolveBackendUrl } from './views/backend-url';
+import { createRepsService } from './views/reps-service';
+import { createRepsStreamClient } from './views/reps-stream';
 import { createViewsClient } from './views/views-client';
 import { createViewsService } from './views/views-service';
 import { createMainWindow, hardenSession, installWebContentsGuard } from './window';
@@ -77,7 +79,13 @@ if (!app.requestSingleInstanceLock()) {
       console.error(`${BACKEND_URL_ENV} ignored: only http(s) loopback URLs are accepted`);
     });
     const views = createViewsService({ auth, crew, client: createViewsClient({ baseUrl: backendUrl }) });
-    registerIpc(ipcMain, { crew, auth, settings, views }, createSenderGuard(policy));
+    const reps = createRepsService({
+      auth,
+      views,
+      streams: createRepsStreamClient({ baseUrl: backendUrl, logError: console.error }),
+      logError: console.error,
+    });
+    registerIpc(ipcMain, { crew, auth, settings, views, reps }, createSenderGuard(policy));
 
     openWindow();
     app.on('activate', () => {

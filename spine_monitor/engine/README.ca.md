@@ -21,7 +21,7 @@ El contracte és `contracts/openapi.yaml`; cossos i errors són els JSON Schemas
 | `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` de les famílies registrades: `exercise` des de #41; les famílies EMG, IMU i cordó arriben a #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de les sessions de referència) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparació real amb la baseline; model de risc i triatge nuls (nivell sempre verd) |
-| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: no aplica `overrides`, `reference` i `scenario` són la mateixa avaluació |
+| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) a l'últim valor de cada feature i reavalua; `project_days` encara no s'aplica |
 
 Els errors són problem details (`application/problem+json`, `engine/error.schema.json`): `422` amb `invalid_request` (amb un JSON Pointer per problema), `unsupported_schema_version` o `insufficient_data`, i `500` amb `internal`. Els cossos es validen contra el JSON Schema a més de Pydantic, així que s'apliquen les regles condicionals.
 

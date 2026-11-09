@@ -243,7 +243,13 @@ def session_plan(**overrides: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-async def harness(tmp_path: Path, anyio_backend: str) -> AsyncIterator[Harness]:
+def harness_settings() -> dict[str, Any]:
+    """Extra AppSettings of the harness; a test module overrides this fixture to change them."""
+    return {}
+
+
+@pytest.fixture
+async def harness(tmp_path: Path, anyio_backend: str, harness_settings: dict[str, Any]) -> AsyncIterator[Harness]:
     mqtt = FakeMqtt()
     clock = Clock(NOW)
     extractor = ExampleExtractor()
@@ -252,7 +258,7 @@ async def harness(tmp_path: Path, anyio_backend: str) -> AsyncIterator[Harness]:
         baseline_builder=default_baseline_builder(),
         feature_extractor=extractor,
     )
-    settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2)
+    settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2, **harness_settings)
     app = create_app(settings, mqtt_client_factory=mqtt.factory, engine_transport=httpx.ASGITransport(app=engine_app), clock=clock)
     runtime = app.state.runtime
     bus_task = asyncio.create_task(runtime.bus.run(runtime.ingest))

@@ -12,7 +12,7 @@ import json
 import sqlite3
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +139,11 @@ def utc_key(value: str | datetime) -> str:
     if moment.tzinfo is None:
         raise ValueError(f"naive timestamp: {value!r}")
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def day_span(first: date, last: date) -> tuple[datetime, datetime]:
+    """UTC instants [start of `first`, last instant of `last`], the inclusive window the queries take."""
+    return datetime.combine(first, time.min, UTC), datetime.combine(last, time.min, UTC) + timedelta(days=1, microseconds=-1)
 
 
 def _dumps(payload: dict[str, Any]) -> str:

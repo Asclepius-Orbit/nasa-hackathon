@@ -79,6 +79,19 @@ La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQT
 `WEEKLY_ODI_INTERVAL_DAYS`. En Docker Compose la base de datos vive en el volumen `backend_data`
 (`/data/spine_monitor.db`).
 
+Enlace con tierra: cada assessment encola el resumen de su día UTC en SQLite (`ground_outbox`) y una tarea de fondo lo envía, por un
+transporte simulado, mientras hay enlace; `GET /ui/crew/{id}/houston` y `/outbox` lo muestran. Un envío fallido se reintenta con un
+backoff por entrada y sin límite de intentos; tras un reinicio sigue desde SQLite. Variables, también `SPINE_APP_*`; un valor incorrecto impide arrancar:
+
+| Variable | Por defecto | Significado |
+|---|---|---|
+| `GROUND_WINDOW_ANCHOR` | sin definir | Inicio de una ventana, RFC 3339 con zona. Sin definir: no hay enlace configurado, `ground_link` es null y no se envía nada. |
+| `GROUND_WINDOW_PERIOD_MIN` | 90 | Minutos entre el inicio de dos ventanas. |
+| `GROUND_WINDOW_UP_MIN` | 10 | Minutos de enlace en cada ventana; menos que el periodo. |
+| `GROUND_RETRY_MIN_S` | 1 | Espera tras el primer fallo de una entrada; se dobla en cada fallo. |
+| `GROUND_RETRY_MAX_S` | 300 | Espera máxima; no menor que la mínima. |
+| `GROUND_TICK_S` | 1 | Cada cuánto el emisor busca una ventana abierta o un backoff vencido. |
+
 ## Tipos TypeScript para la UI
 `app/ui/src/contracts/v1.ts` se genera desde `contracts/schemas/v1`. Ejecuta `pnpm run gen:types` en
 `app/ui` después de cualquier cambio de schema; `pnpm run check:types` falla si el fichero está

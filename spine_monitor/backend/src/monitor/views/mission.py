@@ -18,9 +18,14 @@ def _date(profile: Mapping[str, Any], key: str) -> date | None:
     return None if value is None else date.fromisoformat(value)
 
 
+def launch_date_of(profile: Mapping[str, Any] | None) -> date | None:
+    """None without a profile or without a launch date."""
+    return None if profile is None else _date(profile, "launch_date")
+
+
 def mission_for(profile: Mapping[str, Any] | None, today: date) -> dict[str, Any]:
     """`{day, start, phase}` of `today`; all null without a profile or without a launch date."""
-    launch = None if profile is None else _date(profile, "launch_date")
+    launch = launch_date_of(profile)
     if profile is None or launch is None:
         return {"day": None, "start": None, "phase": None}
     landing = _date(profile, "landing_date")

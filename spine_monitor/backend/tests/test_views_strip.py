@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from monitor.views.strip import build_strip
+from monitor.views.strip import build_strip, minutes_since
 from spine_contracts import validation
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
@@ -26,8 +26,15 @@ def status(device_id: str = "wb-01", *, timestamp: str = "2026-11-13T09:59:00Z",
     return base | extra
 
 
-def strip(statuses: list[dict[str, Any]], profile: dict[str, Any] | None = PROFILE, daily: Any = None, odi: Any = None) -> dict[str, Any]:
-    view = build_strip(AST, profile, statuses, daily, odi, NOW, 7, STALE_DEVICE_HOURS)
+def strip(
+    statuses: list[dict[str, Any]],
+    profile: dict[str, Any] | None = PROFILE,
+    daily: Any = None,
+    odi: Any = None,
+    ground_link: Any = None,
+    last_contact_min_ago: int | None = None,
+) -> dict[str, Any]:
+    view = build_strip(AST, profile, statuses, daily, odi, NOW, 7, STALE_DEVICE_HOURS, ground_link, last_contact_min_ago)
     assert validation.errors("app/ui-strip", view) == []
     return view
 
@@ -83,8 +90,8 @@ def test_a_stale_offline_device_is_still_null() -> None:
 def test_the_staleness_threshold_is_the_one_given() -> None:
     old = status(timestamp="2026-11-13T07:00:00Z")  # 3 hours old
 
-    assert build_strip(AST, PROFILE, [old], None, None, NOW, 7, 1.0)["harness"]["stale"] is True
-    assert build_strip(AST, PROFILE, [old], None, None, NOW, 7, 4.0)["harness"]["stale"] is False
+    assert build_strip(AST, PROFILE, [old], None, None, NOW, 7, 1.0, None, None)["harness"]["stale"] is True
+    assert build_strip(AST, PROFILE, [old], None, None, NOW, 7, 4.0, None, None)["harness"]["stale"] is False
 
 
 def test_missing_battery_is_null_not_zero() -> None:
@@ -141,10 +148,27 @@ def test_reports_due_uses_the_latest_reports() -> None:
     assert strip([], daily=None, odi=odi)["reports_due"] == {"daily": True, "weekly_odi": False}
 
 
-def test_ground_link_and_last_contact_are_always_null() -> None:
-    view = strip([status(battery_pct=50)])
-    assert view["ground_link"] is None
-    assert view["last_contact_min_ago"] is None
+@pytest.mark.parametrize(
+    ("ground_link", "minutes"),
+    [(None, None), ({"state": "up"}, 0), ({"state": "down", "back_in_min": 12}, 41)],
+)
+def test_ground_link_and_last_contact_are_shown_as_given(ground_link: Any, minutes: int | None) -> None:
+    view = strip([status(battery_pct=50)], ground_link=ground_link, last_contact_min_ago=minutes)
+    assert view["ground_link"] == ground_link
+    assert view["last_contact_min_ago"] == minutes
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "minutes"),
+    [(timedelta(seconds=59), 0), (timedelta(minutes=1), 1), (timedelta(minutes=7, seconds=59), 7), (timedelta(seconds=-90), 0)],
+    ids=["under_a_minute", "exactly_one", "rounded_down", "ground_clock_ahead"],
+)
+def test_minutes_since_rounds_down_and_is_never_negative(elapsed: timedelta, minutes: int) -> None:
+    assert minutes_since((NOW - elapsed).isoformat(), NOW) == minutes
+
+
+def test_minutes_since_nothing_is_null() -> None:
+    assert minutes_since(None, NOW) is None
 
 
 def test_does_not_mutate_inputs() -> None:

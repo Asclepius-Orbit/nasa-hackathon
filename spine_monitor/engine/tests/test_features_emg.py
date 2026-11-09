@@ -561,7 +561,7 @@ def test_a_resolved_calibration_that_is_not_an_emg_mvc_counts_as_no_calibration(
 def test_the_default_registry_registers_the_emg_family_after_exercise():
     families = list(default_registry())
 
-    assert [f.family for f in families] == ["exercise", "emg", "imu"]
+    assert [f.family for f in families] == ["exercise", "emg", "imu", "stretch"]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

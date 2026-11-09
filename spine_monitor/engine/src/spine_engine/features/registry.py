@@ -13,6 +13,7 @@ from spine_contracts import Quality
 from spine_contracts.models.domain.feature_set_schema import Reason
 
 from spine_engine.features.context import ExtractionContext
+from spine_engine.settings import EngineSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +69,7 @@ class ExtractorRegistry:
         return iter(tuple(self._families))
 
 
-def default_registry() -> ExtractorRegistry:
+def default_registry(settings: EngineSettings | None = None) -> ExtractorRegistry:
     """Registro por defecto: ``exercise`` (#41), ``emg`` (#42) e ``imu`` (#44); las familias de #43 y #45 se añaden aquí."""
     # import local: exercise importa los tipos de este módulo (evita el ciclo)
     from spine_engine.features.emg import EmgFamily
@@ -76,6 +77,9 @@ def default_registry() -> ExtractorRegistry:
     from spine_engine.features.imu import ImuFamily
     from spine_engine.features.repetitions import RepetitionService
     from spine_engine.features.repetitions_imu import detect_imu_windows
+    from spine_engine.features.stretch import StretchFamily
+
+    settings = settings or EngineSettings()
 
     # un único servicio de repeticiones (con respaldo IMU) para compartir con las familias de #42-#45
     repetitions = RepetitionService(detect_imu_windows)
@@ -83,4 +87,7 @@ def default_registry() -> ExtractorRegistry:
     registry.register(ExerciseFamily(repetitions))
     registry.register(EmgFamily(repetitions))
     registry.register(ImuFamily(repetitions))
+    registry.register(
+        StretchFamily(repetitions, default_recovery_wait_s=settings.stretch_recovery_wait_s, recovery_fraction=settings.stretch_recovery_fraction)
+    )
     return registry

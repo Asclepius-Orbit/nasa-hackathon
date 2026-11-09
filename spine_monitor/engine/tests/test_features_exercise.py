@@ -196,7 +196,7 @@ def test_composite_with_the_example_single_rep_skips_everything_as_too_few_repet
 
     result = extract_json(request)
 
-    assert result["features"] == []
+    assert not [f for f in result["features"] if f["feature_id"].startswith("exercise.")]
     assert sorted((s["feature_id"], s["reason"]) for s in result["skipped"] if s["feature_id"] in ALL_IDS) == sorted(
         (i, "too_few_repetitions") for i in ALL_IDS
     )
@@ -205,7 +205,7 @@ def test_composite_with_the_example_single_rep_skips_everything_as_too_few_repet
 def test_composite_without_any_events_does_not_fail():
     result = extract_json(make_request([]))
 
-    assert result["features"] == []
+    assert not [f for f in result["features"] if f["feature_id"].startswith("exercise.")]
     assert {s["reason"] for s in result["skipped"] if s["feature_id"] in ALL_IDS} == {"too_few_repetitions"}
 
 

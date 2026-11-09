@@ -36,7 +36,7 @@ _MISSING_REASON_BY_SKIP = {
 }
 
 
-def _domain_of(feature_id: str) -> AssessmentDomain | None:
+def domain_of(feature_id: str) -> AssessmentDomain | None:
     return _DOMAIN_BY_PREFIX.get(feature_id.split(".", 1)[0])
 
 
@@ -66,10 +66,11 @@ class AssessmentPipeline:
 
     def evaluate(self, request: AssessRequest) -> Assessment:
         deviations = self._baseline_strategy.deviations(request.baseline, request.feature_sets)
-        risk = self._risk_model.score(deviations)
+        completeness = _completeness(request.feature_sets, deviations)
+        risk = self._risk_model.score(deviations, completeness.score)
         triage = self._triage_policy.decide(risk, deviations)
 
-        evaluated = {domain for d in deviations if (domain := _domain_of(d.feature_id)) is not None}
+        evaluated = {domain for d in deviations if (domain := domain_of(d.feature_id)) is not None}
         domains = [
             DomainAssessment(  # pyright: ignore[reportCallIssue]  # generated model: `score` has a positional Field default
                 domain=domain,
@@ -87,7 +88,7 @@ class AssessmentPipeline:
             level=triage.level,
             risk_score=risk.score,
             confidence=risk.confidence,
-            completeness=_completeness(request.feature_sets, deviations),
+            completeness=completeness,
             domains=domains,
             drivers=risk.drivers,
             fired_rules=triage.fired_rules,

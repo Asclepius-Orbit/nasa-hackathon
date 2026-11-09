@@ -50,7 +50,7 @@ class NullFeatureExtractor:
 
 
 class NullRiskModel:
-    def score(self, deviations: Sequence[Deviation]) -> RiskResult:
+    def score(self, deviations: Sequence[Deviation], completeness: float) -> RiskResult:
         return RiskResult(score=0.0)
 
 

@@ -101,7 +101,9 @@ class FeatureExtractor(Protocol):
 
 
 class RiskModel(Protocol):
-    def score(self, deviations: Sequence[Deviation]) -> RiskResult: ...
+    """Desviaciones -> riesgo. `completeness` (en [0, 1]) es la parte de lo esperado que se pudo comparar."""
+
+    def score(self, deviations: Sequence[Deviation], completeness: float) -> RiskResult: ...
 
 
 class TriagePolicy(Protocol):

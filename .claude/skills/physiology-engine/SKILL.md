@@ -28,7 +28,7 @@ Guía para tocar el simulador (`spine_monitor/physiology`) y el motor (`spine_mo
 2. Test rojo primero. Elige el marker (tabla de `tdd-workflow`): `unit` para el caso concreto, `property` para el invariante, `golden` solo para la salida completa.
 3. Parámetros nuevos: obligatorios en el modelo Pydantic de `config.py` y en `example-mission.yaml`; sin valores por defecto en código.
 4. **Feature nueva**: debe existir en el catálogo de `contracts/catalog`; la verdad de terreno (`truth.expected_features`) y la extracción del engine deben coincidir con el modelo sin ruido (patrón de `physiology/tests/test_truth.py`).
-5. **Escenario nuevo**: hoy un escenario es una config YAML más `segments` (preflight 1 g, inflight microgravedad, postflight) y `gen.resimulate(ref, gravity)` para el par A/B. Reutiliza eso antes de crear otro mecanismo. `POST /simulate` del engine es un stub (no aplica `overrides`).
+5. **Escenario nuevo**: hoy un escenario es una config YAML más `segments` (preflight 1 g, inflight microgravedad, postflight) y `gen.resimulate(ref, gravity)` para el par A/B. Reutiliza eso antes de crear otro mecanismo. `POST /simulate` del engine aplica `overrides` al último valor de cada feature (`simulation.py`); `project_days` aún no se aplica.
 6. **Fallo nuevo** (`faults.py`): debe quedar registrado en la verdad de terreno (`quality_faults`, `lost_chunks`, `device_events`) y con su `QualityFlag` del contrato.
 7. Si cambia un payload, un campo o un enum de contrato, para y carga `contract-first` antes de editar el modelo.
 

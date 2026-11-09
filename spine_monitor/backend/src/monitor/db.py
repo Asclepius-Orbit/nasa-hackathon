@@ -10,9 +10,9 @@ concurrent writes. WAL so that an external reader (e.g. the read-only API) does 
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +96,13 @@ CREATE TABLE IF NOT EXISTS rejected_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, received_at TEXT NOT NULL,
     error TEXT NOT NULL, payload TEXT
 );
+
+CREATE TABLE IF NOT EXISTS ground_outbox (
+    astronaut_id TEXT NOT NULL, date TEXT NOT NULL, revision INTEGER NOT NULL, mission_day INTEGER,
+    state TEXT NOT NULL CHECK (state IN ('queued', 'sent')), payload TEXT NOT NULL, enqueued_at TEXT NOT NULL,
+    received_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, next_attempt_at TEXT,
+    PRIMARY KEY (astronaut_id, date, revision)
+);
 """
 
 # Stored in PRAGMA user_version. Bump it with any change to SCHEMA that an existing file would not get
@@ -154,6 +161,38 @@ class CommandRow:
     @property
     def type(self) -> str:
         return self.payload["type"]
+
+
+@dataclass(frozen=True)
+class GroundKey:
+    """Identity of a ground summary: one revision of the summary of one UTC day of one astronaut."""
+
+    astronaut_id: str
+    day: date
+    revision: int
+
+
+@dataclass(frozen=True)
+class GroundOutboxItem:
+    """A row of the ground outbox. Instants are `utc_key` text (valid RFC 3339); `received_at` is the ground station's receipt."""
+
+    key: GroundKey
+    mission_day: int | None
+    state: str
+    payload: dict[str, Any]
+    enqueued_at: str
+    received_at: str | None
+    attempts: int
+    last_error: str | None
+    next_attempt_at: str | None
+
+
+def _ground_item(row: sqlite3.Row) -> GroundOutboxItem:
+    return GroundOutboxItem(
+        GroundKey(row["astronaut_id"], date.fromisoformat(row["date"]), row["revision"]),
+        row["mission_day"], row["state"], json.loads(row["payload"]), row["enqueued_at"], row["received_at"],
+        row["attempts"], row["last_error"], row["next_attempt_at"],
+    )  # fmt: skip
 
 
 # Sessions that really ran. `starting` never got an ack and `rejected` never started: they are not served
@@ -579,3 +618,108 @@ class Store:
             start,
             end,
         )
+
+    # --- ground outbox -------------------------------------------------------------------------------
+
+    def _immediate[T](self, work: Callable[[], T]) -> T:
+        """Runs `work` in one write transaction (the connection is in autocommit): all of it or none of it."""
+        self._db.execute("BEGIN IMMEDIATE")
+        try:
+            result = work()
+        except BaseException:
+            self._db.execute("ROLLBACK")
+            raise
+        self._db.execute("COMMIT")
+        return result
+
+    def upsert_ground_summary(self, astronaut_id: str, day: date, mission_day: int | None, build: Callable[[int], dict[str, Any]], now: datetime) -> int:
+        """Queues the summary of a day and returns its revision; `build(revision)` makes the payload (inside the transaction).
+
+        If the latest revision of that day is still queued (not confirmed by the ground) its payload and `enqueued_at` are
+        replaced and revision, attempts and backoff are kept; if it was sent, or there is none, the next revision is inserted.
+        """
+
+        def work() -> int:
+            last = self._db.execute(
+                "SELECT revision, state FROM ground_outbox WHERE astronaut_id = ? AND date = ? ORDER BY revision DESC LIMIT 1",
+                (astronaut_id, day.isoformat()),
+            ).fetchone()
+            if last is not None and last["state"] == "queued":
+                revision = last["revision"]
+                self._db.execute(
+                    "UPDATE ground_outbox SET mission_day = ?, payload = ?, enqueued_at = ? WHERE astronaut_id = ? AND date = ? AND revision = ?",
+                    (mission_day, _dumps(build(revision)), utc_key(now), astronaut_id, day.isoformat(), revision),
+                )
+                return revision
+            revision = 1 if last is None else last["revision"] + 1
+            self._db.execute(
+                "INSERT INTO ground_outbox (astronaut_id, date, revision, mission_day, state, payload, enqueued_at) VALUES (?, ?, ?, ?, 'queued', ?, ?)",
+                (astronaut_id, day.isoformat(), revision, mission_day, _dumps(build(revision)), utc_key(now)),
+            )
+            return revision
+
+        return self._immediate(work)
+
+    def next_ground_item(self, now: datetime) -> GroundOutboxItem | None:
+        """The next entry to send. Per astronaut only its oldest queued entry (by date, revision) counts, so a newer one never
+        overtakes it, even while it waits for its `next_attempt_at`; among the due ones, the oldest (date, revision, astronaut)."""
+        row = self._db.execute(
+            "SELECT * FROM ground_outbox o WHERE state = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) "
+            "AND NOT EXISTS (SELECT 1 FROM ground_outbox p WHERE p.astronaut_id = o.astronaut_id AND p.state = 'queued' "
+            "AND (p.date < o.date OR (p.date = o.date AND p.revision < o.revision))) "
+            "ORDER BY date, revision, astronaut_id LIMIT 1",
+            (utc_key(now),),
+        ).fetchone()
+        return None if row is None else _ground_item(row)
+
+    def mark_ground_sent(self, key: GroundKey, received_at: datetime, sent_payload: dict[str, Any]) -> bool:
+        """Records the ground's receipt of the entry whose payload was `sent_payload`. True when the entry is sent afterwards.
+
+        Idempotent: an entry already sent keeps its first receipt. If the entry was replaced while it was being sent (its
+        payload is no longer `sent_payload`) it stays queued, with the same key, to be sent again: False. Also False if unknown.
+        """
+
+        def work() -> bool:
+            row = self._db.execute(
+                "SELECT state, payload FROM ground_outbox WHERE astronaut_id = ? AND date = ? AND revision = ?",
+                (key.astronaut_id, key.day.isoformat(), key.revision),
+            ).fetchone()
+            if row is None:
+                return False
+            if row["state"] == "sent":
+                return True
+            if json.loads(row["payload"]) != sent_payload:
+                return False
+            self._db.execute(
+                "UPDATE ground_outbox SET state = 'sent', received_at = ?, next_attempt_at = NULL WHERE astronaut_id = ? AND date = ? AND revision = ?",
+                (utc_key(received_at), key.astronaut_id, key.day.isoformat(), key.revision),
+            )
+            return True
+
+        return self._immediate(work)
+
+    def mark_ground_failed(self, key: GroundKey, error_code: str, next_attempt_at: datetime) -> bool:
+        """A failed send: one more attempt, the error code and when to retry. The state does not change; a sent entry is left alone (False)."""
+        cursor = self._db.execute(
+            "UPDATE ground_outbox SET attempts = attempts + 1, last_error = ?, next_attempt_at = ? "
+            "WHERE astronaut_id = ? AND date = ? AND revision = ? AND state = 'queued'",
+            (error_code, utc_key(next_attempt_at), key.astronaut_id, key.day.isoformat(), key.revision),
+        )
+        return cursor.rowcount == 1
+
+    def ground_outbox_items(self, astronaut_id: str, limit: int) -> list[GroundOutboxItem]:
+        """Most recent first (by date, then revision)."""
+        rows = self._db.execute("SELECT * FROM ground_outbox WHERE astronaut_id = ? ORDER BY date DESC, revision DESC LIMIT ?", (astronaut_id, limit))
+        return [_ground_item(row) for row in rows]
+
+    def latest_ground_summary(self, astronaut_id: str) -> dict[str, Any] | None:
+        """Payload of the most recent entry, queued or sent."""
+        return self._one("SELECT payload FROM ground_outbox WHERE astronaut_id = ? ORDER BY date DESC, revision DESC LIMIT 1", astronaut_id)
+
+    def last_ground_contact(self, astronaut_id: str | None = None) -> str | None:
+        """Latest receipt confirmed by the ground station (derived, not stored twice), of one astronaut or of all."""
+        if astronaut_id is None:
+            row = self._db.execute("SELECT MAX(received_at) FROM ground_outbox").fetchone()
+        else:
+            row = self._db.execute("SELECT MAX(received_at) FROM ground_outbox WHERE astronaut_id = ?", (astronaut_id,)).fetchone()
+        return row[0]

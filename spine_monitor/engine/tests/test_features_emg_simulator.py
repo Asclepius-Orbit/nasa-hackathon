@@ -40,6 +40,11 @@ PEAK_REL = 0.30
 SYMMETRY_ABS_PCT = 20.0
 
 
+def _is_amplitude(feature_id: str) -> bool:
+    """Los ids ``emg.*`` de #42; los espectrales de #43 (``emg_spectral``) se prueban en su propio fichero."""
+    return feature_id.startswith("emg.") and not feature_id.endswith(("median_freq_hz", "median_freq_slope_hz_per_rep"))
+
+
 def _mission_config(*, faults: bool) -> Any:
     import yaml
     from spine_physiology.config import MissionConfig
@@ -111,7 +116,7 @@ def test_the_amplitude_features_match_the_simulator_truth(seed: int, gravity: st
     result = _extract(payload)
 
     features = _by_id(result)
-    emg_ids = {f for f in features if f.startswith("emg.")}
+    emg_ids = {f for f in features if _is_amplitude(f)}
     assert emg_ids == {f"emg.{MUSCLE}.{side}.{name}" for side in SIDES.values() for name in ("rms_mv", "rest_rms_mv", "rms_pct_mvc", "peak_pct_mvc")} | {
         SYMMETRY
     }
@@ -151,7 +156,7 @@ def test_without_the_calibrations_the_amplitude_stays_and_the_mvc_features_are_s
 
     result = _extract(payload)
 
-    emg = {f for f in _by_id(result) if f.startswith("emg.")}
+    emg = {f for f in _by_id(result) if _is_amplitude(f)}
     assert emg == {f"emg.{MUSCLE}.{side}.{name}" for side in SIDES.values() for name in ("rms_mv", "rest_rms_mv")}
     skipped = {s["feature_id"]: s["reason"] for s in result["skipped"]}
     assert set(skipped.values()) == {"no_calibration"}
@@ -190,8 +195,8 @@ def test_relabelling_the_signal_and_its_mvc_as_envelope_gives_the_same_amplitude
     calibrations = [{**c, "signal_kind": "envelope"} if c["calibration_type"] == "emg_mvc" else c for c in payload["calibrations"]]
     relabelled = {**payload, "chunks": [{**c, "signal_kind": "envelope"} for c in payload["chunks"]], "calibrations": calibrations}
 
-    straight = {k: v["value"] for k, v in _by_id(_extract(payload)).items() if k.startswith("emg.")}
-    other = {k: v["value"] for k, v in _by_id(_extract(relabelled)).items() if k.startswith("emg.")}
+    straight = {k: v["value"] for k, v in _by_id(_extract(payload)).items() if _is_amplitude(k)}
+    other = {k: v["value"] for k, v in _by_id(_extract(relabelled)).items() if _is_amplitude(k)}
 
     assert other == straight
 

@@ -53,6 +53,25 @@ class Domain2(str, Enum):
     SAFETY = 'safety'
 
 
+class Operator(str, Enum):
+    FIELD_ = '>'
+    FIELD__ = '>='
+    field__1 = '<'
+    field___1 = '<='
+    field___2 = '=='
+    field___3 = '!='
+
+
+class Evidence(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    datum: str
+    value: float
+    operator: Operator
+    threshold: float
+
+
 class Urgency(str, Enum):
     ROUTINE = 'routine'
     PRIORITY = 'priority'
@@ -137,6 +156,10 @@ class FiredRule(BaseModel):
         description='True when the rule set a level higher than the statistical model alone would have.',
     )
     description: constr(max_length=300) | None = None
+    evidence: Evidence | None = Field(
+        None,
+        description='The datum, observed value and threshold comparison that fired the rule.',
+    )
 
 
 class BasedOn(BaseModel):

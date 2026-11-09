@@ -36,7 +36,8 @@
       "domain": "symptoms",
       "level": "amber",
       "overrides_model": false,
-      "description": "Example rule: sustained pain above the alert range (thresholds owned by the clinical model)."
+      "description": "Example rule: sustained pain above the alert range (thresholds owned by the clinical model).",
+      "evidence": { "datum": "example.metric", "value": 5.1, "operator": ">=", "threshold": 4 }
     }
   ],
   "recommendations": ["REC_LUMBAR_STAB_01", "REC_INCREASE_ARED"],

@@ -999,6 +999,15 @@ export interface Assessment {
      */
     overrides_model: boolean;
     description?: string;
+    /**
+     * The datum, observed value and threshold comparison that fired the rule.
+     */
+    evidence?: {
+      datum: string;
+      value: number;
+      operator: ">" | ">=" | "<" | "<=" | "==" | "!=";
+      threshold: number;
+    };
   }[];
   recommendations: string[];
   escalation: {

@@ -21,7 +21,7 @@ El contrato es `contracts/openapi.yaml`; cuerpos y errores son los JSON Schemas 
 | `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41; las familias EMG, IMU y cordón llegan en #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de las sesiones de referencia) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline y modelo de riesgo genérico (`risk_score`, `confidence`, `drivers`); triaje nulo (nivel siempre verde) |
-| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: no aplica `overrides`, `reference` y `scenario` son la misma evaluación |
+| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) al último valor de cada feature y reevalúa; `project_days` aún no se aplica |
 
 Los errores son problem details (`application/problem+json`, `engine/error.schema.json`): `422` con `invalid_request` (con un JSON Pointer por problema), `unsupported_schema_version` o `insufficient_data`, y `500` con `internal`. Los cuerpos se validan contra el JSON Schema además de Pydantic, así que se aplican las reglas condicionales.
 

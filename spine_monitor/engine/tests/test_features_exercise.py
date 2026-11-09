@@ -170,7 +170,7 @@ def test_the_real_service_uses_the_injected_imu_detector_without_events():
 def test_the_default_registry_registers_the_exercise_family():
     families = list(default_registry())
 
-    assert [f.family for f in families] == ["exercise"]
+    assert families[0].family == "exercise"
     assert tuple(families[0].feature_ids) == ALL_IDS
 
 
@@ -184,11 +184,11 @@ def test_composite_with_enough_reps_returns_values_with_catalog_units():
     result = extract_json(make_request(events_for([3.0, 4.0, 5.0])))
 
     by_id = {f["feature_id"]: f for f in result["features"]}
-    assert [f["feature_id"] for f in result["features"]] == sorted(ALL_IDS)
+    assert [f["feature_id"] for f in result["features"] if f["feature_id"] in ALL_IDS] == sorted(ALL_IDS)
     assert (by_id[COUNT]["value"], by_id[MEAN]["value"], by_id[CV]["value"]) == (3.0, 4.0, 25.0)
     assert all(by_id[i]["unit"] == unit_for(i) for i in ALL_IDS)
     assert all(by_id[i]["n"] == 3 and by_id[i]["quality"]["assessed_by"] == "engine" for i in ALL_IDS)
-    assert result.get("skipped", []) == []
+    assert [s for s in result.get("skipped", []) if s["feature_id"].startswith("exercise.")] == []
 
 
 def test_composite_with_the_example_single_rep_skips_everything_as_too_few_repetitions():
@@ -196,15 +196,17 @@ def test_composite_with_the_example_single_rep_skips_everything_as_too_few_repet
 
     result = extract_json(request)
 
-    assert result["features"] == []
-    assert sorted((s["feature_id"], s["reason"]) for s in result["skipped"]) == sorted((i, "too_few_repetitions") for i in ALL_IDS)
+    assert not [f for f in result["features"] if f["feature_id"].startswith("exercise.")]
+    assert sorted((s["feature_id"], s["reason"]) for s in result["skipped"] if s["feature_id"] in ALL_IDS) == sorted(
+        (i, "too_few_repetitions") for i in ALL_IDS
+    )
 
 
 def test_composite_without_any_events_does_not_fail():
     result = extract_json(make_request([]))
 
-    assert result["features"] == []
-    assert {s["reason"] for s in result["skipped"]} == {"too_few_repetitions"}
+    assert not [f for f in result["features"] if f["feature_id"].startswith("exercise.")]
+    assert {s["reason"] for s in result["skipped"] if s["feature_id"] in ALL_IDS} == {"too_few_repetitions"}
 
 
 @pytest.mark.property

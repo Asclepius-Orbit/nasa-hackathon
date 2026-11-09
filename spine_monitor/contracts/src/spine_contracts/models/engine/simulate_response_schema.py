@@ -5,9 +5,22 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, constr
+from pydantic import BaseModel, ConfigDict, Field, conint, constr
 
 from ..domain import assessment_schema
+
+
+class Projection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    project_days: conint(ge=1, le=365)
+    unprojected_features: list[constr(pattern=r'^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$')] = (
+        Field(
+            ...,
+            description='Feature IDs held at their latest value because fewer than two distinct dates were available.',
+        )
+    )
 
 
 class SimulateResponse(BaseModel):
@@ -22,3 +35,7 @@ class SimulateResponse(BaseModel):
     reference: assessment_schema.Assessment
     scenario: assessment_schema.Assessment
     hypothetical: Literal[True]
+    projection: Projection | None = Field(
+        None,
+        description='Present when the hypothetical scenario was projected into the future.',
+    )

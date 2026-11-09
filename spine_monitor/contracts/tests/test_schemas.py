@@ -23,6 +23,16 @@ def schema_files() -> list[Path]:
     return sorted(SCHEMAS_DIR.rglob("*.schema.json"))
 
 
+def test_simulate_projection_metadata_contract(validator_for):
+    response = load_json(EXAMPLES_DIR / "valid/engine/simulate-response.json")
+    response["projection"] = {"project_days": 7, "unprojected_features": ["stretch.lumbar.peak_elongation_mm"]}
+    validator = validator_for("engine/simulate-response")
+    assert not list(validator.iter_errors(response))
+    for invalid in ({"project_days": 0, "unprojected_features": []}, {"project_days": 7}, {"project_days": 7, "unprojected_features": [3]}):
+        response["projection"] = invalid
+        assert list(validator.iter_errors(response))
+
+
 @pytest.fixture(scope="session")
 def schemas() -> dict[Path, dict]:
     return {path: load_json(path) for path in schema_files()}
@@ -167,8 +177,18 @@ MUTATIONS = [
     ("domain/assessment.amber", "no confidence", lambda d: d.pop("confidence")),
     ("domain/assessment.amber", "bad recommendation code", lambda d: d.update(recommendations=["rest"])),
     ("domain/assessment.amber", "bad rule id", lambda d: d["fired_rules"][0].update(rule_id="pain")),
+    ("domain/assessment.amber", "evidence without datum", lambda d: d["fired_rules"][0]["evidence"].pop("datum")),
+    ("domain/assessment.amber", "evidence without value", lambda d: d["fired_rules"][0]["evidence"].pop("value")),
+    ("domain/assessment.amber", "evidence without operator", lambda d: d["fired_rules"][0]["evidence"].pop("operator")),
+    ("domain/assessment.amber", "evidence without threshold", lambda d: d["fired_rules"][0]["evidence"].pop("threshold")),
+    ("domain/assessment.amber", "evidence with invalid operator", lambda d: d["fired_rules"][0]["evidence"].update(operator="=>")),
+    ("domain/assessment.amber", "evidence with non-numeric value", lambda d: d["fired_rules"][0]["evidence"].update(value="high")),
+    ("domain/assessment.amber", "evidence with non-numeric threshold", lambda d: d["fired_rules"][0]["evidence"].update(threshold="3")),
+    ("domain/assessment.amber", "evidence with non-string datum", lambda d: d["fired_rules"][0]["evidence"].update(datum=7)),
+    ("domain/assessment.amber", "evidence with unknown property", lambda d: d["fired_rules"][0]["evidence"].update(unit="x")),
     ("engine/features-request", "no chunks", lambda d: d.update(chunks=[])),
     ("engine/baseline-request", "no reference sessions", lambda d: d.update(feature_sets=[])),
+    ("engine/baseline-request", "self-report with pain above 10", lambda d: d["self_reports"][0].update(pain_nrs=11)),
     ("engine/assess-request", "no baseline", lambda d: d.pop("baseline")),
     ("engine/simulate-request", "no overrides property", lambda d: d.pop("overrides")),
     ("engine/simulate-request", "override that is not an object", lambda d: d.update(overrides=[1])),
@@ -327,6 +347,15 @@ def test_feature_set_accepts_calibration_expired_as_skip_reason(validator_for):
     assert not validator_for("domain/feature-set").is_valid(document)
 
 
+def test_feature_set_accepts_insufficient_sample_rate_as_skip_reason(validator_for):
+    # SPARC needs a fast enough IMU (#44): a slower stream skips it with its own reason
+    document = load_json(EXAMPLES_DIR / "valid" / "domain" / "feature-set.preflight.json")
+    document["skipped"].append({"feature_id": "imu.l3.sagittal.smoothness_sparc", "reason": "insufficient_sample_rate"})
+    assert validator_for("domain/feature-set").is_valid(document)
+    document["skipped"][-1]["reason"] = "sample_rate_too_low"
+    assert not validator_for("domain/feature-set").is_valid(document)
+
+
 def test_astronaut_profile_accepts_optional_mission_dates(validator_for):
     # launch/landing dates are optional and nullable: profiles written before they existed stay valid.
     validator = validator_for("domain/astronaut-profile")
@@ -359,6 +388,7 @@ def test_engine_examples_embed_the_standalone_examples():
     assert features["profile"] == valid_example("domain/astronaut-profile")
 
     assert valid_example("engine/baseline-request")["feature_sets"] == [valid_example("domain/feature-set.preflight")]
+    assert valid_example("engine/baseline-request")["self_reports"] == [valid_example("domain/self-report.daily")]
 
     assess = valid_example("engine/assess-request")
     assert assess["profile"] == valid_example("domain/astronaut-profile")
@@ -597,3 +627,8 @@ def test_ground_schemas_carry_no_personal_profile_data(rel, schemas):
     profile = set(load_json(SCHEMAS_DIR / "domain" / "astronaut-profile.schema.json")["properties"])
     banned = NOT_FOR_GROUND | (profile - {"schema_version", "astronaut_id", "updated_at", "launch_date", "landing_date"})
     assert not banned & set(property_names(schemas[SCHEMAS_DIR / f"{rel}.schema.json"]))
+
+
+def test_assessment_example_has_a_fired_rule_with_evidence():
+    evidence = valid_example("domain/assessment.amber")["fired_rules"][0]["evidence"]
+    assert set(evidence) == {"datum", "value", "operator", "threshold"}

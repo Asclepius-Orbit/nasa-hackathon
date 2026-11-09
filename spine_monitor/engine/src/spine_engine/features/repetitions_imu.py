@@ -35,6 +35,7 @@ from spine_contracts import ImuChunk, StreamKind
 from spine_engine.features.context import ExtractionContext
 from spine_engine.features.ordering import Segment
 from spine_engine.features.repetitions import RepWindow
+from spine_engine.features.signals import segment_samples
 
 # Media móvil: atenúa el ruido sin desdibujar lóbulos de ~1 s o más.
 SMOOTH_S = 0.1
@@ -91,24 +92,15 @@ def _segment_spans(context: ExtractionContext, segment: Segment) -> list[tuple[d
     chunks = [c for c in segment.chunks if isinstance(c, ImuChunk)]
     if not chunks:
         return []
-    times: list[float] = []
-    axes: list[list[float]] = [[], [], []]
-    for chunk in chunks:
-        values = [getattr(chunk.data, name).root for name in _GYRO_AXES]
-        n = min(len(v) for v in values)
-        step_ms = 1000.0 / chunk.sample_rate_hz
-        times.extend(chunk.t0_device_ms + i * step_ms for i in range(n))
-        for axis, channel in zip(axes, values, strict=True):
-            axis.extend(float(x) for x in channel[:n])
+    samples = segment_samples(context.clock, segment, _GYRO_AXES)
     rate = chunks[0].sample_rate_hz
-    signal = _dominant_axis(axes)
+    signal = _dominant_axis([samples.channels[name].tolist() for name in _GYRO_AXES])
     if signal is None:
         return []
     spans: list[tuple[datetime, datetime]] = []
     for out, back in _pairs(_lobes(signal, rate)):
-        start = context.clock.to_utc(segment.boot_id, round(times[out.first]))
-        end = context.clock.to_utc(segment.boot_id, round(times[back.last] + 1000.0 / rate))
-        if start is not None and end is not None and end > start:
+        start, end = samples.times[out.first], samples.ends[back.last]
+        if end > start:
             spans.append((start, end))
     return spans
 

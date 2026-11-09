@@ -8,7 +8,7 @@ The LLM is the only fake. Real-model runs are opt-in and live in agent/evals/run
 import json
 import sys
 from collections.abc import AsyncIterator, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -45,6 +45,16 @@ COMPARE_WEEKS = (
         "a_end": RANGES.last_7_days.end,
         "b_start": RANGES.previous_7_days.start,
         "b_end": RANGES.previous_7_days.end,
+    },
+)
+COMPARE_WEEKS_SWAPPED = (
+    "compare_periods",
+    {
+        "astronaut_id": "AST-01",
+        "a_start": RANGES.previous_7_days.start,
+        "a_end": RANGES.previous_7_days.end,
+        "b_start": RANGES.last_7_days.start,
+        "b_end": RANGES.last_7_days.end,
     },
 )
 
@@ -227,6 +237,16 @@ async def test_a_model_failure_is_graded_on_the_deterministic_fallback():
     assert failed == {"RequiredToolsCalled"}  # the fallback is valid output, but the model never called the tool
 
 
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_a_comparison_with_the_weeks_swapped_is_caught_end_to_end():
+    _, answer = SCRIPTS["history_trend_en_compare_weeks"]
+    bad = scripted_model([COMPARE_WEEKS_SWAPPED], answer)
+    report = await _evaluate_case("history_trend_en_compare_weeks", lambda inputs: bad)
+    failed = {n for n, r in report.cases[0].assertions.items() if not r.value}
+    assert failed == {"RangesMatch", "ComparisonDirection"}
+
+
 WRONG_YEAR = ("get_history", {"astronaut_id": "AST-01", "start": "2025-11-06T12:00:00Z", "end": "2025-11-13T12:00:00Z"})
 
 
@@ -289,7 +309,7 @@ async def test_history_in_the_wrong_year_comes_back_empty_so_invented_numbers_ar
     assert result.output.tool_results[0]["assessments"] == []
     assert result.output.tool_results[0]["feature_sets"] == []
     failed = {n for n, r in result.assertions.items() if not r.value}
-    assert failed == {"NumbersGrounded"}  # RequiredToolsCalled still passes: the tool was called
+    assert failed == {"NumbersGrounded", "RangesMatch"}  # RequiredToolsCalled still passes: the tool was called
 
 
 @pytest.mark.integration
@@ -298,4 +318,50 @@ async def test_an_honest_empty_history_answer_still_fails_because_nothing_is_cit
     bad = scripted_model([WRONG_YEAR], "I don't know: the tool found no data for that period, so I cannot say how your status changed.")
     report = await _evaluate_case("history_trend_en_last_week", lambda inputs: bad)
     failed = {n for n, r in report.cases[0].assertions.items() if not r.value}
-    assert failed == {"NumbersGrounded"}
+    assert failed == {"NumbersGrounded", "RangesMatch"}
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_the_run_records_the_instant_the_agent_was_told():
+    steps, answer = SCRIPTS["history_trend_en_last_week"]
+    report = await _evaluate_case("history_trend_en_last_week", lambda inputs: scripted_model(steps, answer))
+    assert report.cases[0].output.now == FIXED_NOW
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_the_run_reads_the_wall_clock_once_so_the_prompt_and_the_run_share_one_instant():
+    ticks = iter([FIXED_NOW, datetime(2030, 1, 1, tzinfo=UTC)])
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "I don't know."
+
+    settings = _settings()
+    inputs = EvalInput(question="Hi", astronaut_id="AST-01", language="en")
+    run = await run_chat(build_agent(settings, model=FunctionModel(stream_function=stream)), McpStatusSource(settings), inputs, wall_clock=lambda: next(ticks))
+    assert run.now == FIXED_NOW
+    assert "2026-11-13T12:00:00Z" in seen[0]
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_each_run_reads_its_own_instant_and_does_not_freeze_the_date_across_runs():
+    later = FIXED_NOW + timedelta(days=2)
+    ticks = iter([FIXED_NOW, later])
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen.append(info.instructions or "")
+        yield "I don't know."
+
+    settings = _settings()
+    inputs = EvalInput(question="Hi", astronaut_id="AST-01", language="en")
+    agent = build_agent(settings, model=FunctionModel(stream_function=stream))
+    first = await run_chat(agent, McpStatusSource(settings), inputs, wall_clock=lambda: next(ticks))
+    second = await run_chat(agent, McpStatusSource(settings), inputs, wall_clock=lambda: next(ticks))
+    assert (first.now, second.now) == (FIXED_NOW, later)
+    assert "2026-11-13T12:00:00Z" in seen[0]
+    assert "2026-11-15T12:00:00Z" in seen[1]

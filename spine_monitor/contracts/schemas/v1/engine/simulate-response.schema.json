@@ -8,7 +8,22 @@
     "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
     "reference": { "$ref": "../domain/assessment.schema.json" },
     "scenario": { "$ref": "../domain/assessment.schema.json" },
-    "hypothetical": { "const": true }
+    "hypothetical": { "const": true },
+    "projection": {
+      "description": "Present when the hypothetical scenario was projected into the future.",
+      "type": "object",
+      "properties": {
+        "project_days": { "type": "integer", "minimum": 1, "maximum": 365 },
+        "unprojected_features": {
+          "description": "Feature IDs held at their latest value because fewer than two distinct dates were available.",
+          "type": "array",
+          "items": { "$ref": "../common.schema.json#/$defs/feature_id" },
+          "uniqueItems": true
+        }
+      },
+      "required": ["project_days", "unprojected_features"],
+      "additionalProperties": false
+    }
   },
   "required": ["schema_version", "reference", "scenario", "hypothetical"],
   "additionalProperties": false

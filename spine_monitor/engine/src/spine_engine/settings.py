@@ -1,6 +1,12 @@
 """Configuración del motor: ventanas, umbrales y arranque. Variables SPINE_ENGINE_* o `.env`."""
 
+from pathlib import Path
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from spine_contracts import AssessmentDomain
+
+DEFAULT_DOMAIN_WEIGHT = 1.0
 
 
 class EngineSettings(BaseSettings):
@@ -8,6 +14,10 @@ class EngineSettings(BaseSettings):
 
     host: str = "127.0.0.1"
     port: int = 8001
+
+    # Valores provisionales del protocolo hasta #46.
+    stretch_recovery_wait_s: float = Field(default=120.0, ge=0, allow_inf_nan=False)
+    stretch_recovery_fraction: float = Field(default=0.1, ge=0, le=1, allow_inf_nan=False)
 
     # z robusto: suelo de la escala, como fracción de la mediana, cuando MAD y desviación son ~0.
     scale_floor: float = 0.05
@@ -24,3 +34,19 @@ class EngineSettings(BaseSettings):
     kalman_threshold: float = 1.0
     kalman_persist: int = 3
     kalman_min_points: int = 3
+
+    # Modelo de riesgo genérico (sin rangos clínicos): peso de cada dominio, puntos de la serie a
+    # partir de los que una desviación cuenta entera y escala de la saturación 1 - exp(-suma / escala).
+    # Los dominios que falten en los pesos se completan con DEFAULT_DOMAIN_WEIGHT. n_points es el largo
+    # de la serie, no el tramo final desviado: con risk_persistence_points <= al mínimo de puntos del
+    # detector, el factor de persistencia es siempre 1.
+    risk_domain_weights: dict[AssessmentDomain, float] = Field(default_factory=lambda: dict.fromkeys(AssessmentDomain, DEFAULT_DOMAIN_WEIGHT))
+    risk_persistence_points: int = 3
+    risk_saturation: float = 3.0
+    triage_policy_file: Path | None = None
+
+    @field_validator("risk_domain_weights")
+    @classmethod
+    def _complete_domain_weights(cls, weights: dict[AssessmentDomain, float]) -> dict[AssessmentDomain, float]:
+        """Los dominios que faltan pesan como por defecto, en vez de quedar apagados."""
+        return {**dict.fromkeys(AssessmentDomain, DEFAULT_DOMAIN_WEIGHT), **weights}

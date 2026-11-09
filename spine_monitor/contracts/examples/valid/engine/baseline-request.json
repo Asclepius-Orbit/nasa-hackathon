@@ -80,5 +80,30 @@
         }
       ]
     }
+  ],
+  "self_reports": [
+    {
+      "schema_version": "1.0.0",
+      "report_id": "5e1f0e90-0000-4000-8000-000000000001",
+      "astronaut_id": "AST-01",
+      "timestamp": "2027-02-09T08:30:00Z",
+      "mission_day": 87,
+      "source": "device",
+      "kind": "daily",
+      "pain_nrs": 5,
+      "pain_nrs_worst_24h": 6,
+      "pain_locations": [
+        {
+          "region": "lumbar",
+          "side": "bilateral"
+        }
+      ],
+      "stiffness_nrs": 6,
+      "sleep": {
+        "hours": 5.5,
+        "quality_nrs": 4
+      },
+      "red_flags": []
+    }
   ]
 }

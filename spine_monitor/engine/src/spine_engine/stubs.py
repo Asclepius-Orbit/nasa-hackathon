@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from spine_contracts import SCHEMA_VERSION, Baseline, FeatureSet, FeaturesRequest, FeatureValue, Level
 
-from spine_engine.interfaces import Deviation, RiskResult, TriageDecision
+from spine_engine.interfaces import Deviation, RiskResult, TriageContext, TriageDecision
 from spine_engine.pipeline import AssessmentPipeline
 from spine_engine.reference import index_entries, reference_entry
 
@@ -50,12 +50,12 @@ class NullFeatureExtractor:
 
 
 class NullRiskModel:
-    def score(self, deviations: Sequence[Deviation]) -> RiskResult:
+    def score(self, deviations: Sequence[Deviation], completeness: float) -> RiskResult:
         return RiskResult(score=0.0)
 
 
 class NullTriagePolicy:
-    def decide(self, risk: RiskResult, deviations: Sequence[Deviation]) -> TriageDecision:
+    def decide(self, context: TriageContext) -> TriageDecision:
         return TriageDecision(level=Level.GREEN)
 
 

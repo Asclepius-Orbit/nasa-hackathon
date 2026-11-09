@@ -18,10 +18,12 @@ The contract is `contracts/openapi.yaml`; bodies and errors are the JSON Schemas
 | Endpoint | Body in | Body out | Today |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | `features` from the registered families: `exercise` since #41; the EMG, IMU and strap families follow in #42-#45 |
+| `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | registered families: `exercise`, `emg`, `imu`, `emg_spectral` and `stretch` |
 | `POST /baseline` | `BaselineRequest` (feature sets of the reference sessions) | `Baseline` | real |
-| `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison; null risk model and triage (level always green) |
-| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | stub: `overrides` are not applied, `reference` and `scenario` are the same assessment |
+| `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison and generic risk model (`risk_score`, `confidence`, `drivers`); null triage (level always green) |
+| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | applies `overrides` (`set`, `add`, `scale`) to the latest value of each feature, optionally projects trends and re-assesses |
+
+When `project_days` is provided, the engine orders each feature's observations by `computed_at`, applies the overrides to its latest value, fits a linear regression to the resulting history, and projects from that latest value over the requested number of days before re-assessment. The horizon must not exceed the time span of any feature with at least two distinct observation times; otherwise the request returns an error. Features with fewer than two distinct times retain their latest value and are listed in `projection.unprojected_features`. The optional `projection` response object also reports `project_days`. The result is hypothetical, not a clinical forecast. Without `project_days`, simulation retains its existing override-only behavior and omits `projection`.
 
 Errors are problem details (`application/problem+json`, `engine/error.schema.json`): `422` with `invalid_request` (with a JSON Pointer per problem), `unsupported_schema_version` or `insufficient_data`, and `500` with `internal`. Request bodies are checked against the JSON Schema as well as Pydantic, so the conditional rules are enforced.
 
@@ -47,13 +49,14 @@ The examples in `contracts/examples/valid/engine/` are valid requests for every 
 | `ChangeDetector` | `CompositeDetector` of `CusumDetector` + `KalmanDetector` | sustained change over the history (same protocol and gravity); a single spike never counts |
 | `VotePolicy` | `AllAgreeVote` | the detectors must agree (AND), in the same direction |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | builds the baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | raw data to features: runs the registered feature families (`exercise`, #41; EMG, IMU and strap in #42-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | extracts `exercise` (#41), `emg` (#42), `imu` (#44), `emg_spectral` (#43) and `stretch` (#45) |
+| `RiskModel` | `DeviationRiskModel` | adds up the \|z\| of sustained deviations, weighted by domain and by persistence (`n_points`), saturated to [0, 1] with `1 - exp(-sum / scale)`; no clinical ranges, so either direction counts as worse and the sign stays in each driver's `deviation_z`. `drivers` hold each feature's share of the score, largest first; `confidence` is the completeness. Weights, persistence and scale: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION`. A partial weights map is completed with 1.0 for the missing domains. `n_points` is the length of the series, not of its deviated tail, so with a persistence value at or below the detector's minimum points the factor is always 1 (as with the default) |
 
 The detectors see only a series of z-scores: they do not know which metric it is, so they do not depend on the theoretical model. `Deviation` carries the z-score, the reference gravity and whether the change is sustained and in which direction; the risk model reads it from there.
 
 ## Feature extraction
 
-`POST /features` runs `CompositeFeatureExtractor` over an `ExtractorRegistry` of feature families (`FeatureFamilyExtractor`: a `family` name, the catalog `feature_ids` it declares and `extract(context) -> FamilyResult` with `computed` and `skipped` features). `default_registry()` registers the `exercise` family (#41), so the repetition metrics are computed today; the metrics of the other sensors arrive family by family (#42-#45). `NullFeatureExtractor` stays in `stubs.py` for tests.
+`POST /features` runs `CompositeFeatureExtractor` with `default_registry()`, registering `exercise`, `emg`, `imu`, `emg_spectral` and `stretch` in that order. Each family declares its catalog IDs and returns computed and skipped features. `NullFeatureExtractor` remains available for tests.
 
 Before the families run, the engine prepares an `ExtractionContext` once:
 
@@ -68,7 +71,7 @@ The composite fills `unit` from the feature catalog and the quality over the str
 
 `exercise.rep_count`, `exercise.rep_duration_s_mean` and `exercise.rep_duration_cv_pct` (CV in %, sample standard deviation with n-1) need at least 2 valid repetitions. With fewer, all three are `skipped` with `too_few_repetitions`.
 
-`RepetitionService` resolves the repetition windows (`RepWindow`): start, end, the active phase (rep_start→rep_end) and the rest (rep_end→next rep_start). The last repetition only has rest if a `rest_end` event follows it. `default_registry()` creates a single service and passes it to the families, so the EMG, IMU and strap families (#42-#45) can reuse it.
+`RepetitionService` resolves active and rest windows. The registry shares one service among the exercise, EMG, IMU, spectral and stretch families.
 
 The source is, in this order:
 
@@ -77,6 +80,45 @@ The source is, in this order:
 3. If neither yields anything, there are no repetitions.
 
 Quality: the event-based features evaluate the common quality over all declared streams; the IMU-fallback features evaluate it over the IMU streams. Without chunks that have a clock anchor, the result is `no_data`.
+
+### EMG amplitude and the `emg` family
+
+For every declared EMG stream with a muscle and a side, `emg.{muscle}.{side}.rms_mv` is the RMS of the active-phase samples of all repetitions and `rest_rms_mv` the RMS of their rest windows. `rms_pct_mvc` divides `rms_mv` by `mvc_rms_mv` of the stream's `emg_mvc` calibration; `peak_pct_mvc` is the highest windowed RMS (window = the calibration's `window_ms`, never crossing from one repetition or `boot_id` to another) over the same MVC. `emg.{muscle}.symmetry_index_pct` is 100·|L-R| / ((L+R)/2) over the two `rms_pct_mvc`. The amplitude needs no raw signal: the computation is the same; the value matches for raw and rectified, not for the envelope. `n` is the number of repetitions that contributed samples. The MVC is only used when it belongs to the stream's muscle and side and was measured on a signal kind compatible with every chunk of the stream (raw and rectified with each other, envelope only with envelope); otherwise the %MVC features and the symmetry are `skipped` with `no_calibration`, while `rms_mv` and `rest_rms_mv` are still computed.
+
+What cannot be computed goes to `skipped`: `no_calibration` / `calibration_expired` for what needs the MVC (the symmetry needs both sides; a missing one wins over an expired one), `too_few_repetitions` without repetitions, `no_data` without samples in the windows (or with an empty mean in the symmetry, or a rest without a rest window), and `stream_missing` for a declared stream without chunks or a muscle with a single declared side.
+
+### The `imu` family
+
+Gyroscope-based, so it does not depend on gravity and stays comparable between Earth and microgravity. For each declared IMU stream, with the `spine_level` of its `placement` in the session (never fixed in the code), and for each repetition window (active phase, `start <= t < end`):
+
+- **Planes:** all three are emitted. `calibration.imu.mounting` maps each sensor axis to a body axis: sagittal = rotation about the left-right axis, frontal = about the anterior axis, transverse = about the cranial axis (same frame as the simulator). A mounting with no sensor axis for a plane skips that plane as `no_calibration`. The calibration's `gyro_bias_dps` is subtracted from each sensor axis.
+- **`imu.{level}.{plane}.rom_deg`:** span (max - min) of the integrated angle (each sample with the period of its own chunk), starting at 0 before the first sample. **`peak_angular_velocity_dps`:** largest `|ω|`.
+- **`imu.{level}.{plane}.smoothness_sparc`:** SPARC of `|ω|` with numpy's FFT and the published defaults (zero padding 2^4, 10 Hz cutoff, 5 % amplitude threshold; Balasubramanian et al. 2015). Only when every chunk of the stream is at 50 Hz or more (the catalog's requirement); otherwise `skipped` with `insufficient_sample_rate`. Without motion SPARC is undefined and ends as `no_data`.
+- **`imu.{level}.accel_rms_g`:** RMS of the acceleration magnitude after removing each axis' mean over the repetition (the static component: gravity and the accelerometer bias).
+
+Each value is the mean over the repetitions that have samples and a finite value, and `n` counts them (a repetition without motion has no SPARC and does not count for it; if none has one, `no_data`); a repetition reads the `boot_id` segment with most samples in its window. Skip reasons, in order: `stream_missing`, `no_calibration`/`calibration_expired`, then `no_data` (no clock or no samples in any repetition) or `too_few_repetitions` (no repetition); `insufficient_sample_rate` for SPARC is decided before these last two.
+
+### EMG spectral fatigue and the `emg_spectral` family
+
+Spectral analysis uses the longest contiguous fragment of each repetition, splitting at packet loss, clock gaps, restarts and sample-rate changes. At least 64 samples are required per fragment.
+
+For every declared EMG stream with a muscle and a side, `emg.{muscle}.{side}.median_freq_hz` is the median frequency of the Welch power spectral density of the active phase of each repetition, averaged over the valid repetitions, and `median_freq_slope_hz_per_rep` is the slope of a linear fit of that median frequency against the repetition index: the fatigue trend, negative when the spectrum shifts toward lower frequencies. `n` is the number of repetitions that contributed.
+
+It needs the raw EMG signal: the spectrum of a rectified or envelope signal does not describe the muscle. If the chunks of the stream are rectified or envelope, both features are `skipped` with `signal_not_raw`. The other reasons are `too_few_repetitions` (fewer than 2 valid repetitions, so there is no slope), `stream_missing` (declared stream without chunks) and `no_data` (repetitions without enough samples). It never raises. It is registered in `default_registry()` before `stretch`.
+
+### The strap (`stretch`) family
+
+Computed from ADC counts, so it needs no raw signal beyond the chunk. For each declared stretch stream with a `spine_region`:
+
+- **Resistance:** with the chunk's `circuit` (`adc_bits`, `vref_v`, `series_resistor_ohm`) the divider `Vout = vref * R / (R + Rs)` is inverted to a resistance. Without `circuit`, the `resistance_ohm` derived in the chunk is used; with neither, the feature goes to `skipped`.
+- **Length:** the resistance becomes a length through the `piecewise_linear` curve of `calibration.stretch_calibration` (resistance to length, not linear). `elongation_mm` and `elongation_pct` are relative to its `rest_length_mm`.
+- **Features:** `stretch.{spine_region}.elongation_mm`, `elongation_pct`, `peak_elongation_mm`, `range_mm`, `recovery_time_s` (per repetition, reusing `RepetitionService`) and `rest_resistance_ohm` (the resistance at rest).
+- **Recovery wait:** the wait is `stretch_calibration.recovery_wait_s` when present; otherwise `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` (default 120 s), PROVISIONAL until #46 (the protocol sets the real value).
+- **Calibration:** as everywhere, the chunk's `calibration_id` wins over the session's. No calibration: `skipped` with `no_calibration`; expired: `calibration_expired`.
+
+### Symptoms
+
+`/assess` derives seven-day symptom features from the astronaut's self-reports and daily context at `as_of`; unavailable values are reported as missing. Baselines derive the same aggregates for each reference session, ending at its feature window (or its computation time when absent), using that session's gravity. The backend supplies reports covering those windows. These aggregates are provisional and are not clinical thresholds.
 
 ## Configuration
 
@@ -88,9 +130,16 @@ Environment variables (or a `.env`), all optional:
 | `SPINE_ENGINE_SCALE_FLOOR` | `0.05` | z-score scale floor, as a fraction of the median, when MAD and deviation are ~0 |
 | `SPINE_ENGINE_CUSUM_K` / `_H` / `_CLIP` / `_MIN_POINTS` | `0.5` / `4.0` / `3.0` / `3` | CUSUM tolerance, threshold, cap per point and minimum history |
 | `SPINE_ENGINE_KALMAN_PROCESS_VAR` / `_MEASUREMENT_VAR` / `_THRESHOLD` / `_PERSIST` / `_MIN_POINTS` | `0.05` / `1.0` / `1.0` / `3` / `3` | local-level Kalman filter |
+| `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` | `120` | strap recovery wait in seconds when `stretch_calibration.recovery_wait_s` is absent; PROVISIONAL until #46 |
+| `SPINE_ENGINE_STRETCH_RECOVERY_FRACTION` | `0.1` | provisional fraction of the repetition peak used as the recovery threshold; configure until #46 |
 
 ## Tests
 
 ```bash
 uv run pytest engine
 ```
+# Declarative triage
+
+`SPINE_ENGINE_TRIAGE_POLICY_FILE` optionally points to a JSON policy. Without a file, risk has a provisional green model level, incomplete inputs raise the global level to amber, and unrecognized red flags require immediate escalation and raise it to red. Reports after `as_of` are ignored. A missing feature also raises its identifiable domain to amber. No clinical cutoffs or clinical rules are supplied: these require clinical review in #53.
+
+The JSON object accepts `amber_cutoff` and `red_cutoff` together (inclusive, between 0 and 1), `unknown_flag_urgency`, and a `rules` array. Each rule contains `rule_id`, `datum` (`risk`, `deviation`, `self_report`, or `red_flag`), `key`, `operator`, `threshold`, `level`, `domain`, `recommendations`, and optional `urgency`; flag rules require an urgency. Self-report keys are `pain_nrs`, `pain_nrs_worst_24h`, and `stiffness_nrs`. Examples belong in tests and are fictional.

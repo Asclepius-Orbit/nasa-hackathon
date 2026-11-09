@@ -15,7 +15,8 @@ from spine_contracts import (
     MissingReason,
 )
 
-from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriagePolicy
+from spine_engine.features.symptoms import symptom_feature_set
+from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriageContext, TriagePolicy
 
 # Dominio de evaluación según el prefijo del feature_id (hasta que el catálogo lo diga).
 _DOMAIN_BY_PREFIX = {
@@ -33,10 +34,11 @@ _MISSING_REASON_BY_SKIP = {
     "signal_not_raw": MissingReason.SIGNAL_NOT_RAW,
     "too_few_repetitions": MissingReason.NO_DATA,
     "stream_missing": MissingReason.SENSOR_OFFLINE,
+    "insufficient_sample_rate": MissingReason.NO_DATA,
 }
 
 
-def _domain_of(feature_id: str) -> AssessmentDomain | None:
+def domain_of(feature_id: str) -> AssessmentDomain | None:
     return _DOMAIN_BY_PREFIX.get(feature_id.split(".", 1)[0])
 
 
@@ -65,11 +67,15 @@ class AssessmentPipeline:
         self._triage_policy = triage_policy
 
     def evaluate(self, request: AssessRequest) -> Assessment:
-        deviations = self._baseline_strategy.deviations(request.baseline, request.feature_sets)
-        risk = self._risk_model.score(deviations)
-        triage = self._triage_policy.decide(risk, deviations)
+        symptoms = symptom_feature_set(request.self_reports or [], request.daily_context or [], request.as_of, request.astronaut_id)
+        feature_sets = [*request.feature_sets, symptoms]
+        deviations = self._baseline_strategy.deviations(request.baseline, feature_sets)
+        completeness = _completeness(feature_sets, deviations)
+        risk = self._risk_model.score(deviations, completeness.score)
+        context = TriageContext(risk, deviations, completeness, request.self_reports or [], request.as_of)
+        triage = self._triage_policy.decide(context)
 
-        evaluated = {domain for d in deviations if (domain := _domain_of(d.feature_id)) is not None}
+        evaluated = {domain for d in deviations if (domain := domain_of(d.feature_id)) is not None}
         domains = [
             DomainAssessment(  # pyright: ignore[reportCallIssue]  # generated model: `score` has a positional Field default
                 domain=domain,
@@ -87,7 +93,7 @@ class AssessmentPipeline:
             level=triage.level,
             risk_score=risk.score,
             confidence=risk.confidence,
-            completeness=_completeness(request.feature_sets, deviations),
+            completeness=completeness,
             domains=domains,
             drivers=risk.drivers,
             fired_rules=triage.fired_rules,

@@ -109,7 +109,19 @@
             "description": "True when the rule set a level higher than the statistical model alone would have.",
             "type": "boolean"
           },
-          "description": { "type": "string", "maxLength": 300 }
+          "description": { "type": "string", "maxLength": 300 },
+          "evidence": {
+            "description": "The datum, observed value and threshold comparison that fired the rule.",
+            "type": "object",
+            "properties": {
+              "datum": { "type": "string" },
+              "value": { "type": "number" },
+              "operator": { "type": "string", "enum": [">", ">=", "<", "<=", "==", "!="] },
+              "threshold": { "type": "number" }
+            },
+            "required": ["datum", "value", "operator", "threshold"],
+            "additionalProperties": false
+          }
         },
         "required": ["rule_id", "level", "overrides_model"],
         "additionalProperties": false

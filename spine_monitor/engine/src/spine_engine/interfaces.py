@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Literal, Protocol
 
 from spine_contracts import (
@@ -9,6 +10,7 @@ from spine_contracts import (
     Baseline,
     BaselineEntry,
     BaselineRequest,
+    Completeness,
     Driver,
     Escalation,
     FeatureSet,
@@ -16,6 +18,7 @@ from spine_contracts import (
     FiredRule,
     GravityEnvironment,
     Level,
+    SelfReport,
 )
 
 Direction = Literal["up", "down"]
@@ -68,6 +71,17 @@ class TriageDecision:
     domain_levels: dict[AssessmentDomain, Level] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class TriageContext:
+    """Todo lo que la política de triaje puede mirar para decidir."""
+
+    risk: RiskResult
+    deviations: Sequence[Deviation]
+    completeness: Completeness
+    self_reports: Sequence[SelfReport]
+    as_of: datetime
+
+
 class BaselineStrategy(Protocol):
     def deviations(self, baseline: Baseline, feature_sets: Sequence[FeatureSet]) -> list[Deviation]: ...
 
@@ -101,8 +115,10 @@ class FeatureExtractor(Protocol):
 
 
 class RiskModel(Protocol):
-    def score(self, deviations: Sequence[Deviation]) -> RiskResult: ...
+    """Desviaciones -> riesgo. `completeness` (en [0, 1]) es la parte de lo esperado que se pudo comparar."""
+
+    def score(self, deviations: Sequence[Deviation], completeness: float) -> RiskResult: ...
 
 
 class TriagePolicy(Protocol):
-    def decide(self, risk: RiskResult, deviations: Sequence[Deviation]) -> TriageDecision: ...
+    def decide(self, context: TriageContext) -> TriageDecision: ...

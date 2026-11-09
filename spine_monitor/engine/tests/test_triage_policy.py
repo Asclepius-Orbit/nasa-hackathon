@@ -1,0 +1,204 @@
+from datetime import UTC, datetime
+
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+from spine_contracts import AssessmentDomain, Completeness, DailySelfReport, Level, MissingItem, MissingReason, RedFlagReport, Source, Urgency, dump
+from spine_engine.factory import default_pipeline
+from spine_engine.interfaces import RiskResult, TriageContext
+from spine_engine.settings import EngineSettings
+from spine_engine.triage import DeclarativeTriagePolicy, PolicyConfig
+
+
+def context(score=0.0, completeness=1.0):
+    return TriageContext(RiskResult(score), [], Completeness(score=completeness, missing=[]), [], datetime(2026, 1, 1, tzinfo=UTC))
+
+
+def test_model_cutoffs_are_inclusive_and_optional():
+    assert DeclarativeTriagePolicy(PolicyConfig()).decide(context(1)).level == Level.GREEN
+    policy = DeclarativeTriagePolicy(PolicyConfig(amber_cutoff=0.3, red_cutoff=0.8))
+    assert policy.decide(context(0.3)).level == Level.AMBER
+    assert policy.decide(context(0.8)).level == Level.RED
+
+
+def test_incomplete_data_produces_amber_floor():
+    assert DeclarativeTriagePolicy(PolicyConfig()).decide(context(completeness=0.9)).level == Level.AMBER
+
+
+def test_unknown_flags_escalate_and_future_reports_are_ignored():
+    report = RedFlagReport(schema_version="1.0.0", report_id="00000000-0000-0000-0000-000000000001",
+                           astronaut_id="AST-01", timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+                           source=Source.DEVICE, kind="red_flag", red_flags=["leg_weakness"])
+    policy = DeclarativeTriagePolicy(PolicyConfig())
+    ctx = context()
+    decision = policy.decide(TriageContext(ctx.risk, [], ctx.completeness, [report], ctx.as_of))
+    assert decision.level == Level.RED
+    assert decision.escalation.required and decision.escalation.urgency == Urgency.IMMEDIATE
+    assert any(rule.domain.value == "safety" for rule in decision.fired_rules)
+    assert "evidence" not in dump(decision.fired_rules[0])
+    past = datetime(2025, 1, 1, tzinfo=UTC)
+    assert not policy.decide(TriageContext(ctx.risk, [], ctx.completeness, [report], past)).escalation.required
+
+
+def test_invalid_configuration_is_rejected():
+    with pytest.raises(ValueError):
+        PolicyConfig(amber_cutoff=0.7, red_cutoff=0.3)
+    with pytest.raises(ValueError):
+        PolicyConfig(amber_cutoff=0.3)
+
+
+def test_red_flag_rules_require_urgency():
+    with pytest.raises(ValueError):
+        PolicyConfig(rules=[{"rule_id": "RULE_TEST", "datum": "red_flag", "key": "leg_weakness", "level": "red"}])
+    with pytest.raises(ValueError):
+        PolicyConfig(rules=[{"rule_id": "RULE_TEST", "datum": "red_flag", "key": "leg_weakness", "level": "red",
+                             "urgency": "priority", "domain": "symptoms"}])
+
+
+def test_default_pipeline_uses_the_declarative_policy():
+    pipeline = default_pipeline(EngineSettings(_env_file=None))
+    assert isinstance(pipeline._triage_policy, DeclarativeTriagePolicy)
+
+
+def test_missing_identifiable_domain_is_amber_without_contaminating_other_domains():
+    ctx = context()
+    missing = Completeness(score=0.5, missing=[MissingItem(what="emg.test.value", reason=MissingReason.NO_DATA)])
+    decision = DeclarativeTriagePolicy(PolicyConfig()).decide(TriageContext(ctx.risk, [], missing, [], ctx.as_of))
+    assert decision.level == Level.AMBER
+    assert any(rule.domain.value == "safety" for rule in decision.fired_rules)
+    assert decision.domain_levels[AssessmentDomain.MUSCLE] == Level.AMBER
+    assert decision.domain_levels[AssessmentDomain.KINEMATICS] == Level.GREEN
+
+
+def test_declarative_rule_explains_threshold_and_escalation():
+    policy = DeclarativeTriagePolicy(PolicyConfig(rules=[{"rule_id": "RULE_EXAMPLE", "datum": "risk", "threshold": 0.5,
+        "level": "red", "domain": "muscle", "recommendations": ["REC_EXAMPLE"], "urgency": "priority"}]))
+    decision = policy.decide(context(0.5))
+    assert decision.level == Level.RED
+    assert decision.domain_levels[AssessmentDomain.MUSCLE] == Level.RED
+    assert decision.fired_rules[0].evidence.threshold == 0.5
+    assert decision.recommendations == ["REC_EXAMPLE"]
+    assert decision.escalation.urgency == Urgency.PRIORITY
+
+
+def test_rule_reads_daily_report_value_only_up_to_as_of():
+    report = DailySelfReport(schema_version="1.0.0", report_id="00000000-0000-0000-0000-000000000002",
+        astronaut_id="AST-01", timestamp=datetime(2026, 1, 1, tzinfo=UTC), source=Source.DEVICE,
+        kind="daily", pain_nrs=7, stiffness_nrs=2)
+    policy = DeclarativeTriagePolicy(PolicyConfig(rules=[{"rule_id": "RULE_EXAMPLE", "datum": "self_report",
+        "key": "pain_nrs", "threshold": 7, "level": "amber", "domain": "symptoms"}]))
+    ctx = context()
+    result = policy.decide(TriageContext(ctx.risk, [], ctx.completeness, [report], ctx.as_of))
+    assert result.domain_levels[AssessmentDomain.SYMPTOMS] == Level.AMBER
+
+
+@pytest.mark.parametrize(
+    ("operator", "expected"),
+    [(">", (False, False, True)), (">=", (False, True, True)), ("<", (True, False, False)),
+     ("<=", (True, True, False)), ("==", (False, True, False)), ("!=", (True, False, True))],
+)
+def test_rule_operator_respects_threshold_boundaries(operator, expected):
+    policy = DeclarativeTriagePolicy(PolicyConfig(rules=[{
+        "rule_id": "RULE_OPERATOR", "datum": "risk", "operator": operator,
+        "threshold": 0.5, "level": "red", "domain": "safety",
+    }]))
+    for score, should_fire in zip((0.25, 0.5, 0.75), expected, strict=True):
+        decision = policy.decide(context(score))
+        assert bool(decision.fired_rules) is should_fire
+        assert decision.level == (Level.RED if should_fire else Level.GREEN)
+        if should_fire:
+            assert decision.fired_rules[0].evidence.operator.value == operator
+
+
+@pytest.mark.property
+@given(st.floats(min_value=0, max_value=1, allow_nan=False, allow_infinity=False),
+       st.floats(min_value=0, max_value=1, allow_nan=False, allow_infinity=False))
+def test_increasing_risk_never_reduces_model_level(a, b):
+    policy = DeclarativeTriagePolicy(PolicyConfig(amber_cutoff=0.3, red_cutoff=0.8))
+    rank = {Level.GREEN: 0, Level.AMBER: 1, Level.RED: 2}
+    assert rank[policy.decide(context(min(a, b))).level] <= rank[policy.decide(context(max(a, b))).level]
+
+
+def test_loads_policy_from_json(tmp_path):
+    path = tmp_path / "policy.json"
+    path.write_text('{"amber_cutoff": 0.3, "red_cutoff": 0.8}', encoding="utf-8")
+    assert DeclarativeTriagePolicy(PolicyConfig.from_file(path)).decide(context(0.8)).level == Level.RED
+
+
+def test_recognized_flag_uses_its_configured_urgency():
+    report = RedFlagReport(schema_version="1.0.0", report_id="00000000-0000-0000-0000-000000000001",
+        astronaut_id="AST-01", timestamp=datetime(2026, 1, 1, tzinfo=UTC), source=Source.DEVICE,
+        kind="red_flag", red_flags=["leg_weakness"])
+    config = PolicyConfig(rules=[{"rule_id": "RULE_EXAMPLE", "datum": "red_flag", "key": "leg_weakness",
+                                  "level": "amber", "urgency": "priority"}])
+    ctx = context()
+    result = DeclarativeTriagePolicy(config).decide(TriageContext(ctx.risk, [], ctx.completeness, [report], ctx.as_of))
+    assert result.level == Level.AMBER
+    assert result.escalation.urgency == Urgency.PRIORITY
+    assert [rule.rule_id for rule in result.fired_rules] == ["RULE_EXAMPLE"]
+
+
+def test_missing_even_with_full_score_raises_floor_and_affected_domain():
+    ctx = context()
+    missing = Completeness(score=1.0, missing=[MissingItem(what="self_report", reason=MissingReason.NO_DATA)])
+    result = DeclarativeTriagePolicy(PolicyConfig()).decide(TriageContext(ctx.risk, [], missing, [], ctx.as_of))
+    assert result.level == Level.AMBER
+    assert result.domain_levels[AssessmentDomain.SYMPTOMS] == Level.AMBER
+    assert result.domain_levels[AssessmentDomain.MUSCLE] == Level.GREEN
+    fired = next(rule for rule in result.fired_rules if rule.rule_id == "RULE_INCOMPLETE_DATA")
+    assert fired.domain.value == "safety" and fired.evidence is None and fired.overrides_model
+    assert "evidence" not in dump(fired)
+    assert not result.escalation.required
+
+
+def test_incompleteness_never_lowers_a_red_model_or_red_domain():
+    ctx = context(score=0.9)
+    missing = Completeness(score=0.5, missing=[MissingItem(what="muscle", reason=MissingReason.NO_DATA)])
+    policy = DeclarativeTriagePolicy(PolicyConfig(amber_cutoff=0.3, red_cutoff=0.8))
+    result = policy.decide(TriageContext(ctx.risk, [], missing, [], ctx.as_of))
+    assert result.level == Level.RED
+    assert result.domain_levels[AssessmentDomain.MUSCLE] == Level.RED
+    fired = next(rule for rule in result.fired_rules if rule.rule_id == "RULE_INCOMPLETE_DATA")
+    assert fired.evidence.value == 0.5 and not fired.overrides_model
+
+
+def test_unknown_flag_uses_configured_urgency_and_is_a_safety_override():
+    report = RedFlagReport(schema_version="1.0.0", report_id="00000000-0000-0000-0000-000000000001",
+        astronaut_id="AST-01", timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+        source=Source.DEVICE, kind="red_flag", red_flags=["leg_weakness"])
+    ctx = context()
+    config = PolicyConfig(unknown_flag_urgency=Urgency.PRIORITY)
+    result = DeclarativeTriagePolicy(config).decide(TriageContext(ctx.risk, [], ctx.completeness, [report], ctx.as_of))
+    assert result.level == Level.RED
+    assert result.escalation.required and result.escalation.urgency == Urgency.PRIORITY
+    assert result.escalation.reasons == ["leg_weakness"]
+    assert [(rule.rule_id, rule.domain.value, rule.overrides_model) for rule in result.fired_rules] == [
+        ("RULE_UNKNOWN_RED_FLAG", "safety", True)
+    ]
+
+
+def test_future_daily_symptom_and_red_flag_do_not_trigger_rules():
+    report = DailySelfReport(schema_version="1.0.0", report_id="00000000-0000-0000-0000-000000000002",
+        astronaut_id="AST-01", timestamp=datetime(2026, 1, 2, tzinfo=UTC), source=Source.DEVICE,
+        kind="daily", pain_nrs=9, stiffness_nrs=2, red_flags=["leg_weakness"])
+    config = PolicyConfig(rules=[{"rule_id": "RULE_PAIN", "datum": "self_report", "key": "pain_nrs",
+                                  "threshold": 7, "level": "red", "domain": "symptoms"}])
+    ctx = context()
+    result = DeclarativeTriagePolicy(config).decide(TriageContext(ctx.risk, [], ctx.completeness, [report], ctx.as_of))
+    assert result.level == Level.GREEN
+    assert result.fired_rules == []
+    assert not result.escalation.required
+
+
+@pytest.mark.parametrize("recommendation", ["REC_", "REC_bad", "REC_BAD-1"])
+def test_invalid_recommendation_codes_are_rejected_at_configuration(recommendation):
+    with pytest.raises(ValueError):
+        PolicyConfig(rules=[{"rule_id": "RULE_TEST", "datum": "risk", "level": "red",
+                             "recommendations": [recommendation]}])
+
+
+def test_rule_id_used_for_escalation_must_fit_a_reason():
+    with pytest.raises(ValueError):
+        PolicyConfig(rules=[{"rule_id": "RULE_" + "A" * 196, "datum": "risk", "level": "red", "urgency": "priority"}])
+    config = PolicyConfig(rules=[{"rule_id": "RULE_" + "A" * 195, "datum": "risk", "level": "red", "urgency": "priority"}])
+    assert DeclarativeTriagePolicy(config).decide(context(1)).escalation.required

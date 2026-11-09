@@ -2064,6 +2064,7 @@ version = "0.1.0"
 source = { editable = "engine" }
 dependencies = [
     { name = "fastapi" },
+    { name = "numpy" },
     { name = "pydantic-settings" },
     { name = "spine-contracts" },
     { name = "uvicorn", extra = ["standard"] },
@@ -2078,6 +2079,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.162.0" },
+    { name = "numpy", specifier = ">=2.5.4" },
     { name = "pydantic-settings", specifier = ">=2.16.1" },
     { name = "spine-contracts", editable = "contracts" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },

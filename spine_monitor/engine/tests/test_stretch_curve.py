@@ -1,6 +1,7 @@
 """Conversión del cordón (#45): ADC -> resistencia -> longitud -> elongación."""
 
 import math
+from typing import NamedTuple
 
 import numpy as np
 import pytest
@@ -22,7 +23,7 @@ _RS = 1000.0
 
 def test_adc_to_resistance_inverts_divider_exactly() -> None:
     # c = 341 -> R = 1000 * 341 / 682 = 500 Ω.
-    assert adc_to_resistance(341, adc_bits=_BITS, series_resistor_ohm=_RS) == pytest.approx(500.0, abs=0.0)
+    assert adc_to_resistance(341, adc_bits=_BITS, series_resistor_ohm=_RS) == 500.0
 
 
 def test_adc_to_resistance_is_vectorised() -> None:
@@ -97,6 +98,25 @@ def test_out_of_curve_range_flags_only_outside_samples() -> None:
 @pytest.mark.parametrize("fn", [resistance_to_length, out_of_curve_range])
 def test_degenerate_curve_raises_domain_error(curve: list[Point], fn: object) -> None:
     with pytest.raises(StretchCurveError):
+        fn(150.0, curve)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn es una de las dos funciones
+
+
+class _RawPoint(NamedTuple):
+    """Punto sin validar (el ``Point`` del contrato ya rechaza NaN/inf): el motor no debe fiarse de ello."""
+
+    resistance_ohm: float
+    length_mm: float
+
+
+@pytest.mark.parametrize(
+    "bad_point",
+    [(math.nan, 210.0), (math.inf, 210.0), (-math.inf, 210.0), (150.0, math.nan), (150.0, math.inf)],
+    ids=["r_nan", "r_inf", "r_neg_inf", "length_nan", "length_inf"],
+)
+@pytest.mark.parametrize("fn", [resistance_to_length, out_of_curve_range])
+def test_non_finite_curve_point_raises_domain_error(bad_point: tuple[float, float], fn: object) -> None:
+    curve = [_RawPoint(100.0, 200.0), _RawPoint(*bad_point), _RawPoint(400.0, 230.0)]
+    with pytest.raises(StretchCurveError, match="finite"):
         fn(150.0, curve)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn es una de las dos funciones
 
 

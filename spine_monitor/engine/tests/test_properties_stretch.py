@@ -69,14 +69,18 @@ def test_output_stays_within_curve_length_range(curve: list[Point], r: float) ->
     assert min(lengths) <= float(resistance_to_length(r, curve)) <= max(lengths)
 
 
-@given(rest=_positive)
-def test_rest_length_has_zero_elongation(rest: float) -> None:
+@given(rest=_positive, d=_positive)
+def test_elongation_is_anchored_at_rest_length(rest: float, d: float) -> None:
+    # Ancla escala y signo: reposo -> 0, reposo + d -> +d (estirado), reposo - d -> -d (acortado).
     assert float(elongation_mm(rest, rest)) == 0.0
     assert float(elongation_pct(rest, rest)) == 0.0
+    np.testing.assert_allclose(elongation_mm(rest + d, rest), d, rtol=1e-9, atol=1e-9)
+    np.testing.assert_allclose(elongation_mm(rest - d, rest), -d, rtol=1e-9, atol=1e-9)
+    assert float(elongation_pct(rest + d, rest)) > 0.0
+    assert float(elongation_pct(rest - d, rest)) < 0.0
 
 
 @given(rest=_positive, d1=_positive, d2=_positive)
-def test_elongation_pct_is_linear_in_elongation(rest: float, d1: float, d2: float) -> None:
+def test_elongation_pct_is_additive_in_elongation(rest: float, d1: float, d2: float) -> None:
     pct = elongation_pct(np.array([rest + d1, rest + d2, rest + d1 + d2]), rest)
     np.testing.assert_allclose(pct[2], pct[0] + pct[1], rtol=1e-9)
-    np.testing.assert_allclose(pct[0], 100.0 * d1 / rest, rtol=1e-9)

@@ -10,8 +10,9 @@ Sin I/O, reloj ni azar. Todas las funciones aceptan escalar o ``ndarray`` y devu
 - ``resistance_to_length``: curva ``piecewise_linear`` de ``StretchCalibration`` (resistencia -> longitud),
   interpolación lineal por tramos. Fuera del rango de resistencias de los puntos SATURA a la longitud del extremo;
   ``out_of_curve_range`` dice qué muestras quedaron fuera para que la familia marque calidad. ``NaN`` entra y sale
-  ``NaN`` (y no cuenta como fuera de rango). Los puntos se ordenan por resistencia; menos de dos puntos o
-  resistencias repetidas lanzan ``StretchCurveError`` (un ``ValueError``), que la familia convierte en skip.
+  ``NaN`` (y no cuenta como fuera de rango). Los puntos se ordenan por resistencia; menos de dos puntos,
+  resistencias repetidas o valores no finitos en los puntos lanzan ``StretchCurveError`` (un ``ValueError``), que la
+  familia convierte en skip.
 - ``elongation_mm = length − rest_length_mm`` y ``elongation_pct = 100·elongation_mm/rest_length_mm``;
   ``rest_length_mm <= 0`` (o no finito) lanza ``StretchCurveError``.
 """
@@ -40,7 +41,11 @@ class CurvePoint(Protocol):
 
 
 def adc_to_resistance(counts: ArrayLike, *, adc_bits: int, series_resistor_ohm: float) -> FloatArray:
-    """Resistencia del cordón (Ω) por muestra; ``NaN`` donde las cuentas caen fuera de ``(0, 2^bits − 1)``."""
+    """Resistencia del cordón (Ω) por muestra; ``NaN`` donde las cuentas caen fuera de ``(0, 2^bits − 1)``.
+
+    Nota: el simulador recorta las cuentas a ``[0.5, full − 0.5]`` y devuelve R finita; aquí las cuentas en 0 o
+    ``full`` son no invertibles y salen ``NaN`` (se descartan). Divergencia deliberada, pendiente de confirmar con Uri.
+    """
     c = np.asarray(counts, dtype=np.float64)
     full = float(2**adc_bits - 1)
     valid = (c > 0.0) & (c < full)
@@ -49,14 +54,17 @@ def adc_to_resistance(counts: ArrayLike, *, adc_bits: int, series_resistor_ohm: 
 
 
 def _knots(points: Sequence[CurvePoint]) -> tuple[FloatArray, FloatArray]:
-    """(resistencias, longitudes) ordenadas por resistencia; error si hay < 2 puntos o resistencias repetidas."""
+    """(resistencias, longitudes) ordenadas por resistencia; error si hay < 2 puntos, valores no finitos o repetidos."""
     if len(points) < 2:
         raise StretchCurveError(f"stretch curve needs at least 2 points, got {len(points)}")
     ordered = sorted(points, key=lambda p: p.resistance_ohm)
     r = np.array([p.resistance_ohm for p in ordered], dtype=np.float64)
+    lengths = np.array([p.length_mm for p in ordered], dtype=np.float64)
+    if not (np.all(np.isfinite(r)) and np.all(np.isfinite(lengths))):
+        raise StretchCurveError("stretch curve points must have finite resistance_ohm and length_mm")
     if np.any(np.diff(r) == 0.0):
         raise StretchCurveError("stretch curve has duplicated resistance_ohm values")
-    return r, np.array([p.length_mm for p in ordered], dtype=np.float64)
+    return r, lengths
 
 
 def resistance_to_length(resistance_ohm: ArrayLike, points: Sequence[CurvePoint]) -> FloatArray:

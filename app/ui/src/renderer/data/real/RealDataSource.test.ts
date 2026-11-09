@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { BaselineView, FirstDayResult, HistoryView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
+import type { BaselineView, FirstDayResult, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
 import { example } from '../../test/contract-examples';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import type { RepsUpdate } from '../types';
@@ -21,8 +21,8 @@ describe('getStrip', () => {
       missionStart: '2026-11-15',
       flightPhase: 'inflight',
       harness: { id: 'wb-01', batteryPct: 18, weakStreams: [{ stream: 'stretch_lumbar', state: 'stalled' }], degraded: true, stale: false, lastSeenAt: '2026-11-15T09:58:00Z' },
-      groundLink: null,
-      lastContactMinAgo: null,
+      groundLink: { state: 'down', backInMin: 12 },
+      lastContactMinAgo: 45,
       reportsDue: 1,
     });
   });
@@ -34,8 +34,8 @@ describe('getStrip', () => {
       missionStart: null,
       flightPhase: null,
       harness: null,
-      groundLink: null,
-      lastContactMinAgo: null,
+      groundLink: { state: 'up' },
+      lastContactMinAgo: 5,
       reportsDue: 2,
     });
   });
@@ -238,6 +238,84 @@ describe('errors', () => {
   });
 });
 
+describe('getHouston', () => {
+  it('maps the summary and the outbox as codes and nulls, never text', async () => {
+    api.viewData.houston = example<HoustonView>('ui-houston');
+    api.viewData.outbox = example<OutboxView>('ui-outbox');
+    expect(await data.getHouston()).toEqual({
+      crewCode: 'AST-01',
+      summary: {
+        date: '2027-02-09',
+        missionDay: 87,
+        revision: 2,
+        asOf: '2027-02-09T09:00:00Z',
+        level: 'amber',
+        confidencePct: 74,
+        dataAvailable: 5,
+        dataTotal: 6,
+        drivers: [
+          { featureId: 'stretch.lumbar.peak_elongation_mm', deviationZ: 2.4 },
+          { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8 },
+        ],
+        redFlags: [],
+        sessions: [{ sessionId: '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03', state: 'processed', protocolId: 'lat_pulldown_standing_v1' }],
+        recommendations: ['REC_LUMBAR_STAB_01', 'REC_INCREASE_ARED'],
+        escalation: { required: false, urgency: null, reasons: [] },
+        contacts: null,
+      },
+      outbox: [
+        { date: '2027-02-09', missionDay: 87, revision: 2, state: 'queued', enqueuedAt: '2027-02-09T09:00:00Z', receivedAt: null, attempts: 3 },
+        { date: '2027-02-09', missionDay: 87, revision: 1, state: 'sent', enqueuedAt: '2027-02-09T06:00:00Z', receivedAt: '2027-02-09T06:00:02Z', attempts: 1 },
+        { date: '2027-02-08', missionDay: 86, revision: 1, state: 'sent', enqueuedAt: '2027-02-08T09:00:00Z', receivedAt: '2027-02-08T09:05:00Z', attempts: 2 },
+      ],
+      groundLink: { state: 'down', backInMin: 12 },
+      lastContactAt: '2027-02-09T06:00:02Z',
+      transport: 'simulated',
+      contentValidated: false,
+    });
+    expect(api.calls).toEqual(expect.arrayContaining(['views.houston', 'views.outbox']));
+  });
+
+  it('keeps nothing-yet as nulls and an empty outbox: no summary, no link, no contact', async () => {
+    api.viewData.houston = example<HoustonView>('ui-houston.empty');
+    api.viewData.outbox = example<OutboxView>('ui-outbox.empty');
+    expect(await data.getHouston()).toEqual({
+      crewCode: 'AST-01',
+      summary: null,
+      outbox: [],
+      groundLink: null,
+      lastContactAt: null,
+      transport: 'simulated',
+      contentValidated: false,
+    });
+  });
+
+  it('maps a nodata summary with its nulls', async () => {
+    const houston = example<HoustonView>('ui-houston');
+    const nodata = {
+      ...houston.summary,
+      level: 'nodata',
+      assessment_id: null,
+      confidence: null,
+      data_available: null,
+      data_total: null,
+      drivers: [],
+      recommendations: [],
+      escalation: null,
+    } as unknown as HoustonView['summary'];
+    api.viewData.houston = { ...houston, summary: nodata };
+    api.viewData.outbox = example<OutboxView>('ui-outbox.empty');
+    const { summary } = await data.getHouston();
+    expect(summary).toMatchObject({ level: 'nodata', confidencePct: null, dataAvailable: null, dataTotal: null, drivers: [], escalation: null });
+  });
+
+  it('fails when the outbox fails: half a screen is not shown', async () => {
+    api.viewData.houston = example<HoustonView>('ui-houston');
+    api.viewErrors.outbox = 'unavailable';
+    await expect(data.getHouston()).rejects.toThrow(/^unavailable$/);
+  });
+});
+
 describe('what #61 to #63 still own', () => {
   it('serves the static form data of the UI: the symptom catalogue and the report form', async () => {
     expect((await data.getCatalog()).flags).toHaveLength(8);
@@ -247,7 +325,6 @@ describe('what #61 to #63 still own', () => {
   it.each([
     ['getStopped', () => data.getStopped()],
     ['getOswestry', () => data.getOswestry()],
-    ['getHouston', () => data.getHouston()],
   ])('%s rejects not_built (not "unavailable": the monitor is fine, the feature is not connected yet)', async (_name, call) => {
     await expect(call()).rejects.toThrow(/^not_built$/);
   });

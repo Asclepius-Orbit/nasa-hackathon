@@ -6,6 +6,8 @@ import type {
   CrewMember,
   FirstDayResult,
   HistoryView,
+  HoustonView,
+  OutboxView,
   PinResult,
   RepsEvent,
   SessionView,
@@ -105,9 +107,11 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     baseline?: BaselineView;
     firstDay?: FirstDayResult;
     sessions?: Record<string, SessionView>;
+    houston?: HoustonView;
+    outbox?: OutboxView;
   } = {};
   /** Makes a view reject with this code instead of answering. */
-  viewErrors: Partial<Record<'strip' | 'today' | 'history' | 'baseline' | 'firstDay' | 'session', ViewsErrorCode>> = {};
+  viewErrors: Partial<Record<'strip' | 'today' | 'history' | 'baseline' | 'firstDay' | 'session' | 'houston' | 'outbox', ViewsErrorCode>> = {};
   /** Range of the last `views.history` call. */
   historyRange: ViewRange | undefined;
 
@@ -121,6 +125,8 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     baseline: () => this.view('baseline', this.viewData.baseline),
     firstDay: () => this.view('firstDay', this.viewData.firstDay),
     session: (sessionId: string) => this.view('session', this.viewData.sessions?.[sessionId]),
+    houston: () => this.view('houston', this.viewData.houston),
+    outbox: () => this.view('outbox', this.viewData.outbox),
   };
 
   private repsListeners = new Map<string, Set<(event: RepsEvent) => void>>();

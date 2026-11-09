@@ -80,6 +80,22 @@ it('announces the link is up when the ground can be reached', async () => {
   expect(await within(dialog).findByText(/Link to the ground is up\./)).toBeInTheDocument();
 });
 
+it('never promises delivery, even with the link up: it says Queued and no Sent', async () => {
+  const data = mockData();
+  const real = data.getStrip.bind(data);
+  data.getStrip = async () => ({ ...(await real()), groundLink: { state: 'up' } });
+  renderInWorld(<Opener />, { withRouter: false, data });
+  const dialog = await openDialog();
+  expect(await within(dialog).findByText(/Link to the ground is up\./)).toBeInTheDocument();
+  expect(within(dialog).queryByText(/as soon as you send/)).not.toBeInTheDocument();
+  expect(dialog).toHaveTextContent(/queued/i);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Fever with back pain' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  expect(within(dialog).getByText('Queued.')).toBeInTheDocument();
+  expect(within(dialog).queryByText(/goes to the flight surgeon/)).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole('button', { name: 'Sent' })).not.toBeInTheDocument();
+});
+
 it('hides the "For:" picker while signed in', async () => {
   renderInWorld(<Opener />, { withRouter: false });
   const dialog = await openDialog();

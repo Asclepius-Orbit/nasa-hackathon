@@ -171,12 +171,21 @@ function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
         </div>
       )}
       <dl className={styles.detect}>
-        <dt>{copy.countingBy}</dt>
-        <dd>{sessionCopy.countingBy}</dd>
+        {/* Once the session has ended, how reps were counted live and the backup gesture no longer apply. */}
+        {!ended && (
+          <>
+            <dt>{copy.countingBy}</dt>
+            <dd>{sessionCopy.countingBy}</dd>
+          </>
+        )}
         <dt>{copy.lastRep}</dt>
         <dd>{state.last ? copy.last(state.last.rep, state.last.seconds) : copy.noLast}</dd>
-        <dt>{copy.backup}</dt>
-        <dd>{sessionCopy.backup}</dd>
+        {!ended && (
+          <>
+            <dt>{copy.backup}</dt>
+            <dd>{sessionCopy.backup}</dd>
+          </>
+        )}
       </dl>
       {!ended && (
         <div className={styles.minor}>

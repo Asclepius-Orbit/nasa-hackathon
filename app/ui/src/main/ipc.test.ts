@@ -93,6 +93,8 @@ function fakeViewsClient(): ViewsClient {
     baseline: (id) => view('baseline', id),
     firstDay: (id) => view('firstDay', id),
     session: (astronautId, id) => view('session', astronautId, id),
+    houston: (id) => view('houston', id),
+    outbox: (id) => view('outbox', id),
   };
 }
 
@@ -158,6 +160,8 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.settingsUpdate, [{ theme: 'dark' }]],
     [IPC_CHANNELS.settingsUpdate, []],
     [IPC_CHANNELS.viewsStrip, ['AST-02']],
+    [IPC_CHANNELS.viewsHouston, ['AST-02']],
+    [IPC_CHANNELS.viewsOutbox, [{ astronautId: 'AST-02' }]],
     [IPC_CHANNELS.viewsToday, [{}]],
     [IPC_CHANNELS.viewsBaseline, ['AST-02']],
     [IPC_CHANNELS.viewsFirstDay, [{ astronautId: 'AST-02' }]],
@@ -280,6 +284,8 @@ describe('views channels', () => {
     await call(IPC_CHANNELS.viewsHistory, { from: '2026-11-01', to: '2026-11-07' });
     await call(IPC_CHANNELS.viewsBaseline);
     await call(IPC_CHANNELS.viewsSession, { sessionId: SESSION });
+    await call(IPC_CHANNELS.viewsHouston);
+    await call(IPC_CHANNELS.viewsOutbox);
     expect(backend.calls).toEqual([
       ['strip', 'AST-01'],
       ['today', 'AST-01'],
@@ -287,6 +293,8 @@ describe('views channels', () => {
       ['history', 'AST-01', { from: '2026-11-01', to: '2026-11-07' }],
       ['baseline', 'AST-01'],
       ['session', 'AST-01', SESSION],
+      ['houston', 'AST-01'],
+      ['outbox', 'AST-01'],
     ]);
   });
 
@@ -299,7 +307,7 @@ describe('views channels', () => {
     });
   });
 
-  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay])(
+  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay, IPC_CHANNELS.viewsHouston, IPC_CHANNELS.viewsOutbox])(
     'rejects %s with "locked" before login and behind the lock screen',
     async (channel) => {
       await expect(call(channel)).rejects.toThrow(/^locked$/);

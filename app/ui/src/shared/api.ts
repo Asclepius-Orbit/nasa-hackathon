@@ -3,13 +3,15 @@ import type {
   BaselineView,
   FirstDayView,
   HistoryView,
+  HoustonView,
+  OutboxView,
   RepStateView,
   SessionView,
   StripView,
   TodayView,
 } from '../contracts/v1';
 
-export type { BaselineView, FirstDayView, HistoryView, RepStateView, SessionView, StripView, TodayView };
+export type { BaselineView, FirstDayView, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView };
 
 /** `id` is the astronaut identifier, `AST-NN`. Names stay on this device; the bus and Houston only see `id`. */
 export interface CrewMember {
@@ -107,6 +109,8 @@ export interface AsclepiusApi {
     baseline(): Promise<BaselineView>;
     firstDay(): Promise<FirstDayResult>;
     session(sessionId: string): Promise<SessionView>;
+    houston(): Promise<HoustonView>;
+    outbox(): Promise<OutboxView>;
   };
   /** Live push from the backend, for the signed-in astronaut's own sessions only. */
   reps: {

@@ -98,9 +98,20 @@ it('shows a weak battery reading, degraded status and weak streams as data from 
   api.viewData.strip = example<StripView>('ui-strip');
   renderInWorld(<Strip />, { api, data: new RealDataSource(api.views, api.reps) });
   expect(await screen.findByText('18 %, degraded, Stretch cord L1 to L5 stalled')).toBeInTheDocument();
-  expect(screen.getByText('Not known')).toBeInTheDocument();
+  expect(screen.getByText('Down, back in 12 min')).toBeInTheDocument();
   expect(screen.getByText('87')).toBeInTheDocument();
   expect(screen.getByText('In flight, microgravity')).toBeInTheDocument();
+});
+
+it('shows the ground link from the backend as up, and still Not known when the backend has none', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.strip = example<StripView>('ui-strip.unpaired');
+  const { unmount } = renderInWorld(<Strip />, { api, data: new RealDataSource(api.views, api.reps) });
+  expect(await screen.findByText('Up')).toBeInTheDocument();
+  unmount();
+  api.viewData.strip = { ...example<StripView>('ui-strip.unpaired'), ground_link: null };
+  renderInWorld(<Strip />, { api, data: new RealDataSource(api.views, api.reps) });
+  expect(await screen.findByText('Not known')).toBeInTheDocument();
 });
 
 it('shows no data for what the backend does not know: no launch date, no phase, no battery', async () => {

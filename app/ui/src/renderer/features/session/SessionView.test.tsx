@@ -344,6 +344,8 @@ describe('with the backend views', () => {
       expect(screen.queryByText('Pulling down')).not.toBeInTheDocument();
       expect(screen.queryByText('No signal from the sensor')).not.toBeInTheDocument();
       expect(screen.queryByText('Last count, not live')).not.toBeInTheDocument();
+      expect(screen.queryByText('Counting by')).not.toBeInTheDocument();
+      expect(screen.queryByText('Backup')).not.toBeInTheDocument();
       expect(api.repsListenerCount(REP_SID)).toBe(0);
     });
 

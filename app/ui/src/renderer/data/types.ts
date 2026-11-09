@@ -258,25 +258,51 @@ export interface OswestryData {
   items: readonly OdiItem[];
 }
 
+/** A summary revision in the outbox. Codes, times and counts; the words come from strings/houston. */
 export interface OutboxItem {
-  label: string;
+  /** Calendar date of the summary (`YYYY-MM-DD`). */
+  date: string;
+  /** `null` without a launch date. */
+  missionDay: number | null;
+  revision: number;
   state: 'queued' | 'sent';
-  /** When the ground station received it; only for `sent`. */
-  receivedGmt: string | null;
+  enqueuedAt: string;
+  /** When the ground station confirmed receipt; `null` exactly while `queued`. */
+  receivedAt: string | null;
+  attempts: number;
+}
+
+/** The latest summary prepared for the ground, as the contract gives it (codes and nulls). */
+export interface GroundSummaryData {
+  date: string;
+  missionDay: number | null;
+  revision: number;
+  asOf: string;
+  /** `nodata` for a day without an assessment. */
+  level: DayLevel;
+  confidencePct: number | null;
+  dataAvailable: number | null;
+  dataTotal: number | null;
+  drivers: readonly { featureId: string; deviationZ: number | null }[];
+  redFlags: readonly RedFlagCode[];
+  sessions: readonly { sessionId: string; state: SessionState; protocolId: string }[];
+  recommendations: readonly string[];
+  escalation: { required: boolean; urgency: 'routine' | 'priority' | 'immediate' | null; reasons: readonly string[] } | null;
+  /** Reserved until issue #63; always `null`. */
+  contacts: null;
 }
 
 export interface HoustonData {
   crewCode: string;
-  day: number;
-  level: Level;
-  confidencePct: number;
-  dataAvailable: number;
-  dataTotal: number;
-  drivers: string;
-  warningSymptoms: string;
-  sessions: string;
-  contacts: string;
-  plan: readonly string[];
+  /** `null` while there is no summary yet. */
+  summary: GroundSummaryData | null;
   outbox: readonly OutboxItem[];
-  groundLink: GroundLink;
+  /** `null` = not known: never shown as up. */
+  groundLink: GroundLink | null;
+  /** ISO instant of the last confirmed send; `null` when none. */
+  lastContactAt: string | null;
+  /** How the summaries reach the ground (the contract allows only `simulated` today; a string so a later transport does not claim to be it). */
+  transport: string;
+  /** Whether Aguado validated the content; today always false. */
+  contentValidated: boolean;
 }

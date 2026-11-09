@@ -33,6 +33,8 @@ describe('IPC_CHANNELS', () => {
       'asclepius:views:baseline',
       'asclepius:views:first-day',
       'asclepius:views:session',
+      'asclepius:views:houston',
+      'asclepius:views:outbox',
       'asclepius:reps:subscribe',
       'asclepius:reps:unsubscribe',
     ]);

@@ -1,8 +1,14 @@
 /** Pure mapping from the contract view payloads (snake_case) to the view-models the screens read. Codes and nulls pass through unchanged. */
-import type { BaselineView, FirstDayResult, HistoryView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
-import type { BaselineData, FirstDayData, HistoryData, RepState, SessionData, StripData, TodayData } from '../types';
+import type { BaselineView, FirstDayResult, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
+import type { BaselineData, FirstDayData, GroundLink, HistoryData, HoustonData, RepState, SessionData, StripData, TodayData } from '../types';
 
 const PERCENT = 100;
+
+/** The link as the contract gives it; `null` (not configured or unknown) stays `null`, never "up". */
+export function toGroundLink(link: StripView['ground_link']): GroundLink | null {
+  if (link === null) return null;
+  return link.state === 'up' ? { state: 'up' } : { state: 'down', backInMin: link.back_in_min };
+}
 
 export function toStrip(view: StripView): StripData {
   const { harness } = view;
@@ -21,8 +27,7 @@ export function toStrip(view: StripView): StripData {
             stale: harness.stale,
             lastSeenAt: harness.last_seen_at,
           },
-    // Reserved by the backend (issue #62): the ground link is unknown, never "up" by default.
-    groundLink: null,
+    groundLink: toGroundLink(view.ground_link),
     lastContactMinAgo: view.last_contact_min_ago,
     reportsDue: Number(view.reports_due.daily) + Number(view.reports_due.weekly_odi),
   };
@@ -132,4 +137,47 @@ export function toEndedRepState(view: RepStateView): RepState {
 export function toLostRepState(previous: RepState | null): RepState | null {
   if (previous === null) return null;
   return { rep: previous.rep, total: previous.total, phase: null, barPercent: null, last: previous.last, signal: 'lost' };
+}
+
+/** The Houston screen: the summary and link of `/houston` plus the queue of `/outbox`. Codes and nulls pass through. */
+export function toHouston(view: HoustonView, outbox: OutboxView): HoustonData {
+  const { summary } = view;
+  return {
+    crewCode: view.astronaut_id,
+    summary:
+      summary === null
+        ? null
+        : {
+            date: summary.date,
+            missionDay: summary.mission_day,
+            revision: summary.revision,
+            asOf: summary.as_of,
+            level: summary.level,
+            confidencePct: summary.confidence === null ? null : Math.round(summary.confidence * PERCENT),
+            dataAvailable: summary.data_available,
+            dataTotal: summary.data_total,
+            drivers: summary.drivers.map((d) => ({ featureId: d.feature_id, deviationZ: d.deviation_z })),
+            redFlags: summary.red_flags,
+            sessions: summary.sessions.map((s) => ({ sessionId: s.session_id, state: s.state, protocolId: s.protocol_id })),
+            recommendations: summary.recommendations,
+            escalation:
+              summary.escalation === null
+                ? null
+                : { required: summary.escalation.required, urgency: summary.escalation.urgency, reasons: summary.escalation.reasons },
+            contacts: summary.contacts,
+          },
+    outbox: outbox.items.map((i) => ({
+      date: i.date,
+      missionDay: i.mission_day,
+      revision: i.revision,
+      state: i.state,
+      enqueuedAt: i.enqueued_at,
+      receivedAt: i.received_at,
+      attempts: i.attempts,
+    })),
+    groundLink: toGroundLink(view.ground_link),
+    lastContactAt: view.last_contact_at,
+    transport: view.transport,
+    contentValidated: view.content_validated,
+  };
 }

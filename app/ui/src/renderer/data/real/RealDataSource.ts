@@ -17,7 +17,7 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { toBaseline, toFirstDay, toHistory, toEndedRepState, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
+import { toBaseline, toFirstDay, toHistory, toHouston, toEndedRepState, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
 
 /** Rejection of a view whose backend does not exist yet: `not_built`, so the screen says so instead of "no connection". */
 const notBuilt = (): Promise<never> => Promise.reject(new Error('not_built'));
@@ -28,8 +28,8 @@ const unavailable = (): Promise<never> => Promise.reject(new Error('unavailable'
  * DataSource on the backend views (`window.asclepius.views`). A view that cannot be had rejects with the bridge error
  * (`locked`, `not_found`, `unavailable`): nothing is cached and nothing is invented.
  *
- * The Stop screen, Oswestry, the Houston summary, stop for pain and the call log are NOT on the backend yet (issues
- * #62 and #63). The three views reject `not_built` and the two actions `unavailable`, rather than answer with the mock: no invented health data or false "recorded"
+ * The Stop screen, Oswestry, stop for pain and the call log are NOT on the backend yet (issue #63). The two views
+ * reject `not_built` and the two actions `unavailable`, rather than answer with the mock: no invented health data or false "recorded"
  * in real mode. Each of those issues replaces its methods here. The report form and the symptom catalogue are static
  * choices of the UI, not crew data, so they are served from `form-data`.
  */
@@ -86,8 +86,10 @@ export class RealDataSource implements DataSource {
     return notBuilt();
   }
 
-  getHouston(): Promise<HoustonData> {
-    return notBuilt();
+  /** The summary and the link from `/houston`, the queue from `/outbox`; if either fails the screen fails, never half of it. */
+  async getHouston(): Promise<HoustonData> {
+    const [houston, outbox] = await Promise.all([this.views.houston(), this.views.outbox()]);
+    return toHouston(houston, outbox);
   }
 
   /**

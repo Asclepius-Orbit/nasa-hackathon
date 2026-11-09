@@ -119,6 +119,8 @@ export function registerIpc(
   withInput(IPC_CHANNELS.viewsHistory, historyInputSchema, (range) => views.history(range));
   withoutInput(IPC_CHANNELS.viewsBaseline, () => views.baseline());
   withoutInput(IPC_CHANNELS.viewsFirstDay, () => views.firstDay());
+  withoutInput(IPC_CHANNELS.viewsHouston, () => views.houston());
+  withoutInput(IPC_CHANNELS.viewsOutbox, () => views.outbox());
   withInput(IPC_CHANNELS.viewsSession, sessionInputSchema, ({ sessionId }) => views.session(sessionId));
   // Live push: the handlers only start and stop it; events travel on `IPC_EVENT_CHANNELS.repsEvent` (see RepsService).
   withInput(IPC_CHANNELS.repsSubscribe, sessionInputSchema, ({ sessionId }, event) => reps.subscribe(event.sender, sessionId));

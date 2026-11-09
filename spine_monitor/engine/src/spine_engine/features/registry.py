@@ -69,9 +69,10 @@ class ExtractorRegistry:
 
 
 def default_registry() -> ExtractorRegistry:
-    """Registro por defecto: ``exercise`` (#41), ``emg`` (#42) e ``imu`` (#44); las familias de #43 y #45 se añaden aquí."""
+    """Registro por defecto: ``exercise`` (#41), ``emg`` (#42), ``imu`` (#44) y ``emg_spectral`` (#43); la familia de #45 se añade aquí."""
     # import local: exercise importa los tipos de este módulo (evita el ciclo)
     from spine_engine.features.emg import EmgFamily
+    from spine_engine.features.emg_spectral import EmgSpectralFamily
     from spine_engine.features.exercise import ExerciseFamily
     from spine_engine.features.imu import ImuFamily
     from spine_engine.features.repetitions import RepetitionService
@@ -83,4 +84,5 @@ def default_registry() -> ExtractorRegistry:
     registry.register(ExerciseFamily(repetitions))
     registry.register(EmgFamily(repetitions))
     registry.register(ImuFamily(repetitions))
+    registry.register(EmgSpectralFamily(repetitions))
     return registry

@@ -18,7 +18,7 @@ El contrato es `contracts/openapi.yaml`; cuerpos y errores son los JSON Schemas 
 | Endpoint | Cuerpo de entrada | Cuerpo de salida | Hoy |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41; las familias EMG, IMU y cordón llegan en #42-#45 |
+| `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41 y `emg` (amplitud) desde #42; las familias IMU y cordón llegan en #43-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de las sesiones de referencia) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline y modelo de riesgo genérico (`risk_score`, `confidence`, `drivers`); triaje nulo (nivel siempre verde) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) al último valor de cada feature y reevalúa; `project_days` aún no se aplica |
@@ -47,14 +47,14 @@ Los ejemplos de `contracts/examples/valid/engine/` son peticiones válidas de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | cambio sostenido sobre el histórico (mismo protocolo y gravedad); un pico aislado nunca cuenta |
 | `VotePolicy` | `AllAgreeVote` | los detectores deben coincidir (AND), en el mismo sentido |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construye la baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (`exercise`, #41; EMG, IMU y cordón en #42-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (`exercise`, #41; amplitud `emg`, #42; IMU y cordón en #43-#45) |
 | `RiskModel` | `DeviationRiskModel` | suma el \|z\| de las desviaciones sostenidas, ponderado por dominio y por persistencia (`n_points`), saturado a [0, 1] con `1 - exp(-suma / escala)`; sin rangos clínicos, cualquier sentido cuenta como peor y el signo queda en el `deviation_z` de cada driver. `drivers` lleva la cuota del score de cada feature, la mayor primero; `confidence` es la completitud. Pesos, persistencia y escala: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION`. Un mapa de pesos parcial se completa con 1.0 en los dominios que faltan. `n_points` es el largo de la serie, no de su tramo final desviado, así que con una persistencia igual o menor al mínimo de puntos del detector el factor vale siempre 1 (como con el valor por defecto) |
 
 Los detectores solo ven una serie de z-scores: no saben qué métrica es, así que no dependen del modelo teórico. `Deviation` lleva el z-score, la gravedad de referencia y si el cambio es sostenido y en qué sentido; el modelo de riesgo lo lee de ahí.
 
 ## Extracción de features
 
-`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). `default_registry()` registra la familia `exercise` (#41), así que hoy ya se calculan las métricas de repeticiones; las de los demás sensores llegan familia a familia (#42-#45). `NullFeatureExtractor` sigue en `stubs.py` para los tests.
+`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). `default_registry()` registra las familias `exercise` (#41) y `emg` de amplitud (#42), así que hoy ya se calculan las métricas de repeticiones y de amplitud del EMG; las de los demás sensores llegan familia a familia (#43-#45). `NullFeatureExtractor` sigue en `stubs.py` para los tests.
 
 Antes de ejecutar las familias, el motor prepara una sola vez un `ExtractionContext`:
 
@@ -69,7 +69,7 @@ El compuesto rellena `unit` desde el catálogo de features y la calidad sobre lo
 
 `exercise.rep_count`, `exercise.rep_duration_s_mean` y `exercise.rep_duration_cv_pct` (CV en %, desviación típica muestral n-1) necesitan al menos 2 repeticiones válidas. Con menos, las tres salen en `skipped` con `too_few_repetitions`.
 
-`RepetitionService` resuelve las ventanas de repetición (`RepWindow`): inicio, fin, la fase activa (rep_start→rep_end) y el reposo (rep_end→siguiente rep_start). La última repetición solo tiene reposo si después hay un evento `rest_end`. `default_registry()` crea un único servicio y se lo pasa a las familias, para que las familias EMG, IMU y cordón (#42-#45) lo reutilicen.
+`RepetitionService` resuelve las ventanas de repetición (`RepWindow`): inicio, fin, la fase activa (rep_start→rep_end) y el reposo (rep_end→siguiente rep_start). La última repetición solo tiene reposo si después hay un evento `rest_end`. `default_registry()` crea un único servicio y se lo pasa a las familias, para que las demás familias (la de EMG desde #42; IMU y cordón en #43-#45) lo reutilicen.
 
 El origen, en este orden:
 
@@ -78,6 +78,12 @@ El origen, en este orden:
 3. Si tampoco hay nada, no hay repeticiones.
 
 Calidad: las features por eventos evalúan la calidad común sobre todos los streams declarados; las de respaldo IMU, sobre los streams IMU. Sin chunks con ancla de reloj, salen `no_data`.
+
+### Amplitud del EMG y la familia `emg`
+
+Para cada stream EMG declarado con músculo y lado, `emg.{muscle}.{side}.rms_mv` es el RMS de las muestras de la fase activa de todas las repeticiones y `rest_rms_mv` el RMS de sus reposos. `rms_pct_mvc` divide `rms_mv` entre `mvc_rms_mv` de la calibración `emg_mvc` del stream; `peak_pct_mvc` es el RMS en ventana más alto (ventana = `window_ms` de la calibración, sin cruzar de una repetición ni de un `boot_id` a otro) sobre la misma MVC. `emg.{muscle}.symmetry_index_pct` es 100·|L-R| / ((L+R)/2) sobre los dos `rms_pct_mvc`. La amplitud no necesita señal cruda: el cálculo es el mismo; el valor coincide para cruda y rectificada, no para la envolvente. `n` es el número de repeticiones que aportaron muestras. La MVC solo se usa si es del músculo y el lado del stream y se midió en un tipo de señal compatible con todos sus chunks (cruda y rectificada entre sí, envolvente solo con envolvente); si no, las features de %MVC y la simetría salen en `skipped` con `no_calibration`, y `rms_mv` y `rest_rms_mv` se siguen calculando.
+
+Lo que no se puede calcular va a `skipped`: `no_calibration` / `calibration_expired` para lo que necesita la MVC (la simetría necesita ambos lados; si falta una, gana sobre una caducada), `too_few_repetitions` sin repeticiones, `no_data` sin muestras en las ventanas (o con media nula en la simetría, o un reposo sin ventana de reposo) y `stream_missing` para un stream declarado sin chunks o un músculo con un solo lado declarado.
 
 ## Configuración
 

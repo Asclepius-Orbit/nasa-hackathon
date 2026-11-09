@@ -18,7 +18,7 @@ El contracte és `contracts/openapi.yaml`; cossos i errors són els JSON Schemas
 | Endpoint | Cos d'entrada | Cos de sortida | Avui |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` de les famílies registrades: `exercise` des de #41; les famílies EMG, IMU i cordó arriben a #42-#45 |
+| `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` de les famílies registrades: `exercise` des de #41 i `emg` (amplitud) des de #42; les famílies IMU i cordó arriben a #43-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de les sessions de referència) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparació real amb la baseline i model de risc genèric (`risk_score`, `confidence`, `drivers`); triatge nul (nivell sempre verd) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) a l'últim valor de cada feature i reavalua; `project_days` encara no s'aplica |
@@ -47,14 +47,14 @@ Els exemples de `contracts/examples/valid/engine/` són peticions vàlides de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | canvi sostingut sobre l'històric (mateix protocol i gravetat); un pic aïllat mai compta |
 | `VotePolicy` | `AllAgreeVote` | els detectors han de coincidir (AND), en el mateix sentit |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construeix la baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (`exercise`, #41; EMG, IMU i cordó a #42-#45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (`exercise`, #41; amplitud `emg`, #42; IMU i cordó a #43-#45) |
 | `RiskModel` | `DeviationRiskModel` | suma el \|z\| de les desviacions sostingudes, ponderat per domini i per persistència (`n_points`), saturat a [0, 1] amb `1 - exp(-suma / escala)`; sense rangs clínics, qualsevol sentit compta com a pitjor i el signe queda al `deviation_z` de cada driver. `drivers` porta la quota del score de cada feature, la més gran primer; `confidence` és la completesa. Pesos, persistència i escala: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION`. Un mapa de pesos parcial es completa amb 1.0 als dominis que falten. `n_points` és la llargada de la sèrie, no del seu tram final desviat, així que amb una persistència igual o menor al mínim de punts del detector el factor val sempre 1 (com amb el valor per defecte) |
 
 Els detectors només veuen una sèrie de z-scores: no saben quina mètrica és, així que no depenen del model teòric. `Deviation` porta el z-score, la gravetat de referència i si el canvi és sostingut i en quin sentit; el model de risc ho llegeix d'allà.
 
 ## Extracció de features
 
-`POST /features` executa `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de famílies de features (`FeatureFamilyExtractor`: un nom `family`, els `feature_ids` del catàleg que declara i `extract(context) -> FamilyResult` amb features `computed` i `skipped`). `default_registry()` registra la família `exercise` (#41), així que avui ja es calculen les mètriques de repeticions; les dels altres sensors arriben família a família (#42-#45). `NullFeatureExtractor` es manté a `stubs.py` per als tests.
+`POST /features` executa `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de famílies de features (`FeatureFamilyExtractor`: un nom `family`, els `feature_ids` del catàleg que declara i `extract(context) -> FamilyResult` amb features `computed` i `skipped`). `default_registry()` registra les famílies `exercise` (#41) i `emg` d'amplitud (#42), així que avui ja es calculen les mètriques de repeticions i d'amplitud de l'EMG; les dels altres sensors arriben família a família (#43-#45). `NullFeatureExtractor` es manté a `stubs.py` per als tests.
 
 Abans d'executar les famílies, el motor prepara una sola vegada un `ExtractionContext`:
 
@@ -69,7 +69,7 @@ El compost omple `unit` des del catàleg de features i la qualitat sobre els str
 
 `exercise.rep_count`, `exercise.rep_duration_s_mean` i `exercise.rep_duration_cv_pct` (CV en %, desviació típica mostral n-1) necessiten almenys 2 repeticions vàlides. Amb menys, les tres surten a `skipped` amb `too_few_repetitions`.
 
-`RepetitionService` resol les finestres de repetició (`RepWindow`): inici, fi, la fase activa (rep_start→rep_end) i el repòs (rep_end→següent rep_start). L'última repetició només té repòs si després hi ha un esdeveniment `rest_end`. `default_registry()` crea un sol servei i se'l passa a les famílies, perquè les famílies EMG, IMU i cordó (#42-#45) el reutilitzin.
+`RepetitionService` resol les finestres de repetició (`RepWindow`): inici, fi, la fase activa (rep_start→rep_end) i el repòs (rep_end→següent rep_start). L'última repetició només té repòs si després hi ha un esdeveniment `rest_end`. `default_registry()` crea un sol servei i se'l passa a les famílies, perquè les altres famílies (la d'EMG des de #42; IMU i cordó a #43-#45) el reutilitzin.
 
 L'origen, en aquest ordre:
 
@@ -78,6 +78,12 @@ L'origen, en aquest ordre:
 3. Si tampoc hi ha res, no hi ha repeticions.
 
 Qualitat: les features per esdeveniments avaluen la qualitat comuna sobre tots els streams declarats; les de recurs de reserva IMU, sobre els streams IMU. Sense chunks amb àncora de rellotge, surten `no_data`.
+
+### Amplitud de l'EMG i la família `emg`
+
+Per a cada stream EMG declarat amb múscul i costat, `emg.{muscle}.{side}.rms_mv` és el RMS de les mostres de la fase activa de totes les repeticions i `rest_rms_mv` el RMS dels seus repòs. `rms_pct_mvc` divideix `rms_mv` entre `mvc_rms_mv` de la calibració `emg_mvc` del stream; `peak_pct_mvc` és el RMS en finestra més alt (finestra = `window_ms` de la calibració, sense creuar d'una repetició ni d'un `boot_id` a un altre) sobre la mateixa MVC. `emg.{muscle}.symmetry_index_pct` és 100·|L-R| / ((L+R)/2) sobre els dos `rms_pct_mvc`. L'amplitud no necessita senyal crua: el càlcul és el mateix; el valor coincideix per a crua i rectificada, no per a l'envolvent. `n` és el nombre de repeticions que han aportat mostres. La MVC només s'usa si és del múscul i el costat del stream i es va mesurar en un tipus de senyal compatible amb tots els seus chunks (crua i rectificada entre si, envolvent només amb envolvent); si no, les features de %MVC i la simetria surten a `skipped` amb `no_calibration`, i `rms_mv` i `rest_rms_mv` es continuen calculant.
+
+El que no es pot calcular va a `skipped`: `no_calibration` / `calibration_expired` per al que necessita la MVC (la simetria necessita tots dos costats; si en falta un, guanya sobre una caducada), `too_few_repetitions` sense repeticions, `no_data` sense mostres a les finestres (o amb mitjana nul·la a la simetria, o un repòs sense finestra de repòs) i `stream_missing` per a un stream declarat sense chunks o un múscul amb un sol costat declarat.
 
 ## Configuració
 

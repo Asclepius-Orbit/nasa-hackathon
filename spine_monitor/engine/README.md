@@ -98,6 +98,8 @@ Each value is the mean over the repetitions that have samples and a finite value
 
 ### EMG spectral fatigue and the `emg_spectral` family
 
+Spectral analysis uses the longest contiguous fragment of each repetition, splitting at packet loss, clock gaps, restarts and sample-rate changes. At least 64 samples are required per fragment.
+
 For every declared EMG stream with a muscle and a side, `emg.{muscle}.{side}.median_freq_hz` is the median frequency of the Welch power spectral density of the active phase of each repetition, averaged over the valid repetitions, and `median_freq_slope_hz_per_rep` is the slope of a linear fit of that median frequency against the repetition index: the fatigue trend, negative when the spectrum shifts toward lower frequencies. `n` is the number of repetitions that contributed.
 
 It needs the raw EMG signal: the spectrum of a rectified or envelope signal does not describe the muscle. If the chunks of the stream are rectified or envelope, both features are `skipped` with `signal_not_raw`. The other reasons are `too_few_repetitions` (fewer than 2 valid repetitions, so there is no slope), `stream_missing` (declared stream without chunks) and `no_data` (repetitions without enough samples). It never raises. It is registered last in `default_registry()`, after `exercise`, `emg` and `imu`.

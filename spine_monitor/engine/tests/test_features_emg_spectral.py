@@ -349,6 +349,16 @@ def test_repetition_split_by_a_reboot_uses_its_longest_piece():
     assert values(result)[SLOPE_LEFT] == pytest.approx(0.0, abs=TONE_TOL_HZ)
 
 
+def test_missing_chunk_does_not_join_discontinuous_samples():
+    samples, spans = signal_of([tone(80.0, 100), tone(80.0, 100)])
+    payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
+    payload["session"]["streams"] = [s for s in payload["session"]["streams"] if s["stream_id"] == LEFT]
+    payload["chunks"] = [c for c in chunks_of(LEFT, samples, "raw", size=20) if c["seq"] not in (12, 27)]
+    payload["calibrations"] = []
+    result = EmgSpectralFamily(FakeService(windows_of(spans))).extract(build_context(FeaturesRequest.model_validate(payload)))
+    assert reasons(result) == {MEDIAN_LEFT: Reason.TOO_FEW_REPETITIONS, SLOPE_LEFT: Reason.TOO_FEW_REPETITIONS}
+
+
 @pytest.mark.parametrize("rate_hz", [500.0, 2000.0])
 def test_tone_median_at_other_sample_rates(rate_hz: float):
     rep = tone(80.0, int(rate_hz), rate_hz=rate_hz)  # 1 s: resolución de 1 Hz a cualquier frecuencia de muestreo

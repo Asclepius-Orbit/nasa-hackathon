@@ -29,18 +29,20 @@ muestras en ninguna ``no_data``.
 """
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 
 import numpy as np
 from numpy.typing import NDArray
-from spine_contracts import EmgChunk
+from spine_contracts import EmgChunk, StreamChunk
 from spine_contracts.catalog import expand_template
 from spine_contracts.models.domain.feature_set_schema import Reason
 
 from spine_engine.features.context import ExtractionContext
-from spine_engine.features.emg import _emg_streams, _EmgStream, _Piece, _pieces, _read
+from spine_engine.features.emg import _emg_streams, _EmgStream, _micros, _Piece, _pieces, _Read
 from spine_engine.features.registry import ComputedFeature, FamilyResult, SkippedFeature
 from spine_engine.features.repetitions import RepetitionService
+from spine_engine.features.signals import segment_samples
 
 MEDIAN_FREQ_HZ = "emg.{muscle}.{side}.median_freq_hz"
 MEDIAN_FREQ_SLOPE = "emg.{muscle}.{side}.median_freq_slope_hz_per_rep"
@@ -77,6 +79,29 @@ def _longest(pieces: Sequence[_Piece]) -> dict[int, _Piece]:
         if piece.window not in best or piece.values.size > best[piece.window].values.size:
             best[piece.window] = piece
     return best
+
+
+def _spectral_reads(context: ExtractionContext, stream_id: str) -> tuple[_Read, ...]:
+    """Split at gaps and rate changes so Welch only sees contiguous, uniformly sampled data."""
+    reads: list[_Read] = []
+    for segment in context.segments(stream_id):
+        groups: list[list[StreamChunk]] = []
+        for chunk in segment.chunks:
+            previous = groups[-1][-1] if groups else None
+            if (
+                previous is None
+                or chunk.seq != previous.seq + 1
+                or chunk.sample_rate_hz != previous.sample_rate_hz
+                or (chunk.dropped_samples or 0)
+                or abs(chunk.t0_device_ms - (previous.t0_device_ms + previous.n_samples * 1000 / previous.sample_rate_hz)) > 1
+            ):
+                groups.append([])
+            groups[-1].append(chunk)
+        for group in groups:
+            samples = segment_samples(context.clock, replace(segment, chunks=tuple(group)), ("emg",))
+            micros = np.fromiter((_micros(t) for t in samples.times), dtype=np.int64, count=len(samples.times))
+            reads.append(_Read(micros, samples.channels["emg"], group[0].sample_rate_hz))
+    return tuple(reads)
 
 
 class EmgSpectralFamily:
@@ -121,7 +146,7 @@ class EmgSpectralFamily:
             return Reason.SIGNAL_NOT_RAW
         if not spans:
             return Reason.TOO_FEW_REPETITIONS
-        pieces = [p for p in _pieces(_read(context, stream.stream_id), [span for _, span in spans]) if np.isfinite(p.values).all()]
+        pieces = [p for p in _pieces(_spectral_reads(context, stream.stream_id), [span for _, span in spans]) if np.isfinite(p.values).all()]
         if not pieces:
             return Reason.NO_DATA
         valid = sorted((spans[window][0], piece) for window, piece in _longest(pieces).items() if piece.values.size >= MIN_ACTIVE_SAMPLES)

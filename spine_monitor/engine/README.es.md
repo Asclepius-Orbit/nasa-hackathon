@@ -98,6 +98,8 @@ Cada valor es la media sobre las repeticiones con muestras y valor finito, y `n`
 
 ### Fatiga espectral del EMG y la familia `emg_spectral`
 
+El análisis espectral usa el fragmento continuo más largo de cada repetición, separado por pérdidas de paquetes, saltos de reloj, reinicios y cambios de frecuencia de muestreo. Cada fragmento requiere al menos 64 muestras.
+
 Para cada stream EMG declarado con músculo y lado, `emg.{muscle}.{side}.median_freq_hz` es la frecuencia mediana del PSD de Welch de la fase activa de cada repetición, promediada entre las repeticiones válidas, y `median_freq_slope_hz_per_rep` es la pendiente de un ajuste lineal de esa frecuencia mediana contra el índice de repetición: la tendencia de fatiga, negativa cuando el espectro baja de banda. `n` es el número de repeticiones que aportaron.
 
 Necesita el EMG crudo: el espectro de una señal rectificada o de envolvente no describe el músculo. Si los chunks del stream son rectificados o envolvente, ambas features van a `skipped` con `signal_not_raw`. Los demás motivos son `too_few_repetitions` (menos de 2 repeticiones válidas, así que no hay pendiente), `stream_missing` (stream declarado sin chunks) y `no_data` (repeticiones sin muestras suficientes). Nunca lanza. Se registra la última en `default_registry()`, después de `exercise`, `emg` e `imu`.

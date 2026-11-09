@@ -308,8 +308,8 @@ def test_the_family_declares_every_concrete_id_of_its_four_catalog_templates():
 def test_the_default_registry_registers_the_imu_family_after_emg_sharing_the_repetitions():
     families = list(default_registry())
 
-    assert [f.family for f in families] == ["exercise", "emg", "imu", "emg_spectral"]
-    exercise, _, imu, spectral = families
+    assert [f.family for f in families] == ["exercise", "emg", "imu", "emg_spectral", "stretch"]
+    exercise, _, imu, spectral, _ = families
     assert isinstance(exercise, ExerciseFamily)
     assert isinstance(imu, ImuFamily)
     assert imu.repetitions is exercise._repetitions  # pyright: ignore[reportPrivateUsage] # el servicio compartido es interno de exercise

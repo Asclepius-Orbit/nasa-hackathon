@@ -18,7 +18,7 @@ from spine_physiology.envelope import EnvelopeKind
 from spine_physiology.generator import MissionGenerator
 from spine_physiology.signals import exercise_duration_s, rep_schedule
 
-CONFIG_PATH = Path(__file__).parents[2] / "physiology" / "configs" / "example-mission.yaml"
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "physiology" / "configs" / "example-mission.yaml"
 PROTOCOL_ID = "lat_pulldown_standing_v1"
 SESSION_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 PREFLIGHT_DAY = 1  # earth_1g segment of the example mission

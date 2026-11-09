@@ -53,7 +53,7 @@ test('renderer has no Node: no require, no process', async () => {
   expect(await page.evaluate(() => typeof process)).toBe('undefined');
 });
 
-test('bridge exposes exactly the crew, auth, settings and views functions', async () => {
+test('bridge exposes exactly the crew, auth, settings, views and reps functions', async () => {
   const shape = await page.evaluate(() => {
     const api = (globalThis as unknown as RendererGlobals).asclepius as unknown as Record<string, Record<string, unknown>>;
     return Object.fromEntries(
@@ -69,7 +69,17 @@ test('bridge exposes exactly the crew, auth, settings and views functions', asyn
     crew: ['create:function', 'list:function', 'nextId:function'],
     auth: ['current:function', 'lock:function', 'verifyPin:function'],
     settings: ['get:function', 'update:function'],
-    views: ['baseline:function', 'firstDay:function', 'history:function', 'session:function', 'strip:function', 'today:function'],
+    views: [
+      'baseline:function',
+      'firstDay:function',
+      'history:function',
+      'houston:function',
+      'outbox:function',
+      'session:function',
+      'strip:function',
+      'today:function',
+    ],
+    reps: ['subscribe:function'],
   });
 });
 

@@ -23,6 +23,16 @@ def schema_files() -> list[Path]:
     return sorted(SCHEMAS_DIR.rglob("*.schema.json"))
 
 
+def test_simulate_projection_metadata_contract(validator_for):
+    response = load_json(EXAMPLES_DIR / "valid/engine/simulate-response.json")
+    response["projection"] = {"project_days": 7, "unprojected_features": ["stretch.lumbar.peak_elongation_mm"]}
+    validator = validator_for("engine/simulate-response")
+    assert not list(validator.iter_errors(response))
+    for invalid in ({"project_days": 0, "unprojected_features": []}, {"project_days": 7}, {"project_days": 7, "unprojected_features": [3]}):
+        response["projection"] = invalid
+        assert list(validator.iter_errors(response))
+
+
 @pytest.fixture(scope="session")
 def schemas() -> dict[Path, dict]:
     return {path: load_json(path) for path in schema_files()}

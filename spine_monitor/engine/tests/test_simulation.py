@@ -219,3 +219,56 @@ def test_non_finite_message_names_the_feature():
         apply_overrides(BASE, [Override.model_construct(feature_id=PEAK, mode=Mode.SET, value=math.inf)])
 
     assert str(caught.value) == f"The override on '{PEAK}' does not give a finite value."
+
+
+def test_projection_fits_the_overridden_history_without_mutating_input():
+    from spine_engine.simulation import project_features
+
+    base = BASE.model_copy(deep=True)
+    for feature in base.feature_sets[1].features:
+        feature.value = 1.0
+    for feature in base.feature_sets[0].features:
+        feature.value = 3.0
+    before = base.model_dump_json()
+
+    result, unprojected = project_features(base, _on_peak((Mode.ADD, 2)), 1)
+
+    assert _latest(result, PEAK) == pytest.approx(9.0)  # (5 - 1) per day, starting at 5
+    assert unprojected == []
+    assert base.model_dump_json() == before
+
+
+@pytest.mark.property
+@given(start=st.integers(-10000, 10000), slope=st.integers(-1000, 1000), days=st.integers(1, 10))
+def test_projection_continues_any_linear_history(start, slope, days):
+    from spine_engine.simulation import project_features
+
+    base = BASE.model_copy(deep=True)
+    base.feature_sets[1].computed_at = base.feature_sets[0].computed_at - timedelta(days=10)
+    for feature in base.feature_sets[1].features:
+        feature.value = float(start)
+    for feature in base.feature_sets[0].features:
+        feature.value = float(start + 10 * slope)
+
+    result, unprojected = project_features(base, [], days)
+
+    assert _latest(result, PEAK) == pytest.approx(start + (10 + days) * slope)
+    assert unprojected == []
+
+
+def test_projection_leaves_features_with_one_distinct_date_at_the_overridden_value():
+    from spine_engine.simulation import project_features
+
+    base = BASE.model_copy(deep=True)
+    base.feature_sets[1].computed_at = base.feature_sets[0].computed_at
+    result, unprojected = project_features(base, _on_peak((Mode.SET, 42)), 30)
+
+    assert _value_in(result, 1, PEAK) == 42
+    assert set(unprojected) == set(IDS)
+
+
+def test_projection_rejects_horizon_beyond_feature_history():
+    from spine_engine.simulation import project_features
+
+    with pytest.raises(InvalidOverrideError, match="(?i)horizon|project"):
+        project_features(BASE, [], 2)

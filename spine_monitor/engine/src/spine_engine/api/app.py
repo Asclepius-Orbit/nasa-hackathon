@@ -23,6 +23,7 @@ from spine_contracts import (
     validation,
 )
 from spine_contracts.models.engine.error_schema import Error, Type
+from spine_contracts.models.engine.simulate_response_schema import Projection
 
 from spine_engine.api.problems import problem, to_errors
 from spine_engine.errors import InsufficientDataError, InvalidOverrideError, UnknownFeatureError
@@ -32,7 +33,7 @@ from spine_engine.features.registry import default_registry
 from spine_engine.interfaces import BaselineBuilder, FeatureExtractor
 from spine_engine.pipeline import AssessmentPipeline
 from spine_engine.settings import EngineSettings
-from spine_engine.simulation import apply_overrides
+from spine_engine.simulation import apply_overrides, project_features
 
 TITLES = {
     Type.INVALID_REQUEST: "Invalid request",
@@ -133,12 +134,21 @@ def create_app(
 
     @app.post("/simulate", operation_id="simulate")
     async def simulate(request: Request) -> JSONResponse:
-        """Aplica `overrides` al último valor de cada feature y reevalúa; `project_days` aún no se aplica."""
+        """Aplica overrides y, si se solicita, proyecta la tendencia antes de reevaluar."""
         body = await _parse(request, "engine/simulate-request", SimulateRequest)
         reference = pipeline.evaluate(body.base)
-        # Sin overrides no se reevalúa: cada evaluación lleva un assessment_id nuevo y no saldría igual.
-        scenario = pipeline.evaluate(apply_overrides(body.base, body.overrides)) if body.overrides else reference.model_copy(deep=True)
-        return _json(SimulateResponse(schema_version=SCHEMA_VERSION, reference=reference, scenario=scenario, hypothetical=True))
+        if body.project_days is not None:
+            projected, unprojected = project_features(body.base, body.overrides, body.project_days)
+            scenario = pipeline.evaluate(projected)
+            response = SimulateResponse(schema_version=SCHEMA_VERSION, reference=reference, scenario=scenario, hypothetical=True,
+                                        projection=Projection(project_days=body.project_days, unprojected_features=unprojected))
+        else:
+            # Cada evaluación lleva un assessment_id nuevo; sin cambios conservamos la referencia.
+            scenario = pipeline.evaluate(apply_overrides(body.base, body.overrides)) if body.overrides else reference.model_copy(deep=True)
+            response = SimulateResponse(  # pyright: ignore[reportCallIssue]  # optional generated Field must remain unset
+                schema_version=SCHEMA_VERSION, reference=reference, scenario=scenario, hypothetical=True
+            )
+        return _json(response)
 
     return app
 

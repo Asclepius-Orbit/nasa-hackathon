@@ -21,7 +21,9 @@ El contracte és `contracts/openapi.yaml`; cossos i errors són els JSON Schemas
 | `POST /features` | `FeaturesRequest` (dades crues de sessió) | `FeatureSet` | famílies registrades: `exercise`, `emg`, `imu`, `emg_spectral` i `stretch` |
 | `POST /baseline` | `BaselineRequest` (feature sets de les sessions de referència) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparació real amb la baseline i model de risc genèric (`risk_score`, `confidence`, `drivers`); triatge nul (nivell sempre verd) |
-| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) a l'últim valor de cada feature i reavalua; `project_days` encara no s'aplica |
+| `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) a l'últim valor de cada feature, projecta tendències opcionalment i reavalua |
+
+Quan s'indica `project_days`, el motor ordena les observacions de cada feature per `computed_at`, aplica els overrides al seu últim valor, ajusta una regressió lineal a l'historial resultant i projecta des d'aquest últim valor durant els dies sol·licitats abans de reavaluar. L'horitzó no pot superar l'interval temporal de cap feature amb almenys dues dates d'observació diferents; altrament es retorna un error. Les features amb menys de dues dates diferents conserven l'últim valor i s'enumeren a `projection.unprojected_features`. L'objecte opcional `projection` de la resposta també indica `project_days`. El resultat és hipotètic i no és una predicció clínica. Sense `project_days`, es conserva el comportament de simulació només amb overrides i s'omet `projection`.
 
 Els errors són problem details (`application/problem+json`, `engine/error.schema.json`): `422` amb `invalid_request` (amb un JSON Pointer per problema), `unsupported_schema_version` o `insufficient_data`, i `500` amb `internal`. Els cossos es validen contra el JSON Schema a més de Pydantic, així que s'apliquen les regles condicionals.
 

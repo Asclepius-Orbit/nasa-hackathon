@@ -157,8 +157,9 @@ class FakeRisk:
     def __init__(self):
         self.received = None
 
-    def score(self, deviations):
+    def score(self, deviations, completeness):
         self.received = list(deviations)
+        self.completeness = completeness
         drivers = [Driver(feature_id="stretch.lumbar.peak_elongation_mm", value=1.0, contribution=0.9)]
         return RiskResult(score=0.9, drivers=drivers, confidence=0.7)
 
@@ -187,6 +188,7 @@ def test_pipeline_wires_custom_implementations():
     deviations = [Deviation(feature_id="stretch.lumbar.peak_elongation_mm", value=1.0, score=9.0)]
     assert baseline.calls == [(req.baseline, req.feature_sets)]
     assert risk.received == deviations
+    assert risk.completeness == assessment.completeness.score
     assert triage.received[1] == deviations
     assert triage.received[0].score == 0.9
     assert assessment.level == Level.RED

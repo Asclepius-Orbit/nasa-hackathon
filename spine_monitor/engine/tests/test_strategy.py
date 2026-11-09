@@ -2,7 +2,8 @@ import json
 from datetime import timedelta
 from pathlib import Path
 
-from spine_contracts import AssessRequest, GravityEnvironment, dump, validation
+import pytest
+from spine_contracts import AssessmentDomain, AssessRequest, GravityEnvironment, dump, validation
 from spine_engine import AssessmentPipeline, NullRiskModel, NullTriagePolicy
 from spine_engine.deviation.detectors import AllAgreeVote, CompositeDetector, CusumDetector, KalmanDetector
 from spine_engine.deviation.scoring import RobustZScorer
@@ -121,3 +122,43 @@ def test_strategy_swaps_into_an_existing_pipeline_without_changing_it():
     pipeline = AssessmentPipeline(StatisticalBaselineStrategy(RobustZScorer(), detector), NullRiskModel(), NullTriagePolicy())
 
     assert pipeline.evaluate(request()).astronaut_id == "AST-01"
+
+
+def test_default_pipeline_scores_a_sustained_shift_with_the_configured_risk_model():
+    req = request()
+    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 31.0, 31.2, 31.1, 31.3, 31.0])
+
+    assessment = default_pipeline(EngineSettings()).evaluate(req)
+
+    assert 0.0 < assessment.risk_score < 1.0
+    assert assessment.confidence == assessment.completeness.score
+    drivers = {d.feature_id: d for d in assessment.drivers}
+    assert drivers[ROM].deviation_z is not None and drivers[ROM].deviation_z > 0
+    assert sum(d.contribution for d in assessment.drivers) == pytest.approx(assessment.risk_score)
+    assert validation.errors("domain/assessment", dump(assessment)) == []
+
+
+def test_risk_parameters_come_from_the_settings():
+    req = request()
+    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 31.0, 31.2, 31.1, 31.3, 31.0])
+    # Only the ROM series (kinematics) is weighed; the other in-flight features are left out.
+    weights = {**dict.fromkeys(AssessmentDomain, 0.0), AssessmentDomain.KINEMATICS: 1.0}
+
+    muted = default_pipeline(EngineSettings(risk_domain_weights=dict.fromkeys(AssessmentDomain, 0.0))).evaluate(req)
+    soft = default_pipeline(EngineSettings(risk_domain_weights=weights, risk_saturation=1e6)).evaluate(req)
+    sharp = default_pipeline(EngineSettings(risk_domain_weights=weights, risk_saturation=1e-3)).evaluate(req)
+    patient = default_pipeline(EngineSettings(risk_domain_weights=weights, risk_saturation=1e6, risk_persistence_points=80)).evaluate(req)
+
+    assert muted.risk_score == 0.0
+    assert sharp.risk_score == 1.0
+    assert [d.feature_id for d in soft.drivers] == [ROM]
+    assert 0.0 < patient.risk_score < soft.risk_score < 1e-3
+
+
+def test_partial_risk_weights_keep_the_other_domains_scoring():
+    req = request()
+    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 31.0, 31.2, 31.1, 31.3, 31.0])
+
+    assessment = default_pipeline(EngineSettings(_env_file=None, risk_domain_weights={AssessmentDomain.MUSCLE: 2.0})).evaluate(req)
+
+    assert ROM in {d.feature_id for d in assessment.drivers}

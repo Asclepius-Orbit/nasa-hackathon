@@ -20,7 +20,7 @@ El contracte és `contracts/openapi.yaml`; cossos i errors són els JSON Schemas
 | `GET /health` | - | `{"status": "ok"}` | real |
 | `POST /features` | `FeaturesRequest` (dades crues de la sessió) | `FeatureSet` | `features` de les famílies registrades: `exercise` des de #41; les famílies EMG, IMU i cordó arriben a #42-#45 |
 | `POST /baseline` | `BaselineRequest` (feature sets de les sessions de referència) | `Baseline` | real |
-| `POST /assess` | `AssessRequest` | `Assessment` | comparació real amb la baseline; model de risc i triatge nuls (nivell sempre verd) |
+| `POST /assess` | `AssessRequest` | `Assessment` | comparació real amb la baseline i model de risc genèric (`risk_score`, `confidence`, `drivers`); triatge nul (nivell sempre verd) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) a l'últim valor de cada feature i reavalua; `project_days` encara no s'aplica |
 
 Els errors són problem details (`application/problem+json`, `engine/error.schema.json`): `422` amb `invalid_request` (amb un JSON Pointer per problema), `unsupported_schema_version` o `insufficient_data`, i `500` amb `internal`. Els cossos es validen contra el JSON Schema a més de Pydantic, així que s'apliquen les regles condicionals.
@@ -48,6 +48,7 @@ Els exemples de `contracts/examples/valid/engine/` són peticions vàlides de ca
 | `VotePolicy` | `AllAgreeVote` | els detectors han de coincidir (AND), en el mateix sentit |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construeix la baseline |
 | `FeatureExtractor` | `CompositeFeatureExtractor` | dades crues a features: executa les famílies registrades (`exercise`, #41; EMG, IMU i cordó a #42-#45) |
+| `RiskModel` | `DeviationRiskModel` | suma el \|z\| de les desviacions sostingudes, ponderat per domini i per persistència (`n_points`), saturat a [0, 1] amb `1 - exp(-suma / escala)`; sense rangs clínics, qualsevol sentit compta com a pitjor i el signe queda al `deviation_z` de cada driver. `drivers` porta la quota del score de cada feature, la més gran primer; `confidence` és la completesa. Pesos, persistència i escala: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION`. Un mapa de pesos parcial es completa amb 1.0 als dominis que falten. `n_points` és la llargada de la sèrie, no del seu tram final desviat, així que amb una persistència igual o menor al mínim de punts del detector el factor val sempre 1 (com amb el valor per defecte) |
 
 Els detectors només veuen una sèrie de z-scores: no saben quina mètrica és, així que no depenen del model teòric. `Deviation` porta el z-score, la gravetat de referència i si el canvi és sostingut i en quin sentit; el model de risc ho llegeix d'allà.
 

@@ -16,7 +16,7 @@ from spine_contracts import (
 )
 
 from spine_engine.features.symptoms import symptom_feature_set
-from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriagePolicy
+from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriageContext, TriagePolicy
 
 # Dominio de evaluación según el prefijo del feature_id (hasta que el catálogo lo diga).
 _DOMAIN_BY_PREFIX = {
@@ -72,7 +72,8 @@ class AssessmentPipeline:
         deviations = self._baseline_strategy.deviations(request.baseline, feature_sets)
         completeness = _completeness(feature_sets, deviations)
         risk = self._risk_model.score(deviations, completeness.score)
-        triage = self._triage_policy.decide(risk, deviations)
+        context = TriageContext(risk, deviations, completeness, request.self_reports or [], request.as_of)
+        triage = self._triage_policy.decide(context)
 
         evaluated = {domain for d in deviations if (domain := domain_of(d.feature_id)) is not None}
         domains = [

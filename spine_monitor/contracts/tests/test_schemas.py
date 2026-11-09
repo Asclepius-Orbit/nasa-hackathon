@@ -167,6 +167,15 @@ MUTATIONS = [
     ("domain/assessment.amber", "no confidence", lambda d: d.pop("confidence")),
     ("domain/assessment.amber", "bad recommendation code", lambda d: d.update(recommendations=["rest"])),
     ("domain/assessment.amber", "bad rule id", lambda d: d["fired_rules"][0].update(rule_id="pain")),
+    ("domain/assessment.amber", "evidence without datum", lambda d: d["fired_rules"][0]["evidence"].pop("datum")),
+    ("domain/assessment.amber", "evidence without value", lambda d: d["fired_rules"][0]["evidence"].pop("value")),
+    ("domain/assessment.amber", "evidence without operator", lambda d: d["fired_rules"][0]["evidence"].pop("operator")),
+    ("domain/assessment.amber", "evidence without threshold", lambda d: d["fired_rules"][0]["evidence"].pop("threshold")),
+    ("domain/assessment.amber", "evidence with invalid operator", lambda d: d["fired_rules"][0]["evidence"].update(operator="=>")),
+    ("domain/assessment.amber", "evidence with non-numeric value", lambda d: d["fired_rules"][0]["evidence"].update(value="high")),
+    ("domain/assessment.amber", "evidence with non-numeric threshold", lambda d: d["fired_rules"][0]["evidence"].update(threshold="3")),
+    ("domain/assessment.amber", "evidence with non-string datum", lambda d: d["fired_rules"][0]["evidence"].update(datum=7)),
+    ("domain/assessment.amber", "evidence with unknown property", lambda d: d["fired_rules"][0]["evidence"].update(unit="x")),
     ("engine/features-request", "no chunks", lambda d: d.update(chunks=[])),
     ("engine/baseline-request", "no reference sessions", lambda d: d.update(feature_sets=[])),
     ("engine/baseline-request", "self-report with pain above 10", lambda d: d["self_reports"][0].update(pain_nrs=11)),
@@ -539,3 +548,8 @@ def test_example_feature_ids_exist_in_catalog(catalog, common):
     for path in example_files("valid"):
         for feature_id in walk(json.loads(path.read_text(encoding="utf-8"))):
             assert feature_id in known, f"{path.name}: {feature_id} not in catalog"
+
+
+def test_assessment_example_has_a_fired_rule_with_evidence():
+    evidence = valid_example("domain/assessment.amber")["fired_rules"][0]["evidence"]
+    assert set(evidence) == {"datum", "value", "operator", "threshold"}

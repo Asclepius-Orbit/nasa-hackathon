@@ -136,3 +136,8 @@ Variables d'entorn (o un `.env`), totes opcionals:
 ```bash
 uv run pytest engine
 ```
+# Triatge declaratiu
+
+`SPINE_ENGINE_TRIAGE_POLICY_FILE` pot apuntar a una política JSON. Sense fitxer, el nivell del model és verd provisional, les dades incompletes eleven el nivell global a ambre i les banderes no reconegudes eleven el nivell a vermell i requereixen escalat immediat. S'ignoren els informes posteriors a `as_of`. Una feature absent també eleva a ambre el domini identificable. No s'inclouen talls ni regles clíniques: cal revisar-los clínicament a #53.
+
+El JSON admet `amber_cutoff` i `red_cutoff` junts (inclusius, entre 0 i 1), `unknown_flag_urgency` i una llista `rules`. Cada regla conté `rule_id`, `datum` (`risk`, `deviation`, `self_report` o `red_flag`), `key`, `operator`, `threshold`, `level`, `domain`, `recommendations` i `urgency` opcional; per a banderes la urgència és obligatòria. Les claus dels informes són `pain_nrs`, `pain_nrs_worst_24h` i `stiffness_nrs`. Els exemples dels tests són ficticis.

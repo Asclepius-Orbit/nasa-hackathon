@@ -1,10 +1,12 @@
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 from spine_contracts import (
     AssessmentDomain,
     AssessRequest,
+    Completeness,
     Driver,
     Escalation,
     FiredRule,
@@ -25,6 +27,7 @@ from spine_engine import (
     TriageDecision,
     stub_pipeline,
 )
+from spine_engine.interfaces import TriageContext
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "assess-request.json"
 INFLIGHT_SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03"
@@ -206,8 +209,8 @@ class FakeTriage:
     def __init__(self):
         self.received = None
 
-    def decide(self, risk, deviations):
-        self.received = (risk, list(deviations))
+    def decide(self, context):
+        self.received = context
         return TriageDecision(
             level=Level.RED,
             recommendations=["REC_X"],
@@ -229,8 +232,8 @@ def test_pipeline_wires_custom_implementations():
     assert baseline.calls[0][1][-1].session_id is None
     assert risk.received == deviations
     assert risk.completeness == assessment.completeness.score
-    assert triage.received[1] == deviations
-    assert triage.received[0].score == 0.9
+    assert triage.received.deviations == deviations
+    assert triage.received.risk.score == 0.9
     assert assessment.level == Level.RED
     assert assessment.risk_score == 0.9
     assert assessment.confidence == 0.7
@@ -239,6 +242,40 @@ def test_pipeline_wires_custom_implementations():
     assert assessment.fired_rules[0].overrides_model
     assert assessment.escalation.required
     assert assessment.escalation.urgency == Urgency.PRIORITY
+
+
+def test_pipeline_gives_the_triage_policy_the_full_context():
+    triage = FakeTriage()
+    req = request()
+
+    assessment = AssessmentPipeline(FakeBaseline(), FakeRisk(), triage).evaluate(req)
+
+    context = triage.received
+    assert isinstance(context, TriageContext)
+    assert context.completeness == assessment.completeness
+    assert list(context.self_reports) == req.self_reports
+    assert context.as_of == req.as_of
+
+
+def test_null_self_reports_reach_the_triage_policy_as_an_empty_sequence():
+    triage = FakeTriage()
+    req = request()
+    req.self_reports = None
+
+    AssessmentPipeline(FakeBaseline(), FakeRisk(), triage).evaluate(req)
+
+    assert list(triage.received.self_reports) == []
+
+
+def test_triage_context_is_immutable():
+    context = FakeTriageContextFactory()
+    with pytest.raises(FrozenInstanceError):
+        context.as_of = context.as_of  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def FakeTriageContextFactory() -> TriageContext:
+    req = request()
+    return TriageContext(risk=RiskResult(score=0.0), deviations=[], completeness=Completeness(score=1.0, missing=[]), self_reports=[], as_of=req.as_of)
 
 
 def test_domain_levels_come_from_the_policy_then_the_overall_level():

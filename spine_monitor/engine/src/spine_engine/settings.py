@@ -1,5 +1,7 @@
 """Configuración del motor: ventanas, umbrales y arranque. Variables SPINE_ENGINE_* o `.env`."""
 
+from pathlib import Path
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from spine_contracts import AssessmentDomain
@@ -41,6 +43,7 @@ class EngineSettings(BaseSettings):
     risk_domain_weights: dict[AssessmentDomain, float] = Field(default_factory=lambda: dict.fromkeys(AssessmentDomain, DEFAULT_DOMAIN_WEIGHT))
     risk_persistence_points: int = 3
     risk_saturation: float = 3.0
+    triage_policy_file: Path | None = None
 
     @field_validator("risk_domain_weights")
     @classmethod

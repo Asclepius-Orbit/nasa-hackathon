@@ -4,7 +4,7 @@
   "astronaut_id": "AST-01",
   "as_of": "<time>",
   "mission_day": 87,
-  "level": "green",
+  "level": "amber",
   "risk_score": -0.0,
   "confidence": 0.4,
   "completeness": {
@@ -54,12 +54,26 @@
     },
     {
       "domain": "symptoms",
-      "level": "green",
+      "level": "amber",
       "evaluated": false
     }
   ],
   "drivers": [],
-  "fired_rules": [],
+  "fired_rules": [
+    {
+      "rule_id": "RULE_INCOMPLETE_DATA",
+      "domain": "safety",
+      "level": "amber",
+      "overrides_model": true,
+      "description": "Incomplete data",
+      "evidence": {
+        "datum": "completeness",
+        "value": 0.4,
+        "operator": "<",
+        "threshold": 1.0
+      }
+    }
+  ],
   "recommendations": [],
   "escalation": {
     "required": false,

@@ -154,6 +154,12 @@ export class MockDataSource implements DataSource {
     return Promise.resolve();
   }
 
+  readonly sendsUrgentReports = true;
+
+  sendUrgentReport(): Promise<void> {
+    return Promise.resolve();
+  }
+
   logCrewMedicalOfficerCall(): Promise<ContactEntry> {
     const entry: ContactEntry = {
       atGmt: OFFICER_CALL_GMT,

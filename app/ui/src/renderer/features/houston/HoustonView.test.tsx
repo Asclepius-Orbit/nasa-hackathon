@@ -1,5 +1,5 @@
 import { act, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { HoustonView as HoustonContract, OutboxView } from '../../../shared/api';
 import { MockDataSource } from '../../data/mock/MockDataSource';
@@ -59,7 +59,7 @@ describe('HoustonView with the contract examples', () => {
     expect(within(rows[0] as HTMLElement).getByText('Queued')).toBeInTheDocument();
     expect(rows[1]).toHaveTextContent(/^Day 87 summary(?!, revision)/);
     expect(rows[1]).toHaveTextContent('Sent');
-    expect(rows[1]).toHaveTextContent(/received 06:00 GMT/);
+    expect(rows[1]).toHaveTextContent(/received 9 Feb 06:00 GMT/);
     expect(rows[2]).toHaveTextContent(/^Day 86 summary(?!, revision)/);
   });
 
@@ -146,7 +146,7 @@ describe('HoustonView with the contract examples', () => {
       window.dispatchEvent(new Event('focus'));
       await Promise.resolve();
     });
-    expect(await screen.findAllByText(/received 09:10 GMT/)).not.toHaveLength(0);
+    expect(await screen.findAllByText(/received 9 Feb 09:10 GMT/)).not.toHaveLength(0);
     expect(screen.queryByText('Queued')).not.toBeInTheDocument();
   });
 });
@@ -183,5 +183,66 @@ describe('HoustonView with the mock', () => {
   it('shows the no-summary state when there is none', async () => {
     renderInWorld(<HoustonView />, { data: mockWith((real) => ({ ...real, summary: null })) });
     expect(await screen.findByText('No summary yet')).toBeInTheDocument();
+  });
+});
+
+describe('HoustonView honesty and readability', () => {
+  it.each(['', 'radio-v2'])('shows the simulated-link notice unless the transport is a known real one (transport %j)', async (transport) => {
+    renderInWorld(<HoustonView />, { data: mockWith((real) => ({ ...real, transport })) });
+    expect(await screen.findByText(SIMULATED)).toBeInTheDocument();
+  });
+
+  it('keeps list keys unique when two items read the same', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const data = mockWith((real) => ({
+      ...real,
+      summary: real.summary && { ...real.summary, recommendations: ['REC_LUMBAR_STAB_01', 'REC_LUMBAR_STAB_01'] },
+    }));
+    renderInWorld(<HoustonView />, { data });
+    await screen.findByText(SIMULATED);
+    expect(spy.mock.calls.flat().join(' ')).not.toMatch(/same key/);
+    spy.mockRestore();
+  });
+
+  it('writes the receipt of another day with its GMT date, and today with the time only', async () => {
+    const data = mockWith((real) => ({
+      ...real,
+      outbox: real.outbox.slice(0, 2).map((item, i) => ({
+        ...item,
+        state: 'sent' as const,
+        receivedAt: i === 0 ? '2026-11-03T09:58:00Z' : '2026-11-05T09:58:00Z',
+      })),
+    }));
+    renderInWorld(<HoustonView />, { data });
+    const rows = within(await screen.findByRole('list', { name: 'Outbox' })).getAllByRole('listitem');
+    expect(rows[0]).toHaveTextContent('received 3 Nov 09:58 GMT');
+    expect(rows[1]).toHaveTextContent('received 09:58 GMT');
+  });
+
+  it('writes the escalation urgency and rules as words, falling back to the code', async () => {
+    const data = mockWith((real) => ({
+      ...real,
+      summary: real.summary && {
+        ...real.summary,
+        escalation: { required: true, urgency: 'immediate', reasons: ['RULE_RED_FLAG_NEURO', 'RULE_FUTURE'] },
+      },
+    }));
+    renderInWorld(<HoustonView />, { data });
+    const text = (await screen.findByText(/^Required/)).textContent;
+    expect(text).toMatch(/Required, urgency immediate/);
+    expect(text).not.toMatch(/RULE_RED_FLAG_NEURO/);
+    expect(text).toMatch(/RULE_FUTURE/);
+  });
+
+  it('titles a preflight summary L-30, in the summary and in the outbox', async () => {
+    const data = mockWith((real) => ({
+      ...real,
+      summary: real.summary && { ...real.summary, missionDay: -30 },
+      outbox: real.outbox.slice(0, 1).map((item) => ({ ...item, missionDay: -30 })),
+    }));
+    renderInWorld(<HoustonView />, { data });
+    expect(await screen.findByRole('heading', { name: 'L-30 summary' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Outbox' })).toHaveTextContent('L-30 summary');
+    expect(screen.queryByText(/Day -30/)).not.toBeInTheDocument();
   });
 });

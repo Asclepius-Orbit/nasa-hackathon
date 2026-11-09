@@ -29,7 +29,7 @@ it('shows who is signed in and the mission facts from the data source', async ()
   expect(screen.getByText('Harness wb-01')).toBeInTheDocument();
   expect(screen.getByText('64 %, EMG right latissimus stalled')).toBeInTheDocument();
   expect(screen.getByText('Ground link')).toBeInTheDocument();
-  expect(screen.getByText('Down, back in 12 min')).toBeInTheDocument();
+  expect(screen.getByText('Down, back in 12 min (simulated)')).toBeInTheDocument();
 });
 
 it('ticks the GMT clock with the injected clock', async () => {
@@ -56,7 +56,7 @@ it('says "Not paired yet" when there is no harness, never a battery figure', asy
 
 it('shows the ground link as up when it is', async () => {
   renderInWorld(<Strip />, { data: new StripVariant({ groundLink: { state: 'up' } }) });
-  expect(await screen.findByText('Up')).toBeInTheDocument();
+  expect(await screen.findByText('Up (simulated)')).toBeInTheDocument();
 });
 
 it('falls back to the crew code when the name is unknown', async () => {
@@ -90,7 +90,7 @@ it('locks the tablet from the strip, hiding health data behind the PIN', async (
 it('shows an unknown ground link as Not known, never as up', async () => {
   renderInWorld(<Strip />, { data: new StripVariant({ groundLink: null }) });
   expect(await screen.findByText('Not known')).toBeInTheDocument();
-  expect(screen.queryByText('Up')).not.toBeInTheDocument();
+  expect(screen.queryByText('Up (simulated)')).not.toBeInTheDocument();
 });
 
 it('shows a weak battery reading, degraded status and weak streams as data from the backend', async () => {
@@ -98,7 +98,7 @@ it('shows a weak battery reading, degraded status and weak streams as data from 
   api.viewData.strip = example<StripView>('ui-strip');
   renderInWorld(<Strip />, { api, data: new RealDataSource(api.views, api.reps) });
   expect(await screen.findByText('18 %, degraded, Stretch cord L1 to L5 stalled')).toBeInTheDocument();
-  expect(screen.getByText('Down, back in 12 min')).toBeInTheDocument();
+  expect(screen.getByText('Down, back in 12 min (simulated)')).toBeInTheDocument();
   expect(screen.getByText('87')).toBeInTheDocument();
   expect(screen.getByText('In flight, microgravity')).toBeInTheDocument();
 });
@@ -107,7 +107,7 @@ it('shows the ground link from the backend as up, and still Not known when the b
   const api = new FakeAsclepiusApi();
   api.viewData.strip = example<StripView>('ui-strip.unpaired');
   const { unmount } = renderInWorld(<Strip />, { api, data: new RealDataSource(api.views, api.reps) });
-  expect(await screen.findByText('Up')).toBeInTheDocument();
+  expect(await screen.findByText('Up (simulated)')).toBeInTheDocument();
   unmount();
   api.viewData.strip = { ...example<StripView>('ui-strip.unpaired'), ground_link: null };
   renderInWorld(<Strip />, { api, data: new RealDataSource(api.views, api.reps) });

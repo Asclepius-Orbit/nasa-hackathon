@@ -5,10 +5,10 @@ import { Panel } from '../../components/ui/Panel';
 import type { DataSource } from '../../data/DataSource';
 import type { GroundSummaryData, HoustonData, OutboxItem } from '../../data/types';
 import { REFRESH_MS, useLoad } from '../../data/useLoad';
-import { protocolShort, reasonText, recommendationText, redFlagLabels, sessionStateText } from '../../strings/codes';
+import { escalationRuleText, protocolShort, reasonText, recommendationText, redFlagLabels, sessionStateText, urgencyText } from '../../strings/codes';
 import { levelLabel } from '../../strings/common';
-import { houston, outboxState } from '../../strings/houston';
-import { gmtClock, gmtStamp } from '../today/gmt';
+import { houston, outboxState, REAL_TRANSPORTS } from '../../strings/houston';
+import { gmtStamp } from '../today/gmt';
 import styles from './Houston.module.css';
 
 const selectHouston = (data: DataSource): ReturnType<DataSource['getHouston']> => data.getHouston();
@@ -29,13 +29,13 @@ export function HoustonView(): React.JSX.Element {
           <p className={styles.lede}>{houston.lede(crewCode)}</p>
           <div className={styles.notices}>
             {!data.contentValidated && <p className={styles.notice}>{houston.pendingValidation}</p>}
-            {data.transport === 'simulated' && <p className={styles.notice}>{houston.simulatedLink}</p>}
+            {!REAL_TRANSPORTS.includes(data.transport) && <p className={styles.notice}>{houston.simulatedLink}</p>}
           </div>
           <div className={styles.two}>
             <SummaryPanel summary={data.summary} crewCode={crewCode} />
             <Panel as="section" aria-labelledby="hou-outbox">
               <h2 id="hou-outbox">{houston.outbox}</h2>
-              <OutboxList items={data.outbox} />
+              <OutboxList items={data.outbox} now={now} />
               <p className={styles.note}>{linkText(data)}</p>
               {data.lastContactAt !== null && <p className={styles.note}>{houston.lastContact(gmtStamp(data.lastContactAt, now))}</p>}
             </Panel>
@@ -51,7 +51,7 @@ function linkText({ groundLink }: HoustonData): string {
   return groundLink.state === 'up' ? houston.groundUp : houston.groundDown(groundLink.backInMin);
 }
 
-function OutboxList({ items }: { items: readonly OutboxItem[] }): React.JSX.Element {
+function OutboxList({ items, now }: { items: readonly OutboxItem[]; now: Date }): React.JSX.Element {
   if (items.length === 0) return <p className={styles.note}>{houston.outboxEmpty}</p>;
   return (
     <ul className={styles.queue} aria-label={houston.outbox}>
@@ -59,7 +59,7 @@ function OutboxList({ items }: { items: readonly OutboxItem[] }): React.JSX.Elem
         <li key={`${item.date}#${String(item.revision)}`}>
           <span>
             {houston.outboxLabel(item.missionDay, item.date, item.revision)}
-            {item.receivedAt !== null && <span className={styles.aside}> ({houston.received(gmtClock(item.receivedAt))})</span>}
+            {item.receivedAt !== null && <span className={styles.aside}> ({houston.received(gmtStamp(item.receivedAt, now))})</span>}
           </span>
           <span className={styles.pill} data-state={item.state}>
             {outboxState(item)}
@@ -106,7 +106,10 @@ function SummaryPanel({ summary, crewCode }: { summary: GroundSummaryData | null
           {escalation === null
             ? houston.notAssessed
             : escalation.required
-              ? houston.escalationRequired(escalation.urgency, escalation.reasons)
+              ? houston.escalationRequired(
+                  escalation.urgency === null ? null : urgencyText(escalation.urgency),
+                  escalation.reasons.map(escalationRuleText),
+                )
               : houston.noEscalation}
         </dd>
         <dt>{houston.contacts}</dt>
@@ -129,8 +132,9 @@ function listOf(items: readonly string[], empty: string): React.JSX.Element {
   if (items.length === 0) return <>{empty}</>;
   return (
     <ul className={styles.items}>
-      {items.map((item) => (
-        <li key={item}>{item}</li>
+      {items.map((item, index) => (
+        // Two items can read the same, so the text alone is not a key.
+        <li key={`${String(index)}:${item}`}>{item}</li>
       ))}
     </ul>
   );

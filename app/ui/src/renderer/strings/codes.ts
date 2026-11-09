@@ -48,6 +48,21 @@ export function recommendationText(code: string): PlanText {
   return RECOMMENDATIONS[code] ?? { title: code, detail: '', action: null };
 }
 
+const URGENCIES: Readonly<Record<string, string>> = {
+  routine: 'routine, can wait for the next scheduled contact',
+  priority: 'priority, needs the flight surgeon soon',
+  immediate: 'immediate, needs the flight surgeon now',
+};
+export const urgencyText = (urgency: string): string => URGENCIES[urgency] ?? urgency;
+
+const ESCALATION_RULES: Readonly<Record<string, string>> = {
+  RULE_RED_FLAG_NEURO: 'warning neurological symptom',
+  RULE_SYMPTOM_PAIN_TREND: 'pain trend rising',
+  RULE_INCOMPLETE_DATA: 'data too incomplete to assess',
+  RULE_UNKNOWN_RED_FLAG: 'unrecognised warning symptom',
+};
+export const escalationRuleText = (code: string): string => ESCALATION_RULES[code] ?? code;
+
 const TASKS: Readonly<Record<string, PlanText>> = {
   TASK_DAILY_REPORT: {
     title: 'Daily report',

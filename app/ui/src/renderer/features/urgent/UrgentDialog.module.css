@@ -12,3 +12,4 @@
 .delivery { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius-s); background: var(--action-soft); margin: 0 0 16px; font-size: 1.0625rem; }
 .delivery svg { width: 26px; height: 26px; flex: none; }
 .actions { display: flex; gap: 14px; }
+.notRecorded { margin: 0 0 16px; padding: 12px 16px; border-radius: var(--radius-s); border: 2px solid var(--urgent); background: var(--urgent-soft); color: var(--urgent); font-size: 1.0625rem; font-weight: 600; }

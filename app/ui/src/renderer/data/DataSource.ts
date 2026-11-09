@@ -38,6 +38,10 @@ export interface DataSource {
   subscribeReps(sessionId: string, cb: (update: RepsUpdate) => void): () => void;
   /** Records that the session was stopped for pain at the current rep (shows in the Houston summary). */
   stopSessionForPain(): Promise<void>;
+  /** True when `sendUrgentReport` really records and delivers. The real source cannot yet (#63), so the Urgent dialog must not promise anything. */
+  readonly sendsUrgentReports: boolean;
+  /** Sends the urgent symptom report. Rejects when it was not recorded: the caller must then say so and never show it as queued or sent. */
+  sendUrgentReport(codes: readonly string[]): Promise<void>;
   /** Logs a call to the crew medical officer (shows in the Stop screen and the Houston summary). */
   logCrewMedicalOfficerCall(): Promise<ContactEntry>;
 }

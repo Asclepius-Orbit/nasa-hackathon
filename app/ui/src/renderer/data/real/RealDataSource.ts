@@ -135,6 +135,13 @@ export class RealDataSource implements DataSource {
     return unavailable();
   }
 
+  readonly sendsUrgentReports = false;
+
+  /** There is no outbox for urgent reports yet (#63): `not_built`, so nothing is shown as saved, queued or sent. */
+  sendUrgentReport(): Promise<void> {
+    return notBuilt();
+  }
+
   logCrewMedicalOfficerCall(): Promise<ContactEntry> {
     return unavailable();
   }

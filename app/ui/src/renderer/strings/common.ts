@@ -43,7 +43,7 @@ export const mockMenu = {
 export const banner = {
   title: 'The app cannot reach its data service.',
   body: 'What you enter is kept on this tablet and saved when it reconnects. Urgent symptom still works.',
-  lastContact: (min: number): string => `Last contact ${String(min)} min ago.`,
+  lastContact: (min: number): string => `Last contact ${String(min)} min ago (simulated link).`,
   retry: 'Try again',
 } as const;
 
@@ -76,10 +76,13 @@ export const noMonitor = {
   body: 'The on-board monitor did not answer, so nothing is shown here rather than something out of date. Try again in a moment.',
 } as const;
 
+/** The only ground link that exists today is simulated; the strip does not carry the transport yet, so every known state says so. */
+const SIMULATED_LINK = ' (simulated)';
+
 export function groundLinkValue(link: { state: 'up' } | { state: 'down'; backInMin: number | null } | null): string {
   if (link === null) return notKnown;
-  if (link.state === 'up') return 'Up';
-  return link.backInMin === null ? 'Down' : `Down, back in ${minutes(link.backInMin)}`;
+  if (link.state === 'up') return `Up${SIMULATED_LINK}`;
+  return `${link.backInMin === null ? 'Down' : `Down, back in ${minutes(link.backInMin)}`}${SIMULATED_LINK}`;
 }
 
 /**

@@ -18,7 +18,7 @@ El contrato es `contracts/openapi.yaml`; cuerpos y errores son los JSON Schemas 
 | Endpoint | Cuerpo de entrada | Cuerpo de salida | Hoy |
 |---|---|---|---|
 | `GET /health` | - | `{"status": "ok"}` | real |
-| `POST /features` | `FeaturesRequest` (datos crudos de la sesión) | `FeatureSet` | `features` de las familias registradas: `exercise` desde #41, `emg` (amplitud) desde #42 e `imu` desde #44; las familias de cordón llegan en #43 y #45 |
+| `POST /features` | `FeaturesRequest` (datos crudos de sesión) | `FeatureSet` | familias registradas: `exercise`, `emg`, `imu`, `emg_spectral` y `stretch` |
 | `POST /baseline` | `BaselineRequest` (feature sets de las sesiones de referencia) | `Baseline` | real |
 | `POST /assess` | `AssessRequest` | `Assessment` | comparación real con la baseline y modelo de riesgo genérico (`risk_score`, `confidence`, `drivers`); triaje nulo (nivel siempre verde) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | aplica `overrides` (`set`, `add`, `scale`) al último valor de cada feature y reevalúa; `project_days` aún no se aplica |
@@ -47,14 +47,14 @@ Los ejemplos de `contracts/examples/valid/engine/` son peticiones válidas de ca
 | `ChangeDetector` | `CompositeDetector` de `CusumDetector` + `KalmanDetector` | cambio sostenido sobre el histórico (mismo protocolo y gravedad); un pico aislado nunca cuenta |
 | `VotePolicy` | `AllAgreeVote` | los detectores deben coincidir (AND), en el mismo sentido |
 | `BaselineBuilder` | `StatisticalBaselineBuilder` | construye la baseline |
-| `FeatureExtractor` | `CompositeFeatureExtractor` | datos crudos a features: ejecuta las familias registradas (`exercise`, #41; amplitud `emg`, #42; `imu`, #44; cordón en #43 y #45) |
+| `FeatureExtractor` | `CompositeFeatureExtractor` | extrae `exercise` (#41), `emg` (#42), `imu` (#44), `emg_spectral` (#43) y `stretch` (#45) |
 | `RiskModel` | `DeviationRiskModel` | suma el \|z\| de las desviaciones sostenidas, ponderado por dominio y por persistencia (`n_points`), saturado a [0, 1] con `1 - exp(-suma / escala)`; sin rangos clínicos, cualquier sentido cuenta como peor y el signo queda en el `deviation_z` de cada driver. `drivers` lleva la cuota del score de cada feature, la mayor primero; `confidence` es la completitud. Pesos, persistencia y escala: `SPINE_ENGINE_RISK_DOMAIN_WEIGHTS`, `SPINE_ENGINE_RISK_PERSISTENCE_POINTS`, `SPINE_ENGINE_RISK_SATURATION`. Un mapa de pesos parcial se completa con 1.0 en los dominios que faltan. `n_points` es el largo de la serie, no de su tramo final desviado, así que con una persistencia igual o menor al mínimo de puntos del detector el factor vale siempre 1 (como con el valor por defecto) |
 
 Los detectores solo ven una serie de z-scores: no saben qué métrica es, así que no dependen del modelo teórico. `Deviation` lleva el z-score, la gravedad de referencia y si el cambio es sostenido y en qué sentido; el modelo de riesgo lo lee de ahí.
 
 ## Extracción de features
 
-`POST /features` ejecuta `CompositeFeatureExtractor` sobre un `ExtractorRegistry` de familias de features (`FeatureFamilyExtractor`: un nombre `family`, los `feature_ids` del catálogo que declara y `extract(context) -> FamilyResult` con features `computed` y `skipped`). `default_registry()` registra las familias `exercise` (#41), `emg` de amplitud (#42) e `imu` (#44), así que hoy ya se calculan las métricas de repeticiones, de amplitud del EMG y de la IMU; las de los demás sensores llegan familia a familia (#43, #45). `NullFeatureExtractor` sigue en `stubs.py` para los tests.
+`POST /features` ejecuta `CompositeFeatureExtractor` con `default_registry()`, que registra `exercise`, `emg`, `imu`, `emg_spectral` y `stretch` en ese orden. Cada familia declara sus IDs del catálogo y devuelve features calculadas y omitidas. `NullFeatureExtractor` permanece disponible para tests.
 
 Antes de ejecutar las familias, el motor prepara una sola vez un `ExtractionContext`:
 
@@ -69,7 +69,7 @@ El compuesto rellena `unit` desde el catálogo de features y la calidad sobre lo
 
 `exercise.rep_count`, `exercise.rep_duration_s_mean` y `exercise.rep_duration_cv_pct` (CV en %, desviación típica muestral n-1) necesitan al menos 2 repeticiones válidas. Con menos, las tres salen en `skipped` con `too_few_repetitions`.
 
-`RepetitionService` resuelve las ventanas de repetición (`RepWindow`): inicio, fin, la fase activa (rep_start→rep_end) y el reposo (rep_end→siguiente rep_start). La última repetición solo tiene reposo si después hay un evento `rest_end`. `default_registry()` crea un único servicio y se lo pasa a las familias, para que las demás familias (la de EMG desde #42; IMU y cordón en #43-#45) lo reutilicen.
+`RepetitionService` resuelve las ventanas activas y de reposo. El registro comparte un servicio entre las familias de ejercicio, EMG, IMU, espectral y cordón.
 
 El origen, en este orden:
 
@@ -96,6 +96,28 @@ Basada en el giróscopo, así que no depende de la gravedad y es comparable entr
 
 Cada valor es la media sobre las repeticiones con muestras y valor finito, y `n` las cuenta (una repetición sin movimiento no tiene SPARC y no cuenta para él; si ninguna lo tiene, `no_data`); una repetición lee el segmento (`boot_id`) con más muestras en su ventana. Motivos de `skipped`, en orden: `stream_missing`, `no_calibration`/`calibration_expired`, luego `no_data` (sin reloj o sin muestras en ninguna repetición) o `too_few_repetitions` (ninguna repetición); el `insufficient_sample_rate` de SPARC se decide antes que estos dos últimos.
 
+### Fatiga espectral del EMG y la familia `emg_spectral`
+
+El análisis espectral usa el fragmento continuo más largo de cada repetición, separado por pérdidas de paquetes, saltos de reloj, reinicios y cambios de frecuencia de muestreo. Cada fragmento requiere al menos 64 muestras.
+
+Para cada stream EMG declarado con músculo y lado, `emg.{muscle}.{side}.median_freq_hz` es la frecuencia mediana del PSD de Welch de la fase activa de cada repetición, promediada entre las repeticiones válidas, y `median_freq_slope_hz_per_rep` es la pendiente de un ajuste lineal de esa frecuencia mediana contra el índice de repetición: la tendencia de fatiga, negativa cuando el espectro baja de banda. `n` es el número de repeticiones que aportaron.
+
+Necesita el EMG crudo: el espectro de una señal rectificada o de envolvente no describe el músculo. Si los chunks del stream son rectificados o envolvente, ambas features van a `skipped` con `signal_not_raw`. Los demás motivos son `too_few_repetitions` (menos de 2 repeticiones válidas, así que no hay pendiente), `stream_missing` (stream declarado sin chunks) y `no_data` (repeticiones sin muestras suficientes). Nunca lanza. Se registra en `default_registry()` antes de `stretch`.
+
+### La familia del cordón (`stretch`)
+
+Se calcula desde cuentas ADC, así que no necesita señal cruda más allá del chunk. Para cada stream de estiramiento declarado con `spine_region`:
+
+- **Resistencia:** con el `circuit` del chunk (`adc_bits`, `vref_v`, `series_resistor_ohm`) se invierte el divisor `Vout = vref * R / (R + Rs)` hasta una resistencia. Sin `circuit`, se usa la `resistance_ohm` derivada del chunk; si no hay ninguno, la feature va a `skipped`.
+- **Longitud:** la resistencia pasa a longitud por la curva `piecewise_linear` de `calibration.stretch_calibration` (resistencia a longitud, no lineal). `elongation_mm` y `elongation_pct` son respecto a su `rest_length_mm`.
+- **Features:** `stretch.{spine_region}.elongation_mm`, `elongation_pct`, `peak_elongation_mm`, `range_mm`, `recovery_time_s` (por repetición, reutilizando `RepetitionService`) y `rest_resistance_ohm` (la resistencia en reposo).
+- **Espera de recuperación:** el cordón recupera en 1-2 min. La espera es `stretch_calibration.recovery_wait_s` si viene; si no, `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` (defecto 120 s), PROVISIONAL hasta #46 (el valor real lo fija el protocolo).
+- **Calibración:** como en el resto, el `calibration_id` del chunk manda sobre el de la sesión. Sin calibración: `skipped` con `no_calibration`; caducada: `calibration_expired`.
+
+### Síntomas
+
+`/assess` calcula features de síntomas de siete días a partir de los autoinformes y el contexto diario del astronauta hasta `as_of`; los valores ausentes figuran como datos faltantes. La baseline calcula los mismos agregados para cada sesión de referencia hasta el final de su ventana (o su fecha de cálculo si no existe), con la gravedad de la sesión. El backend aporta los informes de esas ventanas. Los agregados son provisionales y no son umbrales clínicos.
+
 ## Configuración
 
 Variables de entorno (o un `.env`), todas opcionales:
@@ -106,6 +128,8 @@ Variables de entorno (o un `.env`), todas opcionales:
 | `SPINE_ENGINE_SCALE_FLOOR` | `0.05` | suelo de la escala del z-score, como fracción de la mediana, cuando MAD y desviación son ~0 |
 | `SPINE_ENGINE_CUSUM_K` / `_H` / `_CLIP` / `_MIN_POINTS` | `0.5` / `4.0` / `3.0` / `3` | tolerancia, umbral, tope por punto e histórico mínimo de CUSUM |
 | `SPINE_ENGINE_KALMAN_PROCESS_VAR` / `_MEASUREMENT_VAR` / `_THRESHOLD` / `_PERSIST` / `_MIN_POINTS` | `0.05` / `1.0` / `1.0` / `3` / `3` | filtro de Kalman de nivel local |
+| `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` | `120` | espera de recuperación del cordón en segundos cuando falta `stretch_calibration.recovery_wait_s`; PROVISIONAL hasta #46 |
+| `SPINE_ENGINE_STRETCH_RECOVERY_FRACTION` | `0.1` | fracción provisional del pico de repetición usada como umbral de recuperación; configurable hasta #46 |
 
 ## Tests
 

@@ -148,5 +148,5 @@ def create_default_app(settings: EngineSettings | None = None) -> FastAPI:
     return create_app(
         pipeline=default_pipeline(settings),
         baseline_builder=default_baseline_builder(),
-        feature_extractor=CompositeFeatureExtractor(default_registry()),
+        feature_extractor=CompositeFeatureExtractor(default_registry(settings)),
     )

@@ -70,9 +70,9 @@ def test_domains_without_comparison_are_not_evaluated():
 def test_completeness_reports_what_could_not_be_compared():
     completeness = stub_pipeline().evaluate(request()).completeness
 
-    # 4 of the 5 features have a baseline entry; the repetition count has none.
-    assert completeness.score == 0.8
-    assert completeness.missing == [MissingItem(what="exercise.rep_count", reason=MissingReason.NO_BASELINE)]
+    # Four comparable sensor features out of five sensor and five symptom features.
+    assert completeness.score == 0.4
+    assert MissingItem(what="exercise.rep_count", reason=MissingReason.NO_BASELINE) in completeness.missing
 
 
 def test_skipped_features_count_as_missing():
@@ -121,7 +121,7 @@ def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
 
     completeness = stub_pipeline().evaluate(req).completeness
 
-    assert completeness.score == 0.8
+    assert completeness.score == 0.4
 
 
 def test_null_self_reports_mean_no_self_reports():
@@ -130,6 +130,35 @@ def test_null_self_reports_mean_no_self_reports():
     req.self_reports = None
 
     assert stub_pipeline().evaluate(req).based_on.self_report_ids == []
+
+
+def test_assessment_uses_symptom_features_from_reports():
+    req = request()
+    assert req.self_reports
+    report = req.self_reports[0]
+    report.timestamp = req.as_of
+    assessment = stub_pipeline().evaluate(req)
+    assert any(m.what == "symptoms.pain_nrs_7d_mean" for m in assessment.completeness.missing)
+
+
+def test_assessment_compares_symptoms_to_reference_baseline():
+    from spine_contracts import BaselineRequest
+    from spine_engine.baseline.builder import StatisticalBaselineBuilder
+
+    req = request()
+    report = req.self_reports[0]
+    report.timestamp = req.as_of
+    reference = req.feature_sets[0].model_copy(deep=True)
+    reference.gravity_environment = GravityEnvironment.EARTH_1G
+    reference.window = None
+    reference.computed_at = req.as_of
+    req.baseline = StatisticalBaselineBuilder().build(BaselineRequest(
+        schema_version=req.schema_version, astronaut_id=req.astronaut_id, feature_sets=[reference], self_reports=[report]
+    ))
+    assert req.daily_context
+    req.daily_context[0].date = req.as_of.date()
+    assessment = stub_pipeline().evaluate(req)
+    assert next(d for d in assessment.domains if d.domain == AssessmentDomain.SYMPTOMS).evaluated
 
 
 def test_based_on_traces_the_inputs():
@@ -198,7 +227,9 @@ def test_pipeline_wires_custom_implementations():
     assessment = AssessmentPipeline(baseline, risk, triage).evaluate(req)
 
     deviations = [Deviation(feature_id="stretch.lumbar.peak_elongation_mm", value=1.0, score=9.0)]
-    assert baseline.calls == [(req.baseline, req.feature_sets)]
+    assert baseline.calls[0][0] == req.baseline
+    assert baseline.calls[0][1][:-1] == req.feature_sets
+    assert baseline.calls[0][1][-1].session_id is None
     assert risk.received == deviations
     assert risk.completeness == assessment.completeness.score
     assert triage.received.deviations == deviations

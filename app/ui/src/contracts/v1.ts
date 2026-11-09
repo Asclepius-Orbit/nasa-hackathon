@@ -2240,6 +2240,7 @@ export interface BaselineRequest {
    * @minItems 1
    */
   feature_sets: [FeatureSet, ...FeatureSet[]];
+  self_reports?: SelfReport[];
   /**
    * Version of the baseline being replaced; the new one gets version + 1. Absent for the first baseline.
    */

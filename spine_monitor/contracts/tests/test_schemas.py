@@ -178,6 +178,7 @@ MUTATIONS = [
     ("domain/assessment.amber", "evidence with unknown property", lambda d: d["fired_rules"][0]["evidence"].update(unit="x")),
     ("engine/features-request", "no chunks", lambda d: d.update(chunks=[])),
     ("engine/baseline-request", "no reference sessions", lambda d: d.update(feature_sets=[])),
+    ("engine/baseline-request", "self-report with pain above 10", lambda d: d["self_reports"][0].update(pain_nrs=11)),
     ("engine/assess-request", "no baseline", lambda d: d.pop("baseline")),
     ("engine/simulate-request", "no overrides property", lambda d: d.pop("overrides")),
     ("engine/simulate-request", "override that is not an object", lambda d: d.update(overrides=[1])),
@@ -330,6 +331,7 @@ def test_engine_examples_embed_the_standalone_examples():
     assert features["profile"] == valid_example("domain/astronaut-profile")
 
     assert valid_example("engine/baseline-request")["feature_sets"] == [valid_example("domain/feature-set.preflight")]
+    assert valid_example("engine/baseline-request")["self_reports"] == [valid_example("domain/self-report.daily")]
 
     assess = valid_example("engine/assess-request")
     assert assess["profile"] == valid_example("domain/astronaut-profile")

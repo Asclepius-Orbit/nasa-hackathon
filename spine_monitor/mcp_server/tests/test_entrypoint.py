@@ -12,7 +12,7 @@ from mcp.client.client import Client
 from mcp.server.mcpserver import MCPServer
 from mcp.types import TextContent
 from spine_mcp_server import _aware_iso, build_server, parse_args  # pyright: ignore[reportPrivateUsage] -- se prueba el conversor de `--now`
-from spine_mcp_server.http_client import HttpAppReader
+from spine_mcp_server.http_client import HttpAppReader, HttpSimulator
 
 real_client = httpx.Client
 AST = "AST-01"
@@ -93,7 +93,8 @@ def test_help_documents_every_option_choice_and_text(monkeypatch: pytest.MonkeyP
     assert "--dataset {demo,examples,http}" in out
     assert (
         "demo: 14 días de AST-01 relativos al reloj (por defecto); examples: la foto única de los ejemplos de los contratos; "
-        "http: la API de lectura de la app en la URL de SPINE_APP_URL (por defecto http://127.0.0.1:8002); sin simulación." in out
+        "http: la API de lectura de la app en SPINE_APP_URL (por defecto http://127.0.0.1:8002) y el motor en SPINE_ENGINE_URL "
+        "(por defecto http://127.0.0.1:8001); la base de simulación aún no está disponible." in out
     )
     assert "--now NOW" in out
     assert "Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z)." in out
@@ -209,6 +210,23 @@ def _reader(server: MCPServer) -> HttpAppReader:
     readers = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpAppReader)]
     assert len(readers) == 1
     return readers[0]
+
+
+def _simulator(server: MCPServer) -> HttpSimulator:
+    closure = server._tool_manager._tools["simulate_scenario"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- se comprueba el cableado
+    assert closure is not None
+    simulators = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpSimulator)]
+    assert len(simulators) == 1
+    return simulators[0]
+
+
+@pytest.mark.parametrize("configured, expected", [(None, "http://127.0.0.1:8001"), ("   ", "http://127.0.0.1:8001"), (" http://engine.test:9000/ ", "http://engine.test:9000")])
+def test_http_dataset_wires_engine_url(monkeypatch: pytest.MonkeyPatch, configured: str | None, expected: str):
+    if configured is None:
+        monkeypatch.delenv("SPINE_ENGINE_URL", raising=False)
+    else:
+        monkeypatch.setenv("SPINE_ENGINE_URL", configured)
+    assert _simulator(build_server(["--dataset", "http"]))._base == expected  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL configurada
 
 
 @pytest.mark.integration

@@ -38,13 +38,13 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 - `start` y `end` son timestamps RFC 3339 con desfase UTC. `limit` va de 1 a 500.
 - `compare_periods` lee ambos periodos con `limit` 500 y calcula la comparación en el servidor. Los deltas son B menos A.
 - `overrides` es una lista opcional (vacía por defecto) de cambios con `feature_id`, `mode` (`set`, `add` o `scale`) y `value`; vacía u omitida significa sin cambios, así que se proyecta la trayectoria actual tal como está. `project_days` va de 1 a 365.
-- `simulate_scenario` es solo hipotético y nunca cambia datos reales. Con `--dataset http` devuelve un error de herramienta hasta que la API de la app tenga un endpoint de simulación.
+- `simulate_scenario` es solo hipotético y nunca cambia datos reales. Con `--dataset http` devuelve un error de herramienta 501 hasta que esté disponible la base de valoración ([#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26)).
 
 ## Datasets
 
 `python -m spine_mcp_server` sirve por defecto un **dataset de demo**: los últimos 14 días del astronauta `AST-01`, generados en relación con el reloj para que los datos terminen siempre «ahora». Está en verde los primeros 8 días y en ámbar los últimos 6, con un risk score creciente (de 0,18 a 0,62), una evaluación al día, una sesión de ejercicio cada 2 días más algunos chequeos de columna, un autoinforme diario (dolor NRS de 2 a 5) y un informe ODI semanal. `explain_assessment` funciona para todas las evaluaciones de ese histórico, `compare_periods` tiene datos en las dos semanas y `simulate_scenario` responde a los «¿y si…?» con un modelo lineal simple sobre la elongación lumbar (una aproximación, no el motor). `AST-01` es el único astronauta; cualquier otro id devuelve un error de herramienta «not found».
 
-Para leer la app real, usa `--dataset http`. Llama a la API de lectura de la app en la URL de `SPINE_APP_URL` (por defecto `http://127.0.0.1:8002`). En este modo no hay mocks: los payloads son lo que devuelva la app.
+Para leer la app real, usa `--dataset http`. Llama a la API de lectura de la app en `SPINE_APP_URL` (por defecto `http://127.0.0.1:8002`) y configura el simulador para llamar directamente al motor en `SPINE_ENGINE_URL` (por defecto `http://127.0.0.1:8001`). La base de valoración aún no está disponible por HTTP, por lo que la simulación sigue bloqueada por [#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26).
 
 ```bash
 SPINE_APP_URL=http://127.0.0.1:8002 uv run python -m spine_mcp_server --dataset http
@@ -54,6 +54,7 @@ SPINE_APP_URL=http://127.0.0.1:8002 uv run python -m spine_mcp_server --dataset 
 |---|---|
 | `--dataset demo\|examples\|http` | `demo` (por defecto); `examples`: la foto estática única de `contracts/examples/valid/` que usan los tests de contratos; `http`: la API de lectura real de la app en `SPINE_APP_URL` |
 | `SPINE_APP_URL` | URL base de la API de lectura de la app que usa `http` (por defecto `http://127.0.0.1:8002`) |
+| `SPINE_ENGINE_URL` | URL base del motor que usa el simulador HTTP (por defecto `http://127.0.0.1:8001`) |
 | `--now 2026-11-13T12:00:00Z` | Fija el reloj del demo (ISO 8601 con zona horaria, redondeado a la hora) para demos y tests reproducibles; sin él se usa el reloj de pared |
 
 Los datos del demo se generan de forma determinista: el mismo `--now` da siempre los mismos payloads e ids.
@@ -72,7 +73,9 @@ En `--dataset http`, los fallos de la API de la app se traducen así:
 | Cuerpo de respuesta que no cumple el contrato | 502, `App API returned an invalid response` |
 | Sin respuesta en 10 segundos | 504, `App API timeout` |
 | Fallo de conexión | 503, `App API unavailable` |
-| `simulate_scenario` (aún sin endpoint) | 501, `Assessment base not available` o `Simulation not available` |
+| `simulate_scenario` (base de valoración no disponible) | 501, `Assessment base not available` |
+
+El simulador aplica las mismas traducciones a los errores del motor, identificándolo como servicio upstream.
 
 ## Notas de compare_periods
 
@@ -84,5 +87,5 @@ En `--dataset http`, los fallos de la API de la app se traducen así:
 
 ## Fuera de alcance por ahora
 
-- `simulate_scenario` y la base de valoración por HTTP: la API de la app aún no tiene endpoint para ellos, así que devuelven 501.
+- La base de valoración por HTTP sigue sin estar disponible ([#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26)), por lo que `simulate_scenario` devuelve 501 antes de llamar al motor.
 - El demo sigue siendo el dataset por defecto hasta que el motor sea real.

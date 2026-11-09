@@ -124,7 +124,7 @@ def test_mean_and_max_of_known_values() -> None:
 
 
 def test_features_carry_catalog_unit_count_and_quality() -> None:
-    fs = run([daily(pain=2, sleep=6.0), daily(AS_OF - timedelta(days=1), pain=4)])
+    fs = run([daily(pain=2, sleep=6.0, red_flags=[]), daily(AS_OF - timedelta(days=1), pain=4)])
     by_id = {f.feature_id: f for f in fs.features}
     assert by_id[PAIN_MEAN].unit == "nrs"
     assert by_id[PAIN_MEAN].n == 2
@@ -151,7 +151,7 @@ def test_sleep_mean_only_over_reports_with_sleep_hours() -> None:
 
 def test_sleep_skipped_when_no_report_has_sleep() -> None:
     fs = run([daily()])
-    assert skipped(fs) == {SLEEP: Reason.NO_DATA}
+    assert skipped(fs) == {SLEEP: Reason.NO_DATA, FLAGS: Reason.NO_DATA}
     assert SLEEP not in values(fs)
 
 
@@ -172,8 +172,16 @@ def test_daily_with_empty_red_flags_counts_zero_but_is_present() -> None:
     assert FLAGS not in skipped(fs)
 
 
-def test_daily_without_red_flags_field_still_makes_count_present() -> None:
-    assert values(run([daily(red_flags=None)]))[FLAGS] == 0
+def test_daily_without_red_flags_field_is_missing_not_zero() -> None:
+    fs = run([daily(red_flags=None)])
+    assert FLAGS not in values(fs)
+    assert skipped(fs)[FLAGS] == Reason.NO_DATA
+
+
+def test_unanswered_daily_is_not_counted_as_a_flag_observation() -> None:
+    fs = run([daily(red_flags=None), daily(red_flags=[]), red_flag_report()])
+    flags = next(feature for feature in fs.features if feature.feature_id == FLAGS)
+    assert (flags.value, flags.n) == (1, 2)
 
 
 def test_only_a_red_flag_report_gives_a_count_and_skips_the_daily_metrics() -> None:

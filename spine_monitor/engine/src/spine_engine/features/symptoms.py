@@ -3,8 +3,8 @@
 - Ventana ``[as_of - 7 días, as_of]`` con ambos extremos incluidos (se compara el instante ``timestamp``).
 - ``pain_nrs_7d_mean``/``pain_nrs_7d_max``/``stiffness_nrs_7d_mean`` salen de los informes ``daily``;
   ``sleep_hours_7d_mean`` solo de los ``daily`` que traen ``sleep.hours``. Los ``weekly_odi`` no aportan nada.
-- ``red_flag_count_7d`` suma las banderas de los ``daily`` y de los ``red_flag``; un ``daily`` sin banderas es un
-  informe presente que cuenta 0.
+- ``red_flag_count_7d`` suma las banderas de los ``daily`` y de los ``red_flag``; una lista vacía cuenta 0,
+  mientras que un campo ausente o nulo no aporta una observación.
 - Una feature sin datos aplicables va a ``skipped`` con ``no_data``: nunca se rellena con ceros.
 - Solo cuentan los informes y contextos del astronauta pedido.
 - ``gravity_environment`` es el del contexto diario más reciente (por ``date``) dentro de la ventana, comparando
@@ -66,7 +66,7 @@ def symptom_feature_set(self_reports: Sequence[SelfReport], daily_context: Seque
     dailies = [r for r in reports if isinstance(r, DailySelfReport)]
     flag_reports = [r for r in reports if isinstance(r, RedFlagReport)]
     sleeping = [r.sleep.hours for r in dailies if r.sleep is not None]
-    flag_counts = [len(r.red_flags or []) for r in dailies] + [len(r.red_flags) for r in flag_reports]
+    flag_counts = [len(r.red_flags) for r in dailies if r.red_flags is not None] + [len(r.red_flags) for r in flag_reports]
 
     computed: list[FeatureValue] = []
     if dailies:

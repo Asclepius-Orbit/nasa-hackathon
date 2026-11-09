@@ -128,9 +128,9 @@ def test_sleep_mean_is_within_the_reported_hours(reports):
 
 
 @given(reports=reports_in_window)
-def test_red_flag_count_is_total_flags_and_present_iff_any_daily_or_red_flag_report(reports):
+def test_red_flag_count_is_total_flags_and_present_iff_answered(reports):
     expected = sum(len(r.red_flags or []) for r in reports if r.kind in ("daily", "red_flag"))
-    present = any(r.kind in ("daily", "red_flag") for r in reports)
+    present = any(r.kind == "red_flag" or (r.kind == "daily" and r.red_flags is not None) for r in reports)
     vals = values(run(reports))
     if present:
         assert vals["symptoms.red_flag_count_7d"] == expected

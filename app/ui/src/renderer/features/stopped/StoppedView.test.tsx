@@ -60,7 +60,7 @@ it('"Message the flight surgeon" opens Urgent with nothing marked', async () => 
 
 it('with the backend (real mode) says it is not available instead of inventing a stop', async () => {
   const api = new FakeAsclepiusApi();
-  renderInWorld(<StoppedView />, { api, data: new RealDataSource(api.views), route: '/stopped' });
+  renderInWorld(<StoppedView />, { api, data: new RealDataSource(api.views, api.reps), route: '/stopped' });
   expect(await screen.findByTestId('not-built')).toBeInTheDocument();
   expect(screen.getByText('Not available yet.')).toBeInTheDocument();
   expect(screen.queryByText(/did not answer/)).not.toBeInTheDocument();

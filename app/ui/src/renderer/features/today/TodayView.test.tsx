@@ -7,7 +7,7 @@ import { MockDataSource } from '../../data/mock/MockDataSource';
 import { todayData } from '../../data/mock/mock-data';
 import { RealDataSource } from '../../data/real/RealDataSource';
 import { example } from '../../test/contract-examples';
-import type { TodayView as TodayViewPayload } from '../../../shared/api';
+import type { RepStateView, TodayView as TodayViewPayload } from '../../../shared/api';
 
 const TODAY = todayData(new Date('2026-11-05T13:40:00Z'));
 import type { TodayData } from '../../data/types';
@@ -159,7 +159,7 @@ it('says so when today cannot be loaded', async () => {
 const realSetup = (today: TodayViewPayload | null): ReturnType<typeof renderInWorld> => {
   const api = new FakeAsclepiusApi();
   if (today) api.viewData.today = today;
-  return setup({ api, data: new RealDataSource(api.views) });
+  return setup({ api, data: new RealDataSource(api.views, api.reps) });
 };
 
 it('shows a real amber day from the backend example: plan from codes, an unknown code kept as it is', async () => {
@@ -206,7 +206,7 @@ it('on a locked bridge it does not claim the monitor is down: it re-reads the se
     api.session = { crewId: 'AST-01', locked: true };
     return Promise.reject(new Error('locked'));
   };
-  setup({ api, data: new RealDataSource(api.views) });
+  setup({ api, data: new RealDataSource(api.views, api.reps) });
   await screen.findByRole('status');
   await waitFor(() => {
     expect(api.calls.filter((c) => c === 'auth.current').length).toBeGreaterThan(1);
@@ -280,5 +280,46 @@ describe('what to do today', () => {
 
   it('green does not mention the daily report once it is done', async () => {
     expect(await todo({ level: 'green', recommendations: [], alsoToday: [] })).toBe('What to do today: your usual routine.');
+  });
+});
+
+describe('live rep on Today (real data)', () => {
+  const SID = '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01';
+  const rep = (name: string): RepStateView => example<RepStateView>(name);
+  const line = async (): Promise<HTMLElement> => (await screen.findByText('Session in progress')).closest('li') as HTMLElement;
+
+  it('with signal it says "rep N of M"; without signal or lost it goes back to the line with no counter', async () => {
+    const world = realSetup(example<TodayViewPayload>('ui-today.nodata'));
+    await line();
+    const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
+    expect(row()).not.toHaveTextContent('rep 3');
+    act(() => {
+      world.api.emitReps(SID, { kind: 'state', state: rep('ui-rep-state') });
+    });
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, rep 3 of 10.');
+    act(() => {
+      world.api.emitReps(SID, { kind: 'state', state: rep('ui-rep-state.no-signal') });
+    });
+    expect(row()).not.toHaveTextContent('rep 3');
+    act(() => {
+      world.api.emitReps(SID, { kind: 'state', state: rep('ui-rep-state') });
+    });
+    expect(row()).toHaveTextContent('rep 3 of 10');
+    act(() => {
+      world.api.emitReps(SID, { kind: 'lost' });
+    });
+    expect(row()).not.toHaveTextContent('rep 3');
+  });
+
+  it('unsubscribes on unmount and does not subscribe without a session in progress', async () => {
+    const world = realSetup(example<TodayViewPayload>('ui-today.nodata'));
+    await line();
+    expect(world.api.repsListenerCount(SID)).toBe(1);
+    world.unmount();
+    expect(world.api.repsListenerCount(SID)).toBe(0);
+    const other = realSetup(example<TodayViewPayload>('ui-today'));
+    await screen.findAllByRole('heading', { level: 1, name: 'Amber' });
+    expect(other.api.calls).not.toContain('reps.subscribe');
   });
 });

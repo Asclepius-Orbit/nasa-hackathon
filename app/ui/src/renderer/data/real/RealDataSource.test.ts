@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { BaselineView, FirstDayResult, HistoryView, SessionView, StripView, TodayView } from '../../../shared/api';
+import type { BaselineView, FirstDayResult, HistoryView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
 import { example } from '../../test/contract-examples';
 import { FakeAsclepiusApi } from '../../test/fake-api';
-import type { DataSource } from '../DataSource';
+import type { RepsUpdate } from '../types';
 import { RealDataSource } from './RealDataSource';
 
 let api: FakeAsclepiusApi;
 let data: RealDataSource;
 beforeEach(() => {
   api = new FakeAsclepiusApi();
-  data = new RealDataSource(api.views);
+  data = new RealDataSource(api.views, api.reps);
 });
 
 describe('getStrip', () => {
@@ -264,14 +264,74 @@ describe('what #61 to #63 still own', () => {
     await data.stopSessionForPain().catch(() => undefined);
     expect(api.calls).toEqual([]);
   });
+});
 
-  it('never emits reps: the backend has no live rep signal yet, and a simulated one must not reach the crew', () => {
-    const seen: number[] = [];
-    const source: DataSource = data;
-    const stop = source.subscribeReps((state) => seen.push(state.rep));
-    expect(seen).toEqual([]);
-    expect(() => {
-      stop();
-    }).not.toThrow();
+describe('subscribeReps', () => {
+  const SID = 'a55e55e0-0000-4000-8000-000000000001';
+  const view = (name = 'ui-rep-state'): RepStateView => example<RepStateView>(name);
+  function listen(): { seen: RepsUpdate[]; stop: () => void } {
+    const seen: RepsUpdate[] = [];
+    const stop = data.subscribeReps(SID, (update) => seen.push(update));
+    return { seen, stop };
+  }
+
+  it('maps the contract examples field by field: null stays null, resting and no_signal are kept', () => {
+    const { seen } = listen();
+    for (const name of ['ui-rep-state', 'ui-rep-state.first-rep', 'ui-rep-state.resting', 'ui-rep-state.no-signal']) {
+      api.emitReps(SID, { kind: 'state', state: view(name) });
+    }
+    expect(seen).toEqual([
+      { kind: 'state', state: { rep: 3, total: 10, phase: 'pulling', barPercent: 42.5, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
+      { kind: 'state', state: { rep: 1, total: 10, phase: 'pulling', barPercent: null, last: null, signal: 'ok' } },
+      { kind: 'state', state: { rep: 3, total: 10, phase: 'resting', barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
+      { kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'no_signal' } },
+    ]);
+  });
+
+  it('keeps an unknown total as null', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'state', state: { ...view(), total: null } });
+    expect(seen[0]).toMatchObject({ state: { total: null } });
+  });
+
+  it('lost keeps the last known counter without phase or bar, flagged lost; the next state replaces it', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'state', state: view() });
+    api.emitReps(SID, { kind: 'lost' });
+    api.emitReps(SID, { kind: 'state', state: view('ui-rep-state.resting') });
+    expect(seen[1]).toEqual({ kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'lost' } });
+    expect(seen[2]).toMatchObject({ state: { phase: 'resting', signal: 'ok' } });
+  });
+
+  it('lost before any state has no invented count: rep 0, no total', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'lost' });
+    expect(seen).toEqual([{ kind: 'state', state: { rep: 0, total: null, phase: null, barPercent: null, last: null, signal: 'lost' } }]);
+  });
+
+  it('end delivers the last state and stops listening', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'end', state: view() });
+    expect(seen).toHaveLength(1);
+    expect(api.repsListenerCount(SID)).toBe(0);
+  });
+
+  it.each([
+    ['no_reps', 'none'],
+    ['not_found', 'none'],
+    ['unavailable', 'unavailable'],
+    ['locked', 'locked'],
+  ] as const)('error %s becomes %s and stops listening', (code, kind) => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'error', code });
+    expect(seen).toEqual([{ kind }]);
+    expect(api.repsListenerCount(SID)).toBe(0);
+  });
+
+  it('subscribes for the given session and the returned function unsubscribes', () => {
+    const { stop } = listen();
+    expect(api.repsListenerCount(SID)).toBe(1);
+    stop();
+    expect(api.repsListenerCount(SID)).toBe(0);
   });
 });

@@ -202,15 +202,30 @@ export interface SessionData {
   plannedAt: string | null;
 }
 
+/**
+ * The live repetition counter, a thin mapping of the contract's `RepStateView`. `signal` is `ok` or `no_signal` as the
+ * backend reports it, or `lost` when the stream to the backend dropped and main is retrying: then the other fields are
+ * the last known values, not live.
+ */
 export interface RepState {
+  /** Repetitions completed plus the current one; 0 when none has started. */
   rep: number;
-  total: number;
-  phase: 'pulling' | 'letting_up';
-  /** Progress of the current movement, 0-100. */
-  barPercent: number;
+  /** `null` when the planned total is unknown. */
+  total: number | null;
+  /** `null` when the backend gives no phase (no signal, lost). */
+  phase: 'pulling' | 'letting_up' | 'resting' | null;
+  /** Progress of the current movement, 0-100; `null` when unknown (first rep, resting, no signal). Never a default 0. */
+  barPercent: number | null;
   /** Last completed rep, if any. */
   last: { rep: number; seconds: number } | null;
+  signal: 'ok' | 'no_signal' | 'lost';
 }
+
+/**
+ * What `DataSource.subscribeReps` delivers: a counter state, or why there is none. `none`: the protocol has no reps or
+ * the session is unknown; `unavailable`: the live count cannot be had; `locked`: nobody is signed in (re-check the session).
+ */
+export type RepsUpdate = { kind: 'state'; state: RepState } | { kind: 'none' } | { kind: 'unavailable' } | { kind: 'locked' };
 
 export interface ContactEntry {
   atGmt: string;

@@ -9,6 +9,7 @@ import type {
   HoustonData,
   OswestryData,
   ReportFormData,
+  RepsUpdate,
   RepState,
   SessionData,
   StoppedData,
@@ -36,10 +37,10 @@ export interface MockDataSourceOptions {
 export class MockDataSource implements DataSource {
   private readonly now: () => Date;
   private readonly scheduler: Scheduler;
-  private readonly listeners = new Set<(state: RepState) => void>();
+  private readonly listeners = new Set<(update: RepsUpdate) => void>();
   private stopTimer: (() => void) | null = null;
   private tick = 0;
-  private reps: RepState = { rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 } };
+  private reps: RepState = { rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' };
   private stoppedAtRep: number | null = null;
   private contacts: ContactEntry[] = [];
 
@@ -147,9 +148,9 @@ export class MockDataSource implements DataSource {
     return Promise.resolve(entry);
   }
 
-  subscribeReps(cb: (state: RepState) => void): () => void {
+  subscribeReps(_sessionId: string, cb: (update: RepsUpdate) => void): () => void {
     this.listeners.add(cb);
-    cb(this.reps);
+    cb({ kind: 'state', state: this.reps });
     this.stopTimer ??= this.scheduler.every(REP_TICK_MS, () => {
       this.advance();
     });
@@ -167,7 +168,7 @@ export class MockDataSource implements DataSource {
     this.tick = (this.tick + 1) % CYCLE_TICKS;
     const pulling = this.tick < CYCLE_TICKS / 2;
     let { rep, last } = this.reps;
-    if (this.tick === 0 && rep < this.reps.total) {
+    if (this.tick === 0 && this.reps.total !== null && rep < this.reps.total) {
       last = { rep, seconds: 2.4 };
       rep += 1;
     }
@@ -177,9 +178,10 @@ export class MockDataSource implements DataSource {
       phase: pulling ? 'pulling' : 'letting_up',
       barPercent: pulling ? (this.tick + 1) * 20 : (CYCLE_TICKS - this.tick) * 20,
       last,
+      signal: 'ok',
     };
     this.listeners.forEach((listener) => {
-      listener(this.reps);
+      listener({ kind: 'state', state: this.reps });
     });
   }
 }

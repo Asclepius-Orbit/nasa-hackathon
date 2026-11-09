@@ -1,6 +1,6 @@
 /** Pure mapping from the contract view payloads (snake_case) to the view-models the screens read. Codes and nulls pass through unchanged. */
-import type { BaselineView, FirstDayResult, HistoryView, SessionView, StripView, TodayView } from '../../../shared/api';
-import type { BaselineData, FirstDayData, HistoryData, SessionData, StripData, TodayData } from '../types';
+import type { BaselineView, FirstDayResult, HistoryView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
+import type { BaselineData, FirstDayData, HistoryData, RepState, SessionData, StripData, TodayData } from '../types';
 
 const PERCENT = 100;
 
@@ -109,4 +109,21 @@ export function toSession(view: SessionView): SessionData {
     stretchedCm: view.stretched_cm,
     plannedAt: view.planned_at,
   };
+}
+
+/** The live counter as the contract gives it: nulls stay null (no total, no phase, no bar on the first rep). */
+export function toRepState(view: RepStateView): RepState {
+  return {
+    rep: view.rep,
+    total: view.total,
+    phase: view.phase,
+    barPercent: view.progress_pct,
+    last: view.last === null ? null : { rep: view.last.rep, seconds: view.last.duration_s },
+    signal: view.signal,
+  };
+}
+
+/** The last known counter when the stream drops: no phase and no bar (they would be stale), flagged `lost`. Before any state, rep 0 and no total: nothing is invented. */
+export function toLostRepState(previous: RepState | null): RepState {
+  return { rep: previous?.rep ?? 0, total: previous?.total ?? null, phase: null, barPercent: null, last: previous?.last ?? null, signal: 'lost' };
 }

@@ -54,13 +54,13 @@ it('says so when the checklist cannot be loaded', async () => {
 it('shows the backend checklist, and nothing under it when there is nothing left to do', async () => {
   const api = new FakeAsclepiusApi();
   api.viewData.firstDay = { ...example<FirstDayResult>('ui-first-day'), todo: [], crewFirstName: 'Marc' };
-  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views), route: '/first-day' });
+  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps), route: '/first-day' });
   expect(await screen.findByRole('heading', { level: 1, name: 'Welcome, Marc' })).toBeInTheDocument();
   expect(screen.queryAllByRole('listitem')).toHaveLength(0);
 });
 
 it('says there is no connection to the monitor when the backend is down', async () => {
   const api = new FakeAsclepiusApi();
-  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views), route: '/first-day' });
+  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps), route: '/first-day' });
   expect(await screen.findByTestId('no-monitor')).toBeInTheDocument();
 });

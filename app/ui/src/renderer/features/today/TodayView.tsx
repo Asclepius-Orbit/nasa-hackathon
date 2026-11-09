@@ -29,17 +29,20 @@ import { TodoRows } from './TodoRows';
 const selectToday = (d: DataSource): ReturnType<DataSource['getToday']> => d.getToday();
 const selectCatalog = (d: DataSource): ReturnType<DataSource['getCatalog']> => d.getCatalog();
 
-/** Live rep of the running session, `null` until the data source has reported one. */
-function useLiveRep(active: boolean): number | null {
+/**
+ * Live rep of the running session, `null` until the data source reports one and whenever it is not live (no signal,
+ * lost, no counter): then the verdict falls back to the line without a count. Unsubscribes on unmount.
+ */
+function useLiveRep(sessionId: string | null): number | null {
   const source = useData();
   const [rep, setRep] = useState<number | null>(null);
   useEffect(() => {
-    if (!active) return undefined;
-    return source.subscribeReps((state) => {
-      setRep(state.rep);
+    if (sessionId === null) return undefined;
+    return source.subscribeReps(sessionId, (update) => {
+      setRep(update.kind === 'state' && update.state.signal === 'ok' && update.state.rep > 0 ? update.state.rep : null);
     });
-  }, [source, active]);
-  return rep;
+  }, [source, sessionId]);
+  return sessionId === null ? null : rep;
 }
 
 function PlanRow({ item, extra }: { item: PlanText; extra: string | null }): React.JSX.Element {
@@ -192,7 +195,7 @@ function measuredNote(today: TodayData, now: Date): string | null {
 /** Today: the spine figure, the verdict with its plan, why, and what else is due. */
 export function TodayView(): React.JSX.Element {
   const { data, error } = useLoad(selectToday, { refreshMs: REFRESH_MS });
-  const liveRep = useLiveRep(data?.sessionInProgress != null);
+  const liveRep = useLiveRep(data?.sessionInProgress?.sessionId ?? null);
   const now = useNow();
   return (
     <section aria-labelledby="today-title" data-testid="today-view">

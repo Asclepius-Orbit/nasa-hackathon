@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
+import { useSessionRecheck } from '../../components/layout/NoMonitor';
 import { Panel } from '../../components/ui/Panel';
 import { useData } from '../../data/DataContext';
-import type { RepState, SessionData } from '../../data/types';
+import type { RepsUpdate, SessionData } from '../../data/types';
 import { checkDetail, fitItemText, streamLabel } from '../../strings/codes';
 import { session as sessionCopy, stages } from '../../strings/session';
 import { gmtClock } from '../today/gmt';
@@ -93,40 +94,67 @@ export function RepsStage({ session }: { session: SessionData }): React.JSX.Elem
       </Panel>
     );
   }
-  return <CountedReps />;
+  return <CountedReps sessionId={session.sessionId} />;
 }
 
-function CountedReps(): React.JSX.Element {
+function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
   const copy = stages.reps;
   const data = useData();
-  const [state, setState] = useState<RepState | null>(null);
-  useEffect(() => data.subscribeReps(setState), [data]);
-  // No state means no live signal (real mode until issue #61): say so instead of drawing a counter.
-  if (state === null) {
+  const [update, setUpdate] = useState<RepsUpdate | null>(null);
+  useEffect(() => data.subscribeReps(sessionId, setUpdate), [data, sessionId]);
+  useSessionRecheck(update?.kind === 'locked' ? new Error('locked') : null);
+  if (update?.kind === 'unavailable') {
     return (
-      <Panel className={styles.stage} aria-live="polite">
-        <p>{copy.noSignal}</p>
+      <Panel className={styles.stage} role="status" aria-live="polite">
+        <p className={styles.repAlert}>{copy.unavailable}</p>
+        <p className={styles.hint}>{copy.unavailableHint}</p>
       </Panel>
     );
   }
+  // No state yet, no reps, unknown session or locked: no counter is drawn, never a made-up one.
+  if (update?.kind !== 'state') {
+    return (
+      <Panel className={styles.stage} aria-live="polite">
+        <p>{copy.noCount}</p>
+      </Panel>
+    );
+  }
+  const { state } = update;
+  const live = state.signal === 'ok';
+  const phaseText = { pulling: copy.pulling, letting_up: copy.lettingUp, resting: copy.resting } as const;
   return (
-    <Panel className={styles.stage} aria-live="polite">
-      <div className={styles.repLine}>
+    <Panel className={styles.stage} aria-live="polite" role={live ? undefined : 'status'}>
+      {!live && (
+        <div className={styles.repAlert}>
+          <p>{state.signal === 'lost' ? copy.lost : copy.noSignal}</p>
+          <p className={styles.hint}>{state.signal === 'lost' ? copy.lostHint : copy.noSignalHint}</p>
+        </div>
+      )}
+      <div className={styles.repLine} data-live={live}>
         <span className={styles.repCount}>
-          {state.rep} <small>{copy.of(state.total)}</small>
+          {state.rep}
+          {state.total !== null && (
+            <>
+              {' '}
+              <small>{copy.of(state.total)}</small>
+            </>
+          )}
         </span>
-        <span className={styles.phase}>{state.phase === 'letting_up' ? copy.lettingUp : copy.pulling}</span>
+        {live && state.phase !== null && <span className={styles.phase}>{phaseText[state.phase]}</span>}
+        {!live && <span className={styles.stale}>{copy.stale}</span>}
       </div>
-      <div
-        role="progressbar"
-        aria-label={copy.progress}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={state.barPercent}
-        className={styles.bar}
-      >
-        <span style={{ width: `${String(state.barPercent)}%` }} />
-      </div>
+      {live && state.barPercent !== null && (
+        <div
+          role="progressbar"
+          aria-label={copy.progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={state.barPercent}
+          className={styles.bar}
+        >
+          <span style={{ width: `${String(state.barPercent)}%` }} />
+        </div>
+      )}
       <dl className={styles.detect}>
         <dt>{copy.countingBy}</dt>
         <dd>{sessionCopy.countingBy}</dd>

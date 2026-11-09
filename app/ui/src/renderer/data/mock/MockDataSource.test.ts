@@ -182,13 +182,15 @@ describe('houston and stop', () => {
 describe('subscribeReps', () => {
   function collect(): { states: RepState[]; stop: () => void } {
     const states: RepState[] = [];
-    const stop = data.subscribeReps((s) => states.push(s));
+    const stop = data.subscribeReps('mock-session', (u) => {
+      if (u.kind === 'state') states.push(u.state);
+    });
     return { states, stop };
   }
 
   it('starts at rep 4 of 10, pulling down, last rep 3', () => {
     const { states } = collect();
-    expect(states).toEqual([{ rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 } }]);
+    expect(states).toEqual([{ rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' }]);
   });
 
   it('moves the bar every 450 ms and switches phase at half a cycle', () => {

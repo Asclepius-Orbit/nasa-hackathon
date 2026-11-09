@@ -71,7 +71,7 @@ describe('HoustonView', () => {
 describe('HoustonView with the backend (real mode)', () => {
   it('says it is not available: no summary is invented', async () => {
     const api = new FakeAsclepiusApi();
-    renderInWorld(<HoustonView />, { api, data: new RealDataSource(api.views) });
+    renderInWorld(<HoustonView />, { api, data: new RealDataSource(api.views, api.reps) });
     expect(await screen.findByTestId('not-built')).toBeInTheDocument();
   expect(screen.getByText('Not available yet.')).toBeInTheDocument();
   expect(screen.queryByText(/did not answer/)).not.toBeInTheDocument();

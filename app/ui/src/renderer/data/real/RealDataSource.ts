@@ -8,6 +8,8 @@ import type {
   HistoryData,
   HoustonData,
   OswestryData,
+  RepsUpdate,
+  RepState,
   ReportFormData,
   SessionData,
   StoppedData,
@@ -15,7 +17,7 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { toBaseline, toFirstDay, toHistory, toSession, toStrip, toToday } from './map-views';
+import { toBaseline, toFirstDay, toHistory, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
 
 /** Rejection of a view whose backend does not exist yet: `not_built`, so the screen says so instead of "no connection". */
 const notBuilt = (): Promise<never> => Promise.reject(new Error('not_built'));
@@ -27,12 +29,15 @@ const unavailable = (): Promise<never> => Promise.reject(new Error('unavailable'
  * (`locked`, `not_found`, `unavailable`): nothing is cached and nothing is invented.
  *
  * The Stop screen, Oswestry, the Houston summary, stop for pain and the call log are NOT on the backend yet (issues
- * #61 to #63). The three views reject `not_built` and the two actions `unavailable`, rather than answer with the mock: no invented health data or false "recorded"
+ * #62 and #63). The three views reject `not_built` and the two actions `unavailable`, rather than answer with the mock: no invented health data or false "recorded"
  * in real mode. Each of those issues replaces its methods here. The report form and the symptom catalogue are static
  * choices of the UI, not crew data, so they are served from `form-data`.
  */
 export class RealDataSource implements DataSource {
-  constructor(private readonly views: AsclepiusApi['views']) {}
+  constructor(
+    private readonly views: AsclepiusApi['views'],
+    private readonly reps: AsclepiusApi['reps'],
+  ) {}
 
   async getStrip(): Promise<StripData> {
     return toStrip(await this.views.strip());
@@ -86,11 +91,38 @@ export class RealDataSource implements DataSource {
   }
 
   /**
-   * The backend has no live rep signal yet (issue #61), so this emits nothing: the mock's simulated counter must never
-   * reach the crew in real mode. The screens show "no live rep count" while no state arrives.
+   * The live counter of `sessionId` from the backend stream (`api.reps`), mapped in `map-views`. `lost` keeps the last
+   * known counter flagged as not live; `end` delivers the last state and stops listening; an `error` is final and is
+   * reported as `none` (no reps / unknown session), `unavailable` or `locked`. The mock never stands in here.
    */
-  subscribeReps(): () => void {
-    return () => undefined;
+  subscribeReps(sessionId: string, cb: (update: RepsUpdate) => void): () => void {
+    let last: RepState | null = null;
+    let stopStream: (() => void) | null = null;
+    let done = false as boolean; // widened: a synchronous event can set it before `subscribe` returns
+    const stop = (): void => {
+      done = true;
+      stopStream?.();
+    };
+    stopStream = this.reps.subscribe(sessionId, (event) => {
+      if (done) return;
+      switch (event.kind) {
+        case 'state':
+        case 'end':
+          last = toRepState(event.state);
+          cb({ kind: 'state', state: last });
+          if (event.kind === 'end') stop();
+          return;
+        case 'lost':
+          last = toLostRepState(last);
+          cb({ kind: 'state', state: last });
+          return;
+        case 'error':
+          cb({ kind: event.code === 'unavailable' ? 'unavailable' : event.code === 'locked' ? 'locked' : 'none' });
+          stop();
+      }
+    });
+    if (done) stopStream();
+    return stop;
   }
 
   /** Not recorded anywhere yet: the caller must say so and must not behave as if the stop was saved. */

@@ -1,4 +1,5 @@
-"""Queues the ground summary of the day of an assessment. A day with no assessment queues nothing: its summary is the view's job.
+"""Queues the ground summary of the day of an assessment, or of a day with a red flag whose assessment was skipped (level 'nodata').
+A day with neither queues nothing: its summary is the view's job.
 
 Only the mission day leaves the profile, already computed: the profile itself never reaches the summary builder.
 
@@ -9,7 +10,7 @@ oldest entry of its astronaut it would hold back everything after it, retried fo
 import logging
 import math
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from spine_contracts import validation
@@ -58,12 +59,19 @@ def enqueue_ground_summary(store: Store, assessment: Mapping[str, Any], now: dat
     The summary carries the latest assessment of that day, which is not `assessment` if this one is about an earlier moment.
     A rejected summary writes nothing, whatever was queued stays as it was, and the result is None.
     """
-    astronaut_id = assessment["astronaut_id"]
-    day = instant(assessment["as_of"]).date()
+    return enqueue_ground_day(store, assessment["astronaut_id"], instant(assessment["as_of"]).date(), now)
+
+
+def enqueue_ground_day(store: Store, astronaut_id: str, day: date, now: datetime) -> int | None:
+    """Queues the summary of `day` (UTC) with the latest assessment stored for it, if any: without one the level is 'nodata'.
+
+    For a day that has news but no assessment to announce it (a red flag whose assessment was skipped). Same result as above.
+    """
     start, end = day_span(day, day)
     launch = launch_date_of(store.profile(astronaut_id))
     mission_day = None if launch is None else mission_day_of(launch, day)
-    latest = store.assessments_between(astronaut_id, start, end)[-1]
+    assessments = store.assessments_between(astronaut_id, start, end)
+    latest = assessments[-1] if assessments else None
     reports = store.self_reports_between(astronaut_id, start, end)
     sessions = store.session_rows(astronaut_id, start=start, end=end)
     try:

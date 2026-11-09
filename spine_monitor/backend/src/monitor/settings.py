@@ -67,6 +67,8 @@ class AppSettings(BaseSettings):
     ground_retry_min_s: float = Field(default=1.0, gt=0)
     ground_retry_max_s: float = Field(default=300.0, gt=0)
     ground_tick_s: float = Field(default=1.0, gt=0)
+    # Longest wait for the ground to answer one send; past it the send counts as a failure (code `timeout`) and backs off.
+    ground_send_timeout_s: float = Field(default=30.0, gt=0)
 
     @model_validator(mode="after")
     def _ground_ranges(self) -> Self:

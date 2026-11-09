@@ -67,8 +67,9 @@ def test_the_ground_windows_are_read_from_the_environment(monkeypatch: pytest.Mo
         ({"ground_retry_min_s": 0}, "ground_retry_min_s"),
         ({"ground_retry_min_s": 10, "ground_retry_max_s": 9}, "ground_retry_max_s"),
         ({"ground_tick_s": 0}, "ground_tick_s"),
+        ({"ground_send_timeout_s": 0}, "ground_send_timeout_s"),
     ],
-    ids=["naive_anchor", "period_zero", "up_zero", "up_not_below_period", "retry_min_zero", "retry_max_below_min", "tick_zero"],
+    ids=["naive_anchor", "period_zero", "up_zero", "up_not_below_period", "retry_min_zero", "retry_max_below_min", "tick_zero", "send_timeout_zero"],
 )
 def test_bad_ground_settings_are_refused_at_startup(overrides: dict[str, Any], field: str) -> None:
     with pytest.raises(ValidationError, match=field):

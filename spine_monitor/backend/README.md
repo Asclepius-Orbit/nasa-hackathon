@@ -87,6 +87,7 @@ per entry and no limit of attempts; a restart goes on from SQLite. Settings, als
 | `GROUND_RETRY_MIN_S` | 1 | Delay after the first failure of an entry; it doubles per failure. |
 | `GROUND_RETRY_MAX_S` | 300 | Longest delay; not below the minimum. |
 | `GROUND_TICK_S` | 1 | How often the sender looks for an opened window or an elapsed backoff. |
+| `GROUND_SEND_TIMEOUT_S` | 30 | Longest wait for the ground to answer one send; past it the send fails with code `timeout` and backs off. |
 
 ## TypeScript types for the UI
 `app/ui/src/contracts/v1.ts` is generated from `contracts/schemas/v1`. Run `pnpm run gen:types` in

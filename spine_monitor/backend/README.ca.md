@@ -91,6 +91,7 @@ backoff per entrada i sense límit d'intents; després d'un reinici segueix des 
 | `GROUND_RETRY_MIN_S` | 1 | Espera després de la primera fallada d'una entrada; es dobla a cada fallada. |
 | `GROUND_RETRY_MAX_S` | 300 | Espera màxima; no menor que la mínima. |
 | `GROUND_TICK_S` | 1 | Cada quant l'emissor busca una finestra oberta o un backoff vençut. |
+| `GROUND_SEND_TIMEOUT_S` | 30 | Espera màxima que terra respongui a un enviament; passada, l'enviament falla amb codi `timeout` i s'aplica backoff. |
 
 ## Tipus TypeScript per a la UI
 `app/ui/src/contracts/v1.ts` es genera des de `contracts/schemas/v1`. Executa `pnpm run gen:types` a

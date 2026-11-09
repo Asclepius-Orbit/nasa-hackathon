@@ -89,6 +89,36 @@ def test_a_build_that_fails_leaves_the_outbox_untouched_and_usable(store: Store)
     assert put(store, tag="after", now=at(20)) == 1
 
 
+class FailingCommit:
+    """The connection of the store, except that its next COMMIT fails (disk full, I/O error) without having committed."""
+
+    def __init__(self, db: sqlite3.Connection) -> None:
+        self._db = db
+
+    def execute(self, sql: str, *params: Any) -> sqlite3.Cursor:
+        if sql == "COMMIT":
+            raise sqlite3.OperationalError("disk I/O error")
+        return self._db.execute(sql, *params)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._db, name)
+
+
+def test_a_commit_that_fails_rolls_back_and_leaves_the_connection_usable(store: Store):
+    put(store, tag="old")
+    real = store._db
+    store._db = FailingCommit(real)  # pyright: ignore[reportAttributeAccessIssue] -- test double standing in for the connection
+
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        put(store, tag="lost", now=at(10))
+
+    store._db = real
+    assert not real.in_transaction
+    assert payload(store, key()) == {"revision": 1, "tag": "old"}
+    assert put(store, tag="after", now=at(20)) == 1
+    assert payload(store, key()) == {"revision": 1, "tag": "after"}
+
+
 def test_next_item_is_the_oldest_queued_by_date_then_revision(store: Store):
     put(store, D2)
     put(store, D1)

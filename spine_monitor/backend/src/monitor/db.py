@@ -631,10 +631,12 @@ class Store:
         self._db.execute("BEGIN IMMEDIATE")
         try:
             result = work()
+            self._db.execute("COMMIT")
         except BaseException:
-            self._db.execute("ROLLBACK")
+            # A COMMIT that fails may leave the transaction open: without the rollback the next BEGIN would fail forever.
+            if self._db.in_transaction:
+                self._db.execute("ROLLBACK")
             raise
-        self._db.execute("COMMIT")
         return result
 
     def upsert_ground_summary(self, astronaut_id: str, day: date, mission_day: int | None, build: Callable[[int], dict[str, Any]], now: datetime) -> int:

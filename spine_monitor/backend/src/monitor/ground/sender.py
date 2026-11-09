@@ -17,11 +17,13 @@ from datetime import datetime, timedelta
 
 from monitor.db import GroundOutboxItem, Store
 from monitor.ground.link import GroundWindows, link_state
-from monitor.ground.transport import GroundSendError, GroundTransport
+from monitor.ground.transport import GroundReceipt, GroundSendError, GroundTransport
 
 _log = logging.getLogger(__name__)
 
 UNEXPECTED_ERROR = "unexpected"
+TIMEOUT_ERROR = "timeout"
+BAD_RECEIPT_ERROR = "bad_receipt"
 # Attempts have no limit: 2.0 ** attempts must not overflow a float after days without ground. Any delay reaches its maximum long before.
 _MAX_DOUBLINGS = 64
 
@@ -50,6 +52,7 @@ class GroundSender:
         retry_min_s: float,
         retry_max_s: float,
         tick_s: float,
+        send_timeout_s: float,
         wait: Wait = wake_or_tick,
     ) -> None:
         self._store = store
@@ -59,6 +62,7 @@ class GroundSender:
         self._retry_min_s = retry_min_s
         self._retry_max_s = retry_max_s
         self._tick_s = tick_s
+        self._send_timeout_s = send_timeout_s
         self._wait = wait
         self._wake = asyncio.Event()
 
@@ -91,15 +95,27 @@ class GroundSender:
 
     async def _send(self, item: GroundOutboxItem) -> None:
         try:
-            receipt = await self._transport.send(item.key, item.payload)
+            async with asyncio.timeout(self._send_timeout_s):
+                receipt = await self._transport.send(item.key, item.payload)
         except GroundSendError as exc:
             self._failed(item, exc.code)
+        except TimeoutError:
+            self._failed(item, TIMEOUT_ERROR)
         except Exception as exc:
             _log.error("ground send failed unexpectedly: %s", type(exc).__name__)
             self._failed(item, UNEXPECTED_ERROR)
         else:
+            self._record(item, receipt)
+
+    def _record(self, item: GroundOutboxItem, receipt: GroundReceipt) -> None:
+        try:
             # False: it was updated during the send, so it is still queued and the next turn of `pump` sends the new content.
             self._store.mark_ground_sent(item.key, receipt.received_at, item.payload)
+        except Exception as exc:
+            # The ground took it but its receipt cannot be stored (say, a naive `received_at`): a failure with backoff, not an
+            # exception that repeats every tick. The repetition is idempotent in the port.
+            _log.error("ground receipt could not be recorded: %s", type(exc).__name__)
+            self._failed(item, BAD_RECEIPT_ERROR)
 
     def _failed(self, item: GroundOutboxItem, code: str) -> None:
         delay = retry_delay_s(item.attempts, self._retry_min_s, self._retry_max_s)

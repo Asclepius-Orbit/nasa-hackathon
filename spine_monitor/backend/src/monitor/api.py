@@ -18,6 +18,7 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
 import json
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
@@ -39,7 +40,7 @@ from monitor.views.baseline import build_baseline, build_first_day
 from monitor.views.due import reports_due
 from monitor.views.history import build_history
 from monitor.views.houston import build_houston, build_outbox
-from monitor.views.lumbar import ELONGATION_FEATURE, latest_lumbar_delta
+from monitor.views.lumbar import ELONGATION_FEATURE, instant, latest_lumbar_delta
 from monitor.views.mission import launch_date_of, mission_day_of, mission_for
 from monitor.views.protocol_catalog import protocol_entry, total_reps_for
 from monitor.views.session import build_session_view
@@ -171,8 +172,24 @@ def _conforming(schema: str, view: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
+def _queue_day(queue_day: Callable[[str, date], None], astronaut_id: str, day: date) -> None:
+    """The report is already stored: what the queueing does wrong must not cost it. Only the type is logged, never its text."""
+    try:
+        queue_day(astronaut_id, day)
+    except Exception as exc:
+        logger.error("%s: ground summary of %s not queued: %s", astronaut_id, day, type(exc).__name__)
+
+
 def build_router(
-    store: Store, control: Control, analysis: Analysis, *, odi_interval_days: int, views: ViewSettings, reps: RepStream, clock=lambda: datetime.now(UTC)
+    store: Store,
+    control: Control,
+    analysis: Analysis,
+    *,
+    odi_interval_days: int,
+    views: ViewSettings,
+    reps: RepStream,
+    clock=lambda: datetime.now(UTC),
+    queue_day: Callable[[str, date], None] = lambda astronaut_id, day: None,
 ) -> APIRouter:
     router = APIRouter(prefix="/ui", tags=["ui"])
 
@@ -249,6 +266,9 @@ def build_router(
             return JSONResponse({"report": existing, "assessment": None, "assessment_skipped": "duplicate"}, status_code=200)
         store.put_self_report(report)
         outcome = await analysis.assess(astronaut_id)
+        if report.get("red_flags") and outcome.assessment is None:
+            # Nothing was announced (assess skipped): a red flag must still reach the ground. With an assessment, its listener queued it.
+            _queue_day(queue_day, astronaut_id, instant(report["timestamp"]).date())
         return JSONResponse(
             {"report": report, "assessment": outcome.assessment, "assessment_skipped": outcome.skipped},
             status_code=201,

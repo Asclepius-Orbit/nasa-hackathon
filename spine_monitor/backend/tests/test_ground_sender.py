@@ -95,8 +95,10 @@ def queue(store: Store, day: date = D1, mission_day: int | None = None, astronau
     return store.upsert_ground_summary(astronaut, day, mission_day, lambda rev: build_ground_summary(astronaut, day, mission_day, rev, NOW, None, [], []), NOW)
 
 
-def sender(store: Store, ground: FakeGroundTransport, clock: Clock, windows: GroundWindows | None = UP_NOW, wait: Any = wake_or_tick) -> GroundSender:
-    return GroundSender(store, ground, windows, clock=clock, retry_min_s=1, retry_max_s=300, tick_s=5, wait=wait)
+def sender(
+    store: Store, ground: FakeGroundTransport, clock: Clock, windows: GroundWindows | None = UP_NOW, wait: Any = wake_or_tick, send_timeout_s: float = 30
+) -> GroundSender:
+    return GroundSender(store, ground, windows, clock=clock, retry_min_s=1, retry_max_s=300, tick_s=5, send_timeout_s=send_timeout_s, wait=wait)
 
 
 def item(store: Store, key: GroundKey = K1) -> GroundOutboxItem:
@@ -213,6 +215,42 @@ async def test_an_unexpected_exception_is_a_failure_with_a_code_and_without_its_
     assert found.next_attempt_at == utc_key(clock() + timedelta(seconds=1))
     assert "RuntimeError" in caplog.text
     assert MARKER not in caplog.text
+
+
+async def test_a_send_that_never_answers_times_out_as_a_failure_with_backoff(store, ground, clock):
+    queue(store)
+    ground.before = hanging(asyncio.Event())
+
+    await asyncio.wait_for(sender(store, ground, clock, send_timeout_s=0.05).pump(), 5)
+
+    found = item(store)
+    assert (found.state, found.attempts, found.last_error) == ("queued", 1, "timeout")
+    assert found.next_attempt_at == utc_key(clock() + timedelta(seconds=1))
+
+
+async def test_a_receipt_that_cannot_be_recorded_is_a_failure_and_the_repeat_is_idempotent(store, ground, clock):
+    queue(store)
+
+    class NaiveReceipt(Spy):
+        async def send(self, key: GroundKey, payload: dict[str, Any]) -> GroundReceipt:
+            receipt = await super().send(key, payload)
+            return GroundReceipt(received_at=receipt.received_at.replace(tzinfo=None))
+
+    naive = NaiveReceipt(clock)
+    loop = sender(store, naive, clock)
+
+    await loop.pump()
+
+    found = item(store)
+    assert (found.state, found.attempts, found.last_error) == ("queued", 1, "bad_receipt")
+    assert found.next_attempt_at == utc_key(clock() + timedelta(seconds=1))
+    assert len(naive.calls) == 1, "retried before its time"
+
+    clock.advance(seconds=1)
+    await loop.pump()
+
+    assert (item(store).attempts, len(naive.calls)) == (2, 2)
+    assert [d.key for d in naive.deliveries] == [K1], "the repeat reached the ground as a repetition, not as a second delivery"
 
 
 async def test_a_failing_entry_does_not_hold_another_astronaut(store, ground, clock):

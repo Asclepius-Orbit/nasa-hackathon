@@ -91,6 +91,7 @@ backoff por entrada y sin límite de intentos; tras un reinicio sigue desde SQLi
 | `GROUND_RETRY_MIN_S` | 1 | Espera tras el primer fallo de una entrada; se dobla en cada fallo. |
 | `GROUND_RETRY_MAX_S` | 300 | Espera máxima; no menor que la mínima. |
 | `GROUND_TICK_S` | 1 | Cada cuánto el emisor busca una ventana abierta o un backoff vencido. |
+| `GROUND_SEND_TIMEOUT_S` | 30 | Espera máxima a que tierra responda a un envío; pasada, el envío falla con código `timeout` y se aplica backoff. |
 
 ## Tipos TypeScript para la UI
 `app/ui/src/contracts/v1.ts` se genera desde `contracts/schemas/v1`. Ejecuta `pnpm run gen:types` en

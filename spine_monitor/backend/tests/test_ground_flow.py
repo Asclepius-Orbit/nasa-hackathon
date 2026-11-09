@@ -93,6 +93,18 @@ async def test_the_summary_carries_the_red_flags_reported_that_day(harness):
     assert response.status_code == 201, response.text
     (item,) = outbox(harness)
     assert item.payload["red_flags"] == ["leg_weakness"]
+    assert item.key.revision == 1, "one assessment, one update: no extra revision from the report"
+
+
+async def test_a_red_flag_without_an_assessment_queues_the_day_as_nodata_with_the_red_flag(harness):
+    response = await harness.http.post(f"/ui/crew/{harness.astronaut_id}/self-reports", json={"kind": "red_flag", "red_flags": ["leg_weakness"]})
+
+    assert response.status_code == 201, response.text
+    assert response.json()["assessment"] is None
+    (item,) = outbox(harness)
+    assert (item.key, item.state) == (GroundKey(harness.astronaut_id, DAY, 1), "queued")
+    assert (item.payload["level"], item.payload["assessment_id"], item.payload["red_flags"]) == ("nodata", None, ["leg_weakness"])
+    assert validation.errors("app/ground-summary", item.payload) == []
 
 
 async def test_a_day_without_an_assessment_queues_nothing(harness):

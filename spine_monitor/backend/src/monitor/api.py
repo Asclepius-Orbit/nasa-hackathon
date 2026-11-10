@@ -336,6 +336,20 @@ def build_router(
     async def stop_session(session_id: str, body: StopBody) -> dict[str, Any]:
         return {"command": await control.stop_session(session_id, body.reason)}
 
+    @router.post("/sessions/{session_id}/reprocess", status_code=202)
+    async def reprocess_session(session_id: str) -> dict[str, Any]:
+        """Asks again for the analysis of a `processing_failed` session; it runs in the background (`control.spawn`)."""
+        row = store.session(session_id)
+        if row is None:
+            raise Problem(404, f"unknown session {session_id}", type_="not_found")
+        if row.state != "processing_failed":
+            raise Problem(409, f"session {session_id} is {row.state}: only a processing_failed session can be reprocessed", type_="conflict")
+        if not store.transition_session(session_id, ("processing_failed",), "ended"):
+            raise Problem(409, f"session {session_id} changed state meanwhile", type_="conflict")
+        store.reset_processing_attempts(session_id)
+        control.spawn(analysis.process_session(session_id))
+        return {"session": session_id, "state": "ended"}
+
     @router.post("/sessions/{session_id}/events", status_code=202)
     async def mark_event(session_id: str, body: EventBody) -> dict[str, Any]:
         return {"command": await control.mark_event(session_id, body.event_type, body.rep_index, body.note)}

@@ -3,7 +3,7 @@
 `Analysis.process_session` decides what is transient and records each such failure with its next retry time
 (`backoff_s`); this loop only picks the due ones from SQLite and runs them again, so a restart goes on from there.
 A session whose retries reached `max_attempts`, or that failed for a final reason (4xx, contract, no chunks),
-stays `processing_failed`. Startup recovery of interrupted sessions is `Analysis.recover_interrupted`, not this loop.
+stays `processing_failed`. Startup recovery of interrupted sessions is `Analysis.reset_interrupted` and `process_pending`, not this loop.
 
 Concurrency: one task on the event loop. A session is moved `processing_failed -> ended` with a compare-and-set
 before it is processed, so a reprocess that races with it runs once. An unexpected error in one session is logged

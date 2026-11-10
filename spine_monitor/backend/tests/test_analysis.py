@@ -356,7 +356,9 @@ async def test_recovery_reprocesses_interrupted_and_pending_sessions(store, engi
     pending = ended_session(store, session_id="00000000-0000-4000-8000-0000000000aa")
     failed = ended_session(store, session_id="00000000-0000-4000-8000-0000000000bb", state="processing_failed")
 
-    recovered = await analysis.recover_interrupted()
+    assert analysis.reset_interrupted() == [interrupted]
+    assert store.session(interrupted).state == "ended"
+    recovered = await analysis.process_pending()
 
     assert sorted(recovered) == sorted([interrupted, pending])
     assert [store.session(s).state for s in (interrupted, pending, failed)] == ["processed", "processed", "processing_failed"]

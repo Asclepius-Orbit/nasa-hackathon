@@ -14,8 +14,8 @@ Every assessment is stored at one place, whatever triggered it; `on_assessment` 
 
 A /features failure is final (state `processing_failed`, no retry) unless it is transient: the engine unreachable or
 answering 5xx. Then it is also recorded in `processing_attempts` with its next retry time (`backoff_s`), which
-`ProcessingRetrier` picks up; a success clears it. On startup `recover_interrupted` puts back the sessions a dead
-process left `processing` and processes every `ended` one.
+`ProcessingRetrier` picks up; a success clears it. On startup `reset_interrupted` puts back the sessions a dead
+process left `processing` (before the bus runs) and `process_pending` processes every `ended` one.
 """
 
 import asyncio
@@ -73,11 +73,15 @@ class Analysis:
         self._retry_max_s = retry_max_s
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
-    async def recover_interrupted(self) -> list[str]:
-        """Startup only, before anything else processes: `processing` sessions were cut by a dead process, so back to
-        `ended`; then every `ended` session is processed, one after another. Returns the ids it processed."""
-        for row in self._store.sessions_in_states(("processing",)):
-            self._store.transition_session(row.payload["session_id"], ("processing",), "ended")
+    def reset_interrupted(self) -> list[str]:
+        """Startup only, sync and before the bus starts: `processing` sessions were cut by a dead process, so back to
+        `ended`. Later it would also reset an analysis that is running. Returns the ids it reset."""
+        ids = [row.payload["session_id"] for row in self._store.sessions_in_states(("processing",))]
+        return [i for i in ids if self._store.transition_session(i, ("processing",), "ended")]
+
+    async def process_pending(self) -> list[str]:
+        """Startup recovery: processes every `ended` session, one after another (each waits for the engine).
+        Returns the ids it went through; one already taken by another task is skipped by `process_session`."""
         ids = [row.payload["session_id"] for row in self._store.sessions_in_states(("ended",))]
         for session_id in ids:
             await self.process_session(session_id)

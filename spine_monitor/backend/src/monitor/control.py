@@ -84,7 +84,8 @@ class Control:
                 _log.exception("on_session_closed failed for session %s", session_id)
         return True
 
-    def _spawn(self, coro: Awaitable[Any]) -> None:
+    def spawn(self, coro: Awaitable[Any]) -> None:
+        """Runs `coro` in the background: `idle` waits for it and a failure is logged, not lost."""
         task = asyncio.ensure_future(coro)
         self._tasks.add(task)
         task.add_done_callback(self._done)
@@ -292,7 +293,7 @@ class Control:
         session = {**row.payload, "ended_at": ended_at, "end_reason": reason}
         self._store.update_session(session_id, session)
         if self._close_session(session_id, ("starting", "running"), "ended"):
-            self._spawn(self._on_session_ended(session_id))
+            self.spawn(self._on_session_ended(session_id))
 
     def _add_event(self, command: dict[str, Any]) -> None:
         row = self._store.session(command["session_id"])

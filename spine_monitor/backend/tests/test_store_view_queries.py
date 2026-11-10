@@ -2,11 +2,11 @@
 
 import copy
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from monitor.db import Store
+from monitor.db import ProcessingAttempt, Store
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
 
@@ -109,3 +109,99 @@ def test_latest_feature_set_with_is_none_without_a_set_for_the_feature(store):
 
     assert store.latest_feature_set_with("AST-01", ELONGATION) is None
     assert store.latest_feature_set_with("AST-09", "emg.x") is None
+
+
+# --- restart recovery queries (#59) ---------------------------------------------------------------
+
+
+def command(n: int, issued_at: str) -> dict:
+    payload = copy.deepcopy(example("telemetry/command.stop-session"))
+    payload.update(command_id=f"7a1c0e52-5b3d-4c8f-8e21-9d4b6a3c2f{n:02d}", issued_at=issued_at)
+    return payload
+
+
+def test_sessions_in_states_spans_astronauts_ordered_by_start(store):
+    store.insert_session(session(3, "2026-11-13T10:00:00Z", astronaut="AST-02"), "running")
+    store.insert_session(session(1, "2026-11-10T10:00:00Z"), "starting")
+    store.insert_session(session(2, "2026-11-12T10:00:00Z"), "ended")
+    store.insert_session(session(4, "2026-11-11T10:00:00Z"), "running")
+
+    rows = store.sessions_in_states(["running", "starting"])
+
+    assert [row.payload["session_id"][-2:] for row in rows] == ["01", "04", "03"]
+    assert store.sessions_in_states([]) == []
+
+
+def test_sessions_in_states_breaks_ties_by_session_id(store):
+    store.insert_session(session(2, "2026-11-10T10:00:00Z"), "running")
+    store.insert_session(session(1, "2026-11-10T10:00:00Z"), "running")
+
+    assert [row.payload["session_id"][-2:] for row in store.sessions_in_states(["running"])] == ["01", "02"]
+
+
+def test_commands_in_state_returns_acks_ordered_by_issue_time(store):
+    store.insert_command(command(2, "2026-11-10T10:05:00Z"), "sent")
+    store.insert_command(command(1, "2026-11-10T10:00:00Z"), "sent")
+    store.insert_command(command(3, "2026-11-10T10:10:00Z"), "completed")
+    ack = copy.deepcopy(example("telemetry/command-ack.accepted")) | {"command_id": command(1, "2026-11-10T10:00:00Z")["command_id"]}
+    store.add_ack(ack)
+
+    rows = store.commands_in_state("sent")
+
+    assert [row.payload["command_id"][-2:] for row in rows] == ["01", "02"]
+    assert rows[0].state == "sent"
+    assert rows[0].acks == [ack]
+    assert rows[1].acks == []
+    assert rows[0] == store.command(rows[0].payload["command_id"])
+    assert store.commands_in_state("timeout") == []
+
+
+def test_commands_in_state_breaks_ties_by_command_id(store):
+    store.insert_command(command(2, "2026-11-10T10:00:00Z"), "sent")
+    store.insert_command(command(1, "2026-11-10T10:00:00Z"), "sent")
+
+    assert [row.payload["command_id"][-2:] for row in store.commands_in_state("sent")] == ["01", "02"]
+
+
+NOW = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+
+
+def test_processing_attempt_is_absent_until_a_failure_is_recorded(store):
+    assert store.processing_attempt("s1") is None
+
+
+def test_recording_failures_counts_and_keeps_the_last_error(store):
+    assert store.record_processing_failure("s1", "boom", NOW) == 1
+    assert store.record_processing_failure("s1", "bang", datetime(2026, 11, 10, 14, 0, tzinfo=timezone(timedelta(hours=2)))) == 2
+
+    attempt = store.processing_attempt("s1")
+
+    assert attempt == ProcessingAttempt("s1", 2, "bang", "2026-11-10T12:00:00.000000Z")
+
+
+def test_reset_processing_attempts_forgets_the_session_and_is_idempotent(store):
+    store.record_processing_failure("s1", "boom", NOW)
+    store.record_processing_failure("s2", "boom", NOW)
+
+    store.reset_processing_attempts("s1")
+    store.reset_processing_attempts("unknown")
+
+    assert store.processing_attempt("s1") is None
+    assert store.processing_attempt("s2") is not None
+
+
+def test_due_processing_retries_filters_state_attempts_and_time_ordered_by_next_at(store):
+    states = ("processing_failed", "processing_failed", "processing_failed", "processing_failed", "processed", "processing_failed")
+    for n, state in enumerate(states, start=1):
+        store.insert_session(session(n, f"2026-11-10T0{n}:00:00Z"), state)
+    ids = {n: session(n, "2026-11-10T00:00:00Z")["session_id"] for n in range(1, 7)}
+    store.record_processing_failure(ids[1], "e", NOW + timedelta(minutes=10))  # due, later
+    store.record_processing_failure(ids[2], "e", NOW)  # due exactly now, earliest
+    store.record_processing_failure(ids[3], "e", NOW + timedelta(hours=1))  # not due yet
+    for _ in range(3):
+        store.record_processing_failure(ids[4], "e", NOW)  # attempts exhausted
+    store.record_processing_failure(ids[5], "e", NOW)  # session no longer failed
+    # session 6 is failed but has no attempts row
+
+    assert store.due_processing_retries(NOW + timedelta(minutes=10), max_attempts=3) == [ids[2], ids[1]]
+    assert store.due_processing_retries(NOW - timedelta(seconds=1), max_attempts=3) == []

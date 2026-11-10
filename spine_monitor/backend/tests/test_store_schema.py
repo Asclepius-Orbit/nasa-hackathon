@@ -1,6 +1,7 @@
 """Opening a database: the schema is versioned and an incompatible file is refused with a clear error."""
 
 import sqlite3
+from datetime import UTC, datetime
 
 import pytest
 from monitor.db import STORE_SCHEMA_VERSION, IncompatibleDatabaseError, Store
@@ -64,6 +65,19 @@ def test_the_read_only_store_also_refuses_it(tmp_path):
 
     with pytest.raises(IncompatibleDatabaseError):
         Store(path, read_only=True)
+
+
+def test_a_file_without_the_processing_attempts_table_gets_it_on_open(tmp_path):
+    path = tmp_path / "app.db"
+    Store(path).close()
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TABLE processing_attempts")
+
+    store = Store(path)
+
+    assert store.record_processing_failure("s1", "boom", datetime(2026, 11, 10, tzinfo=UTC)) == 1
+    store.close()
+    assert user_version(path) == STORE_SCHEMA_VERSION
 
 
 def test_in_memory_databases_still_work():

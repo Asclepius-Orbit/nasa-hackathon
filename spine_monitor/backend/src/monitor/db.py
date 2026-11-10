@@ -10,7 +10,7 @@ concurrent writes. WAL so that an external reader (e.g. the read-only API) does 
 
 import json
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -103,6 +103,10 @@ CREATE TABLE IF NOT EXISTS ground_outbox (
     received_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, next_attempt_at TEXT,
     PRIMARY KEY (astronaut_id, date, revision)
 );
+
+CREATE TABLE IF NOT EXISTS processing_attempts (
+    session_id TEXT PRIMARY KEY, attempts INTEGER NOT NULL, last_error TEXT, next_at TEXT
+);
 """
 
 # Stored in PRAGMA user_version. Bump it with any change to SCHEMA that an existing file would not get
@@ -166,6 +170,16 @@ class CommandRow:
     @property
     def type(self) -> str:
         return self.payload["type"]
+
+
+@dataclass(frozen=True)
+class ProcessingAttempt:
+    """Failed analyses of a session. `next_at` is `utc_key` text: when the next retry is due."""
+
+    session_id: str
+    attempts: int
+    last_error: str | None
+    next_at: str | None
 
 
 @dataclass(frozen=True)
@@ -431,6 +445,15 @@ class Store:
         rows = self._db.execute(f"SELECT payload, state, error FROM sessions WHERE {' AND '.join(where)} ORDER BY started_at", args).fetchall()
         return [SessionRow(json.loads(row["payload"]), row["state"], row["error"]) for row in rows]
 
+    def sessions_in_states(self, states: Iterable[str]) -> list[SessionRow]:
+        """Sessions of any astronaut in one of `states`, oldest first."""
+        wanted = list(states)
+        marks = ",".join("?" * len(wanted))
+        rows = self._db.execute(
+            f"SELECT payload, state, error FROM sessions WHERE state IN ({marks}) ORDER BY started_at, session_id", wanted
+        ).fetchall()
+        return [SessionRow(json.loads(row["payload"]), row["state"], row["error"]) for row in rows]
+
     def latest_session(self, astronaut_id: str) -> SessionRow | None:
         """The most recently started session in any state."""
         row = self._db.execute("SELECT payload, state, error FROM sessions WHERE astronaut_id = ? ORDER BY started_at DESC LIMIT 1", (astronaut_id,)).fetchone()
@@ -462,6 +485,11 @@ class Store:
         acks = self._all("SELECT payload FROM command_acks WHERE command_id = ? ORDER BY timestamp", command_id)
         return CommandRow(json.loads(row["payload"]), row["state"], acks)
 
+    def commands_in_state(self, state: str) -> list[CommandRow]:
+        """Commands in `state` (acks included), oldest issued first."""
+        rows = self._db.execute("SELECT command_id FROM commands WHERE state = ? ORDER BY issued_at, command_id", (state,)).fetchall()
+        return [command for row in rows if (command := self.command(row["command_id"])) is not None]
+
     def set_command_state(self, command_id: str, state: str, *, only_if: tuple[str, ...] | None = None) -> bool:
         if only_if is None:
             cursor = self._db.execute("UPDATE commands SET state = ? WHERE command_id = ?", (state, command_id))
@@ -486,6 +514,33 @@ class Store:
             (session_id, command_type),
         ).fetchall()
         return [command for row in rows if (command := self.command(row["command_id"])) is not None]
+
+    # --- processing retries ----------------------------------------------------------------------
+
+    def processing_attempt(self, session_id: str) -> ProcessingAttempt | None:
+        row = self._db.execute("SELECT * FROM processing_attempts WHERE session_id = ?", (session_id,)).fetchone()
+        return None if row is None else ProcessingAttempt(row["session_id"], row["attempts"], row["last_error"], row["next_at"])
+
+    def record_processing_failure(self, session_id: str, error: str, next_at: str | datetime) -> int:
+        """Counts one more failed analysis of the session and schedules the next retry; returns the new count."""
+        row = self._db.execute(
+            "INSERT INTO processing_attempts VALUES (?, 1, ?, ?) ON CONFLICT (session_id) DO UPDATE SET "
+            "attempts = attempts + 1, last_error = excluded.last_error, next_at = excluded.next_at RETURNING attempts",
+            (session_id, error, utc_key(next_at)),
+        ).fetchone()
+        return row["attempts"]
+
+    def reset_processing_attempts(self, session_id: str) -> None:
+        self._db.execute("DELETE FROM processing_attempts WHERE session_id = ?", (session_id,))
+
+    def due_processing_retries(self, now: str | datetime, max_attempts: int) -> list[str]:
+        """Failed sessions with retries left whose `next_at` has come, earliest first."""
+        rows = self._db.execute(
+            "SELECT p.session_id FROM processing_attempts p JOIN sessions s ON s.session_id = p.session_id "
+            "WHERE s.state = 'processing_failed' AND p.attempts < ? AND p.next_at <= ? ORDER BY p.next_at, p.session_id",
+            (max_attempts, utc_key(now)),
+        ).fetchall()
+        return [row["session_id"] for row in rows]
 
     # --- feature sets, baselines, assessments ---------------------------------------------------
 

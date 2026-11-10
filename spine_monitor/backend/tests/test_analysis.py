@@ -3,12 +3,13 @@
 import copy
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 from monitor.analysis import Analysis
-from monitor.db import Store
+from monitor.db import Store, utc_key
 from monitor.engine import EngineError
 
 pytestmark = pytest.mark.anyio
@@ -73,13 +74,24 @@ def analysis(store, engine) -> Analysis:
     return Analysis(store, engine, window_days=14, clock=lambda: NOW)  # pyright: ignore[reportArgumentType]
 
 
-def ended_session(store: Store, *, phase: str = "preflight", chunks: bool = True) -> str:
+def ended_session(store: Store, *, phase: str = "preflight", chunks: bool = True, session_id: str | None = None, state: str = "ended") -> str:
     session = example("domain/session.exercise")
     session["mission_context"]["phase"] = phase
-    store.insert_session(session, "ended")
+    if session_id is not None:
+        session["session_id"] = session_id
+    store.insert_session(session, state)
     if chunks:
-        store.add_chunk(example("telemetry/stream-chunk.emg"))
+        # Another seq per session: chunks are keyed by device, stream, boot and seq.
+        seq = 1842 if session_id is None else 1842 + int(session_id[-4:], 16)
+        store.add_chunk(example("telemetry/stream-chunk.emg") | {"session_id": session["session_id"], "seq": seq})
     return session["session_id"]
+
+
+def unreachable() -> EngineError:
+    """What the client raises when the engine does not answer: no status, caused by the HTTP error."""
+    exc = EngineError("/features: engine unreachable: connection refused")
+    exc.__cause__ = httpx.ConnectError("connection refused")
+    return exc
 
 
 def ready_for_assessment(store: Store) -> None:
@@ -279,3 +291,72 @@ async def test_assessment_of_another_astronaut_is_refused(store, engine, analysi
 
     assert outcome.skipped == "engine_error: assessment of another astronaut"
     assert store.latest_assessment("AST-01") is None
+
+
+# --- retries and restart recovery ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("error", [unreachable(), EngineError("/features: HTTP 503: busy", status=503)], ids=["unreachable", "5xx"])
+async def test_transient_engine_failure_schedules_a_retry(store, engine, analysis, error):
+    engine.fail["features"] = error
+    session_id = ended_session(store)
+
+    await analysis.process_session(session_id)
+
+    assert store.session(session_id).state == "processing_failed"
+    attempt = store.processing_attempt(session_id)
+    assert attempt is not None
+    assert (attempt.attempts, attempt.last_error, attempt.next_at) == (1, str(error), utc_key(NOW + timedelta(seconds=30)))
+
+
+async def test_each_transient_failure_doubles_the_wait(store, engine, analysis):
+    engine.fail["features"] = unreachable()
+    session_id = ended_session(store)
+    await analysis.process_session(session_id)
+    store.transition_session(session_id, ("processing_failed",), "ended")
+
+    await analysis.process_session(session_id)
+
+    attempt = store.processing_attempt(session_id)
+    assert attempt is not None
+    assert (attempt.attempts, attempt.next_at) == (2, utc_key(NOW + timedelta(seconds=60)))
+
+
+@pytest.mark.parametrize(
+    "error",
+    [EngineError("/features: HTTP 422: bad", status=422), EngineError("/features: response violates domain/feature-set"), None],
+    ids=["4xx", "contract", "no-chunks"],
+)
+async def test_final_failure_is_not_retried(store, engine, analysis, error):
+    if error is not None:
+        engine.fail["features"] = error
+    session_id = ended_session(store, chunks=error is not None)
+
+    await analysis.process_session(session_id)
+
+    assert store.session(session_id).state == "processing_failed"
+    assert store.processing_attempt(session_id) is None
+
+
+async def test_success_after_a_failure_clears_the_retries(store, engine, analysis):
+    engine.fail["features"] = unreachable()
+    session_id = ended_session(store)
+    await analysis.process_session(session_id)
+    del engine.fail["features"]
+    store.transition_session(session_id, ("processing_failed",), "ended")
+
+    await analysis.process_session(session_id)
+
+    assert store.session(session_id).state == "processed"
+    assert store.processing_attempt(session_id) is None
+
+
+async def test_recovery_reprocesses_interrupted_and_pending_sessions(store, engine, analysis):
+    interrupted = ended_session(store, state="processing")
+    pending = ended_session(store, session_id="00000000-0000-4000-8000-0000000000aa")
+    failed = ended_session(store, session_id="00000000-0000-4000-8000-0000000000bb", state="processing_failed")
+
+    recovered = await analysis.recover_interrupted()
+
+    assert sorted(recovered) == sorted([interrupted, pending])
+    assert [store.session(s).state for s in (interrupted, pending, failed)] == ["processed", "processed", "processing_failed"]

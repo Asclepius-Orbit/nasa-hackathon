@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-outbox.schema.json",
+  "title": "OutboxView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/outbox: the summaries queued for or sent to the ground station, most recent first. Carries no clinical content, only what identifies each summary and its delivery state. Every unknown is an explicit null.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "ground_link": {
+      "description": "State of the link with the ground station; null when not configured or unknown.",
+      "oneOf": [{ "$ref": "ui-common.schema.json#/$defs/ground_link" }, { "type": "null" }]
+    },
+    "last_contact_at": {
+      "description": "Instant of the last confirmed send to the ground station; null when there is none yet.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+    },
+    "items": {
+      "description": "One entry per summary revision, most recent first (by day, then revision).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "ground_link", "last_contact_at", "items"],
+  "additionalProperties": false,
+  "$defs": {
+    "item": {
+      "title": "OutboxItem",
+      "type": "object",
+      "properties": {
+        "date": {
+          "description": "Day the summary is about (UTC).",
+          "$ref": "../common.schema.json#/$defs/date"
+        },
+        "mission_day": {
+          "description": "Mission day of the date; null without a launch date.",
+          "type": ["integer", "null"]
+        },
+        "revision": { "type": "integer", "minimum": 1 },
+        "state": { "$ref": "ui-common.schema.json#/$defs/outbox_state" },
+        "enqueued_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "received_at": {
+          "description": "When the ground station confirmed receipt; null exactly while the state is queued.",
+          "oneOf": [{ "$ref": "../common.schema.json#/$defs/utc_timestamp" }, { "type": "null" }]
+        },
+        "attempts": {
+          "description": "Times the send was tried.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["date", "mission_day", "revision", "state", "enqueued_at", "received_at", "attempts"],
+      "if": { "properties": { "state": { "const": "sent" } }, "required": ["state"] },
+      "then": { "properties": { "received_at": { "type": "string" } } },
+      "else": { "properties": { "received_at": { "type": "null" } } },
+      "additionalProperties": false
+    }
+  }
+}

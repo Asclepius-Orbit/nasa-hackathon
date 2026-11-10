@@ -42,6 +42,7 @@ its schema. Errors are `app/error` problem details.
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` with a reason |
+| GET | `/ui/sessions/{session_id}/reps` | Server-sent events with the live repetition counter (`ui-openapi.yaml`): `state` at each change, `end` when the session ends |
 | GET | `/ui/commands/{command_id}` | Command state and acks (the UI polls it to move to the next step) |
 | GET | `/health` | Liveness, MQTT connection and message counters |
 
@@ -71,8 +72,22 @@ Run it alone: `uv run uvicorn --factory monitor.readonly:create_read_app --port 
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 Settings are `SPINE_APP_*` variables (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`, `DB_PATH`,
-`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `WEEKLY_ODI_INTERVAL_DAYS`. In
+`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`, `WEEKLY_ODI_INTERVAL_DAYS`. In
 Docker Compose the database lives in the `backend_data` volume (`/data/spine_monitor.db`).
+
+Ground link: every assessment queues the summary of its UTC day in SQLite (`ground_outbox`), and a background task sends it, over a
+simulated transport, while the link is up; `GET /ui/crew/{id}/houston` and `/outbox` show it. A failed send is retried with a backoff
+per entry and no limit of attempts; a restart goes on from SQLite. Settings, also `SPINE_APP_*`; a bad value stops the start:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GROUND_WINDOW_ANCHOR` | unset | Start of a window, RFC 3339 with offset. Unset: no link configured, `ground_link` is null and nothing is sent. |
+| `GROUND_WINDOW_PERIOD_MIN` | 90 | Minutes between the start of two windows. |
+| `GROUND_WINDOW_UP_MIN` | 10 | Minutes the link is up in each window; below the period. |
+| `GROUND_RETRY_MIN_S` | 1 | Delay after the first failure of an entry; it doubles per failure. |
+| `GROUND_RETRY_MAX_S` | 300 | Longest delay; not below the minimum. |
+| `GROUND_TICK_S` | 1 | How often the sender looks for an opened window or an elapsed backoff. |
+| `GROUND_SEND_TIMEOUT_S` | 30 | Longest wait for the ground to answer one send; past it the send fails with code `timeout` and backs off. |
 
 ## TypeScript types for the UI
 `app/ui/src/contracts/v1.ts` is generated from `contracts/schemas/v1`. Run `pnpm run gen:types` in

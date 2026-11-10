@@ -56,11 +56,21 @@ export interface SenderFrameLike {
   readonly parent: unknown;
 }
 
+/** The part of Electron's `WebContents` used to push messages to one window and to notice that it is gone. */
+export interface WebContentsLike {
+  send(channel: string, payload: unknown): void;
+  isDestroyed(): boolean;
+  once(event: 'destroyed', listener: () => void): unknown;
+  removeListener(event: 'destroyed', listener: () => void): unknown;
+}
+
 export interface IpcEventLike {
   readonly senderFrame: SenderFrameLike | null;
+  /** The window that made the call; the only one a pushed answer may go to. */
+  readonly sender: WebContentsLike;
 }
 
 /** Trust only the app's own top-level frame. */
-export function createSenderGuard(policy: AppUrlPolicy): (event: IpcEventLike) => boolean {
+export function createSenderGuard(policy: AppUrlPolicy): (event: Pick<IpcEventLike, 'senderFrame'>) => boolean {
   return ({ senderFrame }) => senderFrame !== null && senderFrame.parent === null && policy.isAppUrl(senderFrame.url);
 }

@@ -54,7 +54,7 @@ describe('screens that show live facts reload by themselves', () => {
 
   it.each(screens)('%s reads its view again after 30 s and when the window regains focus', async (_name, element, call) => {
     const api = feed();
-    renderInWorld(element(), { api, data: new RealDataSource(api.views), initialOffline: true });
+    renderInWorld(element(), { api, data: new RealDataSource(api.views, api.reps), initialOffline: true });
     await tick(0);
     expect(count(api, call)).toBe(1);
     await tick(30_000);
@@ -70,7 +70,7 @@ describe('screens that show live facts reload by themselves', () => {
     '%s shows no connection (and nothing old) after a failed reload',
     async (_name, element, _call, key) => {
       const api = feed();
-      renderInWorld(element(), { api, data: new RealDataSource(api.views) });
+      renderInWorld(element(), { api, data: new RealDataSource(api.views, api.reps) });
       await tick(0);
       api.viewErrors = { [key]: 'unavailable' };
       await tick(30_000);

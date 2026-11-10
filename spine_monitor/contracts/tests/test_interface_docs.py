@@ -151,8 +151,11 @@ UI_VIEWS = {
     "/ui/crew/{astronaut_id}/views/history": "app/ui-history",
     "/ui/crew/{astronaut_id}/views/baseline": "app/ui-baseline",
     "/ui/crew/{astronaut_id}/views/first-day": "app/ui-first-day",
+    "/ui/crew/{astronaut_id}/houston": "app/ui-houston",
+    "/ui/crew/{astronaut_id}/outbox": "app/ui-outbox",
     "/ui/sessions/{session_id}/view": "app/ui-session",
 }
+REPS_PATH = "/ui/sessions/{session_id}/reps"
 
 
 def test_ui_openapi_is_openapi_3_1():
@@ -160,7 +163,7 @@ def test_ui_openapi_is_openapi_3_1():
 
 
 def test_ui_openapi_paths_are_the_view_endpoints():
-    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS)
+    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH}
 
 
 def test_ui_openapi_is_read_only():
@@ -208,7 +211,7 @@ def test_ui_errors_are_problem_details_with_the_app_error_schema():
 def test_ui_only_the_session_view_answers_404():
     """The crew views answer 200 with `nodata`/nulls for an astronaut without data; only an unknown session is a 404."""
     for path, item in load("ui-openapi.yaml")["paths"].items():
-        assert ("404" in item["get"]["responses"]) == (path == "/ui/sessions/{session_id}/view"), path
+        assert ("404" in item["get"]["responses"]) == (path.startswith("/ui/sessions/")), path
 
 
 def test_ui_history_documents_invalid_range_with_the_366_day_cap():
@@ -230,3 +233,22 @@ def test_ui_view_answers_with_its_schema_and_its_examples_validate(path):
     assert examples, f"{view}: no valid example"
     for example in examples:
         assert validation.errors(view, json.loads(example.read_text(encoding="utf-8"))) == [], example.name
+
+
+def test_ui_reps_stream_is_sse_of_rep_state_views():
+    document = load("ui-openapi.yaml")
+    item = document["paths"][REPS_PATH]["get"]
+    ok = item["responses"]["200"]
+    assert list(ok["content"]) == ["text/event-stream"]
+    assert ok["content"]["text/event-stream"]["schema"] == {"type": "string"}
+    text = ok["description"]
+    for word in ("event: state", "event: end", "data:", "RepStateView", "schemas/v1/app/ui-rep-state.schema.json"):
+        assert word in text, word
+    assert {"404", "409", "422"} <= set(item["responses"])
+    assert "no_reps" in document["components"]["responses"]["NoReps"]["description"]
+    assert "no_reps" in json.loads((EXAMPLES_DIR.parent.parent / "schemas/v1/app/error.schema.json").read_text(encoding="utf-8"))["properties"]["type"]["enum"]
+
+
+def test_ui_rep_state_examples_validate():
+    for example in sorted((EXAMPLES_DIR / "app").glob("ui-rep-state*.json")):
+        assert validation.errors("app/ui-rep-state", json.loads(example.read_text(encoding="utf-8"))) == [], example.name

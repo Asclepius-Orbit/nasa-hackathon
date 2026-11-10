@@ -6,7 +6,7 @@ import type {
   HoustonData,
   OswestryData,
   ReportFormData,
-  RepState,
+  RepsUpdate,
   SessionData,
   StoppedData,
   StripData,
@@ -31,10 +31,17 @@ export interface DataSource {
   getOswestry(): Promise<OswestryData>;
   getHouston(): Promise<HoustonData>;
   getCatalog(): Promise<SymptomCatalog>;
-  /** Live rep counter. Calls `cb` at once with the current state, then on every change; returns unsubscribe. */
-  subscribeReps(cb: (state: RepState) => void): () => void;
+  /**
+   * Live rep counter of session `sessionId` (the caller already has it from `getSession` or Today). Calls `cb` with each
+   * update; returns unsubscribe. The mock ignores the id; the real source never answers with simulated data.
+   */
+  subscribeReps(sessionId: string, cb: (update: RepsUpdate) => void): () => void;
   /** Records that the session was stopped for pain at the current rep (shows in the Houston summary). */
   stopSessionForPain(): Promise<void>;
+  /** True when `sendUrgentReport` really records and delivers. The real source cannot yet (#63), so the Urgent dialog must not promise anything. */
+  readonly sendsUrgentReports: boolean;
+  /** Sends the urgent symptom report. Rejects when it was not recorded: the caller must then say so and never show it as queued or sent. */
+  sendUrgentReport(codes: readonly string[]): Promise<void>;
   /** Logs a call to the crew medical officer (shows in the Stop screen and the Houston summary). */
   logCrewMedicalOfficerCall(): Promise<ContactEntry>;
 }

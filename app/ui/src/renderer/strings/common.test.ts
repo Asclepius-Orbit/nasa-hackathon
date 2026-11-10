@@ -8,12 +8,12 @@ it('pluralises tries', () => {
 });
 it('formats minutes and last contact', () => {
   expect(minutes(12)).toBe('12 min');
-  expect(banner.lastContact(4)).toBe('Last contact 4 min ago.');
+  expect(banner.lastContact(4)).toBe('Last contact 4 min ago (simulated link).');
 });
 it('describes the ground link, never hiding that it is down', () => {
-  expect(groundLinkValue({ state: 'down', backInMin: 12 })).toBe('Down, back in 12 min');
-  expect(groundLinkValue({ state: 'down', backInMin: null })).toBe('Down');
-  expect(groundLinkValue({ state: 'up' })).toBe('Up');
+  expect(groundLinkValue({ state: 'down', backInMin: 12 })).toBe('Down, back in 12 min (simulated)');
+  expect(groundLinkValue({ state: 'down', backInMin: null })).toBe('Down (simulated)');
+  expect(groundLinkValue({ state: 'up' })).toBe('Up (simulated)');
   expect(groundLinkValue(null)).toBe('Not known');
 });
 it('describes the harness battery and its weak channels', () => {

@@ -43,6 +43,7 @@ contra su schema. Los errores son problem details de `app/error`.
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` con un motivo |
+| GET | `/ui/sessions/{session_id}/reps` | Server-sent events con el contador de repeticiones en vivo (`ui-openapi.yaml`): `state` en cada cambio, `end` al terminar la sesión |
 | GET | `/ui/commands/{command_id}` | Estado del comando y sus acks (la UI lo consulta para pasar al siguiente paso) |
 | GET | `/health` | Vida, conexión MQTT y contadores de mensajes |
 
@@ -74,9 +75,23 @@ Arrancarla sola: `uv run uvicorn --factory monitor.readonly:create_read_app --po
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
-`DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`,
+`DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
 `WEEKLY_ODI_INTERVAL_DAYS`. En Docker Compose la base de datos vive en el volumen `backend_data`
 (`/data/spine_monitor.db`).
+
+Enlace con tierra: cada assessment encola el resumen de su día UTC en SQLite (`ground_outbox`) y una tarea de fondo lo envía, por un
+transporte simulado, mientras hay enlace; `GET /ui/crew/{id}/houston` y `/outbox` lo muestran. Un envío fallido se reintenta con un
+backoff por entrada y sin límite de intentos; tras un reinicio sigue desde SQLite. Variables, también `SPINE_APP_*`; un valor incorrecto impide arrancar:
+
+| Variable | Por defecto | Significado |
+|---|---|---|
+| `GROUND_WINDOW_ANCHOR` | sin definir | Inicio de una ventana, RFC 3339 con zona. Sin definir: no hay enlace configurado, `ground_link` es null y no se envía nada. |
+| `GROUND_WINDOW_PERIOD_MIN` | 90 | Minutos entre el inicio de dos ventanas. |
+| `GROUND_WINDOW_UP_MIN` | 10 | Minutos de enlace en cada ventana; menos que el periodo. |
+| `GROUND_RETRY_MIN_S` | 1 | Espera tras el primer fallo de una entrada; se dobla en cada fallo. |
+| `GROUND_RETRY_MAX_S` | 300 | Espera máxima; no menor que la mínima. |
+| `GROUND_TICK_S` | 1 | Cada cuánto el emisor busca una ventana abierta o un backoff vencido. |
+| `GROUND_SEND_TIMEOUT_S` | 30 | Espera máxima a que tierra responda a un envío; pasada, el envío falla con código `timeout` y se aplica backoff. |
 
 ## Tipos TypeScript para la UI
 `app/ui/src/contracts/v1.ts` se genera desde `contracts/schemas/v1`. Ejecuta `pnpm run gen:types` en

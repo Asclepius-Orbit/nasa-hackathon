@@ -103,7 +103,7 @@ async def test_view_routes_cover_exactly_the_paths_and_methods_of_ui_openapi(har
     served = (await harness.http.get("/openapi.json")).json()["paths"]
 
     def views(paths: dict[str, Any]) -> set[tuple[str, str]]:
-        return {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith("/view") for m in item}
+        return {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith(("/view", "/reps", "/houston", "/outbox")) for m in item}
 
     assert views(served) == {(p, m) for p, item in contract["paths"].items() for m in item}
 
@@ -117,6 +117,15 @@ async def test_strip_without_any_data_has_nulls_and_everything_due(harness):
     assert strip["mission"] == {"day": None, "start": None, "phase": None}
     assert strip["harness"] is None
     assert strip["reports_due"] == {"daily": True, "weekly_odi": True}
+    assert (strip["ground_link"], strip["last_contact_min_ago"]) == (None, None)
+
+
+async def test_without_ground_windows_the_ground_routes_have_no_link(harness):
+    houston = await get(harness, f"/ui/crew/{AST}/houston", "app/ui-houston")
+    outbox = await get(harness, f"/ui/crew/{AST}/outbox", "app/ui-outbox")
+
+    assert (houston["summary"], houston["ground_link"]) == (None, None)
+    assert (outbox["items"], outbox["ground_link"]) == ([], None)
 
 
 async def test_strip_with_profile_device_and_reports(harness):

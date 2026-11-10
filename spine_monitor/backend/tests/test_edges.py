@@ -145,6 +145,8 @@ async def test_report_without_daily_context_has_no_mission_day(harness):
         ("get", "/ui/crew/nope/daily-context/2026-11-13"),
         ("get", "/ui/crew/nope/self-reports/due"),
         ("post", "/ui/crew/nope/sessions"),
+        ("get", "/ui/crew/nope/houston"),
+        ("get", "/ui/crew/nope/outbox"),
     ],
 )
 async def test_every_crew_route_checks_the_pseudonym(harness, method, path):

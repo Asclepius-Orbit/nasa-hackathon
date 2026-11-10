@@ -73,11 +73,25 @@ export const stages = {
     of: (total: number): string => `of ${String(total)}`,
     pulling: 'Pulling down',
     lettingUp: 'Letting up',
+    resting: 'Resting between reps',
     countingBy: 'Counting by',
     lastRep: 'Last rep',
     backup: 'Backup',
     noLast: 'No rep counted yet',
-    noSignal: 'No live rep count yet.',
+    noCount: 'No live rep count yet.',
+    /** Shown instead of a live counter: the sensor sent nothing. */
+    noSignal: 'No signal from the sensor',
+    noSignalHint: 'Check the harness. The count below is the last one received.',
+    /** The stream to the monitor dropped; main is retrying. */
+    lost: 'Reconnecting to the monitor',
+    lostHint: 'The count below is the last one received.',
+    /** Reconnecting before any count arrived: there is no count to point at. */
+    lostNoCountHint: 'No count has been received yet.',
+    /** The session is over: the number is the final one, not a live one. */
+    finalCount: 'Final count',
+    stale: 'Last count, not live',
+    unavailable: 'The live count is not available',
+    unavailableHint: 'The monitor is not answering. Count the reps yourself and tell the crew medical officer if something hurts.',
     noReps: 'This protocol has no repetitions. Stand still while the cord reads.',
     last: (rep: number, seconds: number): string => `Rep ${String(rep)}, ${seconds.toFixed(1)} s, recorded by the harness`,
     artefact: 'Mark an artefact',

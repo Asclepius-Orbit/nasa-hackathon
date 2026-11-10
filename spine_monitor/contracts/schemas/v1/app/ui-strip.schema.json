@@ -75,11 +75,11 @@
       ]
     },
     "ground_link": {
-      "description": "State of the link with the ground station. Reserved: always null until the ground link is modelled (issue #62).",
-      "type": "null"
+      "description": "State of the link with the ground station. Null when the link is not configured or its state is unknown.",
+      "oneOf": [{ "$ref": "ui-common.schema.json#/$defs/ground_link" }, { "type": "null" }]
     },
     "last_contact_min_ago": {
-      "description": "Minutes since the last contact with the ground station; null when unknown (always null until issue #62).",
+      "description": "Minutes since the last confirmed send to the ground station (the latest summary of the outbox in state sent); null when there is none yet or it is unknown.",
       "type": ["number", "null"],
       "minimum": 0
     },

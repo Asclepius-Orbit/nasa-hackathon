@@ -31,6 +31,9 @@ services:
       SPINE_APP_MQTT_HOST: mosquitto
       SPINE_APP_MQTT_PORT: "1883"
       SPINE_APP_ENGINE_URL: http://engine:8001
+      SPINE_APP_GROUND_WINDOW_ANCHOR: "2026-01-01T00:00:00Z"
+      SPINE_APP_GROUND_WINDOW_PERIOD_MIN: "15"
+      SPINE_APP_GROUND_WINDOW_UP_MIN: "5"
     volumes:
       - backend_data:/data
     ports:

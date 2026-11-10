@@ -116,6 +116,42 @@ paths:
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/houston:
+    get:
+      operationId: getHoustonView
+      summary: Houston screen
+      description: Latest summary prepared for the ground station, state of the link and last confirmed contact. `summary` is null while the astronaut has nothing yet. The transport is simulated (`transport` is `simulated`) and the content is pending validation by Aguado (`content_validated` is false).
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The Houston view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-houston.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/outbox:
+    get:
+      operationId: getOutboxView
+      summary: Ground outbox
+      description: Summaries queued for or sent to the ground station, most recent first, without clinical content. Empty `items` for an astronaut without summaries.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The outbox view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-outbox.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /ui/sessions/{session_id}/view:
     get:
       operationId: getSessionView
@@ -132,6 +168,35 @@ paths:
                 $ref: 'schemas/v1/app/ui-session.schema.json'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/sessions/{session_id}/reps:
+    get:
+      operationId: streamRepState
+      summary: Live repetition counter
+      description: Server-sent events with the live repetition counter of one session, derived from its imu_l3 stream.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: |
+            Server-sent events stream (`text/event-stream`). Each event `data:` is one JSON `RepStateView`
+            (`schemas/v1/app/ui-rep-state.schema.json`). `event: state` is sent when the client connects
+            and at every change of the state. `event: end` is sent when the session ends: its `data:` is
+            the last `RepStateView` and the server then closes the stream. For a session that has already
+            ended the stream is a final `state` followed by `end`. In a session that is over, both the final
+            `state` and `end` have `signal: ok` and null `phase` and `progress_pct`, and keep `rep` and `last`:
+            the end of a session is not a loss of the sensor.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/NoReps'
         '422':
           $ref: '#/components/responses/Error'
         default:
@@ -173,6 +238,12 @@ components:
             $ref: 'schemas/v1/app/error.schema.json'
     InvalidRange:
       description: Problem details, type `invalid_range`, or `invalid_request` for a malformed parameter. `invalid_range` when `from` is after `to`, when the window is longer than 366 days (`to` - `from` + 1 > 366) or when a date is out of range.
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    NoReps:
+      description: Problem details, type `no_reps`. The protocol of the session has no repetitions or the session has no imu_l3 stream.
       content:
         application/problem+json:
           schema:

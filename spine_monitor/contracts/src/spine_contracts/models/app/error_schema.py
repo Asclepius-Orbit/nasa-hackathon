@@ -12,6 +12,7 @@ class Type(str, Enum):
     INVALID_REQUEST = 'invalid_request'
     INVALID_RANGE = 'invalid_range'
     NOT_FOUND = 'not_found'
+    NO_REPS = 'no_reps'
     UNSUPPORTED_SCHEMA_VERSION = 'unsupported_schema_version'
     INTERNAL = 'internal'
 

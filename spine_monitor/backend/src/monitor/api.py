@@ -11,13 +11,16 @@ The app fills in what it owns (ids, `schema_version`, instants, `source`) and va
 against the JSON Schema of the entity. Errors are problem details shaped like `app/error`.
 - Views (`GET /ui/crew/{id}/views/*`, `GET /ui/sessions/{id}/view`, `ui-openapi.yaml`): the stored data fed to the pure
   builders of `monitor.views`; each result is validated against its schema before it is served.
+- Live repetition counter (`GET /ui/sessions/{id}/reps`, `ui-openapi.yaml`): server-sent events from `monitor.live.stream`.
+- Ground (`GET /ui/crew/{id}/houston` and `/outbox`, `ui-openapi.yaml`): the outbox that `monitor.ground.sender` empties.
 """
 
 import json
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, FastAPI, Query, Request
@@ -27,17 +30,21 @@ from spine_contracts import SCHEMA_VERSION, topics, validation
 
 from monitor.analysis import Analysis
 from monitor.control import CommandError, Control
-from monitor.db import Store
+from monitor.db import SessionRow, Store, day_span
+from monitor.ground.link import GroundWindows, link_state
+from monitor.live.stream import RepEventResponse, RepStream
+from monitor.live.tracker import has_live_reps
 from monitor.models import CalibrateBody, EventBody, StopBody
 from monitor.settings import AppSettings
 from monitor.views.baseline import build_baseline, build_first_day
 from monitor.views.due import reports_due
 from monitor.views.history import build_history
-from monitor.views.lumbar import ELONGATION_FEATURE, latest_lumbar_delta
-from monitor.views.mission import mission_day_of, mission_for
+from monitor.views.houston import build_houston, build_outbox
+from monitor.views.lumbar import ELONGATION_FEATURE, instant, latest_lumbar_delta
+from monitor.views.mission import launch_date_of, mission_day_of, mission_for
 from monitor.views.protocol_catalog import protocol_entry, total_reps_for
 from monitor.views.session import build_session_view
-from monitor.views.strip import build_strip
+from monitor.views.strip import build_strip, minutes_since
 from monitor.views.tasks import tasks_for
 from monitor.views.today import build_today
 
@@ -47,10 +54,13 @@ PROBLEM = "application/problem+json"
 TITLES = {
     "invalid_request": "Invalid request",
     "not_found": "Not found",
+    "no_reps": "No repetitions",
     "conflict": "Conflict",
     "unavailable": "Service unavailable",
     "internal": "Internal error",
 }
+
+CONTRACT_PROBLEMS = ("invalid_request", "invalid_range", "not_found", "no_reps", "unsupported_schema_version", "internal")
 
 
 class Problem(Exception):
@@ -64,7 +74,7 @@ class Problem(Exception):
 
 def problem_response(status: int, type_: str, detail: str | None = None, errors: list[dict[str, str]] | None = None) -> JSONResponse:
     # `app/error` only enumerates these types; a conflict or a bus outage is expressed by the status.
-    contract_type = type_ if type_ in ("invalid_request", "invalid_range", "not_found", "unsupported_schema_version", "internal") else "invalid_request"
+    contract_type = type_ if type_ in CONTRACT_PROBLEMS else "invalid_request"
     body: dict[str, Any] = {"type": contract_type, "title": TITLES.get(type_, "Error"), "status": status}
     if detail:
         body["detail"] = detail
@@ -120,6 +130,8 @@ def _same(body: dict[str, Any], key: str, value: Any) -> None:
 _DAY = timedelta(days=1)
 # Longest history window (`to` - `from` + 1 days); a longer one is an `invalid_range` (ui-openapi.yaml).
 MAX_HISTORY_DAYS = 366
+# Entries of the outbox view: the most recent ones. Older ones stay in the database; the screen only follows the current delivery.
+OUTBOX_VIEW_LIMIT = 50
 
 
 @dataclass(frozen=True)
@@ -132,6 +144,7 @@ class ViewSettings:
     history_window_days: int
     stale_session_hours: float
     stale_device_hours: float
+    ground_windows: GroundWindows | None
 
     @classmethod
     def from_app(cls, settings: AppSettings) -> ViewSettings:
@@ -142,17 +155,8 @@ class ViewSettings:
             settings.history_window_days,
             settings.stale_session_hours,
             settings.stale_device_hours,
+            settings.ground_windows,
         )
-
-
-def _day_span(first: date, last: date) -> tuple[datetime, datetime]:
-    """UTC instants [start of `first`, last instant of `last`]."""
-    return datetime.combine(first, time.min, UTC), datetime.combine(last, time.min, UTC) + _DAY - timedelta(microseconds=1)
-
-
-def _launch_date(profile: dict[str, Any] | None) -> date | None:
-    value = None if profile is None else profile.get("launch_date")
-    return None if value is None else date.fromisoformat(value)
 
 
 def _conforming(schema: str, view: dict[str, Any]) -> dict[str, Any]:
@@ -168,8 +172,24 @@ def _conforming(schema: str, view: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
+def _queue_day(queue_day: Callable[[str, date], None], astronaut_id: str, day: date) -> None:
+    """The report is already stored: what the queueing does wrong must not cost it. Only the type is logged, never its text."""
+    try:
+        queue_day(astronaut_id, day)
+    except Exception as exc:
+        logger.error("%s: ground summary of %s not queued: %s", astronaut_id, day, type(exc).__name__)
+
+
 def build_router(
-    store: Store, control: Control, analysis: Analysis, *, odi_interval_days: int, views: ViewSettings, clock=lambda: datetime.now(UTC)
+    store: Store,
+    control: Control,
+    analysis: Analysis,
+    *,
+    odi_interval_days: int,
+    views: ViewSettings,
+    reps: RepStream,
+    clock=lambda: datetime.now(UTC),
+    queue_day: Callable[[str, date], None] = lambda astronaut_id, day: None,
 ) -> APIRouter:
     router = APIRouter(prefix="/ui", tags=["ui"])
 
@@ -246,6 +266,9 @@ def build_router(
             return JSONResponse({"report": existing, "assessment": None, "assessment_skipped": "duplicate"}, status_code=200)
         store.put_self_report(report)
         outcome = await analysis.assess(astronaut_id)
+        if report.get("red_flags") and outcome.assessment is None:
+            # Nothing was announced (assess skipped): a red flag must still reach the ground. With an assessment, its listener queued it.
+            _queue_day(queue_day, astronaut_id, instant(report["timestamp"]).date())
         return JSONResponse(
             {"report": report, "assessment": outcome.assessment, "assessment_skipped": outcome.skipped},
             status_code=201,
@@ -334,7 +357,7 @@ def build_router(
         return build_baseline(
             store.latest_baseline(astronaut_id),
             store.session_rows(astronaut_id, phase="preflight"),
-            _launch_date(profile),
+            launch_date_of(profile),
             views.baseline_required,
             views.baseline_plan_offsets_days,
             views.baseline_protocol_id,
@@ -345,7 +368,7 @@ def build_router(
             store.latest_self_report(astronaut_id, "daily"), store.latest_self_report(astronaut_id, "weekly_odi"), now, odi_interval_days
         )
         baseline_pending = mission_for(profile, now.date())["phase"] == "preflight" and baseline["recorded"] < baseline["required"]
-        start, end = _day_span(now.date(), now.date())
+        start, end = day_span(now.date(), now.date())
         session_today = any(row.state != "rejected" for row in store.session_rows(astronaut_id, start=start, end=end))
         return list(tasks_for(daily_due, odi_due, baseline_pending, session_today))
 
@@ -361,6 +384,8 @@ def build_router(
             clock(),
             odi_interval_days,
             views.stale_device_hours,
+            link_state(views.ground_windows, clock()),
+            minutes_since(store.last_ground_contact(astronaut_id), clock()),
         )
         return _conforming("app/ui-strip", view)
 
@@ -385,7 +410,7 @@ def build_router(
         _astronaut(astronaut_id)
         now = clock()
         today_date = now.date()
-        launch = _launch_date(store.profile(astronaut_id))
+        launch = launch_date_of(store.profile(astronaut_id))
         try:
             last = today_date if to_date is None else to_date
             first = last - timedelta(days=views.history_window_days - 1) if from_date is None else from_date
@@ -393,7 +418,7 @@ def build_router(
                 raise Problem(422, f"from ({first}) is after to ({last})", type_="invalid_range")
             if (last - first).days + 1 > MAX_HISTORY_DAYS:
                 raise Problem(422, f"the window from {first} to {last} is longer than {MAX_HISTORY_DAYS} days", type_="invalid_range")
-            start, end = _day_span(first, last)
+            start, end = day_span(first, last)
             # Feature sets are anchored at the start of their session, a day is told by the start of their window: read one day more
             # on each side. The pre-flight range needs the latest measure at any date: one bounded query, not the whole history.
             feature_sets = store.feature_sets_between(astronaut_id, start - _DAY, end + _DAY)
@@ -426,8 +451,22 @@ def build_router(
         baseline = baseline_view(astronaut_id, profile)
         return _conforming("app/ui-first-day", build_first_day(open_tasks(astronaut_id, profile, baseline, clock()), baseline))
 
-    @router.get("/sessions/{session_id}/view")
-    async def session_view(session_id: str) -> dict[str, Any]:
+    @router.get("/crew/{astronaut_id}/houston")
+    async def houston_view(astronaut_id: str) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        view = build_houston(
+            astronaut_id, store.latest_ground_summary(astronaut_id), link_state(views.ground_windows, clock()), store.last_ground_contact(astronaut_id)
+        )
+        return _conforming("app/ui-houston", view)
+
+    @router.get("/crew/{astronaut_id}/outbox")
+    async def outbox_view(astronaut_id: str) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        items = store.ground_outbox_items(astronaut_id, OUTBOX_VIEW_LIMIT)
+        view = build_outbox(astronaut_id, items, link_state(views.ground_windows, clock()), store.last_ground_contact(astronaut_id))
+        return _conforming("app/ui-outbox", view)
+
+    def known_session(session_id: str) -> SessionRow:
         try:
             canonical = str(uuid.UUID(session_id))
         except ValueError:
@@ -437,6 +476,11 @@ def build_router(
         row = store.session(session_id)
         if row is None:
             raise Problem(404, f"unknown session {session_id}", type_="not_found")
+        return row
+
+    @router.get("/sessions/{session_id}/view")
+    async def session_view(session_id: str) -> dict[str, Any]:
+        row = known_session(session_id)
         payload = row.payload
         view = build_session_view(
             row,
@@ -447,5 +491,11 @@ def build_router(
             views.stale_device_hours,
         )
         return _conforming("app/ui-session", view)
+
+    @router.get("/sessions/{session_id}/reps", status_code=200, response_class=RepEventResponse)
+    async def rep_events(session_id: str) -> RepEventResponse:
+        if not has_live_reps(known_session(session_id).payload):
+            raise Problem(409, f"session {session_id} has no repetitions to count live", type_="no_reps")
+        return RepEventResponse(reps.events(session_id))
 
     return router

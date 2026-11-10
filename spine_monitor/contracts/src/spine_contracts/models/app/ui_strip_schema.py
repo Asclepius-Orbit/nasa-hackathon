@@ -9,6 +9,7 @@ from enum import Enum
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, confloat, constr
 
 from .. import common_schema
+from . import ui_common_schema
 
 
 class StripMission(BaseModel):
@@ -102,13 +103,15 @@ class StripView(BaseModel):
         ...,
         description='Last known status of the paired harness; null while no harness is paired or its last status is offline. A device whose last status is old is still listed, with stale true.',
     )
-    ground_link: None = Field(
+    ground_link: (
+        ui_common_schema.GroundLinkUp | ui_common_schema.GroundLinkDown | None
+    ) = Field(
         ...,
-        description='State of the link with the ground station. Reserved: always null until the ground link is modelled (issue #62).',
+        description='State of the link with the ground station. Null when the link is not configured or its state is unknown.',
     )
     last_contact_min_ago: confloat(ge=0.0) | None = Field(
         ...,
-        description='Minutes since the last contact with the ground station; null when unknown (always null until issue #62).',
+        description='Minutes since the last confirmed send to the ground station (the latest summary of the outbox in state sent); null when there is none yet or it is unknown.',
     )
     reports_due: ReportsDue = Field(
         ..., description='Self-reports still due today.', title='ReportsDue'

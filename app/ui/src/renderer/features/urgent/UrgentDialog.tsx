@@ -9,6 +9,7 @@ import pick from '../../components/ui/Pick.module.css';
 import type { DataSource } from '../../data/DataSource';
 import type { EscapeCode, RedFlagCode } from '../../data/types';
 import { useLoad } from '../../data/useLoad';
+import { useData } from '../../data/DataContext';
 import { useOffline } from '../../offline/OfflineContext';
 import { urgent as copy } from '../../strings/urgent';
 import { useUrgent } from './UrgentContext';
@@ -85,7 +86,9 @@ function Panel(): React.JSX.Element {
   const catalog = useLoad(selectCatalog).data;
   const strip = useLoad(selectStrip).data;
   const [selected, setSelected] = useState<Code[]>([...preselected]);
+  const data = useData();
   const [sent, setSent] = useState(false);
+  const [notRecorded, setNotRecorded] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [opener] = useState(() => document.activeElement);
 
@@ -145,13 +148,14 @@ function Panel(): React.JSX.Element {
       >
         <h2 id="urgent-title">{copy.title}</h2>
         {(status === 'signed-out' || status === 'locked') && <CrewPicker />}
-        <p className={styles.intro}>{copy.intro}</p>
+        <p className={styles.intro}>{data.sendsUrgentReports ? copy.intro : copy.introNotSent}</p>
         <div className={styles.flags}>
           <ChipGroup label={copy.symptomsGroup} options={options} selected={selected} tone="flag" onChange={setSelected} />
         </div>
         <p className={styles.pending}>
           <span className={styles.tag}>{copy.pendingTag}</span> {copy.pendingNote}
         </p>
+        {data.sendsUrgentReports && (
         <div className={styles.delivery}>
           {sent ? <ClockIcon /> : <LinkIcon />}
           <span>
@@ -173,12 +177,26 @@ function Panel(): React.JSX.Element {
             )}
           </span>
         </div>
+        )}
+        {notRecorded && (
+          <p role="alert" className={styles.notRecorded}>
+            <b>{copy.notRecordedTitle}</b> {copy.notRecordedBody}
+          </p>
+        )}
         <div className={styles.actions}>
           <Button
             variant="urgent"
             disabled={selected.length === 0 || sent}
             onClick={() => {
-              setSent(true);
+              setNotRecorded(false);
+              data.sendUrgentReport(selected).then(
+                () => {
+                  setSent(true);
+                },
+                () => {
+                  setNotRecorded(true);
+                },
+              );
             }}
           >
             {sent ? copy.queued : copy.send}

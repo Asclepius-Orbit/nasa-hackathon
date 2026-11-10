@@ -1,9 +1,12 @@
 """App settings: broker, engine, database and thresholds. SPINE_APP_* variables or `.env`."""
 
 from pathlib import Path
+from typing import Self
 
-from pydantic import Field
+from pydantic import AwareDatetime, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from monitor.ground.link import GroundWindows
 
 
 class AppSettings(BaseSettings):
@@ -48,3 +51,35 @@ class AppSettings(BaseSettings):
     baseline_protocol_id: str = "lat_pulldown_standing_v1"
     # At most 366 days: the longest window the history endpoint accepts (`api.MAX_HISTORY_DAYS`; settings cannot import api).
     history_window_days: int = Field(default=30, ge=1, le=366)
+
+    # Live repetition counter (GET /ui/sessions/{id}/reps). Seconds with no imu_l3 chunk until the signal counts as lost,
+    # between comments on an idle stream (the Electron reader gives up after 45 s of silence) and between checks of both.
+    live_no_signal_s: float = Field(default=2.0, gt=0)
+    live_heartbeat_s: float = Field(default=15.0, gt=0, le=15)
+    live_tick_s: float = Field(default=0.5, gt=0, le=0.5)
+
+    # Ground link: up the first `up_min` of every `period_min` minutes from the anchor. Without an anchor no link is configured:
+    # the UI shows null and nothing is sent. Retries double per entry, between these seconds; the tick is how often the sender
+    # looks for an opened window or an elapsed backoff, so it is also the precision of both.
+    ground_window_anchor: AwareDatetime | None = None
+    ground_window_period_min: int = Field(default=90, gt=0)
+    ground_window_up_min: int = Field(default=10, gt=0)
+    ground_retry_min_s: float = Field(default=1.0, gt=0)
+    ground_retry_max_s: float = Field(default=300.0, gt=0)
+    ground_tick_s: float = Field(default=1.0, gt=0)
+    # Longest wait for the ground to answer one send; past it the send counts as a failure (code `timeout`) and backs off.
+    ground_send_timeout_s: float = Field(default=30.0, gt=0)
+
+    @model_validator(mode="after")
+    def _ground_ranges(self) -> Self:
+        if self.ground_window_up_min >= self.ground_window_period_min:
+            raise ValueError("ground_window_up_min must be below ground_window_period_min")
+        if self.ground_retry_max_s < self.ground_retry_min_s:
+            raise ValueError("ground_retry_max_s must not be below ground_retry_min_s")
+        return self
+
+    @property
+    def ground_windows(self) -> GroundWindows | None:
+        if self.ground_window_anchor is None:
+            return None
+        return GroundWindows(self.ground_window_anchor, self.ground_window_period_min, self.ground_window_up_min)

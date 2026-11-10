@@ -9,11 +9,14 @@
 
 An assessment that cannot be requested (no profile, no baseline, no features) is never made up: the
 reason is returned and nothing is stored, so absence never looks like a green.
+
+Every assessment is stored at one place, whatever triggered it; `on_assessment` hears of each one there.
 """
 
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -33,11 +36,20 @@ class AssessOutcome:
 
 
 class Analysis:
-    def __init__(self, store: Store, engine: EngineClient, *, window_days: int, clock=lambda: datetime.now(UTC)) -> None:
+    def __init__(
+        self,
+        store: Store,
+        engine: EngineClient,
+        *,
+        window_days: int,
+        clock=lambda: datetime.now(UTC),
+        on_assessment: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self._store = store
         self._engine = engine
         self._window = timedelta(days=window_days)
         self._clock = clock
+        self._on_assessment = on_assessment
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     # --- session ended ------------------------------------------------------------------------
@@ -154,4 +166,14 @@ class Analysis:
         if assessment["astronaut_id"] != astronaut_id:
             return AssessOutcome(skipped="engine_error: assessment of another astronaut")
         self._store.put_assessment(assessment)
+        self._announce(assessment)
         return AssessOutcome(assessment=assessment)
+
+    def _announce(self, assessment: dict[str, Any]) -> None:
+        """The assessment is already stored: what a listener does wrong must not cost it. Only the type is logged, its text may quote clinical data."""
+        if self._on_assessment is None:
+            return
+        try:
+            self._on_assessment(assessment)
+        except Exception as exc:
+            _log.error("%s: listener of the assessment failed: %s", assessment["astronaut_id"], type(exc).__name__)

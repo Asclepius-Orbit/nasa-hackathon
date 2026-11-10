@@ -43,6 +43,7 @@ l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu |
+| GET | `/ui/sessions/{session_id}/reps` | Server-sent events amb el comptador de repeticions en viu (`ui-openapi.yaml`): `state` a cada canvi, `end` quan acaba la sessió |
 | GET | `/ui/commands/{command_id}` | Estat de la comanda i els seus acks (la UI el consulta per passar al pas següent) |
 | GET | `/health` | Vida, connexió MQTT i comptadors de missatges |
 
@@ -74,9 +75,23 @@ Engegar-la sola: `uv run uvicorn --factory monitor.readonly:create_read_app --po
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuració són variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
-`DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`,
+`DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
 `WEEKLY_ODI_INTERVAL_DAYS`. A Docker Compose la base de dades viu al volum `backend_data`
 (`/data/spine_monitor.db`).
+
+Enllaç amb terra: cada assessment encua el resum del seu dia UTC a SQLite (`ground_outbox`) i una tasca de fons l'envia, per un
+transport simulat, mentre hi ha enllaç; `GET /ui/crew/{id}/houston` i `/outbox` el mostren. Un enviament fallit es reintenta amb un
+backoff per entrada i sense límit d'intents; després d'un reinici segueix des de SQLite. Variables, també `SPINE_APP_*`; un valor incorrecte impedeix engegar:
+
+| Variable | Per defecte | Significat |
+|---|---|---|
+| `GROUND_WINDOW_ANCHOR` | sense definir | Inici d'una finestra, RFC 3339 amb zona. Sense definir: no hi ha enllaç configurat, `ground_link` és null i no s'envia res. |
+| `GROUND_WINDOW_PERIOD_MIN` | 90 | Minuts entre l'inici de dues finestres. |
+| `GROUND_WINDOW_UP_MIN` | 10 | Minuts d'enllaç a cada finestra; menys que el període. |
+| `GROUND_RETRY_MIN_S` | 1 | Espera després de la primera fallada d'una entrada; es dobla a cada fallada. |
+| `GROUND_RETRY_MAX_S` | 300 | Espera màxima; no menor que la mínima. |
+| `GROUND_TICK_S` | 1 | Cada quant l'emissor busca una finestra oberta o un backoff vençut. |
+| `GROUND_SEND_TIMEOUT_S` | 30 | Espera màxima que terra respongui a un enviament; passada, l'enviament falla amb codi `timeout` i s'aplica backoff. |
 
 ## Tipus TypeScript per a la UI
 `app/ui/src/contracts/v1.ts` es genera des de `contracts/schemas/v1`. Executa `pnpm run gen:types` a

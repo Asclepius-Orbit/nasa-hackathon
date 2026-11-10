@@ -1,12 +1,16 @@
 """AppSettings: the bounds of the UI view settings are validated at load time, not on every request."""
 
+from datetime import UTC, datetime
+from typing import Any
+
 import pytest
 from monitor.api import MAX_HISTORY_DAYS
+from monitor.ground.link import GroundWindows
 from monitor.settings import AppSettings
 from pydantic import ValidationError
 
 
-def settings(**kwargs: int) -> AppSettings:
+def settings(**kwargs: Any) -> AppSettings:
     return AppSettings(_env_file=None, **kwargs)
 
 
@@ -35,3 +39,47 @@ def test_the_history_window_upper_bound_is_the_api_limit() -> None:
     assert settings(history_window_days=MAX_HISTORY_DAYS).history_window_days == MAX_HISTORY_DAYS
     with pytest.raises(ValidationError):
         settings(history_window_days=MAX_HISTORY_DAYS + 1)
+
+
+def test_no_ground_link_is_configured_by_default() -> None:
+    loaded = settings()
+
+    assert loaded.ground_window_anchor is None
+    assert loaded.ground_windows is None
+    assert (loaded.ground_retry_min_s, loaded.ground_retry_max_s) == (1, 300)
+
+
+def test_the_ground_windows_are_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_GROUND_WINDOW_ANCHOR", "2026-11-13T12:00:00+02:00")
+    monkeypatch.setenv("SPINE_APP_GROUND_WINDOW_PERIOD_MIN", "15")
+    monkeypatch.setenv("SPINE_APP_GROUND_WINDOW_UP_MIN", "5")
+
+    assert settings().ground_windows == GroundWindows(datetime(2026, 11, 13, 10, 0, tzinfo=UTC), 15, 5)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "field"),
+    [
+        ({"ground_window_anchor": "2026-11-13T10:00:00"}, "ground_window_anchor"),
+        ({"ground_window_period_min": 0}, "ground_window_period_min"),
+        ({"ground_window_up_min": 0}, "ground_window_up_min"),
+        ({"ground_window_period_min": 10, "ground_window_up_min": 10}, "ground_window_up_min"),
+        ({"ground_retry_min_s": 0}, "ground_retry_min_s"),
+        ({"ground_retry_min_s": 10, "ground_retry_max_s": 9}, "ground_retry_max_s"),
+        ({"ground_tick_s": 0}, "ground_tick_s"),
+        ({"ground_send_timeout_s": 0}, "ground_send_timeout_s"),
+    ],
+    ids=["naive_anchor", "period_zero", "up_zero", "up_not_below_period", "retry_min_zero", "retry_max_below_min", "tick_zero", "send_timeout_zero"],
+)
+def test_bad_ground_settings_are_refused_at_startup(overrides: dict[str, Any], field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        settings(**overrides)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"ground_window_period_min": 11, "ground_window_up_min": 10}, {"ground_retry_min_s": 9, "ground_retry_max_s": 9}],
+    ids=["up_just_below_period", "retry_max_equal_to_min"],
+)
+def test_the_limits_of_the_ground_settings_are_accepted(overrides: dict[str, Any]) -> None:
+    assert settings(**overrides)

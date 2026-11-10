@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { BaselineView, FirstDayResult, HistoryView, SessionView, StripView, TodayView } from '../../../shared/api';
+import type { BaselineView, FirstDayResult, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
 import { example } from '../../test/contract-examples';
 import { FakeAsclepiusApi } from '../../test/fake-api';
-import type { DataSource } from '../DataSource';
+import type { RepsUpdate } from '../types';
 import { RealDataSource } from './RealDataSource';
 
 let api: FakeAsclepiusApi;
 let data: RealDataSource;
 beforeEach(() => {
   api = new FakeAsclepiusApi();
-  data = new RealDataSource(api.views);
+  data = new RealDataSource(api.views, api.reps);
 });
 
 describe('getStrip', () => {
@@ -21,8 +21,8 @@ describe('getStrip', () => {
       missionStart: '2026-11-15',
       flightPhase: 'inflight',
       harness: { id: 'wb-01', batteryPct: 18, weakStreams: [{ stream: 'stretch_lumbar', state: 'stalled' }], degraded: true, stale: false, lastSeenAt: '2026-11-15T09:58:00Z' },
-      groundLink: null,
-      lastContactMinAgo: null,
+      groundLink: { state: 'down', backInMin: 12 },
+      lastContactMinAgo: 45,
       reportsDue: 1,
     });
   });
@@ -34,8 +34,8 @@ describe('getStrip', () => {
       missionStart: null,
       flightPhase: null,
       harness: null,
-      groundLink: null,
-      lastContactMinAgo: null,
+      groundLink: { state: 'up' },
+      lastContactMinAgo: 5,
       reportsDue: 2,
     });
   });
@@ -238,6 +238,84 @@ describe('errors', () => {
   });
 });
 
+describe('getHouston', () => {
+  it('maps the summary and the outbox as codes and nulls, never text', async () => {
+    api.viewData.houston = example<HoustonView>('ui-houston');
+    api.viewData.outbox = example<OutboxView>('ui-outbox');
+    expect(await data.getHouston()).toEqual({
+      crewCode: 'AST-01',
+      summary: {
+        date: '2027-02-09',
+        missionDay: 87,
+        revision: 2,
+        asOf: '2027-02-09T09:00:00Z',
+        level: 'amber',
+        confidencePct: 74,
+        dataAvailable: 5,
+        dataTotal: 6,
+        drivers: [
+          { featureId: 'stretch.lumbar.peak_elongation_mm', deviationZ: 2.4 },
+          { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8 },
+        ],
+        redFlags: [],
+        sessions: [{ sessionId: '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03', state: 'processed', protocolId: 'lat_pulldown_standing_v1' }],
+        recommendations: ['REC_LUMBAR_STAB_01', 'REC_INCREASE_ARED'],
+        escalation: { required: false, urgency: null, reasons: [] },
+        contacts: null,
+      },
+      outbox: [
+        { date: '2027-02-09', missionDay: 87, revision: 2, state: 'queued', enqueuedAt: '2027-02-09T09:00:00Z', receivedAt: null, attempts: 3 },
+        { date: '2027-02-09', missionDay: 87, revision: 1, state: 'sent', enqueuedAt: '2027-02-09T06:00:00Z', receivedAt: '2027-02-09T06:00:02Z', attempts: 1 },
+        { date: '2027-02-08', missionDay: 86, revision: 1, state: 'sent', enqueuedAt: '2027-02-08T09:00:00Z', receivedAt: '2027-02-08T09:05:00Z', attempts: 2 },
+      ],
+      groundLink: { state: 'down', backInMin: 12 },
+      lastContactAt: '2027-02-09T06:00:02Z',
+      transport: 'simulated',
+      contentValidated: false,
+    });
+    expect(api.calls).toEqual(expect.arrayContaining(['views.houston', 'views.outbox']));
+  });
+
+  it('keeps nothing-yet as nulls and an empty outbox: no summary, no link, no contact', async () => {
+    api.viewData.houston = example<HoustonView>('ui-houston.empty');
+    api.viewData.outbox = example<OutboxView>('ui-outbox.empty');
+    expect(await data.getHouston()).toEqual({
+      crewCode: 'AST-01',
+      summary: null,
+      outbox: [],
+      groundLink: null,
+      lastContactAt: null,
+      transport: 'simulated',
+      contentValidated: false,
+    });
+  });
+
+  it('maps a nodata summary with its nulls', async () => {
+    const houston = example<HoustonView>('ui-houston');
+    const nodata = {
+      ...houston.summary,
+      level: 'nodata',
+      assessment_id: null,
+      confidence: null,
+      data_available: null,
+      data_total: null,
+      drivers: [],
+      recommendations: [],
+      escalation: null,
+    } as unknown as HoustonView['summary'];
+    api.viewData.houston = { ...houston, summary: nodata };
+    api.viewData.outbox = example<OutboxView>('ui-outbox.empty');
+    const { summary } = await data.getHouston();
+    expect(summary).toMatchObject({ level: 'nodata', confidencePct: null, dataAvailable: null, dataTotal: null, drivers: [], escalation: null });
+  });
+
+  it('fails when the outbox fails: half a screen is not shown', async () => {
+    api.viewData.houston = example<HoustonView>('ui-houston');
+    api.viewErrors.outbox = 'unavailable';
+    await expect(data.getHouston()).rejects.toThrow(/^unavailable$/);
+  });
+});
+
 describe('what #61 to #63 still own', () => {
   it('serves the static form data of the UI: the symptom catalogue and the report form', async () => {
     expect((await data.getCatalog()).flags).toHaveLength(8);
@@ -247,7 +325,6 @@ describe('what #61 to #63 still own', () => {
   it.each([
     ['getStopped', () => data.getStopped()],
     ['getOswestry', () => data.getOswestry()],
-    ['getHouston', () => data.getHouston()],
   ])('%s rejects not_built (not "unavailable": the monitor is fine, the feature is not connected yet)', async (_name, call) => {
     await expect(call()).rejects.toThrow(/^not_built$/);
   });
@@ -264,14 +341,76 @@ describe('what #61 to #63 still own', () => {
     await data.stopSessionForPain().catch(() => undefined);
     expect(api.calls).toEqual([]);
   });
+});
 
-  it('never emits reps: the backend has no live rep signal yet, and a simulated one must not reach the crew', () => {
-    const seen: number[] = [];
-    const source: DataSource = data;
-    const stop = source.subscribeReps((state) => seen.push(state.rep));
-    expect(seen).toEqual([]);
-    expect(() => {
-      stop();
-    }).not.toThrow();
+describe('subscribeReps', () => {
+  const SID = 'a55e55e0-0000-4000-8000-000000000001';
+  const view = (name = 'ui-rep-state'): RepStateView => example<RepStateView>(name);
+  function listen(): { seen: RepsUpdate[]; stop: () => void } {
+    const seen: RepsUpdate[] = [];
+    const stop = data.subscribeReps(SID, (update) => seen.push(update));
+    return { seen, stop };
+  }
+
+  it('maps the contract examples field by field: null stays null, resting and no_signal are kept', () => {
+    const { seen } = listen();
+    for (const name of ['ui-rep-state', 'ui-rep-state.first-rep', 'ui-rep-state.resting', 'ui-rep-state.no-signal']) {
+      api.emitReps(SID, { kind: 'state', state: view(name) });
+    }
+    expect(seen).toEqual([
+      { kind: 'state', state: { rep: 3, total: 10, phase: 'pulling', barPercent: 42.5, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
+      { kind: 'state', state: { rep: 1, total: 10, phase: 'pulling', barPercent: null, last: null, signal: 'ok' } },
+      { kind: 'state', state: { rep: 3, total: 10, phase: 'resting', barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
+      { kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'no_signal' } },
+    ]);
+  });
+
+  it('keeps an unknown total as null', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'state', state: { ...view(), total: null } });
+    expect(seen[0]).toMatchObject({ state: { total: null } });
+  });
+
+  it('lost keeps the last known counter without phase or bar, flagged lost; the next state replaces it', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'state', state: view() });
+    api.emitReps(SID, { kind: 'lost' });
+    api.emitReps(SID, { kind: 'state', state: view('ui-rep-state.resting') });
+    expect(seen[1]).toEqual({ kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'lost' } });
+    expect(seen[2]).toMatchObject({ state: { phase: 'resting', signal: 'ok' } });
+  });
+
+  it('lost before any state invents no count: it says it is reconnecting, without a rep', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'lost' });
+    expect(seen).toEqual([{ kind: 'reconnecting' }]);
+  });
+
+  it('end delivers the final count as ended (no phase, no bar, not live) and stops listening', () => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'end', state: { ...view(), phase: null, progress_pct: null } });
+    expect(seen).toEqual([
+      { kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ended' } },
+    ]);
+    expect(api.repsListenerCount(SID)).toBe(0);
+  });
+
+  it.each([
+    ['no_reps', 'none'],
+    ['not_found', 'none'],
+    ['unavailable', 'unavailable'],
+    ['locked', 'locked'],
+  ] as const)('error %s becomes %s and stops listening', (code, kind) => {
+    const { seen } = listen();
+    api.emitReps(SID, { kind: 'error', code });
+    expect(seen).toEqual([{ kind }]);
+    expect(api.repsListenerCount(SID)).toBe(0);
+  });
+
+  it('subscribes for the given session and the returned function unsubscribes', () => {
+    const { stop } = listen();
+    expect(api.repsListenerCount(SID)).toBe(1);
+    stop();
+    expect(api.repsListenerCount(SID)).toBe(0);
   });
 });

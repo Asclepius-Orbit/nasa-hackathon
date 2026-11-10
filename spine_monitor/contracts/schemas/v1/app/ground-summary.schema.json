@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ground-summary.schema.json",
+  "title": "GroundSummary",
+  "description": "What travels to the ground station: one revision of the summary of one day of one astronaut. PROVISIONAL content, pending validation by Aguado: which fields go to the ground and how is not decided yet. Codes and numbers only, never prose; every unknown is an explicit null. Carries no personal data of the astronaut profile, only the pseudonymous astronaut id. A day without an assessment has level 'nodata' and null or empty assessment fields, never a reassuring default.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "date": {
+      "description": "Day the summary is about (UTC).",
+      "$ref": "../common.schema.json#/$defs/date"
+    },
+    "mission_day": {
+      "description": "Mission day of the date; null without a launch date.",
+      "type": ["integer", "null"]
+    },
+    "revision": {
+      "description": "Revision of the summary of this day, starting at 1; a newer assessment of the same day gives a new revision.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "as_of": {
+      "description": "When this revision was made.",
+      "$ref": "../common.schema.json#/$defs/utc_timestamp"
+    },
+    "level": { "$ref": "ui-common.schema.json#/$defs/day_level" },
+    "assessment_id": {
+      "description": "Assessment the summary comes from; null for level 'nodata'.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/uuid" }, { "type": "null" }]
+    },
+    "confidence": {
+      "description": "confidence of the assessment, 0-1; null for level 'nodata'.",
+      "oneOf": [{ "$ref": "../common.schema.json#/$defs/unit_interval" }, { "type": "null" }]
+    },
+    "data_available": {
+      "description": "Expected inputs that were available; null for level 'nodata'.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "data_total": {
+      "description": "Expected inputs; null for level 'nodata'.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "drivers": {
+      "description": "Features that pushed the risk, most influential first; empty for level 'nodata'.",
+      "type": "array",
+      "items": {
+        "title": "GroundDriver",
+        "type": "object",
+        "properties": {
+          "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+          "deviation_z": { "type": ["number", "null"] }
+        },
+        "required": ["feature_id", "deviation_z"],
+        "additionalProperties": false
+      }
+    },
+    "red_flags": {
+      "description": "Red flags reported that day; empty when none.",
+      "type": "array",
+      "items": { "$ref": "../domain/self-report.schema.json#/$defs/red_flag" },
+      "uniqueItems": true
+    },
+    "sessions": {
+      "description": "Sessions of the day.",
+      "type": "array",
+      "items": {
+        "title": "GroundSession",
+        "type": "object",
+        "properties": {
+          "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+          "state": { "$ref": "ui-common.schema.json#/$defs/session_state" },
+          "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" }
+        },
+        "required": ["session_id", "state", "protocol_id"],
+        "additionalProperties": false
+      }
+    },
+    "recommendations": {
+      "description": "recommendations of the assessment, in order; empty for level 'nodata'.",
+      "type": "array",
+      "items": { "$ref": "../common.schema.json#/$defs/recommendation_code" },
+      "uniqueItems": true
+    },
+    "escalation": {
+      "description": "Escalation of the assessment; null for level 'nodata'. Reasons are rule ids, not text.",
+      "oneOf": [
+        {
+          "title": "GroundEscalation",
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "urgency": {
+              "description": "Urgency of the escalation; null when it is not required.",
+              "oneOf": [{ "$ref": "../domain/assessment.schema.json#/properties/escalation/properties/urgency" }, { "type": "null" }]
+            },
+            "reasons": {
+              "description": "Rules that justify the escalation (rule_id of the fired rules of the assessment); empty when none.",
+              "type": "array",
+              "items": { "$ref": "../common.schema.json#/$defs/rule_id" },
+              "uniqueItems": true
+            }
+          },
+          "required": ["required", "urgency", "reasons"],
+          "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+          "then": { "properties": { "urgency": { "type": "string" } } },
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "contacts": {
+      "description": "Reserved for the contacts the ground may reach the astronaut with (issue #63). Always null until that is modelled; its content is not part of this schema yet.",
+      "type": "null"
+    }
+  },
+  "required": [
+    "schema_version", "astronaut_id", "date", "mission_day", "revision", "as_of", "level", "assessment_id",
+    "confidence", "data_available", "data_total", "drivers", "red_flags", "sessions", "recommendations",
+    "escalation", "contacts"
+  ],
+  "if": { "properties": { "level": { "const": "nodata" } }, "required": ["level"] },
+  "then": {
+    "properties": {
+      "assessment_id": { "type": "null" },
+      "confidence": { "type": "null" },
+      "data_available": { "type": "null" },
+      "data_total": { "type": "null" },
+      "drivers": { "maxItems": 0 },
+      "recommendations": { "maxItems": 0 },
+      "escalation": { "type": "null" }
+    }
+  },
+  "else": {
+    "properties": {
+      "assessment_id": { "type": "string" },
+      "confidence": { "type": "number" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -202,15 +202,37 @@ export interface SessionData {
   plannedAt: string | null;
 }
 
+/**
+ * The live repetition counter, a thin mapping of the contract's `RepStateView`. `signal` is `ok` or `no_signal` as the
+ * backend reports it, or one of two values that exist only here (not in the contract): `lost` when the stream to the
+ * backend dropped and main is retrying (the other fields are the last known values, not live), and `ended` when the
+ * session is over (`end` event): the fields are the final count, with no phase or bar.
+ */
 export interface RepState {
+  /** Repetitions completed plus the current one; 0 when none has started. */
   rep: number;
-  total: number;
-  phase: 'pulling' | 'letting_up';
-  /** Progress of the current movement, 0-100. */
-  barPercent: number;
+  /** `null` when the planned total is unknown. */
+  total: number | null;
+  /** `null` when the backend gives no phase (no signal, lost). */
+  phase: 'pulling' | 'letting_up' | 'resting' | null;
+  /** Progress of the current movement, 0-100; `null` when unknown (first rep, resting, no signal). Never a default 0. */
+  barPercent: number | null;
   /** Last completed rep, if any. */
   last: { rep: number; seconds: number } | null;
+  signal: 'ok' | 'no_signal' | 'lost' | 'ended';
 }
+
+/**
+ * What `DataSource.subscribeReps` delivers: a counter state, or why there is none. `none`: the protocol has no reps or
+ * the session is unknown; `unavailable`: the live count cannot be had; `locked`: nobody is signed in (re-check the session);
+ * `reconnecting`: the stream dropped before any count arrived, so there is nothing to show but that.
+ */
+export type RepsUpdate =
+  | { kind: 'state'; state: RepState }
+  | { kind: 'none' }
+  | { kind: 'unavailable' }
+  | { kind: 'locked' }
+  | { kind: 'reconnecting' };
 
 export interface ContactEntry {
   atGmt: string;
@@ -236,25 +258,51 @@ export interface OswestryData {
   items: readonly OdiItem[];
 }
 
+/** A summary revision in the outbox. Codes, times and counts; the words come from strings/houston. */
 export interface OutboxItem {
-  label: string;
+  /** Calendar date of the summary (`YYYY-MM-DD`). */
+  date: string;
+  /** `null` without a launch date. */
+  missionDay: number | null;
+  revision: number;
   state: 'queued' | 'sent';
-  /** When the ground station received it; only for `sent`. */
-  receivedGmt: string | null;
+  enqueuedAt: string;
+  /** When the ground station confirmed receipt; `null` exactly while `queued`. */
+  receivedAt: string | null;
+  attempts: number;
+}
+
+/** The latest summary prepared for the ground, as the contract gives it (codes and nulls). */
+export interface GroundSummaryData {
+  date: string;
+  missionDay: number | null;
+  revision: number;
+  asOf: string;
+  /** `nodata` for a day without an assessment. */
+  level: DayLevel;
+  confidencePct: number | null;
+  dataAvailable: number | null;
+  dataTotal: number | null;
+  drivers: readonly { featureId: string; deviationZ: number | null }[];
+  redFlags: readonly RedFlagCode[];
+  sessions: readonly { sessionId: string; state: SessionState; protocolId: string }[];
+  recommendations: readonly string[];
+  escalation: { required: boolean; urgency: 'routine' | 'priority' | 'immediate' | null; reasons: readonly string[] } | null;
+  /** Reserved until issue #63; always `null`. */
+  contacts: null;
 }
 
 export interface HoustonData {
   crewCode: string;
-  day: number;
-  level: Level;
-  confidencePct: number;
-  dataAvailable: number;
-  dataTotal: number;
-  drivers: string;
-  warningSymptoms: string;
-  sessions: string;
-  contacts: string;
-  plan: readonly string[];
+  /** `null` while there is no summary yet. */
+  summary: GroundSummaryData | null;
   outbox: readonly OutboxItem[];
-  groundLink: GroundLink;
+  /** `null` = not known: never shown as up. */
+  groundLink: GroundLink | null;
+  /** ISO instant of the last confirmed send; `null` when none. */
+  lastContactAt: string | null;
+  /** How the summaries reach the ground (the contract allows only `simulated` today; a string so a later transport does not claim to be it). */
+  transport: string;
+  /** Whether Aguado validated the content; today always false. */
+  contentValidated: boolean;
 }

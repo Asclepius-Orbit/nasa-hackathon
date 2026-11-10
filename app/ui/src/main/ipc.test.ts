@@ -6,12 +6,13 @@ import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { authStateSchema, createAuthService } from './auth/auth-service';
 import { createPinHasher } from './auth/pin';
 import { registerIpc, type IpcMainLike, type IpcServices } from './ipc';
-import { createAppUrlPolicy, createSenderGuard, type IpcEventLike } from './security/app-url';
+import { createAppUrlPolicy, createSenderGuard, type IpcEventLike, type WebContentsLike } from './security/app-url';
 import { createCrewStore, crewFileSchema } from './store/crew-store';
 import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
 import { FakeClock, FakeSafeStorage, FlakyFs, makeTempDir } from './store/test-fakes';
+import type { RepsService } from './views/reps-service';
 import type { ViewsClient } from './views/views-client';
 import { ViewsError } from './views/views-error';
 import { createViewsService } from './views/views-service';
@@ -34,11 +35,18 @@ class FakeIpcMain implements IpcMainLike {
 
 const SESSION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const APP_URL = 'app://asclepius/index.html';
-const trusted: IpcEventLike = { senderFrame: { url: `${APP_URL}#/login`, parent: null } };
+const SUBSCRIPTION = '0b9c3d4e-1f2a-4b5c-8d6e-7f8091a2b3c4';
+const sender: WebContentsLike = {
+  send: () => undefined,
+  isDestroyed: () => false,
+  once: () => undefined,
+  removeListener: () => undefined,
+};
+const trusted: IpcEventLike = { sender, senderFrame: { url: `${APP_URL}#/login`, parent: null } };
 const untrustedEvents: [string, IpcEventLike][] = [
-  ['no frame', { senderFrame: null }],
-  ['subframe', { senderFrame: { url: APP_URL, parent: { url: APP_URL, parent: null } } }],
-  ['foreign page', { senderFrame: { url: 'https://example.com/', parent: null } }],
+  ['no frame', { sender, senderFrame: null }],
+  ['subframe', { sender, senderFrame: { url: APP_URL, parent: { url: APP_URL, parent: null } } }],
+  ['foreign page', { sender, senderFrame: { url: 'https://example.com/', parent: null } }],
 ];
 
 let dir: string;
@@ -50,6 +58,26 @@ let services: IpcServices;
 let logged: unknown[];
 /** Fake of the backend HTTP client: remembers the arguments and answers (or fails) as told. */
 let backend: { calls: unknown[][]; failWith: Error | null };
+/** Fake of the repetition service: remembers what the handlers ask of it. */
+let repsCalls: unknown[][];
+let repsFailWith: Error | null;
+
+function fakeRepsService(): RepsService {
+  repsCalls = [];
+  repsFailWith = null;
+  return {
+    subscribe: (from, sessionId) => {
+      repsCalls.push(['subscribe', from, sessionId]);
+      return repsFailWith === null ? Promise.resolve(SUBSCRIPTION) : Promise.reject(repsFailWith);
+    },
+    unsubscribe: (from, id) => {
+      repsCalls.push(['unsubscribe', from, id]);
+    },
+    closeAll: () => {
+      repsCalls.push(['closeAll']);
+    },
+  };
+}
 
 function fakeViewsClient(): ViewsClient {
   backend = { calls: [], failWith: null };
@@ -65,6 +93,8 @@ function fakeViewsClient(): ViewsClient {
     baseline: (id) => view('baseline', id),
     firstDay: (id) => view('firstDay', id),
     session: (astronautId, id) => view('session', astronautId, id),
+    houston: (id) => view('houston', id),
+    outbox: (id) => view('outbox', id),
   };
 }
 
@@ -86,7 +116,7 @@ beforeEach(async () => {
   });
   const settings = createSettingsStore({ path: join(dir, 'settings.json'), fs });
   const views = createViewsService({ auth, crew, client: fakeViewsClient() });
-  services = { crew, auth, settings, views };
+  services = { crew, auth, settings, views, reps: fakeRepsService() };
   ipc = new FakeIpcMain();
   logged = [];
   const policy = createAppUrlPolicy({});
@@ -130,6 +160,8 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.settingsUpdate, [{ theme: 'dark' }]],
     [IPC_CHANNELS.settingsUpdate, []],
     [IPC_CHANNELS.viewsStrip, ['AST-02']],
+    [IPC_CHANNELS.viewsHouston, ['AST-02']],
+    [IPC_CHANNELS.viewsOutbox, [{ astronautId: 'AST-02' }]],
     [IPC_CHANNELS.viewsToday, [{}]],
     [IPC_CHANNELS.viewsBaseline, ['AST-02']],
     [IPC_CHANNELS.viewsFirstDay, [{ astronautId: 'AST-02' }]],
@@ -143,8 +175,18 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.viewsSession, ['not-a-uuid']],
     [IPC_CHANNELS.viewsSession, [{ sessionId: '../../etc' }]],
     [IPC_CHANNELS.viewsSession, [{ sessionId: SESSION, astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.repsSubscribe, []],
+    [IPC_CHANNELS.repsSubscribe, [SESSION]],
+    [IPC_CHANNELS.repsSubscribe, [{ sessionId: '../../etc' }]],
+    [IPC_CHANNELS.repsSubscribe, [{ sessionId: SESSION.toUpperCase() }]],
+    [IPC_CHANNELS.repsSubscribe, [{ sessionId: SESSION, astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.repsSubscribe, [{ sessionId: SESSION }, 'extra']],
+    [IPC_CHANNELS.repsUnsubscribe, []],
+    [IPC_CHANNELS.repsUnsubscribe, [{ subscriptionId: 'abc' }]],
+    [IPC_CHANNELS.repsUnsubscribe, [{ subscriptionId: SUBSCRIPTION, x: 1 }]],
   ])('rejects invalid input on %s %j without echoing it', async (channel, args) => {
     await expect(call(channel, ...args)).rejects.toThrow(/^invalid input$/);
+    expect(repsCalls).toEqual([]);
   });
 });
 
@@ -242,6 +284,8 @@ describe('views channels', () => {
     await call(IPC_CHANNELS.viewsHistory, { from: '2026-11-01', to: '2026-11-07' });
     await call(IPC_CHANNELS.viewsBaseline);
     await call(IPC_CHANNELS.viewsSession, { sessionId: SESSION });
+    await call(IPC_CHANNELS.viewsHouston);
+    await call(IPC_CHANNELS.viewsOutbox);
     expect(backend.calls).toEqual([
       ['strip', 'AST-01'],
       ['today', 'AST-01'],
@@ -249,6 +293,8 @@ describe('views channels', () => {
       ['history', 'AST-01', { from: '2026-11-01', to: '2026-11-07' }],
       ['baseline', 'AST-01'],
       ['session', 'AST-01', SESSION],
+      ['houston', 'AST-01'],
+      ['outbox', 'AST-01'],
     ]);
   });
 
@@ -261,7 +307,7 @@ describe('views channels', () => {
     });
   });
 
-  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay])(
+  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay, IPC_CHANNELS.viewsHouston, IPC_CHANNELS.viewsOutbox])(
     'rejects %s with "locked" before login and behind the lock screen',
     async (channel) => {
       await expect(call(channel)).rejects.toThrow(/^locked$/);
@@ -305,5 +351,42 @@ describe('views channels', () => {
     backend.failWith = new Error('boom C:\\secret');
     await expect(call(IPC_CHANNELS.viewsStrip)).rejects.toThrow(/^unavailable$/);
     expect(logged).toHaveLength(1);
+  });
+});
+
+describe('reps channels', () => {
+  const forbiddenEvent: IpcEventLike = { sender, senderFrame: null };
+
+  it('subscribes the calling window to the requested session and returns the subscription id', async () => {
+    expect(await call(IPC_CHANNELS.repsSubscribe, { sessionId: SESSION })).toBe(SUBSCRIPTION);
+    expect(repsCalls).toEqual([['subscribe', sender, SESSION]]);
+  });
+
+  it('unsubscribes through the calling window', async () => {
+    expect(await call(IPC_CHANNELS.repsUnsubscribe, { subscriptionId: SUBSCRIPTION })).toBeUndefined();
+    expect(repsCalls).toEqual([['unsubscribe', sender, SUBSCRIPTION]]);
+  });
+
+  it('does not reach the service from an untrusted sender', async () => {
+    await expect(ipc.invoke(IPC_CHANNELS.repsSubscribe, forbiddenEvent, { sessionId: SESSION })).rejects.toThrow('forbidden');
+    expect(repsCalls).toEqual([]);
+  });
+
+  it.each(['locked', 'not_found'] as const)('passes "%s" through without logging it', async (code) => {
+    repsFailWith = new ViewsError(code);
+    await expect(call(IPC_CHANNELS.repsSubscribe, { sessionId: SESSION })).rejects.toThrow(new RegExp(`^${code}$`, 'u'));
+    expect(logged).toEqual([]);
+  });
+
+  it('hides any other failure behind "unavailable" and logs it', async () => {
+    const bug = new Error('boom C:\\secret');
+    repsFailWith = bug;
+    await expect(call(IPC_CHANNELS.repsSubscribe, { sessionId: SESSION })).rejects.toThrow(/^unavailable$/);
+    expect(logged).toEqual([bug]);
+  });
+
+  it('stops every live stream when the app is locked', async () => {
+    await call(IPC_CHANNELS.authLock);
+    expect(repsCalls).toEqual([['closeAll']]);
   });
 });

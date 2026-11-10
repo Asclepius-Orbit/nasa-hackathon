@@ -11,6 +11,7 @@
         "invalid_request",
         "invalid_range",
         "not_found",
+        "no_reps",
         "unsupported_schema_version",
         "internal"
       ]

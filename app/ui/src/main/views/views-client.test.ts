@@ -21,6 +21,8 @@ const BODIES = {
   history: { schema_version: '1.1.0', from: '2026-11-01', to: '2026-11-07', days: [] },
   baseline,
   firstDay: { schema_version: '1.0.0', todo: ['pair_harness'], baseline },
+  houston: { schema_version: '1.0.0', astronaut_id: ASTRONAUT, summary: null, ground_link: null },
+  outbox: { schema_version: '1.0.0', astronaut_id: ASTRONAUT, ground_link: null, items: [] },
   session: {
     schema_version: '1.0.0',
     session_id: SESSION,
@@ -70,6 +72,8 @@ describe('createViewsClient requests', () => {
     ['today', (c) => c.today(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/today`, BODIES.today],
     ['baseline', (c) => c.baseline(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/baseline`, BODIES.baseline],
     ['first-day', (c) => c.firstDay(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/first-day`, BODIES.firstDay],
+    ['houston', (c) => c.houston(ASTRONAUT), `/ui/crew/${ASTRONAUT}/houston`, BODIES.houston],
+    ['outbox', (c) => c.outbox(ASTRONAUT), `/ui/crew/${ASTRONAUT}/outbox`, BODIES.outbox],
     ['session', (c) => c.session(ASTRONAUT, SESSION), `/ui/sessions/${SESSION}/view`, BODIES.session],
     ['history without range', (c) => c.history(ASTRONAUT, {}), `/ui/crew/${ASTRONAUT}/views/history`, BODIES.history],
   ];
@@ -211,6 +215,8 @@ describe('createViewsClient errors', () => {
     ['baseline', (c) => c.baseline(ASTRONAUT)],
     ['first-day', (c) => c.firstDay(ASTRONAUT)],
     ['session', (c) => c.session(ASTRONAUT, SESSION)],
+    ['houston', (c) => c.houston(ASTRONAUT)],
+    ['outbox', (c) => c.outbox(ASTRONAUT)],
   ])('validates the %s shape', async (_name, call) => {
     expect(await codeOf(call(client(() => onlyVersion.clone())))).toBe('unavailable');
   });
@@ -221,5 +227,15 @@ describe('createViewsClient errors', () => {
     expect(await flaky.today(ASTRONAUT)).toEqual(BODIES.today);
     healthy = false;
     expect(await codeOf(flaky.today(ASTRONAUT))).toBe('unavailable');
+  });
+});
+
+describe('houston and outbox identity', () => {
+  it.each<[string, (c: ViewsClient) => Promise<unknown>, unknown]>([
+    ['houston', (c) => c.houston(ASTRONAUT), BODIES.houston],
+    ['outbox', (c) => c.outbox(ASTRONAUT), BODIES.outbox],
+  ])('rejects a %s view of another astronaut as unavailable', async (_name, call, body) => {
+    const { fetch } = fakeFetch(() => json({ ...(body as object), astronaut_id: 'AST-02' }));
+    expect(await codeOf(call(createViewsClient({ baseUrl: BASE, fetch })))).toBe('unavailable');
   });
 });

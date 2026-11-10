@@ -9,9 +9,10 @@ import asyncio
 import contextlib
 import copy
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -19,20 +20,56 @@ from typing import Any
 import aiomqtt
 import httpx
 import pytest
+import spine_physiology
 from monitor.main import create_app
 from monitor.settings import AppSettings
 from spine_contracts import FeatureSet, FeaturesRequest, topics
 from spine_engine.api import create_app as create_engine_app
 from spine_engine.factory import default_baseline_builder, default_pipeline
 from spine_engine.settings import EngineSettings
+from spine_physiology.config import ExerciseProtocol, load_config
+from spine_physiology.device import SimDevice, plan_device_live
+from spine_physiology.envelope import EnvelopeKind
+from spine_physiology.generator import MissionGenerator
+from spine_physiology.signals import exercise_duration_s
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
 ASTRONAUT, DEVICE = "AST-01", "wb-01"
 NOW = datetime(2026, 11, 13, 10, 0, tzinfo=UTC)
+# From the installed simulator package, not this file: mutmut runs a copy of the tests in another directory.
+SIM_CONFIG = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
+SIM_PROTOCOL = "lat_pulldown_standing_v1"
+SIM_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
 
 def example(name: str) -> dict[str, Any]:
     return json.loads((EXAMPLES / f"{name}.json").read_text(encoding="utf-8"))
+
+
+@cache
+def _simulated_imu_chunks() -> tuple[dict[str, Any], ...]:
+    """The imu_l3 chunks of one real simulated exercise (10 reps of the lat pulldown), with no wall clock."""
+    config = load_config(SIM_CONFIG)
+    start = datetime(2030, 1, 1, 10, tzinfo=UTC)
+    plan = plan_device_live(config, config.seed, ASTRONAUT, boot_at=start - timedelta(hours=1), horizon=timedelta(hours=1))
+    stream = MissionGenerator(config).live_session(
+        astronaut_id=ASTRONAUT, day=1, device=SimDevice(config, plan), session_id=SIM_SESSION, session_type="exercise",
+        protocol_id=SIM_PROTOCOL, stream_ids=("imu_l3",), start=start,
+    )  # fmt: skip
+    protocol = config.protocols[SIM_PROTOCOL]
+    assert isinstance(protocol, ExerciseProtocol)
+    chunks: list[dict[str, Any]] = []
+    for envelope in stream:
+        if envelope.kind is EnvelopeKind.STREAM_CHUNK:
+            chunks.append(envelope.payload)
+            if (chunks[-1]["t0_device_ms"] - chunks[0]["t0_device_ms"]) / 1000.0 > exercise_duration_s(protocol):
+                return tuple(chunks)
+    raise AssertionError("the live session iterator never ends")
+
+
+def imu_chunks(session_id: str) -> list[dict[str, Any]]:
+    """The simulated chunks, as chunks of this session and of the harness device."""
+    return [{**chunk, "session_id": session_id, "device_id": DEVICE} for chunk in _simulated_imu_chunks()]
 
 
 @pytest.fixture
@@ -137,6 +174,7 @@ class Harness:
     device_id = DEVICE
     example = staticmethod(example)
     plan = staticmethod(lambda **overrides: session_plan(**overrides))
+    imu_chunks = staticmethod(imu_chunks)
 
     @property
     def store(self):
@@ -184,6 +222,12 @@ class Harness:
             self.mqtt.deliver(topics.stream(chunk["astronaut_id"], chunk["device_id"], chunk["stream_id"]), chunk)
         await self.settle()
 
+    async def send_stream_chunks(self, chunks: Iterable[dict[str, Any]]) -> None:
+        """Delivers chunks over the bus one by one, each one handled before the next, like a live stream."""
+        for chunk in chunks:
+            self.mqtt.deliver(topics.stream(chunk["astronaut_id"], chunk["device_id"], chunk["stream_id"]), chunk)
+            await self.mqtt.queue.join()
+
     async def stop_session(self, session_id: str, start_command: dict[str, Any], reason: str = "completed") -> None:
         response = await self.http.post(f"/ui/sessions/{session_id}/stop", json={"reason": reason})
         assert response.status_code == 202, response.text
@@ -201,7 +245,13 @@ def session_plan(**overrides: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-async def harness(tmp_path: Path, anyio_backend: str) -> AsyncIterator[Harness]:
+def harness_settings() -> dict[str, Any]:
+    """Extra AppSettings of the harness; a test module overrides this fixture to change them."""
+    return {}
+
+
+@pytest.fixture
+async def harness(tmp_path: Path, anyio_backend: str, harness_settings: dict[str, Any]) -> AsyncIterator[Harness]:
     mqtt = FakeMqtt()
     clock = Clock(NOW)
     extractor = ExampleExtractor()
@@ -210,7 +260,7 @@ async def harness(tmp_path: Path, anyio_backend: str) -> AsyncIterator[Harness]:
         baseline_builder=default_baseline_builder(),
         feature_extractor=extractor,
     )
-    settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2)
+    settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2, **harness_settings)
     app = create_app(settings, mqtt_client_factory=mqtt.factory, engine_transport=httpx.ASGITransport(app=engine_app), clock=clock)
     runtime = app.state.runtime
     bus_task = asyncio.create_task(runtime.bus.run(runtime.ingest))

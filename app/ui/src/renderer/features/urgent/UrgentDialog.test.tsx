@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
 
 import { MockDataSource } from '../../data/mock/MockDataSource';
+import { RealDataSource } from '../../data/real/RealDataSource';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import { FakeScheduler } from '../../test/fake-scheduler';
 import { renderInWorld } from '../../test/providers';
@@ -78,6 +79,22 @@ it('announces the link is up when the ground can be reached', async () => {
   renderInWorld(<Opener />, { withRouter: false, data });
   const dialog = await openDialog();
   expect(await within(dialog).findByText(/Link to the ground is up\./)).toBeInTheDocument();
+});
+
+it('never promises delivery, even with the link up: it says Queued and no Sent', async () => {
+  const data = mockData();
+  const real = data.getStrip.bind(data);
+  data.getStrip = async () => ({ ...(await real()), groundLink: { state: 'up' } });
+  renderInWorld(<Opener />, { withRouter: false, data });
+  const dialog = await openDialog();
+  expect(await within(dialog).findByText(/Link to the ground is up\./)).toBeInTheDocument();
+  expect(within(dialog).queryByText(/as soon as you send/)).not.toBeInTheDocument();
+  expect(dialog).toHaveTextContent(/queued/i);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Fever with back pain' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  expect(within(dialog).getByText('Queued.')).toBeInTheDocument();
+  expect(within(dialog).queryByText(/goes to the flight surgeon/)).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole('button', { name: 'Sent' })).not.toBeInTheDocument();
 });
 
 it('hides the "For:" picker while signed in', async () => {
@@ -178,4 +195,24 @@ it('treats an unknown ground link as no link: the report is queued, never promis
   const dialog = await openDialog();
   expect(await within(dialog).findByText(/No link to the ground\./)).toBeInTheDocument();
   expect(within(dialog).queryByText(/Link to the ground is up\./)).not.toBeInTheDocument();
+});
+
+// Real mode: nothing is saved, queued or sent, and nobody is alerted (#63). The dialog must say so before and after Send, whatever the link.
+it.each([
+  ['up', { state: 'up' }],
+  ['down', { state: 'down', back_in_min: 12 }],
+] as const)('in real mode never claims saved, queued, sent or alerted, and says Not recorded (link %s)', async (_name, link) => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.strip = { ...(api.viewData.strip as object), ground_link: link } as never;
+  renderInWorld(<Opener />, { api, withRouter: false, data: new RealDataSource(api.views, api.reps) });
+  const dialog = await openDialog();
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Leg weakness' }));
+  expect(dialog).not.toHaveTextContent(/alerted|queue|saved on board|goes to the flight surgeon/i);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  const alert = await within(dialog).findByRole('alert');
+  expect(alert).toHaveTextContent(/Not recorded/);
+  expect(alert).toHaveTextContent(/Tell the crew medical officer now/);
+  expect(dialog).not.toHaveTextContent(/alerted|queued|saved on board|goes to the flight surgeon/i);
+  expect(within(dialog).queryByRole('button', { name: 'Queued' })).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Close' })).toBeEnabled();
 });

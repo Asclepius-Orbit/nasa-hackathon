@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "date": "2027-02-09",
+  "mission_day": 87,
+  "revision": 2,
+  "as_of": "2027-02-09T09:00:00Z",
+  "level": "amber",
+  "assessment_id": "a55e55e0-0000-4000-8000-0000000000a1",
+  "confidence": 0.74,
+  "data_available": 5,
+  "data_total": 6,
+  "drivers": [
+    { "feature_id": "stretch.lumbar.peak_elongation_mm", "deviation_z": 2.4 },
+    { "feature_id": "symptoms.pain_nrs_7d_mean", "deviation_z": 1.8 }
+  ],
+  "red_flags": [],
+  "sessions": [
+    { "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03", "state": "processed", "protocol_id": "lat_pulldown_standing_v1" }
+  ],
+  "recommendations": ["REC_LUMBAR_STAB_01", "REC_INCREASE_ARED"],
+  "escalation": { "required": false, "urgency": null, "reasons": [] },
+  "contacts": null
+}

@@ -55,10 +55,12 @@ class Control:
         *,
         ack_timeout_s: float,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        on_session_closed: Callable[[str], None] | None = None,
     ) -> None:
         self._store = store
         self._publisher = publisher
         self._on_session_ended = on_session_ended
+        self._on_session_closed = on_session_closed
         self._ack_timeout_s = ack_timeout_s
         self._clock = clock
         self._tasks: set[asyncio.Task[Any]] = set()
@@ -66,6 +68,20 @@ class Control:
 
     def _now(self) -> str:
         return self._clock().isoformat()
+
+    def _close_session(self, session_id: str, from_states: tuple[str, ...], to_state: str, error: str | None = None) -> bool:
+        """Transition to a state no more data is expected in (`ended` or `rejected`); `on_session_closed` hears of it right away.
+
+        Unlike `on_session_ended`, it covers the sessions that never ran. A failure there never stops the protocol.
+        """
+        if not self._store.transition_session(session_id, from_states, to_state, error):
+            return False
+        if self._on_session_closed is not None:
+            try:
+                self._on_session_closed(session_id)
+            except Exception:
+                _log.exception("on_session_closed failed for session %s", session_id)
+        return True
 
     def _spawn(self, coro: Awaitable[Any]) -> None:
         task = asyncio.ensure_future(coro)
@@ -111,7 +127,7 @@ class Control:
         except Exception as exc:
             self._store.set_command_state(command["command_id"], "send_failed")
             if command["type"] == "start_session":
-                self._store.transition_session(command["session_id"], ("starting",), "rejected", "bus_unavailable")
+                self._close_session(command["session_id"], ("starting",), "rejected", "bus_unavailable")
             raise CommandError(f"MQTT bus unavailable: {exc}", status=503) from exc
         loop = asyncio.get_running_loop()
         self._timers[command["command_id"]] = loop.call_later(self._ack_timeout_s, self._expire, command["command_id"])
@@ -123,7 +139,7 @@ class Control:
         command = self._store.command(command_id)
         _log.warning("command %s (%s) got no ack in %.1f s", command_id, command.type if command else "?", self._ack_timeout_s)
         if command is not None and command.type == "start_session":
-            self._store.transition_session(command.payload["session_id"], ("starting",), "rejected", "ack_timeout")
+            self._close_session(command.payload["session_id"], ("starting",), "rejected", "ack_timeout")
 
     def _device_online(self, astronaut_id: str, device_id: str) -> None:
         status = self._store.device_status(astronaut_id, device_id)
@@ -213,7 +229,7 @@ class Control:
                 self._accept_start(payload["session_id"])
             case "start_session", "rejected" | "failed":
                 code = ack.get("error", {}).get("code", status)
-                self._store.transition_session(payload["session_id"], ("starting", "running"), "rejected", code)
+                self._close_session(payload["session_id"], ("starting", "running"), "rejected", code)
             case "start_session", "completed":
                 self._end(payload["session_id"], ack["timestamp"])
             case "stop_session", "completed":
@@ -246,7 +262,7 @@ class Control:
             reason = stops[-1].payload["reason"] if stops else "completed"
         session = {**row.payload, "ended_at": ended_at, "end_reason": reason}
         self._store.update_session(session_id, session)
-        if self._store.transition_session(session_id, ("starting", "running"), "ended"):
+        if self._close_session(session_id, ("starting", "running"), "ended"):
             self._spawn(self._on_session_ended(session_id))
 
     def _add_event(self, command: dict[str, Any]) -> None:

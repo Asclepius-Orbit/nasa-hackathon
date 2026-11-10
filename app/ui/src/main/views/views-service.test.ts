@@ -25,6 +25,8 @@ function fakeClient(): { client: ViewsClient; calls: string[] } {
     baseline: (id) => view('baseline', id),
     firstDay: (id) => view('first-day', id),
     session: (astronautId, id) => view('session', astronautId, id),
+    houston: (id) => view('houston', id),
+    outbox: (id) => view('outbox', id),
   };
   return { client, calls };
 }
@@ -59,12 +61,16 @@ describe('createViewsService', () => {
     await service.history({ from: '2026-11-01' });
     await service.baseline();
     await service.session(SESSION);
+    await service.houston();
+    await service.outbox();
     expect(calls).toEqual([
       'strip:"AST-01"',
       'today:"AST-01"',
       'history:"AST-01",{"from":"2026-11-01"}',
       'baseline:"AST-01"',
       `session:"AST-01","${SESSION}"`,
+      'houston:"AST-01"',
+      'outbox:"AST-01"',
     ]);
   });
 
@@ -86,6 +92,8 @@ describe('createViewsService', () => {
       service.baseline(),
       service.firstDay(),
       service.session(SESSION),
+      service.houston(),
+      service.outbox(),
     ];
     for (const attempt of attempts) expect(await codeOf(attempt)).toBe('locked');
     expect(calls).toEqual([]);

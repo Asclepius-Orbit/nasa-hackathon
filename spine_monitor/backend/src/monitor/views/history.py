@@ -55,12 +55,16 @@ def _preflight_range(measures: Sequence[Payload], baseline: Payload | None) -> d
     return preflight_range_mm(baseline_entry(baseline, protocol_id, gravity))
 
 
+def day_red_flags(reports: Sequence[Payload]) -> list[str]:
+    """Red flags of every report given, without repeats, in order of first appearance (a flag is not undone by a later report)."""
+    return list(dict.fromkeys(flag for r in reports for flag in r.get("red_flags", [])))
+
+
 def _report(reports: Sequence[Payload]) -> dict[str, Any] | None:
     """Kind of the latest report of the day; red flags are those of every report of the day (a flag is not undone by a later report)."""
     if not reports:
         return None
-    flags = [flag for r in reports for flag in r.get("red_flags", [])]
-    return {"kind": reports[-1]["kind"], "red_flags": list(dict.fromkeys(flags))}
+    return {"kind": reports[-1]["kind"], "red_flags": day_red_flags(reports)}
 
 
 def _pain(reports: Sequence[Payload]) -> int | None:

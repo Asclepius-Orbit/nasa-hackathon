@@ -3,7 +3,7 @@
   "astronaut_id": "AST-01",
   "mission": { "day": null, "start": null, "phase": null },
   "harness": null,
-  "ground_link": null,
-  "last_contact_min_ago": null,
+  "ground_link": { "state": "up" },
+  "last_contact_min_ago": 5,
   "reports_due": { "daily": true, "weekly_odi": true }
 }

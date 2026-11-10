@@ -158,10 +158,25 @@ describe('today, report, session, baseline, oswestry, first day', () => {
 describe('houston and stop', () => {
   it('summarises day 87 with the crew code, never the name', async () => {
     const h = await data.getHouston();
-    expect(h).toMatchObject({ crewCode: 'AST-01', day: 87, level: 'amber', sessions: '1 in progress', contacts: 'None today' });
+    expect(h).toMatchObject({ crewCode: 'AST-01', transport: 'simulated', contentValidated: false, groundLink: { state: 'down', backInMin: 12 } });
+    expect(h.summary).toMatchObject({
+      missionDay: 87,
+      level: 'amber',
+      confidencePct: 70,
+      dataAvailable: 8,
+      dataTotal: 10,
+      redFlags: [],
+      sessions: [{ state: 'running' }],
+      recommendations: ['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01'],
+      contacts: null,
+    });
     expect(JSON.stringify(h)).not.toContain('Elena');
-    expect(h.outbox.map((o) => o.state)).toEqual(['queued', 'sent', 'sent']);
-    expect(h.outbox[1]?.receivedGmt).toBe('21:04');
+    expect(h.outbox.map((o) => [o.missionDay, o.revision, o.state])).toEqual([
+      [87, 1, 'queued'],
+      [86, 1, 'sent'],
+      [85, 1, 'sent'],
+    ]);
+    expect(h.outbox[1]?.receivedAt).toMatch(/T21:04:00/);
   });
 
   it('records the stop at the current rep and the officer call', async () => {
@@ -170,8 +185,8 @@ describe('houston and stop', () => {
     expect(entry.text).toBe('13:52 GMT: call to the crew medical officer logged. Included in the day 87 report to Houston.');
     await data.stopSessionForPain();
     const h = await data.getHouston();
-    expect(h.sessions).toBe('1 stopped for pain at rep 4');
-    expect(h.contacts).toBe('Crew medical officer called at 13:52');
+    expect(h.summary?.sessions).toMatchObject([{ state: 'ended' }]);
+    expect(h.summary?.contacts).toBeNull();
     const stopped = await data.getStopped();
     expect(stopped.rep).toBe(4);
     expect(stopped.contacts).toEqual([entry]);
@@ -182,13 +197,15 @@ describe('houston and stop', () => {
 describe('subscribeReps', () => {
   function collect(): { states: RepState[]; stop: () => void } {
     const states: RepState[] = [];
-    const stop = data.subscribeReps((s) => states.push(s));
+    const stop = data.subscribeReps('mock-session', (u) => {
+      if (u.kind === 'state') states.push(u.state);
+    });
     return { states, stop };
   }
 
   it('starts at rep 4 of 10, pulling down, last rep 3', () => {
     const { states } = collect();
-    expect(states).toEqual([{ rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 } }]);
+    expect(states).toEqual([{ rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' }]);
   });
 
   it('moves the bar every 450 ms and switches phase at half a cycle', () => {

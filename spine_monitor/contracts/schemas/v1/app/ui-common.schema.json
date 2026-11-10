@@ -33,6 +33,41 @@
       "required": ["color", "nominal_kg"],
       "additionalProperties": false
     },
+    "ground_link": {
+      "title": "GroundLink",
+      "description": "State of the link with the ground station. 'up': the link works. 'down': it does not; back_in_min is the minutes until it is expected back, null when that is not known. A view that has no ground link configured or known carries null instead of this object.",
+      "oneOf": [
+        {
+          "title": "GroundLinkUp",
+          "type": "object",
+          "properties": {
+            "state": { "const": "up" }
+          },
+          "required": ["state"],
+          "additionalProperties": false
+        },
+        {
+          "title": "GroundLinkDown",
+          "type": "object",
+          "properties": {
+            "state": { "const": "down" },
+            "back_in_min": {
+              "description": "Minutes until the link is expected back; null when unknown.",
+              "type": ["integer", "null"],
+              "minimum": 0
+            }
+          },
+          "required": ["state", "back_in_min"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "outbox_state": {
+      "title": "OutboxState",
+      "description": "State of a ground summary in the outbox: queued (not yet confirmed received by the ground station) or sent (receipt confirmed by the ground station).",
+      "type": "string",
+      "enum": ["queued", "sent"]
+    },
     "fit_item_id": {
       "title": "FitItemId",
       "description": "Id of a fit item of a protocol, as in catalog/protocol-catalog.json.",

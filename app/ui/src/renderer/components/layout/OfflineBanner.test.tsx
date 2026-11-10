@@ -29,7 +29,7 @@ it('says what is happening, what is kept, and when contact was last made', async
   expect(banner).toHaveTextContent('The app cannot reach its data service.');
   expect(banner).toHaveTextContent('What you enter is kept on this tablet and saved when it reconnects.');
   expect(banner).toHaveTextContent('Urgent symptom still works.');
-  expect(await screen.findByText(/Last contact 4 min ago\./)).toBeInTheDocument();
+  expect(await screen.findByText(/Last contact 4 min ago \(simulated link\)\./)).toBeInTheDocument();
 });
 
 it('Try again runs the retry hook', async () => {

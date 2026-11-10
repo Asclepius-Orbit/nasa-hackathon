@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
 
 
 class UIViewDefinitions(RootModel[Any]):
@@ -47,3 +47,25 @@ class Band(BaseModel):
     )
     color: constr(pattern=r'^[a-z][a-z_]{0,31}$')
     nominal_kg: confloat(ge=0.0)
+
+
+class GroundLinkUp(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    state: Literal['up']
+
+
+class GroundLinkDown(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    state: Literal['down']
+    back_in_min: conint(ge=0) | None = Field(
+        ..., description='Minutes until the link is expected back; null when unknown.'
+    )
+
+
+class OutboxState(str, Enum):
+    QUEUED = 'queued'
+    SENT = 'sent'

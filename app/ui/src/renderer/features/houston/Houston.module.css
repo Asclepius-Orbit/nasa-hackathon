@@ -1,4 +1,7 @@
 .lede { color: var(--muted); margin: 0 0 22px; max-width: 66ch; }
+.notices { display: grid; gap: 8px; margin: 0 0 22px; }
+.notice { margin: 0; padding: 8px 12px; border: 2px solid var(--rail); border-radius: 8px; font-weight: 800; }
+.items { list-style: none; margin: 0; padding: 0; font-weight: 400; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 1.0625rem; margin: 0; }
 .kv dt { color: var(--muted); }

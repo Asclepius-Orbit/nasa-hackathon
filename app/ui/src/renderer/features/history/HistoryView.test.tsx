@@ -205,7 +205,7 @@ it('shows an alert when the history cannot be loaded', async () => {
 const realHistory = (view: HistoryPayload | null): void => {
   const api = new FakeAsclepiusApi();
   if (view) api.viewData.history = view;
-  renderInWorld(<HistoryView />, { api, data: new RealDataSource(api.views) });
+  renderInWorld(<HistoryView />, { api, data: new RealDataSource(api.views, api.reps) });
 };
 
 it('shows the backend example: nodata day empty, the report written from codes, red flags named', async () => {

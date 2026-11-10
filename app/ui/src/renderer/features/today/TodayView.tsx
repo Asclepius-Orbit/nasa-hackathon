@@ -29,17 +29,22 @@ import { TodoRows } from './TodoRows';
 const selectToday = (d: DataSource): ReturnType<DataSource['getToday']> => d.getToday();
 const selectCatalog = (d: DataSource): ReturnType<DataSource['getCatalog']> => d.getCatalog();
 
-/** Live rep of the running session, `null` until the data source has reported one. */
-function useLiveRep(active: boolean): number | null {
+/**
+ * Live rep of the running session, `null` until the data source reports one and whenever it is not live (no signal,
+ * lost, ended, no counter): then the verdict falls back to the line without a count. Unsubscribes on unmount.
+ */
+function useLiveRep(sessionId: string | null): number | null {
   const source = useData();
-  const [rep, setRep] = useState<number | null>(null);
+  // Keyed by session: a rep seen for one session is never shown for the next one while it has not reported yet.
+  const [seen, setSeen] = useState<{ sessionId: string; rep: number | null } | null>(null);
   useEffect(() => {
-    if (!active) return undefined;
-    return source.subscribeReps((state) => {
-      setRep(state.rep);
+    if (sessionId === null) return undefined;
+    return source.subscribeReps(sessionId, (update) => {
+      const rep = update.kind === 'state' && update.state.signal === 'ok' && update.state.rep > 0 ? update.state.rep : null;
+      setSeen({ sessionId, rep });
     });
-  }, [source, active]);
-  return rep;
+  }, [source, sessionId]);
+  return sessionId !== null && seen?.sessionId === sessionId ? seen.rep : null;
 }
 
 function PlanRow({ item, extra }: { item: PlanText; extra: string | null }): React.JSX.Element {
@@ -192,7 +197,7 @@ function measuredNote(today: TodayData, now: Date): string | null {
 /** Today: the spine figure, the verdict with its plan, why, and what else is due. */
 export function TodayView(): React.JSX.Element {
   const { data, error } = useLoad(selectToday, { refreshMs: REFRESH_MS });
-  const liveRep = useLiveRep(data?.sessionInProgress != null);
+  const liveRep = useLiveRep(data?.sessionInProgress?.sessionId ?? null);
   const now = useNow();
   return (
     <section aria-labelledby="today-title" data-testid="today-view">

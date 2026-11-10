@@ -9,6 +9,7 @@ import type {
   HoustonData,
   OswestryData,
   ReportFormData,
+  RepsUpdate,
   RepState,
   SessionData,
   StoppedData,
@@ -36,10 +37,10 @@ export interface MockDataSourceOptions {
 export class MockDataSource implements DataSource {
   private readonly now: () => Date;
   private readonly scheduler: Scheduler;
-  private readonly listeners = new Set<(state: RepState) => void>();
+  private readonly listeners = new Set<(update: RepsUpdate) => void>();
   private stopTimer: (() => void) | null = null;
   private tick = 0;
-  private reps: RepState = { rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 } };
+  private reps: RepState = { rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' };
   private stoppedAtRep: number | null = null;
   private contacts: ContactEntry[] = [];
 
@@ -110,31 +111,52 @@ export class MockDataSource implements DataSource {
     return Promise.resolve(CATALOG);
   }
 
+  /** The mock day 87 as the contract would give it: codes and nulls, simulated transport, content not validated. */
   getHouston(): Promise<HoustonData> {
-    const last = this.contacts.at(-1);
+    const day = (back: number): string => new Date(this.now().getTime() - back * MS_PER_DAY).toISOString().slice(0, 10);
+    const at = (back: number, hhmm: string): string => `${day(back)}T${hhmm}:00.000Z`;
     return Promise.resolve({
       crewCode: 'AST-01',
-      day: MISSION_DAY,
-      level: 'amber',
-      confidencePct: 70,
-      dataAvailable: 8,
-      dataTotal: 10,
-      drivers: 'Lumbar length +2.1 mm, curve flatter, pain 7-day mean 4',
-      warningSymptoms: 'None reported',
-      sessions: this.stoppedAtRep === null ? '1 in progress' : `1 stopped for pain at rep ${String(this.stoppedAtRep)}`,
-      contacts: last ? `Crew medical officer called at ${last.atGmt}` : 'None today',
-      plan: ['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01'],
+      summary: {
+        date: day(0),
+        missionDay: MISSION_DAY,
+        revision: 1,
+        asOf: at(0, '09:00'),
+        level: 'amber',
+        confidencePct: 70,
+        dataAvailable: 8,
+        dataTotal: 10,
+        drivers: [
+          { featureId: 'stretch.lumbar.peak_elongation_mm', deviationZ: 2.1 },
+          { featureId: 'imu.l3.sagittal.rom_deg', deviationZ: -1.2 },
+          { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8 },
+        ],
+        redFlags: [],
+        sessions: [{ sessionId: 'mock-session', state: this.stoppedAtRep === null ? 'running' : 'ended', protocolId: 'lat_pulldown_standing_v1' }],
+        recommendations: ['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01'],
+        escalation: { required: false, urgency: null, reasons: [] },
+        contacts: null,
+      },
       outbox: [
-        { label: 'Day 87 summary', state: 'queued', receivedGmt: null },
-        { label: 'Day 86 summary', state: 'sent', receivedGmt: '21:04' },
-        { label: 'Day 85 summary', state: 'sent', receivedGmt: '20:51' },
+        { date: day(0), missionDay: MISSION_DAY, revision: 1, state: 'queued', enqueuedAt: at(0, '09:00'), receivedAt: null, attempts: 1 },
+        { date: day(1), missionDay: MISSION_DAY - 1, revision: 1, state: 'sent', enqueuedAt: at(1, '21:03'), receivedAt: at(1, '21:04'), attempts: 1 },
+        { date: day(2), missionDay: MISSION_DAY - 2, revision: 1, state: 'sent', enqueuedAt: at(2, '20:50'), receivedAt: at(2, '20:51'), attempts: 1 },
       ],
       groundLink: { state: 'down', backInMin: 12 },
+      lastContactAt: at(1, '21:04'),
+      transport: 'simulated',
+      contentValidated: false,
     });
   }
 
   stopSessionForPain(): Promise<void> {
     this.stoppedAtRep = this.reps.rep;
+    return Promise.resolve();
+  }
+
+  readonly sendsUrgentReports = true;
+
+  sendUrgentReport(): Promise<void> {
     return Promise.resolve();
   }
 
@@ -147,9 +169,9 @@ export class MockDataSource implements DataSource {
     return Promise.resolve(entry);
   }
 
-  subscribeReps(cb: (state: RepState) => void): () => void {
+  subscribeReps(_sessionId: string, cb: (update: RepsUpdate) => void): () => void {
     this.listeners.add(cb);
-    cb(this.reps);
+    cb({ kind: 'state', state: this.reps });
     this.stopTimer ??= this.scheduler.every(REP_TICK_MS, () => {
       this.advance();
     });
@@ -167,7 +189,7 @@ export class MockDataSource implements DataSource {
     this.tick = (this.tick + 1) % CYCLE_TICKS;
     const pulling = this.tick < CYCLE_TICKS / 2;
     let { rep, last } = this.reps;
-    if (this.tick === 0 && rep < this.reps.total) {
+    if (this.tick === 0 && this.reps.total !== null && rep < this.reps.total) {
       last = { rep, seconds: 2.4 };
       rep += 1;
     }
@@ -177,9 +199,10 @@ export class MockDataSource implements DataSource {
       phase: pulling ? 'pulling' : 'letting_up',
       barPercent: pulling ? (this.tick + 1) * 20 : (CYCLE_TICKS - this.tick) * 20,
       last,
+      signal: 'ok',
     };
     this.listeners.forEach((listener) => {
-      listener(this.reps);
+      listener({ kind: 'state', state: this.reps });
     });
   }
 }

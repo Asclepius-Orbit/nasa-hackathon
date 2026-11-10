@@ -16,6 +16,8 @@ import type {
   BaselineView,
   FirstDayView,
   HistoryView,
+  HoustonView,
+  OutboxView,
   SessionView,
   StripView,
   TodayView,
@@ -40,6 +42,10 @@ export interface ViewsClient {
   firstDay(astronautId: string): Promise<FirstDayView>;
   /** The session view, but only if it belongs to `astronautId`: someone else's session is `not_found`. */
   session(astronautId: string, sessionId: string): Promise<SessionView>;
+  /** What goes to the ground station and the link state; `summary` is `null` while there is none (still a 200). */
+  houston(astronautId: string): Promise<HoustonView>;
+  /** Summaries queued for or sent to the ground station. */
+  outbox(astronautId: string): Promise<OutboxView>;
 }
 
 export interface ViewsClientOptions {
@@ -68,6 +74,8 @@ const SCHEMAS = {
   history: () => view({ from: z.string(), to: z.string(), days: z.array(object) }),
   baseline: () => view(baselineShape),
   firstDay: () => view({ todo: z.array(z.string()), baseline: view(baselineShape) }),
+  houston: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), summary: object.nullable(), ground_link: object.nullable() }),
+  outbox: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), ground_link: object.nullable(), items: z.array(object) }),
   // `astronaut_id` is compared by the client (a mismatch is not_found, not a malformed body).
   session: (sessionId: string) =>
     view({ session_id: z.literal(sessionId), astronaut_id: z.string(), state: z.string(), protocol_id: z.string() }),
@@ -118,6 +126,8 @@ export function createViewsClient({
       const suffix = query.size === 0 ? '' : `?${query.toString()}`;
       return get(`${crewPath(id, 'history')}${suffix}`, SCHEMAS.history());
     },
+    houston: (id) => get(`/ui/crew/${encodeURIComponent(id)}/houston`, SCHEMAS.houston(id)),
+    outbox: (id) => get(`/ui/crew/${encodeURIComponent(id)}/outbox`, SCHEMAS.outbox(id)),
     baseline: (id) => get(crewPath(id, 'baseline'), SCHEMAS.baseline()),
     firstDay: (id) => get(crewPath(id, 'first-day'), SCHEMAS.firstDay()),
     async session(astronautId, sessionId) {

@@ -3,12 +3,15 @@ import type {
   BaselineView,
   FirstDayView,
   HistoryView,
+  HoustonView,
+  OutboxView,
+  RepStateView,
   SessionView,
   StripView,
   TodayView,
 } from '../contracts/v1';
 
-export type { BaselineView, FirstDayView, HistoryView, SessionView, StripView, TodayView };
+export type { BaselineView, FirstDayView, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView };
 
 /** `id` is the astronaut identifier, `AST-NN`. Names stay on this device; the bus and Houston only see `id`. */
 export interface CrewMember {
@@ -60,6 +63,27 @@ export type FirstDayResult = FirstDayView & { crewFirstName: string };
  */
 export type ViewsErrorCode = 'locked' | 'not_found' | 'unavailable';
 
+/** Why a live repetition stream ended in error: a `ViewsErrorCode`, or `no_reps` (the protocol has no repetitions). */
+export type RepsErrorCode = ViewsErrorCode | 'no_reps';
+
+/**
+ * What a repetition subscription delivers. `state` is the live counter; `end` is its last value (the session
+ * ended, no more events follow); `lost` means the connection to the backend dropped and is being retried (the
+ * counter on screen is stale until the next `state`); `error` is final.
+ */
+export type RepsEvent =
+  | { kind: 'state'; state: RepStateView }
+  | { kind: 'end'; state: RepStateView }
+  | { kind: 'lost' }
+  | { kind: 'error'; code: RepsErrorCode };
+
+/** What main pushes on `asclepius:reps:event`. The preload hands only `event` to the renderer. */
+export interface RepsMessage {
+  subscriptionId: string;
+  sessionId: string;
+  event: RepsEvent;
+}
+
 export interface AsclepiusApi {
   crew: {
     list(): Promise<CrewMember[]>;
@@ -85,6 +109,17 @@ export interface AsclepiusApi {
     baseline(): Promise<BaselineView>;
     firstDay(): Promise<FirstDayResult>;
     session(sessionId: string): Promise<SessionView>;
+    houston(): Promise<HoustonView>;
+    outbox(): Promise<OutboxView>;
+  };
+  /** Live push from the backend, for the signed-in astronaut's own sessions only. */
+  reps: {
+    /**
+     * Live repetition counter of a session. Returns the function that stops it (safe to call at once, any
+     * number of times). A refused subscription arrives as `{ kind: 'error' }` with a `ViewsErrorCode`.
+     * Locking the app, or the session ending, stops the events without a further call.
+     */
+    subscribe(sessionId: string, onEvent: (event: RepsEvent) => void): () => void;
   };
 }
 

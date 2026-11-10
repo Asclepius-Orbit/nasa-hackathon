@@ -11,7 +11,19 @@ from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, ValidationError
-from spine_contracts import AppErrorResponse, AssessRequest, Explanation, History, SelfReportList, SessionList, SimulateRequest, SimulateResponse, Status
+from spine_contracts import (
+    AppErrorResponse,
+    AssessRequest,
+    ErrorResponse,
+    Explanation,
+    History,
+    SelfReportList,
+    SessionList,
+    SimulateRequest,
+    SimulateResponse,
+    Status,
+    dump,
+)
 
 from spine_mcp_server.errors import UpstreamError
 
@@ -84,7 +96,7 @@ def _problem(response: httpx.Response) -> AppErrorResponse | None:
         return None
 
 
-def _detail(problem: AppErrorResponse) -> str | None:
+def _detail(problem: AppErrorResponse | ErrorResponse) -> str | None:
     """`detail` del problema o, si no lo trae, sus errores de campo (`pointer: message`); recortado a `MAX_DETAIL_CHARS`."""
     detail = problem.detail or "; ".join(f"{error.pointer}: {error.message}" for error in problem.errors or []) or None
     return None if detail is None else detail[:MAX_DETAIL_CHARS]
@@ -98,6 +110,46 @@ def _failure(response: httpx.Response) -> UpstreamError:
     if problem is not None:
         return UpstreamError(problem.status, problem.title, _detail(problem))
     return UpstreamError(status, "App API request rejected", f"HTTP {status}")
+
+
+class HttpSimulator:
+    """Simulator que consulta directamente el motor mediante su contrato HTTP."""
+
+    def __init__(self, base_url: str, *, client: httpx.Client | None = None, timeout: float = 10.0) -> None:
+        self._owns_client = client is None
+        self._client = client if client is not None else httpx.Client(base_url=base_url, timeout=timeout)
+        self._base = base_url.rstrip("/")
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None:
+        self.close()
+
+    def simulate(self, request: SimulateRequest) -> SimulateResponse:
+        try:
+            response = self._client.post(self._base + "/simulate", json=dump(request))
+        except httpx.TimeoutException as exc:
+            raise UpstreamError(504, "Engine API timeout", f"No response from {self._base} ({type(exc).__name__}).") from exc
+        except httpx.HTTPError as exc:
+            raise UpstreamError(503, "Engine API unavailable", f"Cannot reach {self._base} ({type(exc).__name__}).") from exc
+        if response.is_success:
+            try:
+                return SimulateResponse.model_validate_json(response.content)
+            except ValidationError as exc:
+                raise UpstreamError(502, "Engine API returned an invalid response", "Body is not a valid SimulateResponse.") from exc
+        status = response.status_code
+        if status >= 500:
+            raise UpstreamError(status, "Engine API error", f"HTTP {status}")
+        try:
+            problem = ErrorResponse.model_validate_json(response.content)
+        except ValidationError:
+            raise UpstreamError(status, "Engine API request rejected", f"HTTP {status}") from None
+        raise UpstreamError(problem.status, problem.title, _detail(problem))
 
 
 _NOT_IMPLEMENTED_DETAIL = "The app API has no endpoint for this yet, so {what} is not available in http mode."

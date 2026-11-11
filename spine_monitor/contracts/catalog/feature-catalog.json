@@ -186,18 +186,6 @@
       "status": "proposed"
     },
     {
-      "feature_id": "imu.{spine_level}.{anatomical_plane}.smoothness_sparc",
-      "label": "Movement smoothness (SPARC)",
-      "description": "Spectral arc length of the angular speed profile of a repetition. Less negative = smoother. Needs at least ~50 Hz IMU sampling.",
-      "domain": "kinematics",
-      "unit": "1",
-      "inputs": ["imu", "session_events"],
-      "requires": ["imu_calibration"],
-      "risk_direction": "unspecified",
-      "ranges": null,
-      "status": "proposed"
-    },
-    {
       "feature_id": "imu.{spine_level}.accel_rms_g",
       "label": "Acceleration RMS",
       "description": "RMS of the dynamic acceleration magnitude (static component removed). In microgravity the gravity component is absent, so compare across environments with care.",
@@ -259,18 +247,6 @@
       "status": "proposed"
     },
     {
-      "feature_id": "symptoms.pain_nrs_7d_max",
-      "label": "Pain, 7-day maximum",
-      "description": "Highest daily pain NRS in the last 7 days.",
-      "domain": "symptoms",
-      "unit": "nrs",
-      "inputs": ["self_report"],
-      "requires": [],
-      "risk_direction": "higher_is_worse",
-      "ranges": null,
-      "status": "proposed"
-    },
-    {
       "feature_id": "symptoms.stiffness_nrs_7d_mean",
       "label": "Stiffness, 7-day mean",
       "description": "Mean of the daily stiffness NRS over the last 7 days.",
@@ -291,18 +267,6 @@
       "inputs": ["self_report"],
       "requires": [],
       "risk_direction": "unspecified",
-      "ranges": null,
-      "status": "proposed"
-    },
-    {
-      "feature_id": "symptoms.odi_pct",
-      "label": "Oswestry disability index",
-      "description": "Sum of the answered ODI items over their maximum, as a percentage (so a reduced item set is still comparable).",
-      "domain": "symptoms",
-      "unit": "%",
-      "inputs": ["self_report"],
-      "requires": [],
-      "risk_direction": "higher_is_worse",
       "ranges": null,
       "status": "proposed"
     },

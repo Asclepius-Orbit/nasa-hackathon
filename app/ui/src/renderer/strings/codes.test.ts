@@ -78,6 +78,12 @@ describe('reasonText', () => {
     expect(reasonText('future.thing', 1.2).label).toBe('future.thing');
     expect(featureLabel('future.thing')).toBe('future.thing');
   });
+
+  it('no longer labels the features retired from the catalog', () => {
+    // Aguado retiró estas features: ya no tienen etiqueta propia y se muestran por su id
+    expect(featureLabel('symptoms.pain_nrs_7d_max')).toBe('symptoms.pain_nrs_7d_max');
+    expect(featureLabel('symptoms.odi_pct')).toBe('symptoms.odi_pct');
+  });
 });
 
 describe('missingReasonText', () => {

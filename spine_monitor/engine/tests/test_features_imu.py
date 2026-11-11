@@ -1,4 +1,4 @@
-"""Familia ``imu`` (#44): rango de movimiento, velocidad angular pico y suavidad (SPARC) por plano, y RMS del acelerómetro.
+"""Familia ``imu`` (#44): rango de movimiento, velocidad angular pico por plano, y RMS del acelerómetro.
 
 Las señales son sintéticas y con valores exactos: el giróscopo trae el sesgo de la calibración del ejemplo
 (``x 0.31, y -0.12, z 0.05`` deg/s) más la velocidad angular del plano, y el montaje del ejemplo es
@@ -7,7 +7,6 @@ Las señales son sintéticas y con valores exactos: el giróscopo trae el sesgo 
 
 import json
 import math
-import warnings
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,16 +23,11 @@ from spine_contracts.models.domain.feature_set_schema import Reason
 from spine_engine.features.context import ExtractionContext, build_context
 from spine_engine.features.exercise import ExerciseFamily
 from spine_engine.features.imu import (
-    SPARC_AMPLITUDE_THRESHOLD,
-    SPARC_CUTOFF_HZ,
-    SPARC_MIN_SAMPLE_RATE_HZ,
-    SPARC_PAD_LEVEL,
     ImuFamily,
     accel_rms_g,
     peak_angular_velocity_dps,
     plane_channel,
     range_of_motion_deg,
-    sparc,
 )
 from spine_engine.features.registry import FamilyResult, default_registry
 from spine_engine.features.repetitions import RepetitionService, RepWindow, RepWindows
@@ -47,19 +41,14 @@ PLANES = ("sagittal", "frontal", "transverse")
 TEMPLATES = (
     "imu.{spine_level}.{anatomical_plane}.rom_deg",
     "imu.{spine_level}.{anatomical_plane}.peak_angular_velocity_dps",
-    "imu.{spine_level}.{anatomical_plane}.smoothness_sparc",
     "imu.{spine_level}.accel_rms_g",
 )
 
 
 def ids_for(level: str) -> list[str]:
-    """Ids de un nivel en el orden de salida: por plano rom, pico y SPARC; al final el RMS."""
-    per_plane = [f"imu.{level}.{plane}.{name}" for plane in PLANES for name in ("rom_deg", "peak_angular_velocity_dps", "smoothness_sparc")]
+    """Ids de un nivel en el orden de salida: por plano rom y pico; al final el RMS."""
+    per_plane = [f"imu.{level}.{plane}.{name}" for plane in PLANES for name in ("rom_deg", "peak_angular_velocity_dps")]
     return [*per_plane, f"imu.{level}.accel_rms_g"]
-
-
-def sparc_ids(level: str = "l3") -> list[str]:
-    return [f"imu.{level}.{plane}.smoothness_sparc" for plane in PLANES]
 
 
 def at(seconds: float) -> datetime:
@@ -224,60 +213,6 @@ def test_the_peak_angular_velocity_is_the_largest_absolute_value():
     assert peak_angular_velocity_dps(np.array([1.0, -5.0, 3.0])) == 5.0
 
 
-def reference_sparc(speed: np.ndarray, fs: float) -> float:
-    """Implementación de referencia publicada (Balasubramanian et al. 2015), con FFT completa."""
-    nfft = int(2 ** (np.ceil(np.log2(len(speed))) + SPARC_PAD_LEVEL))
-    f = np.arange(0, fs, fs / nfft)
-    mf = np.abs(np.fft.fft(speed, nfft))
-    mf = mf / mf.max()
-    keep = f <= SPARC_CUTOFF_HZ
-    f_sel, mf_sel = f[keep], mf[keep]
-    inx = np.nonzero(mf_sel >= SPARC_AMPLITUDE_THRESHOLD)[0]
-    f_sel, mf_sel = f_sel[inx[0] : inx[-1] + 1], mf_sel[inx[0] : inx[-1] + 1]
-    return -float(np.sum(np.sqrt((np.diff(f_sel) / (f_sel[-1] - f_sel[0])) ** 2 + np.diff(mf_sel) ** 2)))
-
-
-def min_jerk_speed(n: int) -> np.ndarray:
-    tau = np.linspace(0.0, 1.0, n)
-    return 30.0 * tau**2 - 60.0 * tau**3 + 30.0 * tau**4
-
-
-def test_the_sparc_parameters_are_the_published_defaults():
-    assert (SPARC_PAD_LEVEL, SPARC_CUTOFF_HZ, SPARC_AMPLITUDE_THRESHOLD) == (4, 10.0, 0.05)
-    assert SPARC_MIN_SAMPLE_RATE_HZ == 50.0
-
-
-@pytest.mark.parametrize(("n", "fs"), [(200, 100.0), (101, 50.0), (37, 60.0), (400, 1000.0)])
-def test_sparc_matches_the_reference_implementation(n: int, fs: float):
-    speed = min_jerk_speed(n)
-
-    assert sparc(speed, fs) == pytest.approx(reference_sparc(speed, fs), rel=1e-12)
-
-
-@pytest.mark.parametrize("seed", [1, 2, 3])
-def test_sparc_of_a_broadband_profile_matches_the_reference_up_to_the_cutoff(seed: int):
-    # espectro sobre el umbral más allá de 10 Hz; a 128 Hz con 128 muestras hay un bin justo en 10 Hz (se incluye)
-    speed = np.abs(np.random.default_rng(seed).normal(0.0, 1.0, 128))
-
-    assert sparc(speed, 128.0) == pytest.approx(reference_sparc(speed, 128.0), rel=1e-12)
-
-
-def test_a_minimum_jerk_profile_is_smoother_than_the_same_profile_with_a_tremor():
-    speed = min_jerk_speed(200)
-    shaky = speed + 0.3 * np.abs(np.sin(np.linspace(0.0, 2 * np.pi * 6, 200)))
-
-    assert sparc(speed, 100.0) > sparc(shaky, 100.0)
-
-
-def test_sparc_of_a_single_impulse_is_minus_one():
-    # espectro plano: arco recto de longitud 1
-    assert sparc(np.array([2.0]), 100.0) == pytest.approx(-1.0)
-
-
-def test_sparc_of_a_still_profile_is_undefined():
-    assert math.isnan(sparc(np.zeros(10), 100.0))
-
-
 def test_accel_rms_removes_the_static_component_of_each_axis():
     ax = np.array([1.0, -1.0, 1.0, -1.0]) + 0.5
     still = np.full(4, 0.98)
@@ -349,23 +284,13 @@ def test_the_output_order_streams_and_n_are_fixed():
     assert all(f.quality is None for f in result.computed)
 
 
-def test_sparc_is_computed_per_plane_from_the_angular_speed_of_the_repetition():
+def test_each_plane_only_produces_rom_and_peak_angular_velocity():
     result = run([rep(1, 2.0, 4.0)], sagittal_context())
 
-    got = values(result)
-    expected = sparc(np.abs(np.array(bend(RATE, 2.0, 20.0))), RATE)
-    assert got["imu.l3.sagittal.smoothness_sparc"] == pytest.approx(expected)
-    # sin movimiento la suavidad no está definida: el compuesto lo pasa a no_data
-    assert math.isnan(got["imu.l3.frontal.smoothness_sparc"])
-
-
-def test_a_plane_without_any_defined_sparc_is_nan_without_numpy_warnings():
-    # sin ninguna repetición con SPARC finito no se promedia una lista vacía (numpy avisaría): NaN directo
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        result = run([rep(1, 2.0, 4.0)], sagittal_context())
-
-    assert math.isnan(values(result)["imu.l3.transverse.smoothness_sparc"])
+    per_plane = {plane: [f.feature_id.rsplit(".", 1)[1] for f in result.computed if f".{plane}." in f.feature_id] for plane in PLANES}
+    assert per_plane == dict.fromkeys(PLANES, ["rom_deg", "peak_angular_velocity_dps"])
+    assert not any("sparc" in f.feature_id for f in result.computed)
+    assert all(math.isfinite(f.value) for f in result.computed)
 
 
 def test_the_window_is_half_open_start_sample_in_end_sample_out():
@@ -389,16 +314,13 @@ def test_values_are_the_mean_over_repetitions_and_n_counts_them():
     assert {f.n for f in result.computed} == {2}
 
 
-def test_sparc_averages_only_the_repetitions_where_it_is_defined():
-    # la 2.ª repetición no se mueve: su SPARC no está definido y no anula el de las otras dos
+def test_a_still_repetition_counts_for_n_and_pulls_the_mean_down():
     gyro_y = with_bias("gyro_y", [0.0] * 200 + bend(RATE, 2.0, 20.0) + [0.0] * 600 + bend(RATE, 2.0, 10.0) + [0.0] * 200)
     reps = [rep(1, 2.0, 4.0), rep(2, 6.0, 8.0), rep(3, 10.0, 12.0)]
     result = run(reps, make_context(chunks_for({"gyro_y": gyro_y})))
 
     by_id = {f.feature_id: f for f in result.computed}
-    expected = (sparc(np.abs(np.array(bend(RATE, 2.0, 20.0))), RATE) + sparc(np.abs(np.array(bend(RATE, 2.0, 10.0))), RATE)) / 2
-    assert (by_id["imu.l3.sagittal.smoothness_sparc"].value, by_id["imu.l3.sagittal.smoothness_sparc"].n) == (pytest.approx(expected), 2)
-    assert by_id["imu.l3.sagittal.rom_deg"].n == 3
+    assert (by_id["imu.l3.sagittal.rom_deg"].value, by_id["imu.l3.sagittal.rom_deg"].n) == (pytest.approx(10.0), 3)
 
 
 def test_a_repetition_without_samples_does_not_count():
@@ -447,14 +369,13 @@ def test_the_mounting_of_the_calibration_picks_the_axis_and_its_sign():
     assert got["imu.l3.frontal.rom_deg"] == pytest.approx(0.0, abs=1e-12)
 
 
-def test_a_mounting_without_two_planes_skips_both_and_a_slow_stream_keeps_the_sparc_reason():
+def test_a_mounting_without_two_planes_skips_both_even_on_a_slow_stream():
     def broken(raw: dict[str, Any]) -> None:
         imu_calibration(raw)["mounting"] = {"sensor_x": "anterior", "sensor_y": "anterior", "sensor_z": "anterior"}
 
     result = run([rep(1, 2.0, 4.0)], sagittal_context(rate=49.0, edit=broken))
 
     expected = {f"imu.l3.{plane}.{name}": Reason.NO_CALIBRATION for plane in ("sagittal", "transverse") for name in ("rom_deg", "peak_angular_velocity_dps")}
-    expected |= dict.fromkeys(sparc_ids(), Reason.INSUFFICIENT_SAMPLE_RATE)
     assert skipped(result) == expected
     assert len(result.skipped) == len(expected)
     assert list(values(result)) == ["imu.l3.frontal.rom_deg", "imu.l3.frontal.peak_angular_velocity_dps", "imu.l3.accel_rms_g"]
@@ -544,25 +465,20 @@ def test_chunks_without_a_clock_anchor_give_no_data():
     assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.NO_DATA)
 
 
-@pytest.mark.parametrize(("rate", "computes_sparc"), [(49.0, False), (50.0, True), (100.0, True)])
-def test_sparc_needs_at_least_fifty_hertz(rate: float, computes_sparc: bool):
+@pytest.mark.parametrize("rate", [10.0, 49.0, 50.0, 100.0])
+def test_the_sample_rate_never_skips_a_feature(rate: float):
     result = run([rep(1, 2.0, 4.0)], sagittal_context(rate=rate))
 
-    others = [i for i in ids_for("l3") if i not in sparc_ids()]
-    assert set(others) <= set(values(result))
-    if computes_sparc:
-        assert set(sparc_ids()) <= set(values(result))
-        assert result.skipped == ()
-    else:
-        assert skipped(result) == dict.fromkeys(sparc_ids(), Reason.INSUFFICIENT_SAMPLE_RATE)
+    assert [f.feature_id for f in result.computed] == ids_for("l3")
+    assert result.skipped == ()
 
 
-def test_the_slowest_chunk_of_the_stream_decides_the_sample_rate():
+def test_a_slow_chunk_in_the_stream_does_not_skip_anything():
     fast = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 600)})
     slow = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 10)}, rate=10.0, seq0=60, t0_device_ms=6000)
     result = run([rep(1, 2.0, 4.0)], make_context(fast + slow))
 
-    assert skipped(result) == dict.fromkeys(sparc_ids(), Reason.INSUFFICIENT_SAMPLE_RATE)
+    assert result.skipped == ()
 
 
 def test_the_range_of_motion_integrates_each_sample_with_the_period_of_its_own_chunk():
@@ -574,11 +490,10 @@ def test_the_range_of_motion_integrates_each_sample_with_the_period_of_its_own_c
     assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(20.0)
 
 
-def test_a_slow_stream_without_repetitions_still_says_why_sparc_is_skipped():
+def test_a_slow_stream_without_repetitions_is_too_few_repetitions_for_every_feature():
     result = run([], sagittal_context(rate=10.0))
 
-    expected = dict.fromkeys(ids_for("l3"), Reason.TOO_FEW_REPETITIONS) | dict.fromkeys(sparc_ids(), Reason.INSUFFICIENT_SAMPLE_RATE)
-    assert skipped(result) == expected
+    assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.TOO_FEW_REPETITIONS)
 
 
 def test_each_repetition_reads_the_segment_with_most_samples_in_its_window():
@@ -627,22 +542,6 @@ def test_rom_is_non_negative_and_does_not_depend_on_the_sense_of_rotation(omega:
 
     assert rom >= 0.0
     assert range_of_motion_deg(-signal, rate) == pytest.approx(rom)
-
-
-@pytest.mark.property
-@given(
-    speed=speeds,
-    nonzero=st.floats(min_value=0.5, max_value=500.0),
-    where=st.integers(min_value=0, max_value=200),
-    rate=st.floats(min_value=20.0, max_value=1000.0),
-)
-@example(speed=[0.0], nonzero=0.5, where=0, rate=20.0)
-@example(speed=[500.0] * 3, nonzero=500.0, where=3, rate=1000.0)
-def test_sparc_is_never_positive(speed: list[float], nonzero: float, where: int, rate: float):
-    profile = np.abs(np.array(speed))
-    profile = np.insert(profile, min(where, len(profile)), nonzero)  # al menos una muestra con velocidad
-
-    assert sparc(profile, rate) <= 0.0
 
 
 axis_values = st.lists(st.floats(min_value=-16.0, max_value=16.0, allow_nan=False, allow_infinity=False), min_size=3, max_size=3)

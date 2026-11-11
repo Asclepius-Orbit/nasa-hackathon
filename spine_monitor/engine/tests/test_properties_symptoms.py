@@ -24,7 +24,6 @@ RED_FLAGS = [
 ]
 ALL_IDS = {
     "symptoms.pain_nrs_7d_mean",
-    "symptoms.pain_nrs_7d_max",
     "symptoms.stiffness_nrs_7d_mean",
     "symptoms.sleep_hours_7d_mean",
     "symptoms.red_flag_count_7d",
@@ -107,11 +106,12 @@ def test_weekly_odi_alone_gives_no_values(odi_only):
 
 
 @given(reports=nonempty_dailies)
-def test_max_is_at_least_mean_and_mean_is_within_min_and_max(reports):
-    vals = values(run(reports))
+def test_mean_is_within_min_and_max_and_retired_max_is_never_produced(reports):
+    result = run(reports)
+    vals = values(result)
     pains = [r.pain_nrs for r in reports]
-    assert vals["symptoms.pain_nrs_7d_max"] == max(pains)
-    assert vals["symptoms.pain_nrs_7d_max"] >= vals["symptoms.pain_nrs_7d_mean"]
+    assert "symptoms.pain_nrs_7d_max" not in vals
+    assert "symptoms.pain_nrs_7d_max" not in {s.feature_id for s in result.skipped or []}
     assert min(pains) <= vals["symptoms.pain_nrs_7d_mean"] <= max(pains)
     stiff = [r.stiffness_nrs for r in reports]
     assert min(stiff) <= vals["symptoms.stiffness_nrs_7d_mean"] <= max(stiff)

@@ -70,8 +70,8 @@ def test_domains_without_comparison_are_not_evaluated():
 def test_completeness_reports_what_could_not_be_compared():
     completeness = stub_pipeline().evaluate(request()).completeness
 
-    # Four comparable sensor features out of five sensor and five symptom features.
-    assert completeness.score == 0.4
+    # Four comparable sensor features out of five sensor and four symptom features.
+    assert completeness.score == pytest.approx(4 / 9)
     assert MissingItem(what="exercise.rep_count", reason=MissingReason.NO_BASELINE) in completeness.missing
 
 
@@ -107,11 +107,11 @@ def test_calibration_expired_counts_as_missing_data():
 
 def test_insufficient_sample_rate_counts_as_missing_data():
     req = request()
-    req.feature_sets[0].skipped = [SkippedItem(feature_id="imu.l3.sagittal.smoothness_sparc", reason="insufficient_sample_rate")]
+    req.feature_sets[0].skipped = [SkippedItem(feature_id="imu.l3.sagittal.rom_deg", reason="insufficient_sample_rate")]
 
     completeness = stub_pipeline().evaluate(req).completeness
 
-    assert MissingItem(what="imu.l3.sagittal.smoothness_sparc", reason=MissingReason.NO_DATA) in completeness.missing
+    assert MissingItem(what="imu.l3.sagittal.rom_deg", reason=MissingReason.NO_DATA) in completeness.missing
 
 
 def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
@@ -121,7 +121,7 @@ def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
 
     completeness = stub_pipeline().evaluate(req).completeness
 
-    assert completeness.score == 0.4
+    assert completeness.score == pytest.approx(4 / 9)
 
 
 def test_null_self_reports_mean_no_self_reports():

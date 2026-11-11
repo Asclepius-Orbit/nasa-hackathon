@@ -93,10 +93,9 @@ Basada en el giróscopo, así que no depende de la gravedad y es comparable entr
 
 - **Planos:** se emiten los tres. `calibration.imu.mounting` lleva cada eje del sensor a un eje corporal: sagital = rotación sobre el eje izquierda-derecha, frontal = sobre el anterior, transversal = sobre el craneal (el mismo marco que el simulador). Un montaje sin eje del sensor para un plano deja ese plano en `no_calibration`. El `gyro_bias_dps` de la calibración se resta a cada eje del sensor.
 - **`imu.{nivel}.{plano}.rom_deg`:** recorrido (máx - mín) del ángulo integrado (cada muestra con el periodo de su chunk), desde 0 antes de la primera muestra. **`peak_angular_velocity_dps`:** el mayor `|ω|`.
-- **`imu.{nivel}.{plano}.smoothness_sparc`:** SPARC de `|ω|` con la FFT de numpy y los valores por defecto publicados (relleno de ceros 2^4, corte en 10 Hz, umbral de amplitud del 5 %; Balasubramanian et al. 2015). Solo si todos los chunks del stream van a 50 Hz o más (el requisito del catálogo); si no, `skipped` con `insufficient_sample_rate`. Sin movimiento SPARC no está definido y acaba en `no_data`.
 - **`imu.{nivel}.accel_rms_g`:** RMS de la magnitud de la aceleración tras quitar a cada eje su media en la repetición (la componente estática: gravedad y sesgo del acelerómetro).
 
-Cada valor es la media sobre las repeticiones con muestras y valor finito, y `n` las cuenta (una repetición sin movimiento no tiene SPARC y no cuenta para él; si ninguna lo tiene, `no_data`); una repetición lee el segmento (`boot_id`) con más muestras en su ventana. Motivos de `skipped`, en orden: `stream_missing`, `no_calibration`/`calibration_expired`, luego `no_data` (sin reloj o sin muestras en ninguna repetición) o `too_few_repetitions` (ninguna repetición); el `insufficient_sample_rate` de SPARC se decide antes que estos dos últimos.
+Cada valor es la media sobre las repeticiones con muestras, y `n` las cuenta; una repetición lee el segmento (`boot_id`) con más muestras en su ventana. Motivos de `skipped`, en orden: `stream_missing`, `no_calibration`/`calibration_expired`, luego `no_data` (sin reloj o sin muestras en ninguna repetición) o `too_few_repetitions` (ninguna repetición). La frecuencia de muestreo no descarta ninguna feature de esta familia.
 
 ### Fatiga espectral del EMG y la familia `emg_spectral`
 

@@ -1,7 +1,7 @@
 """Features de síntomas (#47): agregados de 7 días de los autoinformes; función pura, sin reloj de pared.
 
 - Ventana ``[as_of - 7 días, as_of]`` con ambos extremos incluidos (se compara el instante ``timestamp``).
-- ``pain_nrs_7d_mean``/``pain_nrs_7d_max``/``stiffness_nrs_7d_mean`` salen de los informes ``daily``;
+- ``pain_nrs_7d_mean``/``stiffness_nrs_7d_mean`` salen de los informes ``daily``;
   ``sleep_hours_7d_mean`` solo de los ``daily`` que traen ``sleep.hours``. Los ``weekly_odi`` no aportan nada.
 - ``red_flag_count_7d`` suma las banderas de los ``daily`` y de los ``red_flag``; una lista vacía cuenta 0,
   mientras que un campo ausente o nulo no aporta una observación.
@@ -34,7 +34,6 @@ from spine_contracts.models.domain.feature_set_schema import Reason, SkippedItem
 WINDOW = timedelta(days=7)
 
 PAIN_MEAN = "symptoms.pain_nrs_7d_mean"
-PAIN_MAX = "symptoms.pain_nrs_7d_max"
 STIFFNESS_MEAN = "symptoms.stiffness_nrs_7d_mean"
 SLEEP_MEAN = "symptoms.sleep_hours_7d_mean"
 RED_FLAG_COUNT = "symptoms.red_flag_count_7d"
@@ -72,7 +71,6 @@ def symptom_feature_set(self_reports: Sequence[SelfReport], daily_context: Seque
     if dailies:
         pain = [r.pain_nrs for r in dailies]
         computed.append(_feature(PAIN_MEAN, _mean(pain), len(pain)))
-        computed.append(_feature(PAIN_MAX, float(max(pain)), len(pain)))
         computed.append(_feature(STIFFNESS_MEAN, _mean([r.stiffness_nrs for r in dailies]), len(dailies)))
     if sleeping:
         computed.append(_feature(SLEEP_MEAN, _mean(sleeping), len(sleeping)))
@@ -82,7 +80,7 @@ def symptom_feature_set(self_reports: Sequence[SelfReport], daily_context: Seque
     done = {f.feature_id for f in computed}
     skipped = [
         SkippedItem(feature_id=feature_id, reason=Reason.NO_DATA)
-        for feature_id in sorted({PAIN_MEAN, PAIN_MAX, STIFFNESS_MEAN, SLEEP_MEAN, RED_FLAG_COUNT} - done)
+        for feature_id in sorted({PAIN_MEAN, STIFFNESS_MEAN, SLEEP_MEAN, RED_FLAG_COUNT} - done)
     ]
     latest = _latest_gravity(daily_context, astronaut_id, start, as_of)
     return FeatureSet(

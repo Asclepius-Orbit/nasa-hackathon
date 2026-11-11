@@ -93,10 +93,9 @@ Gyroscope-based, so it does not depend on gravity and stays comparable between E
 
 - **Planes:** all three are emitted. `calibration.imu.mounting` maps each sensor axis to a body axis: sagittal = rotation about the left-right axis, frontal = about the anterior axis, transverse = about the cranial axis (same frame as the simulator). A mounting with no sensor axis for a plane skips that plane as `no_calibration`. The calibration's `gyro_bias_dps` is subtracted from each sensor axis.
 - **`imu.{level}.{plane}.rom_deg`:** span (max - min) of the integrated angle (each sample with the period of its own chunk), starting at 0 before the first sample. **`peak_angular_velocity_dps`:** largest `|ω|`.
-- **`imu.{level}.{plane}.smoothness_sparc`:** SPARC of `|ω|` with numpy's FFT and the published defaults (zero padding 2^4, 10 Hz cutoff, 5 % amplitude threshold; Balasubramanian et al. 2015). Only when every chunk of the stream is at 50 Hz or more (the catalog's requirement); otherwise `skipped` with `insufficient_sample_rate`. Without motion SPARC is undefined and ends as `no_data`.
 - **`imu.{level}.accel_rms_g`:** RMS of the acceleration magnitude after removing each axis' mean over the repetition (the static component: gravity and the accelerometer bias).
 
-Each value is the mean over the repetitions that have samples and a finite value, and `n` counts them (a repetition without motion has no SPARC and does not count for it; if none has one, `no_data`); a repetition reads the `boot_id` segment with most samples in its window. Skip reasons, in order: `stream_missing`, `no_calibration`/`calibration_expired`, then `no_data` (no clock or no samples in any repetition) or `too_few_repetitions` (no repetition); `insufficient_sample_rate` for SPARC is decided before these last two.
+Each value is the mean over the repetitions that have samples, and `n` counts them; a repetition reads the `boot_id` segment with most samples in its window. Skip reasons, in order: `stream_missing`, `no_calibration`/`calibration_expired`, then `no_data` (no clock or no samples in any repetition) or `too_few_repetitions` (no repetition). The sample rate never skips a feature of this family.
 
 ### EMG spectral fatigue and the `emg_spectral` family
 

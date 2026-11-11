@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 from spine_gateway.settings import GatewaySettings
 
 
@@ -29,6 +30,7 @@ def test_defaults() -> None:
     assert (s.adc_bits, s.vref_v, s.emg_input_pin, s.stretch_input_pin) == (10, 5.0, "A0", "A1")
     assert (s.stretch_series_resistor_ohm, s.imu_accel_range_g, s.imu_gyro_range_dps, s.imu_dlpf_hz) == (10000.0, 4, 500, 44)
     assert (s.emg_gain, s.stretch_rest_length_mm, s.emg_mvc_window_ms) == (1.0, 100.0, 250)
+    assert s.emg_signal_kind is SignalKind.ENVELOPE
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,5 +149,18 @@ def test_serial_reconnect_max_equal_initial_accepted(monkeypatch: pytest.MonkeyP
 )
 def test_non_positive_values_rejected(monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> None:
     monkeypatch.setenv(f"SPINE_GATEWAY_{name}", value)
+    with pytest.raises(ValidationError):
+        GatewaySettings()
+
+
+@pytest.mark.parametrize("kind", list(SignalKind))
+def test_emg_signal_kind_env_override(monkeypatch: pytest.MonkeyPatch, kind: SignalKind) -> None:
+    monkeypatch.setenv("SPINE_GATEWAY_EMG_SIGNAL_KIND", kind.value)
+    assert GatewaySettings().emg_signal_kind is kind
+
+
+@pytest.mark.parametrize("value", ["", "Envelope", "filtered", "rms"])
+def test_emg_signal_kind_invalid_rejected(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("SPINE_GATEWAY_EMG_SIGNAL_KIND", value)
     with pytest.raises(ValidationError):
         GatewaySettings()

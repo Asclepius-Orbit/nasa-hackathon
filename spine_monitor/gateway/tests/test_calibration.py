@@ -10,6 +10,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from spine_contracts import EmgMvcCalibration, Muscle, Side, StretchCalibration, dump, validation
 from spine_contracts.models.telemetry.command_schema import CalibrationType
+from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 from spine_gateway.calibration import (
     DEFAULT_STRETCH_CURVE_FACTORS,
     CalibrationFailure,
@@ -22,6 +23,7 @@ from spine_gateway.settings import GatewaySettings
 
 STRETCH = CalibrationType.STRETCH
 EMG_MVC = CalibrationType.EMG_MVC
+KINDS = list(SignalKind)
 SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02"
 NOW = datetime(2026, 11, 13, 7, 5, tzinfo=UTC)
 
@@ -195,9 +197,14 @@ def emg_frames(values: list[int]) -> list[Frame]:
     return [emg(i, tuple(values[100 * i : 100 * (i + 1)])) for i in range(len(values) // 100)]
 
 
+def with_kind(settings: GatewaySettings, kind: SignalKind) -> GatewaySettings:
+    return settings.model_copy(update={"emg_signal_kind": kind})
+
+
 @pytest.mark.contract
-def test_emg_mvc_calibration(settings: GatewaySettings) -> None:
-    rec = recorder(settings, EMG_MVC, 1.0, session_id=SESSION)
+@pytest.mark.parametrize("kind", KINDS)
+def test_emg_mvc_calibration(settings: GatewaySettings, kind: SignalKind) -> None:
+    rec = recorder(with_kind(settings, kind), EMG_MVC, 1.0, session_id=SESSION)
     values = [0] * 300 + [1023] * 250 + [0] * 450
     statuses = [rec.feed(f) for f in emg_frames(values)]
     assert statuses[-1] is CalibrationStatus.DONE
@@ -214,9 +221,10 @@ def test_emg_mvc_calibration(settings: GatewaySettings) -> None:
         "calibration_type": "emg_mvc",
         "muscle": "latissimus_dorsi",
         "side": "left",
-        "mvc_rms_mv": 5000.0,
+        # Cruda: el offset de media escala se resta antes del RMS, así que 0 y 1023 valen lo mismo (±2500 mV).
+        "mvc_rms_mv": 2500.0 if kind is SignalKind.RAW else 5000.0,
         "window_ms": 250,
-        "signal_kind": "envelope",
+        "signal_kind": kind.value,
     }
 
 
@@ -236,6 +244,42 @@ def test_emg_mvc_is_the_max_sliding_rms(settings: GatewaySettings, values: list[
         rec.feed(f)
     data = calibration_payload(rec.finish(NOW))
     assert data["mvc_rms_mv"] == pytest.approx(expected_counts / 1023 * 5000, rel=1e-12)
+
+
+def test_emg_mvc_signal_kind_defaults_to_envelope(settings: GatewaySettings) -> None:
+    rec = recorder(settings, EMG_MVC, 1.0)
+    for f in emg_frames([512] * 1000):
+        rec.feed(f)
+    assert calibration_payload(rec.finish(NOW))["signal_kind"] == "envelope"
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize(
+    "values",
+    [
+        [512] * 1000,
+        [0] * 500 + [1023] * 100 + [0] * 400,
+        [300] * 750 + [900] * 250,
+        [900] * 250 + [300] * 750,
+        [100, 700] * 500,
+    ],
+)
+def test_emg_mvc_matches_a_brute_force_rms_of_the_converted_signal(settings: GatewaySettings, kind: SignalKind, values: list[int]) -> None:
+    offset = 1023 / 2 if kind is SignalKind.RAW else 0.0
+    mv = [(c - offset) / 1023 * 5000 for c in values]
+    expected = max(math.sqrt(sum(x * x for x in mv[i : i + 250]) / 250) for i in range(len(mv) - 249))
+    rec = recorder(with_kind(settings, kind), EMG_MVC, 1.0)
+    for f in emg_frames(values):
+        rec.feed(f)
+    assert calibration_payload(rec.finish(NOW))["mvc_rms_mv"] == pytest.approx(expected, rel=1e-9)
+
+
+def test_emg_mvc_raw_around_half_scale_is_near_zero(settings: GatewaySettings) -> None:
+    # Cruda en reposo, en torno a la media escala (511.5): 511 y 512 quedan a ±0,5 cuentas y no a ~512 cuentas.
+    rec = recorder(with_kind(settings, SignalKind.RAW), EMG_MVC, 1.0)
+    for f in emg_frames([511, 512] * 500):
+        rec.feed(f)
+    assert calibration_payload(rec.finish(NOW))["mvc_rms_mv"] == pytest.approx(0.5 / 1023 * 5000, rel=1e-9)
 
 
 def test_emg_mvc_uses_settings(settings: GatewaySettings) -> None:

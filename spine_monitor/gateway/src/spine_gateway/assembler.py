@@ -4,8 +4,11 @@ Lógica pura y síncrona: sin I/O, sin reloj (``received_at`` y ``session_id`` l
 
 Unidades (contrato ``telemetry/stream-chunk``):
 
-- EMG: el módulo (clon del Muscle Sensor V3) entrega la envolvente, así que ``signal_kind: envelope`` y sin bloque
-  ``filter``. mV en la entrada del ADC: ``counts / (2^bits - 1) · vref · 1000 / gain``.
+- EMG: el tipo de señal es configurable (``emg_signal_kind``): el módulo (clon del Muscle Sensor V3) probablemente
+  entrega la envolvente (default), pero no está confirmado con la placa (issue #13). Sin bloque ``filter``. mV en la
+  entrada del ADC: ``(counts - offset) / (2^bits - 1) · vref · 1000 / gain``, con ``offset = 0`` para ``rectified`` y
+  ``envelope`` y ``offset = (2^bits - 1) / 2`` para ``raw`` (señal bipolar). SUPOSICIÓN NO VERIFICADA con hardware:
+  que la señal cruda llega polarizada a Vref/2 (``emg_offset_counts``).
 - IMU: sensibilidades nominales de la hoja de datos del MPU-6050 (``ACCEL_LSB_PER_G``, ``GYRO_LSB_PER_DPS``).
 - Cordón: ``adc_counts`` siempre. ``resistance_ohm`` por el divisor (Rs entre 5 V y A1, cordón entre A1 y GND):
   ``Rc = Rs · counts / (max - counts)``. En 0 (corto) o en el máximo (circuito abierto) no es calculable y, como
@@ -15,7 +18,8 @@ Unidades (contrato ``telemetry/stream-chunk``):
   solo cuando hay ``length_mm``.
 
 Calidad (``assessed_by: gateway``): ``score = muestras sin problema / muestras``; ``clipping`` si una muestra satura:
-EMG en el máximo del ADC (es una envolvente: 0 es el músculo en reposo, un valor sano), cordón en 0 (corto) o en el
+EMG en el máximo del ADC (``raw``, centrada: también en 0, los dos extremos son saturación; ``rectified`` y
+``envelope``: 0 es el músculo en reposo, un valor sano), cordón en 0 (corto) o en el
 máximo (además ``lead_off``: circuito abierto) e IMU en -32768 o 32767 en algún eje del sensor.
 Tras lotes perdidos, ``packet_gap`` y el score queda como mucho en ``PACKET_GAP_SCORE``.
 
@@ -42,6 +46,7 @@ from types import MappingProxyType
 from typing import Any
 
 from spine_contracts import SCHEMA_VERSION, EmgChunk, ImuChunk, QualityFlag, StretchCalibration, StretchChunk
+from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 
 from spine_gateway.protocol import I16_MAX, I16_MIN, Frame, FrameKind, ImuSample, frame_gap
 from spine_gateway.settings import GatewaySettings
@@ -81,6 +86,15 @@ def max_counts(adc_bits: int) -> int:
 def counts_to_mv(counts: float, *, adc_bits: int, vref_v: float, gain: float) -> float:
     """mV en la entrada del ADC divididos por la ganancia del módulo. Admite medias (float)."""
     return counts / max_counts(adc_bits) * vref_v * 1000.0 / gain
+
+
+def emg_offset_counts(settings: GatewaySettings) -> float:
+    """Cuentas que se restan al EMG antes de convertir a mV: media escala si es ``raw``, 0 si no.
+
+    SUPOSICIÓN NO VERIFICADA con hardware: la señal cruda llega polarizada a Vref/2, así que tras restar la media
+    escala queda bipolar. Una envolvente o una señal rectificada es unipolar y no lleva offset.
+    """
+    return max_counts(settings.adc_bits) / 2 if settings.emg_signal_kind is SignalKind.RAW else 0.0
 
 
 def _lsb(table: Mapping[int, float], sensor: str, value: int) -> float:
@@ -160,9 +174,11 @@ _OPEN = frozenset({QualityFlag.CLIPPING, QualityFlag.LEAD_OFF})
 _OUT = frozenset({QualityFlag.OUT_OF_CALIBRATION})
 
 
-def _emg_quality(counts: tuple[int, ...], full: int) -> dict[str, _Quality]:
-    # Solo la saturación: la envolvente de un músculo en reposo está cerca de 0 y no es un problema de la señal.
-    return {"emg": _fraction((_CLIPPING for c in counts if c >= full), len(counts))}
+def _emg_quality(counts: tuple[int, ...], full: int, kind: SignalKind) -> dict[str, _Quality]:
+    # Cruda (centrada): 0 y el máximo son saturación. Rectificada o envolvente: cerca de 0 es el músculo en reposo y
+    # no es un problema de la señal; solo satura en el máximo.
+    low = 0 if kind is SignalKind.RAW else -1
+    return {"emg": _fraction((_CLIPPING for c in counts if c <= low or c >= full), len(counts))}
 
 
 def _cord_quality(counts: tuple[int, ...], full: int) -> dict[str, _Quality]:
@@ -424,7 +440,7 @@ class ChunkAssembler:
 
     def _frame_quality(self, kind: FrameKind, samples: Samples) -> dict[str, _Quality]:
         if kind is FrameKind.EMG:
-            return _emg_quality(scalar_samples(kind, samples), self._full)
+            return _emg_quality(scalar_samples(kind, samples), self._full, self._settings.emg_signal_kind)
         if kind is FrameKind.IMU:
             return _imu_quality(_imu_samples(samples))
         return _cord_quality(scalar_samples(kind, samples), self._full)
@@ -442,14 +458,15 @@ class ChunkAssembler:
         }
         if kind is FrameKind.EMG:
             counts = scalar_samples(kind, samples)
+            offset = emg_offset_counts(s)
             return EmgChunk.model_validate(
                 {
                     **header,
                     "stream_id": s.emg_stream_id,
                     "stream_kind": "emg",
-                    "signal_kind": "envelope",
+                    "signal_kind": s.emg_signal_kind.value,
                     "units": {"emg": "mV"},
-                    "data": {"emg": [counts_to_mv(c, adc_bits=s.adc_bits, vref_v=s.vref_v, gain=s.emg_gain) for c in counts]},
+                    "data": {"emg": [counts_to_mv(c - offset, adc_bits=s.adc_bits, vref_v=s.vref_v, gain=s.emg_gain) for c in counts]},
                     "quality": {"emg": quality["emg"].contract()},
                     "acquisition": {"adc_bits": s.adc_bits, "vref_v": s.vref_v, "gain": s.emg_gain, "input_pin": s.emg_input_pin},
                 }

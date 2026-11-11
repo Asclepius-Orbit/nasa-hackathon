@@ -12,6 +12,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from spine_contracts import topics
 from spine_contracts.models.common_schema import Muscle, Side
+from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 
 
 def _matches(kind: str, value: str, pattern: re.Pattern[str]) -> str:
@@ -72,6 +73,10 @@ class GatewaySettings(BaseSettings):
     imu_gyro_range_dps: int = Field(default=500, gt=0)
     imu_dlpf_hz: int = Field(default=44, gt=0)
     emg_gain: float = Field(default=1.0, gt=0)
+    # Qué entrega el módulo EMG a la entrada del ADC: ``raw`` (cruda, bipolar polarizada a Vref/2), ``rectified`` o
+    # ``envelope``. El clon del Muscle Sensor V3 probablemente da envolvente, pero NO está confirmado con la placa
+    # (issue #13): el default es la suposición, no un hecho. Condiciona calidad, conversión a mV y calibración MVC.
+    emg_signal_kind: SignalKind = SignalKind.ENVELOPE
     stretch_rest_length_mm: float = Field(default=100.0, gt=0)
     # Ventana (ms) del RMS deslizante de la calibración emg_mvc; 250 ms como el ejemplo del contrato.
     emg_mvc_window_ms: int = Field(default=250, gt=0)

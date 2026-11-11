@@ -9,7 +9,9 @@ anteriores a ese instante. Se ignoran los lotes de otros kinds, los duplicados o
 - ``stretch``: media de las cuentas -> ``R0`` con el divisor del ensamblador -> ``rest_resistance_ohm``, con
   ``rest_length_mm`` de los ajustes y la curva por defecto ``DEFAULT_STRETCH_CURVE_FACTORS``.
 - ``emg_mvc``: RMS en ventanas deslizantes de ``emg_mvc_window_ms`` (paso de una muestra) y ``mvc_rms_mv`` = la máxima.
-  La conversión a mV es lineal, así que el RMS se calcula exacto en cuentas enteras y se convierte al final.
+  La conversión a mV es lineal, así que el RMS se calcula en cuentas y se convierte al final; para una señal ``raw`` se
+  resta antes el offset de media escala del ensamblador (``emg_offset_counts``, suposición no verificada con hardware),
+  nunca el RMS de cuentas absolutas. ``signal_kind`` sale de ``emg_signal_kind``.
 
 ``imu`` no se graba aquí (el gateway lo rechaza en el comando).
 """
@@ -24,7 +26,7 @@ from typing import Any
 from spine_contracts import SCHEMA_VERSION, EmgMvcCalibration, StretchCalibration
 from spine_contracts.models.telemetry.command_schema import CalibrationType
 
-from spine_gateway.assembler import SAMPLE_RATE_HZ, SAMPLES_PER_BATCH, counts_to_mv, counts_to_resistance, scalar_samples
+from spine_gateway.assembler import SAMPLE_RATE_HZ, SAMPLES_PER_BATCH, counts_to_mv, counts_to_resistance, emg_offset_counts, scalar_samples
 from spine_gateway.protocol import Frame, FrameKind, frame_gap
 from spine_gateway.settings import GatewaySettings
 
@@ -161,7 +163,8 @@ class CalibrationRecorder:
         counts = self._counts
         if len(counts) < window:
             return CalibrationFailure(FailureReason.TOO_FEW_SAMPLES, f"{len(counts)} samples, the {s.emg_mvc_window_ms} ms window needs {window}")
-        squares = [c * c for c in counts]
+        offset = emg_offset_counts(s)
+        squares = [(c - offset) ** 2 for c in counts]
         acc = sum(squares[:window])
         best = acc
         for i in range(window, len(squares)):
@@ -177,6 +180,6 @@ class CalibrationRecorder:
                 "side": s.emg_side,
                 "mvc_rms_mv": mvc,
                 "window_ms": s.emg_mvc_window_ms,
-                "signal_kind": "envelope",
+                "signal_kind": s.emg_signal_kind.value,
             }
         )

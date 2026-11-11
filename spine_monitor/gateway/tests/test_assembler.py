@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from spine_contracts import EmgChunk, ImuChunk, StretchCalibration, StretchChunk, dump, validation
+from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 from spine_gateway.assembler import (
     BACKGROUND_FRAMES,
     BACKGROUND_SAMPLE_RATE_HZ,
@@ -197,10 +198,23 @@ def test_frame_before_any_boot_is_discarded(settings: GatewaySettings) -> None:
     assert result == Discarded(FrameKind.EMG, 0, DiscardReason.NO_BOOT)
 
 
+KINDS = list(SignalKind)
+HALF_SCALE = 1023 / 2
+"""Offset de la señal cruda: se asume polarizada a Vref/2 (NO verificado con hardware)."""
+
+
+def emg_assembler(settings: GatewaySettings, kind: SignalKind) -> ChunkAssembler:
+    a = ChunkAssembler(settings.model_copy(update={"emg_signal_kind": kind}))
+    a.on_new_boot(BOOT)
+    return a
+
+
 @pytest.mark.contract
-def test_emg_chunk(assembler: ChunkAssembler) -> None:
-    samples = tuple(range(100))
-    data = payload(session(assembler, emg(7, samples, t0=184200)))
+@pytest.mark.parametrize("kind", KINDS)
+def test_emg_chunk(settings: GatewaySettings, kind: SignalKind) -> None:
+    samples = tuple(range(1, 101))
+    offset = HALF_SCALE if kind is SignalKind.RAW else 0.0
+    data = payload(session(emg_assembler(settings, kind), emg(7, samples, t0=184200)))
     assert data == {
         "schema_version": "1.0.0",
         "astronaut_id": "AST-01",
@@ -215,27 +229,45 @@ def test_emg_chunk(assembler: ChunkAssembler) -> None:
         "sample_rate_hz": 1000.0,
         "n_samples": 100,
         "stream_kind": "emg",
-        "signal_kind": "envelope",
+        "signal_kind": kind.value,
         "units": {"emg": "mV"},
-        "data": {"emg": pytest.approx([c / 1023 * 5000 for c in samples], rel=1e-12)},
-        "quality": {"emg": {"score": 1.0, "flags": [], "assessed_by": "gateway"}},  # 0 es reposo en una envolvente, no clipping
+        "data": {"emg": pytest.approx([(c - offset) / 1023 * 5000 for c in samples], rel=1e-12)},
+        "quality": {"emg": {"score": 1.0, "flags": [], "assessed_by": "gateway"}},
         "acquisition": {"adc_bits": 10, "vref_v": 5.0, "gain": 1.0, "input_pin": "A0"},
     }
 
 
-def test_emg_clean_and_clipped_quality(assembler: ChunkAssembler) -> None:
-    clean = payload(session(assembler, emg(0, (1,) * 99 + (1022,))))
+def test_emg_signal_kind_defaults_to_envelope(assembler: ChunkAssembler) -> None:
+    assert payload(session(assembler, emg(0)))["signal_kind"] == "envelope"
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_emg_clean_and_clipped_quality(settings: GatewaySettings, kind: SignalKind) -> None:
+    a = emg_assembler(settings, kind)
+    clean = payload(session(a, emg(0, (1,) * 99 + (1022,))))
     assert clean["quality"]["emg"] == {"score": 1.0, "flags": [], "assessed_by": "gateway"}
-    clipped = payload(session(assembler, emg(1, (0,) * 3 + (1023,) * 2 + (1024,) + (500,) * 94)))
+    clipped = payload(session(a, emg(1, (1,) * 3 + (1023,) * 2 + (1024,) + (500,) * 94)))
     assert clipped["quality"]["emg"] == {"score": pytest.approx(0.97), "flags": ["clipping"], "assessed_by": "gateway"}
 
 
-def test_emg_envelope_at_rest_is_not_clipping(assembler: ChunkAssembler) -> None:
-    # El EMG es una envolvente: el músculo en reposo da cuentas cercanas a 0, un valor sano. Solo satura en el máximo.
-    rest = payload(session(assembler, emg(0, (0,) * 100)))
-    assert rest["quality"]["emg"] == {"score": 1.0, "flags": [], "assessed_by": "gateway"}
-    saturated = payload(session(assembler, emg(1, (1023,) * 100)))
+@pytest.mark.parametrize("kind", KINDS)
+def test_emg_at_rest_is_clipping_only_for_raw(settings: GatewaySettings, kind: SignalKind) -> None:
+    # Envolvente y rectificada: cerca de 0 es el músculo en reposo, un valor sano. Cruda (centrada): 0 es saturación real.
+    rest = payload(session(emg_assembler(settings, kind), emg(0, (0,) * 100)))
+    expected = {"score": 0.0, "flags": ["clipping"]} if kind is SignalKind.RAW else {"score": 1.0, "flags": []}
+    assert rest["quality"]["emg"] == {**expected, "assessed_by": "gateway"}
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_emg_saturated_at_the_adc_maximum_is_clipping_in_every_kind(settings: GatewaySettings, kind: SignalKind) -> None:
+    saturated = payload(session(emg_assembler(settings, kind), emg(0, (1023,) * 100)))
     assert saturated["quality"]["emg"] == {"score": 0.0, "flags": ["clipping"], "assessed_by": "gateway"}
+
+
+def test_emg_raw_is_bipolar_around_half_scale(settings: GatewaySettings) -> None:
+    data = payload(session(emg_assembler(settings, SignalKind.RAW), emg(0, (1,) * 50 + (1022,) * 50)))["data"]["emg"]
+    assert data[0] < 0 < data[-1]
+    assert data[0] == pytest.approx(-data[-1])
 
 
 def test_emg_uses_gain_and_pin_from_settings(settings: GatewaySettings) -> None:

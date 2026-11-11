@@ -63,11 +63,14 @@ def test_engine_validation_field_errors_are_preserved():
     assert caught.value.detail == "/base: bad"
 
 
-@pytest.mark.parametrize("response, expected", [
-    (httpx.Response(500, text="secret"), (500, "Engine API error", "HTTP 500")),
-    (httpx.Response(422, text="bad"), (422, "Engine API request rejected", "HTTP 422")),
-    (httpx.Response(200, text="bad"), (502, "Engine API returned an invalid response", "Body is not a valid SimulateResponse.")),
-])
+@pytest.mark.parametrize(
+    "response, expected",
+    [
+        (httpx.Response(500, text="secret"), (500, "Engine API error", "HTTP 500")),
+        (httpx.Response(422, text="bad"), (422, "Engine API request rejected", "HTTP 422")),
+        (httpx.Response(200, text="bad"), (502, "Engine API returned an invalid response", "Body is not a valid SimulateResponse.")),
+    ],
+)
 def test_invalid_or_server_response_mapping(response, expected):
     with pytest.raises(UpstreamError) as caught:
         simulator(lambda _: response).simulate(request())

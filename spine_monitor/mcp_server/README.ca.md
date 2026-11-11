@@ -38,13 +38,13 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 - `start` i `end` són timestamps RFC 3339 amb desfasament UTC. `limit` va de 1 a 500.
 - `compare_periods` llegeix els dos períodes amb `limit` 500 i calcula la comparació al servidor. Els deltes són B menys A.
 - `overrides` és una llista opcional (buida per defecte) de canvis amb `feature_id`, `mode` (`set`, `add` o `scale`) i `value`; buida o omesa vol dir sense canvis, així que es projecta la trajectòria actual tal com és. `project_days` va de 1 a 365.
-- `simulate_scenario` és només hipotètic i mai no canvia dades reals. Amb `--dataset http` retorna un error d'eina 501 fins que estigui disponible la base de valoració ([#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26)).
+- `simulate_scenario` és només hipotètic i mai no canvia dades reals. Amb `--dataset http` la seva base és la petició de valoració que l'app enviaria ara al motor (`GET /crew/{astronaut_id}/assess-base`, `as_of` = el rellotge de l'app, darrers 14 dies de dades); si l'app no la pot construir (sense perfil, sense baseline o sense feature sets a la finestra) l'eina retorna un error 404 que anomena el motiu.
 
 ## Datasets
 
 `python -m spine_mcp_server` serveix per defecte un **dataset de demo**: els últims 14 dies de l'astronauta `AST-01`, generats en relació amb el rellotge perquè les dades acabin sempre «ara». Està en verd els primers 8 dies i en ambre els últims 6, amb un risk score creixent (de 0,18 a 0,62), una avaluació al dia, una sessió d'exercici cada 2 dies més alguns xequejos de columna, un autoinforme diari (dolor NRS de 2 a 5) i un informe ODI setmanal. `explain_assessment` funciona per a totes les avaluacions d'aquest històric, `compare_periods` té dades a les dues setmanes i `simulate_scenario` respon als «i si…?» amb un model lineal simple sobre l'elongació lumbar (una aproximació, no el motor). `AST-01` és l'únic astronauta; qualsevol altre id retorna un error d'eina «not found».
 
-Per llegir l'app real, fes servir `--dataset http`. Crida l'API de lectura de l'app a `SPINE_APP_URL` (per defecte `http://127.0.0.1:8002`) i configura el simulador per cridar directament el motor a `SPINE_ENGINE_URL` (per defecte `http://127.0.0.1:8001`). La base de valoració encara no està disponible per HTTP, de manera que la simulació continua blocada per [#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26).
+Per llegir l'app real, fes servir `--dataset http`. Crida l'API de lectura de l'app a `SPINE_APP_URL` (per defecte `http://127.0.0.1:8002`) i configura el simulador per cridar directament el motor a `SPINE_ENGINE_URL` (per defecte `http://127.0.0.1:8001`). La base de valoració ve de l'API de lectura de l'app (`/crew/{astronaut_id}/assess-base`).
 
 ```bash
 SPINE_APP_URL=http://127.0.0.1:8002 uv run python -m spine_mcp_server --dataset http
@@ -73,7 +73,6 @@ Amb `--dataset http`, les fallades de l'API de l'app es tradueixen així:
 | Cos de resposta que no compleix el contracte | 502, `App API returned an invalid response` |
 | Sense resposta en 10 segons | 504, `App API timeout` |
 | Fallada de connexió | 503, `App API unavailable` |
-| `simulate_scenario` (base de valoració no disponible) | 501, `Assessment base not available` |
 
 El simulador aplica les mateixes traduccions als errors del motor, identificant-lo com a servei upstream.
 
@@ -87,5 +86,4 @@ El simulador aplica les mateixes traduccions als errors del motor, identificant-
 
 ## Fora de l'abast per ara
 
-- La base de valoració per HTTP continua sense estar disponible ([#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26)), de manera que `simulate_scenario` retorna 501 abans de cridar el motor.
 - El demo continua sent el dataset per defecte fins que el motor sigui real.

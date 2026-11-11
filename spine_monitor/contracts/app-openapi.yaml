@@ -258,6 +258,31 @@ paths:
           $ref: '#/components/responses/NotFound'
         default:
           $ref: '#/components/responses/Error'
+  /crew/{astronaut_id}/assess-base:
+    get:
+      operationId: getAssessBase
+      summary: The assessment request the app would send to the engine now
+      description: |
+        The exact /assess request the app builds at this moment (`as_of` is the app's clock): profile, latest
+        baseline, and the feature sets, self-reports and daily context of the last assessment window (14 days by
+        default). It is the base the MCP server's `simulate_scenario` modifies. Nothing is assessed or stored.
+
+        404 `not_found` when the astronaut is unknown, and also when it is known but the request cannot be built:
+        the `detail` names the reason, `no_profile`, `no_baseline` or `no_feature_sets` (none in the window). Absence
+        is never filled in.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The assessment request.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/engine/assess-request.schema.json'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
 components:
   parameters:
     AstronautId:

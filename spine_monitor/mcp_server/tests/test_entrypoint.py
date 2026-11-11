@@ -1,6 +1,7 @@
 """Punto de entrada del servidor: opciones (`parse_args`), conversión de `--now` y elección de dataset/reloj en `build_server`."""
 
 import argparse
+import json
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta, timezone
@@ -10,9 +11,9 @@ import pytest
 import spine_mcp_server
 from mcp.client.client import Client
 from mcp.server.mcpserver import MCPServer
-from mcp.types import TextContent
 from spine_mcp_server import _aware_iso, build_server, parse_args  # pyright: ignore[reportPrivateUsage] -- se prueba el conversor de `--now`
 from spine_mcp_server.http_client import HttpAppReader, HttpSimulator
+from spine_mcp_server.mocks import EXAMPLES_DIR
 
 real_client = httpx.Client
 AST = "AST-01"
@@ -94,7 +95,7 @@ def test_help_documents_every_option_choice_and_text(monkeypatch: pytest.MonkeyP
     assert (
         "demo: 14 días de AST-01 relativos al reloj (por defecto); examples: la foto única de los ejemplos de los contratos; "
         "http: la API de lectura de la app en SPINE_APP_URL (por defecto http://127.0.0.1:8002) y el motor en SPINE_ENGINE_URL "
-        "(por defecto http://127.0.0.1:8001); la base de simulación aún no está disponible." in out
+        "(por defecto http://127.0.0.1:8001)." in out
     )
     assert "--now NOW" in out
     assert "Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z)." in out
@@ -220,7 +221,9 @@ def _simulator(server: MCPServer) -> HttpSimulator:
     return simulators[0]
 
 
-@pytest.mark.parametrize("configured, expected", [(None, "http://127.0.0.1:8001"), ("   ", "http://127.0.0.1:8001"), (" http://engine.test:9000/ ", "http://engine.test:9000")])
+@pytest.mark.parametrize(
+    "configured, expected", [(None, "http://127.0.0.1:8001"), ("   ", "http://127.0.0.1:8001"), (" http://engine.test:9000/ ", "http://engine.test:9000")]
+)
 def test_http_dataset_wires_engine_url(monkeypatch: pytest.MonkeyPatch, configured: str | None, expected: str):
     if configured is None:
         monkeypatch.delenv("SPINE_ENGINE_URL", raising=False)
@@ -248,13 +251,22 @@ async def test_http_dataset_reads_status_from_the_url_in_spine_app_url(monkeypat
 
 @pytest.mark.integration
 @pytest.mark.anyio
-async def test_http_dataset_simulation_is_reported_as_unavailable(monkeypatch: pytest.MonkeyPatch):
+async def test_http_dataset_simulation_takes_the_base_from_the_app_and_posts_it_to_the_engine(monkeypatch: pytest.MonkeyPatch):
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, str(request.url)))
+        if request.method == "GET":
+            return httpx.Response(200, json=json.loads((EXAMPLES_DIR / "engine/assess-request.json").read_text(encoding="utf-8")))
+        return httpx.Response(200, json=json.loads((EXAMPLES_DIR / "engine/simulate-response.json").read_text(encoding="utf-8")))
+
     monkeypatch.setenv("SPINE_APP_URL", "http://app.test:9000")
+    monkeypatch.setenv("SPINE_ENGINE_URL", "http://engine.test:9001")
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
     async with Client(build_server(["--dataset", "http"])) as client:
         result = await client.call_tool("simulate_scenario", {"astronaut_id": AST, "overrides": []})
-    assert result.is_error
-    assert isinstance(result.content[0], TextContent)
-    assert "not available in http mode" in result.content[0].text
+    assert not result.is_error
+    assert seen == [("GET", "http://app.test:9000/crew/AST-01/assess-base"), ("POST", "http://engine.test:9001/simulate")]
 
 
 def test_http_dataset_defaults_to_the_local_app_url(monkeypatch: pytest.MonkeyPatch):

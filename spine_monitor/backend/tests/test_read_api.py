@@ -146,9 +146,7 @@ def test_missing_data_is_null_and_stale(store, client):
     assert validation.errors("app/status", body) == []
     assert [body[k] for k in ("today", "latest_assessment", "latest_session", "latest_self_report", "active_baseline")] == [None] * 5
     assert body["devices"] == []
-    assert body["freshness"] == [
-        {"what": what, "last_at": None, "age_hours": None, "stale": True} for what in ("assessment", "session", "self_report")
-    ]
+    assert body["freshness"] == [{"what": what, "last_at": None, "age_hours": None, "stale": True} for what in ("assessment", "session", "self_report")]
 
 
 def test_old_data_is_stale(store, client):
@@ -373,3 +371,52 @@ def test_explanation_ignores_a_baseline_of_another_astronaut(store, client):
 
     assert body["baseline"] is None
     assert {"kind": "baseline", "id": BASELINE} in body["unresolved"]
+
+
+# --- assess-base ---------------------------------------------------------------------------------
+
+
+def test_assess_base_is_the_request_the_assessment_would_post(store, client):
+    populate(store)
+
+    response = client.get(f"/crew/{AST}/assess-base")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert validation.errors("engine/assess-request", body) == []
+    assert body["as_of"] == NOW.isoformat()
+    assert body["baseline"] == example("domain/baseline")
+    assert body["profile"] == example("domain/astronaut-profile")
+    assert body["mission_day"] == 87
+    assert INFLIGHT_SESSION in {fs["session_id"] for fs in body["feature_sets"]}
+
+
+def test_assess_base_of_an_unknown_astronaut_is_404(client):
+    assert_problem(client.get(f"/crew/{AST}/assess-base"), 404, "not_found")
+
+
+def test_assess_base_without_a_profile_is_404_naming_the_reason(store, client):
+    store.put_baseline(example("domain/baseline"))
+
+    assert assert_problem(client.get(f"/crew/{AST}/assess-base"), 404, "not_found")["detail"] == "no_profile"
+
+
+def test_assess_base_without_a_baseline_is_404_naming_the_reason(store, client):
+    store.put_profile(example("domain/astronaut-profile"))
+
+    assert assert_problem(client.get(f"/crew/{AST}/assess-base"), 404, "not_found")["detail"] == "no_baseline"
+
+
+def test_assess_base_without_feature_sets_in_the_window_is_404_naming_the_reason(store, client):
+    populate(store)
+    later = create_read_app(AppSettings(_env_file=None), store=store, clock=lambda: NOW + timedelta(days=30))
+
+    assert assert_problem(TestClient(later).get(f"/crew/{AST}/assess-base"), 404, "not_found")["detail"] == "no_feature_sets"
+
+
+def test_assess_base_window_comes_from_the_settings(store):
+    populate(store)
+    narrow = AppSettings(_env_file=None, assess_window_days=1)
+    app = create_read_app(narrow, store=store, clock=lambda: NOW + timedelta(days=3))
+
+    assert assert_problem(TestClient(app).get(f"/crew/{AST}/assess-base"), 404, "not_found")["detail"] == "no_feature_sets"

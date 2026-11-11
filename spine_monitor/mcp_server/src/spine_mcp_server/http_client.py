@@ -31,8 +31,8 @@ MAX_DETAIL_CHARS = 500
 """Tope del detalle que viene de la app y llega al LLM (contenido aguas arriba, no confiable)."""
 
 
-class HttpAppReader:
-    """`AppReader` que consulta la API de lectura de la app por HTTP."""
+class _AppApi:
+    """Base común de los clientes de la API de lectura de la app: cliente httpx, cierre y traducción de errores en `_get`."""
 
     def __init__(self, base_url: str, *, client: httpx.Client | None = None, timeout: float = 10.0) -> None:
         self._owns_client = client is None
@@ -50,6 +50,24 @@ class HttpAppReader:
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None:
         self.close()
 
+    def _get[M: BaseModel](self, path: str, model: type[M], params: dict[str, str | int] | None = None) -> M:
+        try:
+            response = self._client.get(self._base + path, params=params)
+        except httpx.TimeoutException as exc:
+            raise UpstreamError(504, "App API timeout", f"No response from {self._base} ({type(exc).__name__}).") from exc
+        except httpx.HTTPError as exc:
+            raise UpstreamError(503, "App API unavailable", f"Cannot reach {self._base} ({type(exc).__name__}).") from exc
+        if response.is_success:
+            try:
+                return model.model_validate_json(response.content)
+            except ValidationError as exc:
+                raise UpstreamError(502, "App API returned an invalid response", f"Body is not a valid {model.__name__}.") from exc
+        raise _failure(response)
+
+
+class HttpAppReader(_AppApi):
+    """`AppReader` que consulta la API de lectura de la app por HTTP."""
+
     def get_status(self, astronaut_id: str) -> Status:
         return self._get(f"/crew/{_segment(astronaut_id)}/status", Status)
 
@@ -65,19 +83,12 @@ class HttpAppReader:
     def get_explanation(self, assessment_id: str) -> Explanation:
         return self._get(f"/assessments/{_segment(assessment_id)}/explanation", Explanation)
 
-    def _get[M: BaseModel](self, path: str, model: type[M], params: dict[str, str | int] | None = None) -> M:
-        try:
-            response = self._client.get(self._base + path, params=params)
-        except httpx.TimeoutException as exc:
-            raise UpstreamError(504, "App API timeout", f"No response from {self._base} ({type(exc).__name__}).") from exc
-        except httpx.HTTPError as exc:
-            raise UpstreamError(503, "App API unavailable", f"Cannot reach {self._base} ({type(exc).__name__}).") from exc
-        if response.is_success:
-            try:
-                return model.model_validate_json(response.content)
-            except ValidationError as exc:
-                raise UpstreamError(502, "App API returned an invalid response", f"Body is not a valid {model.__name__}.") from exc
-        raise _failure(response)
+
+class HttpAssessBaseSource(_AppApi):
+    """`AssessBaseSource` que pide a la API de lectura de la app la petición de valoración que enviaría ahora."""
+
+    def get_base(self, astronaut_id: str) -> AssessRequest:
+        return self._get(f"/crew/{_segment(astronaut_id)}/assess-base", AssessRequest)
 
 
 def _segment(identifier: str) -> str:
@@ -160,10 +171,3 @@ class UnavailableSimulator:
 
     def simulate(self, request: SimulateRequest) -> SimulateResponse:
         raise UpstreamError(501, "Simulation not available", _NOT_IMPLEMENTED_DETAIL.format(what="the simulator"))
-
-
-class UnavailableAssessBase:
-    """`AssessBaseSource` del modo http: la API de la app aún no expone la petición de valoración base."""
-
-    def get_base(self, astronaut_id: str) -> AssessRequest:
-        raise UpstreamError(501, "Assessment base not available", _NOT_IMPLEMENTED_DETAIL.format(what="the assessment base"))

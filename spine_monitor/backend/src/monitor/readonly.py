@@ -7,6 +7,8 @@ tried.
 
 - Per-tool endpoints: `/status` (get_current_status), `/history` (get_history; two calls back
   compare_periods) and `/explanation` (explain_assessment).
+- `/assess-base`: the /assess request the app would send now (`as_of` is its clock), never sent: the base of the
+  MCP `simulate_scenario`. A request that cannot be built is a 404 whose detail is the reason.
 - Resource endpoints: one assessment, session, feature set, self-report or baseline, or a list of a
   window. Lists are oldest first, capped by `limit`, keeping the most recent and setting `truncated`.
 - Missing data is `null` and marked `stale` in the freshness: absence is never presented as good news.
@@ -16,7 +18,7 @@ tried.
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Path, Query, Request
@@ -25,6 +27,7 @@ from fastapi.responses import JSONResponse
 from jsonschema import FormatChecker
 from spine_contracts import SCHEMA_VERSION, topics
 
+from monitor.assess_request import build_assess_request
 from monitor.db import Store
 from monitor.settings import AppSettings
 
@@ -242,6 +245,14 @@ def create_read_app(
     @app.get("/self-reports/{report_id}", operation_id="getSelfReport")
     async def get_self_report(report_id: EntityId) -> dict[str, Any]:
         return found(db.self_report(report_id), "self-report", report_id)
+
+    @app.get("/crew/{astronaut_id}/assess-base", operation_id="getAssessBase")
+    async def get_assess_base(astronaut_id: AstronautId) -> dict[str, Any]:
+        known(astronaut_id)
+        built = build_assess_request(db, astronaut_id, clock(), timedelta(days=settings.assess_window_days))
+        if built.request is None:
+            raise _not_found(built.skipped or "no_request")
+        return built.request
 
     @app.get("/crew/{astronaut_id}/baselines/{baseline_id}", operation_id="getBaseline")
     async def get_baseline(astronaut_id: AstronautId, baseline_id: EntityId) -> dict[str, Any]:

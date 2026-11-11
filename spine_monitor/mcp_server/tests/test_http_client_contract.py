@@ -23,8 +23,8 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 from spine_contracts import validation
 from spine_mcp_server.errors import UpstreamError
-from spine_mcp_server.http_client import HttpAppReader
-from spine_mcp_server.ports import AppReader
+from spine_mcp_server.http_client import HttpAppReader, HttpAssessBaseSource
+from spine_mcp_server.ports import AppReader, AssessBaseSource
 
 pytestmark = pytest.mark.contract
 
@@ -305,5 +305,61 @@ def test_error_statuses_the_client_meets_are_declared_and_problem_shaped(tmp_pat
 
     assert info.value.status == recorder.last.status == status
     assert str(status) in declared_statuses(op)
+    assert recorder.last.content_type.startswith("application/problem+json")
+    assert validation.errors("app/error", recorder.last.body) == []
+
+
+# --- AssessBaseSource.get_base -> getAssessBase ----------------------------------------------------
+
+
+@pytest.fixture
+def base_source(tmp_path, recorder):
+    store = Store(tmp_path / "base.db")
+    _populate(store)
+    client = TestClient(create_read_app(AppSettings(_env_file=None), store=store, clock=lambda: NOW))
+    client.event_hooks["response"].append(recorder)
+    yield HttpAssessBaseSource("http://testserver", client=client)
+    store.close()
+
+
+def test_the_assess_base_port_has_one_method_and_it_is_the_contract_operation():
+    methods = {name for name, _ in inspect.getmembers(AssessBaseSource, inspect.isfunction) if not name.startswith("_")}
+
+    assert methods == {"get_base"}
+    assert operation("getAssessBase")[0] == "/crew/{astronaut_id}/assess-base"
+
+
+def test_assess_base_request_uses_the_declared_path_without_query(base_source, recorder, registry):
+    template, op = operation("getAssessBase")
+
+    base_source.get_base(AST)
+
+    sent = recorder.last
+    match = path_regex(template).match(sent.path)
+    assert match and sent.method == "GET" and sent.query == {}
+    assert set(match.groupdict()) == set(parameters(op, "path"))
+    assert param_errors(registry, parameters(op, "path")["astronaut_id"], match["astronaut_id"]) == []
+
+
+def test_assess_base_body_validates_against_the_schema_the_contract_names(base_source, recorder):
+    _, op = operation("getAssessBase")
+
+    base_source.get_base(AST)
+
+    assert recorder.last.status == 200
+    assert validation.errors(response_schema_name(op), recorder.last.body) == []
+
+
+def test_assess_base_404_is_declared_and_problem_shaped(tmp_path, recorder):
+    store = Store(tmp_path / "empty.db")
+    client = TestClient(create_read_app(AppSettings(_env_file=None), store=store, clock=lambda: NOW))
+    client.event_hooks["response"].append(recorder)
+
+    with pytest.raises(UpstreamError) as info:
+        HttpAssessBaseSource("http://testserver", client=client).get_base("AST-99")
+    store.close()
+
+    assert info.value.status == recorder.last.status == 404
+    assert "404" in declared_statuses(operation("getAssessBase")[1])
     assert recorder.last.content_type.startswith("application/problem+json")
     assert validation.errors("app/error", recorder.last.body) == []

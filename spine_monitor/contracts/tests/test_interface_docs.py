@@ -85,6 +85,7 @@ APP_PATHS = {
     "/crew/{astronaut_id}/self-reports",
     "/self-reports/{report_id}",
     "/crew/{astronaut_id}/baselines/{baseline_id}",
+    "/crew/{astronaut_id}/assess-base",
 }
 
 

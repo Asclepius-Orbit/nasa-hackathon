@@ -26,7 +26,11 @@ SQLite, envía los comandos que guían el protocolo y llama al motor, que no tie
 - **Llamadas al motor** (`analysis.py`): al terminar una sesión, `/features`. Si es pre-vuelo,
   `/baseline` con todos los feature sets pre-vuelo (una versión nueva cada vez). Después, `/assess` con
   perfil, baseline, feature sets recientes, autoinformes y contexto diario. Cada autoinforme también
-  dispara `/assess`. Sin perfil, baseline o feature sets la evaluación se omite y se dice por qué. La
+  dispara `/assess`. Guardar el perfil o el contexto diario, o una baseline nueva, pide una reevaluación
+  con debounce por astronauta (`REASSESS_DEBOUNCE_S`, 5 s tras la última petición; una ráfaga da una sola,
+  y un `/assess` inmediato entretanto la sustituye). Un bucle de fondo (`assessment-refresh`, cada
+  `REASSESS_TICK_S`, 1 h) la pide para cada astronauta con perfil cuya última evaluación falta o es más
+  vieja que `STALE_ASSESSMENT_HOURS`; si no se puede evaluar, se reintenta en el siguiente tick. Sin perfil, baseline o feature sets la evaluación se omite y se dice por qué. La
   ausencia nunca se convierte en un verde. Un fallo de `/features` porque el motor no responde o contesta
   5xx se reintenta con backoff exponencial (de `PROCESSING_RETRY_MIN_S` a `PROCESSING_RETRY_MAX_S`), hasta
   `PROCESSING_MAX_ATTEMPTS` intentos, contados en SQLite (`processing_attempts`) para que un reinicio siga
@@ -86,7 +90,7 @@ uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
-`WEEKLY_ODI_INTERVAL_DAYS`. En Docker Compose la base de datos vive en el volumen `backend_data`
+`WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. En Docker Compose la base de datos vive en el volumen `backend_data`
 (`/data/spine_monitor.db`).
 
 Reintentos del análisis, también `SPINE_APP_*`:

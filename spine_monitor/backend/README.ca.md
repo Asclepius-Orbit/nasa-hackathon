@@ -27,7 +27,11 @@ SQLite, envia les comandes que guien el protocol i crida el motor, que no té es
 - **Crides al motor** (`analysis.py`): quan acaba una sessió, `/features`. Si és de pre-vol,
   `/baseline` amb tots els feature sets de pre-vol (una versió nova cada vegada). Després, `/assess` amb
   perfil, baseline, feature sets recents, autoinformes i context diari. Cada autoinforme també dispara
-  `/assess`. Sense perfil, baseline o feature sets l'avaluació s'omet i es diu per què. L'absència mai
+  `/assess`. Desar el perfil o el context diari, o una baseline nova, demana una reavaluació amb
+  debounce per astronauta (`REASSESS_DEBOUNCE_S`, 5 s després de l'última petició; una ràfega en fa
+  una sola, i un `/assess` immediat mentrestant la substitueix). Un bucle de fons (`assessment-refresh`,
+  cada `REASSESS_TICK_S`, 1 h) la demana per a cada astronauta amb perfil l'última avaluació del qual
+  falta o és més antiga que `STALE_ASSESSMENT_HOURS`; si no es pot avaluar, es reintenta al tick següent. Sense perfil, baseline o feature sets l'avaluació s'omet i es diu per què. L'absència mai
   no es converteix en un verd. Una fallada de `/features` perquè el motor no respon o contesta 5xx es
   reintenta amb backoff exponencial (de `PROCESSING_RETRY_MIN_S` a `PROCESSING_RETRY_MAX_S`), fins a
   `PROCESSING_MAX_ATTEMPTS` intents, comptats a SQLite (`processing_attempts`) perquè un reinici
@@ -87,7 +91,7 @@ uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuració són variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
-`WEEKLY_ODI_INTERVAL_DAYS`. A Docker Compose la base de dades viu al volum `backend_data`
+`WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. A Docker Compose la base de dades viu al volum `backend_data`
 (`/data/spine_monitor.db`).
 
 Reintents de l'anàlisi, també `SPINE_APP_*`:

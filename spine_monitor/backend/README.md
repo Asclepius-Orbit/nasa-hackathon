@@ -25,7 +25,11 @@ SQLite, sends the commands that drive the protocol, and calls the stateless engi
 - **Engine calls** (`analysis.py`): when a session ends, `/features`. When it is pre-flight,
   `/baseline` with every pre-flight feature set (new version each time). Then `/assess` with profile,
   baseline, recent feature sets, self-reports and daily context. Every self-report also triggers
-  `/assess`. A missing profile, baseline or feature set skips the assessment and says why. Absence is
+  `/assess`. A stored profile or daily context, or a new baseline, asks for a reassessment debounced per
+  astronaut (`REASSESS_DEBOUNCE_S`, 5 s after the last request; a burst makes one, and an immediate
+  `/assess` in between replaces it). A background loop (`assessment-refresh`, every `REASSESS_TICK_S`,
+  1 h) asks for one for every astronaut with a profile whose latest assessment is missing or older than
+  `STALE_ASSESSMENT_HOURS`; one that cannot be assessed is retried on the next tick. A missing profile, baseline or feature set skips the assessment and says why. Absence is
   never turned into a green. A `/features` failure because the engine is unreachable or answers 5xx is
   retried with exponential backoff (`PROCESSING_RETRY_MIN_S` to `PROCESSING_RETRY_MAX_S`), up to
   `PROCESSING_MAX_ATTEMPTS` attempts, counted in SQLite (`processing_attempts`) so a restart goes on
@@ -81,7 +85,7 @@ Run it alone: `uv run uvicorn --factory monitor.readonly:create_read_app --port 
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 Settings are `SPINE_APP_*` variables (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`, `DB_PATH`,
-`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`, `WEEKLY_ODI_INTERVAL_DAYS`. In
+`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`, `WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. In
 Docker Compose the database lives in the `backend_data` volume (`/data/spine_monitor.db`).
 
 Analysis retries, also `SPINE_APP_*`:

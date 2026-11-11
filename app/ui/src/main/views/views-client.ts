@@ -94,8 +94,9 @@ export function createViewsClient({
   if (origin === null) throw new Error('backend URL must be an http(s) loopback origin');
   const base: string = origin;
 
+  /** `notFoundStatuses`: statuses shown as not_found (session routes add 403: the guard denies another astronaut's session). */
   /** `astronautId`: the unlocked astronaut the request is made for (the backend checks it owns what is asked). */
-  async function get<T>(path: string, schema: z.ZodType, astronautId: string): Promise<T> {
+  async function get<T>(path: string, schema: z.ZodType, astronautId: string, notFoundStatuses: readonly number[] = [404]): Promise<T> {
     let body: unknown;
     try {
       // One signal for the whole exchange: a server that sends headers and then stalls is cut off as well.
@@ -105,7 +106,7 @@ export function createViewsClient({
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (response.status === 404) throw new ViewsError('not_found');
+      if (notFoundStatuses.includes(response.status)) throw new ViewsError('not_found');
       if (response.status !== 200) throw new ViewsError('unavailable');
       body = await response.json();
     } catch (error) {
@@ -136,7 +137,7 @@ export function createViewsClient({
     baseline: (id) => get(crewPath(id, 'baseline'), SCHEMAS.baseline(), id),
     firstDay: (id) => get(crewPath(id, 'first-day'), SCHEMAS.firstDay(), id),
     async session(astronautId, sessionId) {
-      const body = await get<SessionView>(`/ui/sessions/${encodeURIComponent(sessionId)}/view`, SCHEMAS.session(sessionId), astronautId);
+      const body = await get<SessionView>(`/ui/sessions/${encodeURIComponent(sessionId)}/view`, SCHEMAS.session(sessionId), astronautId, [403, 404]);
       // A session of another crew member must look like one that does not exist, never leak across astronauts.
       if (body.astronaut_id !== astronautId) throw new ViewsError('not_found');
       return body;

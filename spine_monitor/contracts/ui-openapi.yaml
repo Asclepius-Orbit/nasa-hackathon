@@ -5,10 +5,15 @@ info:
   license:
     name: GNU General Public License v3.0
   description: |
-    Local, read-only HTTP API of the on-board app that backs the desktop UI. Each endpoint returns one
+    Local HTTP API of the on-board app that backs the desktop UI. Each view endpoint returns one
     screen already chewed: the backend computes the view from the stored assessments, sessions,
     self-reports, baseline, device status and the protocol catalog (`catalog/protocol-catalog.json`).
-    Only GET: no endpoint modifies data.
+    Views are only GET. The crew data the UI keeps up to date is read and written whole with GET and PUT:
+    the astronaut profile and the daily context (`schemas/v1/domain/`). The UI also lists the devices that
+    published a status for the astronaut, to pair a harness.
+
+    Every request carries `Authorization: Bearer <token>` (the shared UI token) and `X-Astronaut-Id` (the
+    unlocked astronaut): 401 without a valid token, 403 when the header names another astronaut.
 
     Views carry codes and data, never prose: recommendation codes (`REC_*`), task codes (`TASK_*`),
     feature ids, missing reasons, red-flag codes and protocol fit-item ids. The UI writes the words.
@@ -54,6 +59,134 @@ paths:
             application/json:
               schema:
                 $ref: 'schemas/v1/app/ui-contact-list.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/profile:
+    get:
+      operationId: getProfile
+      summary: Profile of an astronaut
+      description: The stored profile (anthropometry, launch and landing dates...). No names. 404 until one is stored.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The stored data.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/astronaut-profile.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoData'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    put:
+      operationId: putProfile
+      summary: Store the profile of an astronaut
+      description: Replaces the whole profile. `schema_version` and `updated_at` default to the app's; `astronaut_id` comes from the path (a different one in the body is a 422). The assessment is redone.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/domain/astronaut-profile.schema.json'
+      responses:
+        '200':
+          description: The stored data.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/astronaut-profile.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/daily-context/{day}:
+    get:
+      operationId: getDailyContext
+      summary: Daily context of an astronaut on a day
+      description: Phase, gravity environment, mission day, medication, exercise and countermeasures of the day. 404 until one is stored.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/Day'
+      responses:
+        '200':
+          description: The stored data.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/daily-context.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoData'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    put:
+      operationId: putDailyContext
+      summary: Store the daily context of an astronaut on a day
+      description: Replaces the context of that day. `astronaut_id` and `date` come from the path (different ones in the body are a 422). Starting a session needs today's context; the assessment is redone.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/Day'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/domain/daily-context.schema.json'
+      responses:
+        '200':
+          description: The stored data.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/daily-context.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/devices:
+    get:
+      operationId: listDevices
+      summary: Devices seen for an astronaut
+      description: The last status each device published on the bus for the astronaut (`asclepius/v1/crew/{astronaut_id}/device/{device_id}/status`), ordered by `device_id`. Empty when none has been seen. Used to pair a harness; the pairing itself stays in the UI.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The device statuses.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'schemas/v1/telemetry/device-status.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
           $ref: '#/components/responses/Error'
         default:
@@ -249,6 +382,13 @@ components:
       required: true
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+    Day:
+      name: day
+      in: path
+      required: true
+      description: Calendar day (ISO 8601 date).
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/date'
     FromDate:
       name: from
       in: query
@@ -264,6 +404,30 @@ components:
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/date'
   responses:
+    Unauthorized:
+      description: No valid UI token (problem details; branch on the status, the body type is `invalid_request`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Forbidden:
+      description: '`X-Astronaut-Id` names another astronaut than the path (problem details; branch on the status).'
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    NoData:
+      description: Nothing stored yet (problem details, type `not_found`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Invalid:
+      description: The body does not conform to its schema, or names another astronaut or day than the path (problem details, type `invalid_request`, with `errors[].pointer` into the body).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
     NotFound:
       description: The session does not exist (problem details, type `not_found`).
       content:

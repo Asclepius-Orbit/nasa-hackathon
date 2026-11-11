@@ -158,19 +158,44 @@ UI_VIEWS = {
     "/ui/crew/{astronaut_id}/contacts": "app/ui-contact-list",
 }
 REPS_PATH = "/ui/sessions/{session_id}/reps"
+# Crew data the UI reads and writes: path -> {method: domain schema of the body (request for put, response for get)}
+UI_CREW_DATA = {
+    "/ui/crew/{astronaut_id}/profile": {"get": "domain/astronaut-profile", "put": "domain/astronaut-profile"},
+    "/ui/crew/{astronaut_id}/daily-context/{day}": {"get": "domain/daily-context", "put": "domain/daily-context"},
+}
+DEVICES_PATH = "/ui/crew/{astronaut_id}/devices"
 
 
 def test_ui_openapi_is_openapi_3_1():
     assert load("ui-openapi.yaml")["openapi"] == "3.1.0"
 
 
-def test_ui_openapi_paths_are_the_view_endpoints():
-    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH}
+def test_ui_openapi_paths_are_the_view_and_crew_data_endpoints():
+    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH, DEVICES_PATH} | set(UI_CREW_DATA)
 
 
-def test_ui_openapi_is_read_only():
-    methods = {method for item in load("ui-openapi.yaml")["paths"].values() for method in item}
-    assert methods == {"get"}
+def test_ui_openapi_writes_only_the_profile_and_the_daily_context():
+    writes = {(path, method) for path, item in load("ui-openapi.yaml")["paths"].items() for method in item if method != "get"}
+    assert writes == {(path, "put") for path in UI_CREW_DATA}
+
+
+@pytest.mark.parametrize("path", sorted(UI_CREW_DATA))
+def test_ui_crew_data_reads_and_writes_the_domain_schema(path):
+    item = load("ui-openapi.yaml")["paths"][path]
+    get_schema = item["get"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    put_body = item["put"]["requestBody"]
+    put_answer = item["put"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    expected = f"schemas/v1/{UI_CREW_DATA[path]['put']}.schema.json"
+    assert put_body["required"] is True
+    assert (get_schema, put_body["content"]["application/json"]["schema"]["$ref"], put_answer) == (expected, expected, expected)
+    for method in ("get", "put"):
+        assert {"401", "403", "404" if method == "get" else "422"} <= set(item[method]["responses"])
+
+
+def test_ui_devices_is_a_list_of_device_statuses():
+    item = load("ui-openapi.yaml")["paths"][DEVICES_PATH]
+    schema = item["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert schema == {"type": "array", "items": {"$ref": "schemas/v1/telemetry/device-status.schema.json"}}
 
 
 def test_ui_openapi_operation_ids_are_unique_and_not_shared_with_the_read_api():
@@ -183,10 +208,11 @@ def test_ui_openapi_operation_ids_are_unique_and_not_shared_with_the_read_api():
 def test_ui_openapi_path_parameters_are_declared():
     document = load("ui-openapi.yaml")
     for path, item in document["paths"].items():
-        params = [document["components"]["parameters"][p["$ref"].rsplit("/", 1)[1]] for p in item["get"].get("parameters", [])]
-        declared = {p["name"] for p in params if p["in"] == "path"}
-        in_path = {part[1:-1] for part in path.split("/") if part.startswith("{")}
-        assert in_path == declared, f"{path}: path parameters {in_path} declared as {declared}"
+        for method, operation in item.items():
+            params = [document["components"]["parameters"][p["$ref"].rsplit("/", 1)[1]] for p in operation.get("parameters", [])]
+            declared = {p["name"] for p in params if p["in"] == "path"}
+            in_path = {part[1:-1] for part in path.split("/") if part.startswith("{")}
+            assert in_path == declared, f"{method} {path}: path parameters {in_path} declared as {declared}"
 
 
 def test_ui_history_window_is_optional_dates():
@@ -212,8 +238,9 @@ def test_ui_errors_are_problem_details_with_the_app_error_schema():
 
 def test_ui_only_the_session_view_answers_404():
     """The crew views answer 200 with `nodata`/nulls for an astronaut without data; only an unknown session is a 404."""
-    for path, item in load("ui-openapi.yaml")["paths"].items():
-        assert ("404" in item["get"]["responses"]) == (path.startswith("/ui/sessions/")), path
+    paths = load("ui-openapi.yaml")["paths"]
+    for path in [*UI_VIEWS, REPS_PATH, DEVICES_PATH]:
+        assert ("404" in paths[path]["get"]["responses"]) == (path.startswith("/ui/sessions/")), path
 
 
 def test_ui_history_documents_invalid_range_with_the_366_day_cap():

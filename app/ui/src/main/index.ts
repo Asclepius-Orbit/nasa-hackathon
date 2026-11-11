@@ -13,6 +13,7 @@ import { registerIpc } from './ipc';
 import { APP_SCHEME_PRIVILEGES, createAppProtocolHandler } from './security/app-protocol';
 import { APP_SCHEME, createAppUrlPolicy, createSenderGuard } from './security/app-url';
 import { devCsp, PROD_CSP } from './security/csp';
+import { createCrewRegistry, withCrewRegistry } from './store/crew-registry';
 import { createCrewStore, crewFileSchema } from './store/crew-store';
 import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
@@ -62,13 +63,13 @@ if (!app.requestSingleInstanceLock()) {
 
     const userData = app.getPath('userData');
     const hasher = createPinHasher();
-    const crew = createCrewStore({
+    const crewStore = createCrewStore({
       file: createEncryptedJsonFile({ path: join(userData, 'crew.bin'), schema: crewFileSchema, safeStorage }),
       hasher,
       seed: seedDemoCrew ? DEMO_CREW : null,
     });
     const auth = createAuthService({
-      crew,
+      crew: crewStore,
       hasher,
       stateFile: createEncryptedJsonFile({ path: join(userData, 'auth-state.bin'), schema: authStateSchema, safeStorage }),
       now: Date.now,
@@ -78,6 +79,9 @@ if (!app.requestSingleInstanceLock()) {
     const backendUrl = resolveBackendUrl(process.env[BACKEND_URL_ENV], () => {
       console.error(`${BACKEND_URL_ENV} ignored: only http(s) loopback URLs are accepted`);
     });
+    // The store owns the crew; the backend only learns each id (never a name or PIN), retried while it is down.
+    const crew = withCrewRegistry(crewStore, createCrewRegistry({ baseUrl: backendUrl, logError: console.error }));
+    void crew.list();
     const views = createViewsService({ auth, crew, client: createViewsClient({ baseUrl: backendUrl }) });
     const reps = createRepsService({
       auth,

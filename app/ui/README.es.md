@@ -76,6 +76,7 @@ Los textos viven en `src/renderer/strings/` (en inglés, un fichero por pantalla
 - PIN: scrypt con salt por tripulante, comprobado en el proceso main. Tres fallos bloquean a ese tripulante cinco
   minutos, y el bloqueo sobrevive a reinicios; el intento se registra antes de comprobar el PIN.
 - Vistas del backend: el renderer nunca habla con el backend (el CSP `connect-src 'self'` no cambia). El proceso main pide las vistas `/ui/...` solo del astronauta desbloqueado, por HTTP a loopback (`ASCLEPIUS_BACKEND_URL`, por defecto `http://127.0.0.1:8000`; otros hosts se ignoran), con timeout de 5 s, sin redirecciones y sin caché. Los errores llegan al renderer como `locked`, `not_found` o `unavailable`.
+- Registro de tripulantes: el almacén cifrado de la tripulación es dueño de la lista, los ids `AST-NN`, los nombres y los PIN. El proceso main solo comunica al backend cada id (`PUT /ui/crew/{id}`, sin cuerpo), al arrancar y al crear un miembro; si el backend está caído el miembro se crea igual y el id se reintenta en el siguiente listado. El perfil del backend se completa aparte (`PUT /ui/crew/{id}/profile`); sin él `/assess` se omite.
 - El estado de tripulantes y de autenticación se cifra con `safeStorage` de Electron y falla cerrado si no hay
   cifrado disponible.
 - Fuses de Electron: sin `RunAsNode`, sin `NODE_OPTIONS`, sin flags de inspect, integridad del asar y carga solo

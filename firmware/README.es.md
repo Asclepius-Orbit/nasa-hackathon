@@ -55,7 +55,7 @@ Líneas ASCII terminadas en `\n`. Cada línea es `<cuerpo>*<XX>`, con `XX` el CR
 | `D,E,<frame_seq u16>,<t0_ms u32>,100,<b64>` | Cada 100 ms | 100 × uint16 LE (`analogRead`, 0..1023) a 1000 Hz |
 | `D,I,<frame_seq>,<t0_ms>,10,<b64>` | Cada 100 ms | 10 × (ax, ay, az, gx, gy, gz) int16 LE a 100 Hz |
 | `D,S,<frame_seq>,<t0_ms>,2,<b64>` | Cada 100 ms | 2 × uint16 LE a 20 Hz |
-| `# ...` | Esporádica | Depuración: `#imu ok`/`#imu absent` al arrancar, `#imu up`/`lost`/`late`, `#overrun`, `#adc busy`. Sin CRC: el gateway las descarta como línea mala (`no_crc`) |
+| `# ...` | Esporádica | Depuración: `#imu ok`/`#imu absent` al arrancar, `#imu up`/`lost`/`late`, `#overrun`, `#adc busy`. Sin CRC: el gateway las registra en el log a nivel info (`arduino: ...`) y no las cuenta como línea mala |
 
 - `frame_seq` es independiente por tipo, empieza en 0 y da la vuelta en 65536.
 - `t0_ms` es el `millis()` del instante de la **primera muestra** del lote (se toma en la ISR, no al emitir).

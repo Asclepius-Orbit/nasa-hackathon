@@ -57,6 +57,10 @@ from spine_gateway.status import Health, StreamReport, StreamState
 
 _log = logging.getLogger(__name__)
 
+# Prefijo de las líneas de depuración del firmware y su codec, como constantes de módulo (mutmut no muta el módulo).
+_DEBUG_PREFIX = b"#"
+_ASCII = "ascii"
+
 QOS = 1
 """QoS de todos los mensajes (contrato AsyncAPI)."""
 
@@ -311,6 +315,10 @@ class Gateway:
         self._last_frame_at.clear()
 
     async def _on_line(self, data: bytes, at: datetime) -> None:
+        if data.startswith(_DEBUG_PREFIX):
+            # Texto de depuración del firmware (``#imu ok``, ``#overrun``...): no es protocolo, no lleva CRC y no cuenta como línea mala.
+            _log.info("arduino: %s", data.decode(_ASCII, errors="replace"))
+            return
         message = parse_line(data)
         match message:
             case BadLine(reason=reason):

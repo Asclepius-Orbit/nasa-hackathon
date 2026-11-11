@@ -295,3 +295,32 @@ def test_bad_lines_are_logged_without_flooding(harness, caplog) -> None:
             ]
 
     go(scenario())
+
+
+def test_firmware_debug_lines_are_logged_and_are_not_bad_lines(harness, caplog) -> None:
+    async def scenario() -> None:
+        async with harness() as h:
+            await h.boot()
+            with caplog.at_level(logging.DEBUG, logger="spine_gateway.app"):
+                await h.feed(h.line(b"#imu ok"), h.line(b"#overrun E: lote descartado"), h.line(b"#\xff"))
+            assert h.gateway.bad_lines == {}
+            logged = [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "spine_gateway.app"]
+            assert logged == [
+                (logging.INFO, "arduino: #imu ok"),
+                (logging.INFO, "arduino: #overrun E: lote descartado"),
+                (logging.INFO, "arduino: #�"),
+            ]
+            await h.run_device(1.0)  # el bucle sigue y los datos siguen saliendo
+            assert [c["stream_id"] for c in h.client.payloads("stream")] == ["imu_l3", "stretch_lumbar"]
+
+    go(scenario())
+
+
+def test_a_line_that_only_contains_a_hash_later_is_still_a_bad_line(harness) -> None:
+    async def scenario() -> None:
+        async with harness() as h:
+            await h.boot()
+            await h.feed(h.line(b" #imu ok"), h.line(b"imu #ok"))
+            assert h.gateway.bad_lines == {BadLineReason.NO_CRC: 2}
+
+    go(scenario())

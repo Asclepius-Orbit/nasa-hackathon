@@ -230,7 +230,7 @@ ASCII lines ending in `\n`, each `<body>*<XX>` with `XX` the CRC-8/MAXIM of the 
 | `D,E,<frame_seq>,<t0_ms>,100,<b64>` | EMG: 100 x `uint16` LE, 1000 Hz, every 100 ms. |
 | `D,I,<frame_seq>,<t0_ms>,10,<b64>` | IMU: 10 x (ax, ay, az, gx, gy, gz) `int16` LE, 100 Hz. |
 | `D,S,<frame_seq>,<t0_ms>,2,<b64>` | Cord: 2 x `uint16` LE, 20 Hz. |
-| `# ...` | Debug text of the firmware. It has no CRC, so the gateway discards it as a bad line (reason `no_crc`); a few warnings in the log after boot (`#imu ok`, ...) are expected. |
+| `# ...` | Debug text of the firmware. It has no CRC, so the gateway does not parse it: it logs it at info level (`arduino: #imu ok`) and does not count it as a bad line. |
 
 Lines that are not valid (bad CRC, bad field, bad base64...) are counted by reason, logged at 1, 2, 4, 8... occurrences (the rest at debug level) and discarded. The full detail (wiring, behaviours of the firmware, examples) is in [`firmware/README.md`](../../firmware/README.md).
 

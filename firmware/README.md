@@ -55,7 +55,7 @@ ASCII lines ending in `\n`. Each line is `<body>*<XX>`, with `XX` the CRC-8/MAXI
 | `D,E,<frame_seq u16>,<t0_ms u32>,100,<b64>` | Every 100 ms | 100 × uint16 LE (`analogRead`, 0..1023) at 1000 Hz |
 | `D,I,<frame_seq>,<t0_ms>,10,<b64>` | Every 100 ms | 10 × (ax, ay, az, gx, gy, gz) int16 LE at 100 Hz |
 | `D,S,<frame_seq>,<t0_ms>,2,<b64>` | Every 100 ms | 2 × uint16 LE at 20 Hz |
-| `# ...` | Sporadic | Debug: `#imu ok`/`#imu absent` at boot, `#imu up`/`lost`/`late`, `#overrun`, `#adc busy`. No CRC: the gateway discards them as a bad line (`no_crc`) |
+| `# ...` | Sporadic | Debug: `#imu ok`/`#imu absent` at boot, `#imu up`/`lost`/`late`, `#overrun`, `#adc busy`. No CRC: the gateway logs them at info level (`arduino: ...`) and does not count them as bad lines |
 
 - `frame_seq` is independent per type, starts at 0 and wraps at 65536.
 - `t0_ms` is the `millis()` of the instant of the batch's **first sample** (taken in the ISR, not when emitting).

@@ -230,7 +230,7 @@ Línies ASCII acabades en `\n`, cadascuna `<cos>*<XX>` amb `XX` el CRC-8/MAXIM d
 | `D,E,<frame_seq>,<t0_ms>,100,<b64>` | EMG: 100 x `uint16` LE, 1000 Hz, cada 100 ms. |
 | `D,I,<frame_seq>,<t0_ms>,10,<b64>` | IMU: 10 x (ax, ay, az, gx, gy, gz) `int16` LE, 100 Hz. |
 | `D,S,<frame_seq>,<t0_ms>,2,<b64>` | Cordó: 2 x `uint16` LE, 20 Hz. |
-| `# ...` | Text de depuració del firmware. No porta CRC, així que el gateway el descarta com a línia dolenta (motiu `no_crc`); després d'arrencar són normals uns pocs avisos al log (`#imu ok`, ...). |
+| `# ...` | Text de depuració del firmware. No porta CRC, així que el gateway no l'interpreta: el registra al log a nivell info (`arduino: #imu ok`) i no el compta com a línia dolenta. |
 
 Les línies no vàlides (CRC dolent, camp dolent, base64 dolent...) es compten per motiu, s'avisen a la 1a, 2a, 4a, 8a... ocurrència (la resta a nivell debug) i es descarten. El detall complet (cablejat, comportaments del firmware, exemples) és a [`firmware/README.ca.md`](../../firmware/README.ca.md).
 

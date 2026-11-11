@@ -1,4 +1,12 @@
-import type { Assessment, DailySelfReport, HistoryDaySession, StripView, TaskCode as ContractTaskCode, TodayView } from '../../contracts/v1';
+import type {
+  Assessment,
+  DailySelfReport,
+  HistoryDaySession,
+  RedFlagReport,
+  StripView,
+  TaskCode as ContractTaskCode,
+  TodayView,
+} from '../../contracts/v1';
 
 /** Traffic light of an assessment (contract `Assessment.level`). */
 export type Level = Assessment['level'];
@@ -6,8 +14,8 @@ export type Level = Assessment['level'];
 export type DayLevel = Level | 'nodata';
 /** Red-flag codes (contract `red_flags` enum), most serious first in the catalogue. */
 export type RedFlagCode = NonNullable<DailySelfReport['red_flags']>[number];
-/** Choices of the Urgent dialog that are NOT in the contract yet ("Contract change pending" in the mock). */
-export type EscapeCode = 'very_severe_pain' | 'other';
+/** Choices of the Urgent dialog outside the red-flag catalogue (contract `other_symptoms`); how they are triaged is pending Aguado. */
+export type EscapeCode = NonNullable<RedFlagReport['other_symptoms']>[number];
 
 export interface SymptomOption<Code extends string> {
   code: Code;
@@ -288,7 +296,7 @@ export interface GroundSummaryData {
   sessions: readonly { sessionId: string; state: SessionState; protocolId: string }[];
   recommendations: readonly string[];
   escalation: { required: boolean; urgency: 'routine' | 'priority' | 'immediate' | null; reasons: readonly string[] } | null;
-  /** Reserved until issue #63; always `null`. */
+  /** The contract carries the day's medical contacts (#63), but the Houston screen does not show them yet: always `null` here. */
   contacts: null;
 }
 

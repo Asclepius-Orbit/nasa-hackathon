@@ -164,7 +164,7 @@ export function toHouston(view: HoustonView, outbox: OutboxView): HoustonData {
               summary.escalation === null
                 ? null
                 : { required: summary.escalation.required, urgency: summary.escalation.urgency, reasons: summary.escalation.reasons },
-            contacts: summary.contacts,
+            contacts: null, // in the contract since #63; not shown on the screen yet
           },
     outbox: outbox.items.map((i) => ({
       date: i.date,

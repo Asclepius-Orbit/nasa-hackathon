@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/domain/medical-contact.schema.json",
+  "title": "MedicalContact",
+  "description": "A medical contact the crew logged on board: who was contacted, when, and an optional note. Today only calls to the crew medical officer (CMO), logged from the stop screen of the UI. The note is free text and stays on board: the ground summary carries only the code and the instant.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "contact_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "at": {
+      "description": "When the contact happened.",
+      "$ref": "../common.schema.json#/$defs/utc_timestamp"
+    },
+    "contact": { "$ref": "#/$defs/contact_role" },
+    "session_id": {
+      "description": "Session it was logged from (the stop screen); absent when outside a session.",
+      "$ref": "../common.schema.json#/$defs/uuid"
+    },
+    "text": {
+      "description": "Optional note of the crew; never leaves the station.",
+      "type": "string",
+      "maxLength": 300
+    }
+  },
+  "required": ["schema_version", "contact_id", "astronaut_id", "at", "contact"],
+  "additionalProperties": false,
+  "$defs": {
+    "contact_role": {
+      "description": "Who was contacted. Adding a role is a compatible change.",
+      "type": "string",
+      "enum": ["crew_medical_officer"]
+    }
+  }
+}

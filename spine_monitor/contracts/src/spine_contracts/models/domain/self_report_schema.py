@@ -42,6 +42,11 @@ class ReportBase(BaseModel):
     source: common_schema.Source
 
 
+class OtherSymptom(str, Enum):
+    VERY_SEVERE_PAIN = 'very_severe_pain'
+    OTHER = 'other'
+
+
 class RedFlag(str, Enum):
     RADIATING_LEG_PAIN = 'radiating_leg_pain'
     NUMBNESS_OR_TINGLING = 'numbness_or_tingling'
@@ -121,7 +126,14 @@ class RedFlagReport(ReportBase):
         extra='forbid',
     )
     kind: Literal['red_flag']
-    red_flags: list[RedFlag] = Field(..., min_length=1)
+    red_flags: list[RedFlag] = Field(
+        ...,
+        description='Red flags present; may be empty only when other_symptoms is not.',
+    )
+    other_symptoms: list[OtherSymptom] | None = Field(
+        None,
+        description='Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model (Aguado): they are reported, not triaged here.',
+    )
     onset: AwareDatetime | None = Field(
         None,
         description='RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.',

@@ -28,6 +28,8 @@ from spine_contracts.models.app.session_list_schema import SessionList
 from spine_contracts.models.app.status_schema import Status
 from spine_contracts.models.app.ui_baseline_schema import BaselineView
 from spine_contracts.models.app.ui_common_schema import DayLevel, GroundLinkDown, GroundLinkUp, OutboxState, SessionState, TaskCode
+from spine_contracts.models.app.ui_contact_list_schema import UiContactList
+from spine_contracts.models.app.ui_crew_schema import UiCrew
 from spine_contracts.models.app.ui_first_day_schema import FirstDayView
 from spine_contracts.models.app.ui_history_schema import HistoryView
 from spine_contracts.models.app.ui_houston_schema import HoustonView
@@ -71,6 +73,7 @@ from spine_contracts.models.domain.calibration_schema import EmgMvcCalibration, 
 from spine_contracts.models.domain.daily_context_schema import DailyContext
 from spine_contracts.models.domain.feature_set_schema import Feature as FeatureValue
 from spine_contracts.models.domain.feature_set_schema import FeatureSet
+from spine_contracts.models.domain.medical_contact_schema import MedicalContact
 from spine_contracts.models.domain.self_report_schema import DailySelfReport, RedFlagReport, WeeklyOdiReport
 from spine_contracts.models.domain.session_schema import Session
 from spine_contracts.models.engine.assess_request_schema import AssessRequest
@@ -132,6 +135,9 @@ __all__ = [
     "GroundLinkDown",
     "GroundLinkUp",
     "GroundSummary",
+    "MedicalContact",
+    "UiContactList",
+    "UiCrew",
     "History",
     "HistoryView",
     "HoustonView",

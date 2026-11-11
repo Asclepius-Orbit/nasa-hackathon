@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "5e1f0e90-0000-4000-8000-000000000004",
+  "astronaut_id": "AST-01",
+  "timestamp": "2027-02-10T14:15:00Z",
+  "mission_day": 88,
+  "source": "device",
+  "kind": "red_flag",
+  "red_flags": [],
+  "other_symptoms": ["very_severe_pain"]
+}

@@ -21,6 +21,11 @@
       },
       "required": ["schema_version", "report_id", "astronaut_id", "timestamp", "source"]
     },
+    "other_symptom": {
+      "description": "Urgent symptom outside the red-flag catalogue: 'very_severe_pain' (pain the astronaut cannot bear) or 'other' (described in the note). Kept apart from red_flag until the clinical model decides how it is triaged.",
+      "type": "string",
+      "enum": ["very_severe_pain", "other"]
+    },
     "red_flag": {
       "description": "Symptoms that suggest nerve involvement or an emergency. Any one of them escalates, regardless of the model.",
       "type": "string",
@@ -124,15 +129,24 @@
           "properties": {
             "kind": { "const": "red_flag" },
             "red_flags": {
+              "description": "Red flags present; may be empty only when other_symptoms is not.",
               "type": "array",
-              "minItems": 1,
               "items": { "$ref": "#/$defs/red_flag" },
+              "uniqueItems": true
+            },
+            "other_symptoms": {
+              "description": "Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model (Aguado): they are reported, not triaged here.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/other_symptom" },
               "uniqueItems": true
             },
             "onset": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
             "note": { "type": "string", "maxLength": 300 }
           },
-          "required": ["kind", "red_flags"]
+          "required": ["kind", "red_flags"],
+          "if": { "properties": { "other_symptoms": { "minItems": 1 } }, "required": ["other_symptoms"] },
+          "then": true,
+          "else": { "properties": { "red_flags": { "minItems": 1 } } }
         }
       ],
       "unevaluatedProperties": false

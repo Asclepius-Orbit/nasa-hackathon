@@ -12,8 +12,9 @@
   "data_total": null,
   "drivers": [],
   "red_flags": [],
+  "other_symptoms": [],
   "sessions": [],
   "recommendations": [],
   "escalation": null,
-  "contacts": null
+  "contacts": []
 }

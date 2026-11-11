@@ -24,6 +24,40 @@ servers:
   - url: http://127.0.0.1:8000
     description: Local app process (write and view API, /ui)
 paths:
+  /ui/crew:
+    get:
+      operationId: listCrew
+      summary: Crew known to the backend
+      description: Astronaut ids registered by the UI or with data stored, with whether each has a profile and a baseline and how many sessions. Ids and flags only, never names or PINs (they stay in the UI). Empty `crew` when nothing is known.
+      responses:
+        '200':
+          description: The crew list.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-crew.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/contacts:
+    get:
+      operationId: listMedicalContacts
+      summary: Medical contacts of an astronaut
+      description: Calls to the crew medical officer logged for the astronaut, oldest first (written with POST on the same path). Empty `contacts` for an astronaut without any.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The contact list.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-contact-list.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /ui/crew/{astronaut_id}/views/strip:
     get:
       operationId: getStripView

@@ -15,7 +15,7 @@ from pydantic import (
     constr,
 )
 
-from ..domain import assessment_schema, self_report_schema
+from ..domain import assessment_schema, medical_contact_schema, self_report_schema
 from . import ui_common_schema
 
 
@@ -34,6 +34,18 @@ class GroundDriver(BaseModel):
     deviation_z: float | None
 
 
+class GroundPainStop(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    rep_index: conint(ge=1) | None
+    at: AwareDatetime = Field(
+        ...,
+        description='RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.',
+        examples=['2026-11-13T10:00:00.250Z'],
+    )
+
+
 class GroundSession(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -46,6 +58,10 @@ class GroundSession(BaseModel):
         ...,
         description='Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.',
         examples=['lat_pulldown_standing_v1', 'spine_length_rest_v1'],
+    )
+    pain_stop: GroundPainStop | None = Field(
+        ...,
+        description='The session was stopped for pain (end reason aborted_pain): at which repetition (null when not known) and when. Null otherwise.',
     )
 
 
@@ -61,6 +77,21 @@ class GroundEscalation(BaseModel):
         ...,
         description='Rules that justify the escalation (rule_id of the fired rules of the assessment); empty when none.',
     )
+
+
+class GroundContact(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    contact_id: constr(
+        pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    ) = Field(..., description='RFC 4122 UUID, lowercase.')
+    at: AwareDatetime = Field(
+        ...,
+        description='RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.',
+        examples=['2026-11-13T10:00:00.250Z'],
+    )
+    contact: medical_contact_schema.ContactRole
 
 
 class GroundSummary(BaseModel):
@@ -115,6 +146,10 @@ class GroundSummary(BaseModel):
     red_flags: list[self_report_schema.RedFlag] = Field(
         ..., description='Red flags reported that day; empty when none.'
     )
+    other_symptoms: list[self_report_schema.OtherSymptom] = Field(
+        ...,
+        description='Urgent symptoms outside the red-flag catalogue reported that day; empty when none.',
+    )
     sessions: list[GroundSession] = Field(..., description='Sessions of the day.')
     recommendations: list[constr(pattern=r'^REC_[A-Z0-9_]+$')] = Field(
         ...,
@@ -124,7 +159,7 @@ class GroundSummary(BaseModel):
         ...,
         description="Escalation of the assessment; null for level 'nodata'. Reasons are rule ids, not text.",
     )
-    contacts: None = Field(
+    contacts: list[GroundContact] = Field(
         ...,
-        description='Reserved for the contacts the ground may reach the astronaut with (issue #63). Always null until that is modelled; its content is not part of this schema yet.',
+        description='Medical contacts logged that day, oldest first; empty when none. Code and instant only: the note of the crew stays on board.',
     )

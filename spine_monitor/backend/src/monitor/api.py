@@ -14,6 +14,10 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
   builders of `monitor.views`; each result is validated against its schema before it is served.
 - Live repetition counter (`GET /ui/sessions/{id}/reps`, `ui-openapi.yaml`): server-sent events from `monitor.live.stream`.
 - Ground (`GET /ui/crew/{id}/houston` and `/outbox`, `ui-openapi.yaml`): the outbox that `monitor.ground.sender` empties.
+- Crew (`PUT /ui/crew/{id}` registers an id the UI assigned, `GET /ui/crew` lists what is stored for each): ids only; names and
+  PINs stay in the UI.
+- Medical contacts (`POST/GET /ui/crew/{id}/contacts`): calls to the crew medical officer; each one requeues the ground summary
+  of its day. A stop for pain (`aborted_pain`, with the repetition) and an urgent report also requeue it and ask for /assess.
 """
 
 import json
@@ -197,6 +201,40 @@ def build_router(
     def today() -> str:
         return clock().date().isoformat()
 
+    # --- crew ------------------------------------------------------------------------------------
+
+    @router.put("/crew/{astronaut_id}")
+    async def register_crew(astronaut_id: str) -> JSONResponse:
+        """Idempotent: 201 when the id is new, 200 when it was already registered. No body: the backend keeps no name or PIN."""
+        created = store.register_crew(_astronaut(astronaut_id), clock())
+        return JSONResponse({"astronaut_id": astronaut_id, "registered": True}, status_code=201 if created else 200)
+
+    @router.get("/crew")
+    async def crew_view() -> dict[str, Any]:
+        return _conforming("app/ui-crew", {"schema_version": SCHEMA_VERSION, "crew": store.crew_overview()})
+
+    # --- medical contacts --------------------------------------------------------------------------
+
+    @router.post("/crew/{astronaut_id}/contacts", status_code=201)
+    async def post_contact(astronaut_id: str, request: Request) -> JSONResponse:
+        body = await _body(request)
+        _same(body, "astronaut_id", _astronaut(astronaut_id))
+        contact = {"schema_version": SCHEMA_VERSION, "contact_id": str(uuid.uuid4()), "at": clock().isoformat(), **body, "astronaut_id": astronaut_id}
+        _schema_errors("domain/medical-contact", contact)
+        if (existing := store.contact(contact["contact_id"])) is not None:
+            # UI retry with the same contact_id: idempotent when it is the same contact.
+            if {k: v for k, v in existing.items() if k != "at" or "at" in body} != {k: v for k, v in contact.items() if k != "at" or "at" in body}:
+                raise Problem(409, f"contact {contact['contact_id']} already exists with other content", type_="conflict")
+            return JSONResponse(existing, status_code=200)
+        store.put_contact(contact)
+        _queue_day(queue_day, astronaut_id, instant(contact["at"]).date())
+        return JSONResponse(contact, status_code=201)
+
+    @router.get("/crew/{astronaut_id}/contacts")
+    async def contacts_view(astronaut_id: str) -> dict[str, Any]:
+        view = {"schema_version": SCHEMA_VERSION, "astronaut_id": _astronaut(astronaut_id), "contacts": store.contacts(astronaut_id)}
+        return _conforming("app/ui-contact-list", view)
+
     # --- devices ----------------------------------------------------------------------------
 
     @router.get("/crew/{astronaut_id}/devices")
@@ -269,8 +307,8 @@ def build_router(
             return JSONResponse({"report": existing, "assessment": None, "assessment_skipped": "duplicate"}, status_code=200)
         store.put_self_report(report)
         outcome = await analysis.assess(astronaut_id)
-        if report.get("red_flags") and outcome.assessment is None:
-            # Nothing was announced (assess skipped): a red flag must still reach the ground. With an assessment, its listener queued it.
+        if (report.get("red_flags") or report.get("other_symptoms")) and outcome.assessment is None:
+            # Nothing was announced (assess skipped): an urgent report must still reach the ground. With an assessment, its listener queued it.
             _queue_day(queue_day, astronaut_id, instant(report["timestamp"]).date())
         return JSONResponse(
             {"report": report, "assessment": outcome.assessment, "assessment_skipped": outcome.skipped},
@@ -337,7 +375,13 @@ def build_router(
 
     @router.post("/sessions/{session_id}/stop", status_code=202)
     async def stop_session(session_id: str, body: StopBody) -> dict[str, Any]:
-        return {"command": await control.stop_session(session_id, body.reason)}
+        command = await control.stop_session(session_id, body.reason, body.rep_index)
+        if body.reason == "aborted_pain":
+            # Like an urgent report: the ground hears of it now, and the assessment is redone (debounced) with it.
+            astronaut_id = command["astronaut_id"]
+            _queue_day(queue_day, astronaut_id, instant(command["issued_at"]).date())
+            analysis.request_assess(astronaut_id)
+        return {"command": command}
 
     @router.post("/sessions/{session_id}/reprocess", status_code=202)
     async def reprocess_session(session_id: str) -> dict[str, Any]:

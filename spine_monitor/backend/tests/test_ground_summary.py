@@ -52,8 +52,8 @@ def test_an_assessment_gives_a_summary_that_conforms_to_the_schema():
     assert result["data_total"] == len(AMBER["domains"])
     assert result["drivers"] == [{"feature_id": d["feature_id"], "deviation_z": d["deviation_z"]} for d in AMBER["drivers"]]
     assert result["recommendations"] == AMBER["recommendations"]
-    assert result["sessions"] == [{"session_id": SESSION_ID, "state": "processed", "protocol_id": "lat_pulldown_standing_v1"}]
-    assert result["contacts"] is None
+    assert result["sessions"] == [{"session_id": SESSION_ID, "state": "processed", "protocol_id": "lat_pulldown_standing_v1", "pain_stop": None}]
+    assert result["contacts"] == []
 
 
 def test_a_day_without_assessment_is_nodata_with_everything_else_null_or_empty():
@@ -128,3 +128,11 @@ def test_free_text_of_the_reports_never_reaches_the_summary():
     assessment["fired_rules"][0]["description"] = marker
 
     assert marker not in json.dumps(summary(assessment, reports))
+
+
+def test_contacts_of_the_day_go_without_their_note():
+    contact = example("domain/medical-contact")
+    today = {**contact, "at": "2027-02-09T08:40:00Z"}
+    result = build_ground_summary("AST-01", DAY, 87, 1, NOW, None, [], [], [contact, today])
+
+    assert result["contacts"] == [{"contact_id": today["contact_id"], "at": today["at"], "contact": "crew_medical_officer"}]

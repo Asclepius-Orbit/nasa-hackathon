@@ -107,6 +107,15 @@ CREATE TABLE IF NOT EXISTS ground_outbox (
 CREATE TABLE IF NOT EXISTS processing_attempts (
     session_id TEXT PRIMARY KEY, attempts INTEGER NOT NULL, last_error TEXT, next_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS crew (
+    astronaut_id TEXT PRIMARY KEY, registered_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS medical_contacts (
+    contact_id TEXT PRIMARY KEY, astronaut_id TEXT NOT NULL, at TEXT NOT NULL, payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS medical_contacts_by_astronaut ON medical_contacts (astronaut_id, at);
 """
 
 # Stored in PRAGMA user_version. Bump it with any change to SCHEMA that an existing file would not get
@@ -270,7 +279,10 @@ class Store:
 
     def astronaut_known(self, astronaut_id: str) -> bool:
         """True when anything at all was recorded for the astronaut."""
-        tables = ("profiles", "daily_context", "sessions", "self_reports", "assessments", "baselines", "device_status", "feature_sets")
+        tables = (
+            "crew", "profiles", "daily_context", "sessions", "self_reports", "assessments", "baselines", "device_status", "feature_sets",
+            "medical_contacts",
+        )  # fmt: skip
         query = " UNION ALL ".join(f"SELECT 1 FROM {t} WHERE astronaut_id = ?" for t in tables)
         return self._db.execute(f"SELECT EXISTS ({query})", (astronaut_id,) * len(tables)).fetchone()[0] == 1
 
@@ -681,6 +693,50 @@ class Store:
             astronaut_id,
             start,
             end,
+        )
+
+    # --- crew and medical contacts -------------------------------------------------------------------
+
+    def register_crew(self, astronaut_id: str, at: str | datetime) -> bool:
+        """Registers the id (the UI owns names and PINs; only the pseudonym is kept here). False when it already was."""
+        return self._db.execute("INSERT OR IGNORE INTO crew VALUES (?, ?)", (astronaut_id, utc_key(at))).rowcount == 1
+
+    def crew_overview(self) -> list[dict[str, Any]]:
+        """Every astronaut registered or with a profile, baseline or session, ordered by id, with what is stored for each."""
+        rows = self._db.execute(
+            """
+            WITH ids AS (
+                SELECT astronaut_id FROM crew UNION SELECT astronaut_id FROM profiles
+                UNION SELECT astronaut_id FROM baselines UNION SELECT astronaut_id FROM sessions
+            )
+            SELECT ids.astronaut_id,
+                   EXISTS (SELECT 1 FROM crew c WHERE c.astronaut_id = ids.astronaut_id) AS registered,
+                   EXISTS (SELECT 1 FROM profiles p WHERE p.astronaut_id = ids.astronaut_id) AS has_profile,
+                   EXISTS (SELECT 1 FROM baselines b WHERE b.astronaut_id = ids.astronaut_id) AS has_baseline,
+                   (SELECT COUNT(*) FROM sessions s WHERE s.astronaut_id = ids.astronaut_id) AS sessions
+            FROM ids ORDER BY ids.astronaut_id
+            """
+        )
+        return [
+            {"astronaut_id": r[0], "registered": bool(r[1]), "has_profile": bool(r[2]), "has_baseline": bool(r[3]), "sessions": r[4]}
+            for r in rows
+        ]
+
+    def put_contact(self, contact: dict[str, Any]) -> None:
+        self._db.execute(
+            "INSERT INTO medical_contacts VALUES (?, ?, ?, ?)",
+            (contact["contact_id"], contact["astronaut_id"], utc_key(contact["at"]), _dumps(contact)),
+        )
+
+    def contact(self, contact_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT payload FROM medical_contacts WHERE contact_id = ?", contact_id)
+
+    def contacts(self, astronaut_id: str, start: datetime | None = None, end: datetime | None = None) -> list[dict[str, Any]]:
+        """Contacts of the astronaut, oldest first; within [start, end] when given."""
+        low = "" if start is None else utc_key(start)
+        high = "~" if end is None else utc_key(end)
+        return self._all(
+            "SELECT payload FROM medical_contacts WHERE astronaut_id = ? AND at >= ? AND at <= ? ORDER BY at", astronaut_id, low, high
         )
 
     # --- ground outbox -------------------------------------------------------------------------------

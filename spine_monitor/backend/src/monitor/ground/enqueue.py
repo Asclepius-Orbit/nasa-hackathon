@@ -65,7 +65,8 @@ def enqueue_ground_summary(store: Store, assessment: Mapping[str, Any], now: dat
 def enqueue_ground_day(store: Store, astronaut_id: str, day: date, now: datetime) -> int | None:
     """Queues the summary of `day` (UTC) with the latest assessment stored for it, if any: without one the level is 'nodata'.
 
-    For a day that has news but no assessment to announce it (a red flag whose assessment was skipped). Same result as above.
+    For a day that has news but no assessment to announce it (a red flag or urgent symptom whose assessment was skipped, a stop
+    for pain, a medical contact). Same result as above.
     """
     start, end = day_span(day, day)
     launch = launch_date_of(store.profile(astronaut_id))
@@ -74,12 +75,13 @@ def enqueue_ground_day(store: Store, astronaut_id: str, day: date, now: datetime
     latest = assessments[-1] if assessments else None
     reports = store.self_reports_between(astronaut_id, start, end)
     sessions = store.session_rows(astronaut_id, start=start, end=end)
+    contacts = store.contacts(astronaut_id, start, end)
     try:
         return store.upsert_ground_summary(
             astronaut_id,
             day,
             mission_day,
-            lambda revision: _checked(build_ground_summary(astronaut_id, day, mission_day, revision, now, latest, reports, sessions)),
+            lambda revision: _checked(build_ground_summary(astronaut_id, day, mission_day, revision, now, latest, reports, sessions, contacts)),
             now,
         )
     except _RejectedSummary as rejected:

@@ -47,17 +47,20 @@ l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
 
 | Mètode | Ruta | Què |
 |---|---|---|
+| PUT | `/ui/crew/{astronaut_id}` | Registra un id que ha assignat la UI (sense cos: noms i PIN es queden a la UI). 201 si és nou, 200 si ja hi era |
+| GET | `/ui/crew` | Ids que coneix el backend (registrats o amb dades), si cadascun té perfil i baseline, i quantes sessions (`ui-crew`, `ui-openapi.yaml`) |
 | GET | `/ui/crew/{astronaut_id}/devices` | Últim estat de cada dispositiu |
+| POST/GET | `/ui/crew/{astronaut_id}/contacts` | Trucades a l'oficial mèdic de bord (`domain/medical-contact`: qui, quan, nota opcional). Cadascuna torna a encuar el resum de terra del seu dia, que porta el codi i l'instant, mai la nota |
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Perfil de l'astronauta |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Context diari |
-| POST | `/ui/crew/{astronaut_id}/self-reports` | Diari, ODI setmanal o bandera vermella; retorna l'informe i la nova avaluació (o per què s'ha omès). Repetir el mateix `report_id` és idempotent |
+| POST | `/ui/crew/{astronaut_id}/self-reports` | Diari, ODI setmanal o bandera vermella (amb `other_symptoms`: `very_severe_pain`, `other`, a part de les banderes vermelles fins que Aguado decideixi com es trien); retorna l'informe i la nova avaluació (o per què s'ha omès). Repetir el mateix `report_id` és idempotent |
 | GET | `/ui/crew/{astronaut_id}/self-reports/due` | Si toca l'autoinforme diari i l'ODI setmanal; les banderes vermelles sempre estan disponibles |
 | POST | `/ui/crew/{astronaut_id}/sessions` | Pla de la sessió (dispositiu, tipus, protocol, streams, càrrega...) -> `start_session`. `mission_context` agafa per defecte el context diari d'avui |
 | GET | `/ui/sessions/{session_id}` | Sessió, estat (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) i feature set |
 | POST | `/ui/sessions/{session_id}/reprocess` | Només per a `processing_failed` (409 en un altre cas, 404 si no existeix): reinicia els intents, la passa a `ended` i la processa en segon pla. 202 `{"session": id, "state": "ended"}`. És l'única manera de rellançar una sessió que ha fallat de manera definitiva o abans que es comptessin els intents |
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
-| POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu |
+| POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu. `aborted_pain` admet `rep_index` opcional (422 amb un altre motiu): la sessió rep un esdeveniment `pain_reported` amb la repetició i l'instant, el resum de terra del dia el mostra (`pain_stop`) i es demana un /assess |
 | GET | `/ui/sessions/{session_id}/reps` | Server-sent events amb el comptador de repeticions en viu (`ui-openapi.yaml`): `state` a cada canvi, `end` quan acaba la sessió |
 | GET | `/ui/commands/{command_id}` | Estat de la comanda i els seus acks (la UI el consulta per passar al pas següent) |
 | GET | `/health` | Vida, connexió MQTT i comptadors de missatges |

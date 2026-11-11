@@ -44,17 +44,20 @@ its schema. Errors are `app/error` problem details.
 
 | Method | Path | What |
 |---|---|---|
+| PUT | `/ui/crew/{astronaut_id}` | Registers an id the UI assigned (no body: names and PINs stay in the UI). 201 new, 200 already registered |
+| GET | `/ui/crew` | Ids known to the backend (registered or with data) and whether each has a profile and a baseline, and how many sessions (`ui-crew`, `ui-openapi.yaml`) |
 | GET | `/ui/crew/{astronaut_id}/devices` | Latest status of each device |
+| POST/GET | `/ui/crew/{astronaut_id}/contacts` | Calls to the crew medical officer (`domain/medical-contact`: who, when, optional note). Each one requeues the ground summary of its day, which carries the code and the instant, never the note |
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Astronaut profile |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Daily context |
-| POST | `/ui/crew/{astronaut_id}/self-reports` | Daily, weekly ODI or red flag; returns the report and the new assessment (or why it was skipped). Same `report_id` again is idempotent |
+| POST | `/ui/crew/{astronaut_id}/self-reports` | Daily, weekly ODI or red flag (with `other_symptoms`: `very_severe_pain`, `other`, kept apart from the red flags until Aguado decides how they are triaged); returns the report and the new assessment (or why it was skipped). Same `report_id` again is idempotent |
 | GET | `/ui/crew/{astronaut_id}/self-reports/due` | Whether the daily report and the weekly ODI are due; red flags are always available |
 | POST | `/ui/crew/{astronaut_id}/sessions` | Session plan (device, type, protocol, streams, load...) -> `start_session`. `mission_context` defaults to today's daily context |
 | GET | `/ui/sessions/{session_id}` | Session, state (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) and feature set |
 | POST | `/ui/sessions/{session_id}/reprocess` | Only for `processing_failed` (409 otherwise, 404 unknown): resets the attempts, moves it to `ended` and processes it in the background. 202 `{"session": id, "state": "ended"}`. The only way to re-run a session that failed for good or before attempts were tracked |
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
-| POST | `/ui/sessions/{session_id}/stop` | `stop_session` with a reason |
+| POST | `/ui/sessions/{session_id}/stop` | `stop_session` with a reason. `aborted_pain` takes an optional `rep_index` (422 with any other reason): the session gets a `pain_reported` event with the repetition and the instant, the ground summary of the day shows it (`pain_stop`) and an /assess is requested |
 | GET | `/ui/sessions/{session_id}/reps` | Server-sent events with the live repetition counter (`ui-openapi.yaml`): `state` at each change, `end` when the session ends |
 | GET | `/ui/commands/{command_id}` | Command state and acks (the UI polls it to move to the next step) |
 | GET | `/health` | Liveness, MQTT connection and message counters |

@@ -25,6 +25,21 @@ def _escalation(assessment: Mapping[str, Any]) -> dict[str, Any]:
     return {"required": True, "urgency": escalation["urgency"], "reasons": reasons}
 
 
+def _pain_stop(session: SessionRow) -> dict[str, Any] | None:
+    """The latest pain event of a session stopped for pain, or of one not ended yet (its stop is awaiting the device)."""
+    payload = session.payload
+    if payload.get("end_reason") not in (None, "aborted_pain"):
+        return None
+    pains = [e for e in payload.get("events", []) if e["event_type"] == "pain_reported"]
+    if not pains:
+        return None
+    return {"rep_index": pains[-1].get("rep_index"), "at": pains[-1]["timestamp"]}
+
+
+def _day_other_symptoms(reports: Sequence[Mapping[str, Any]]) -> list[str]:
+    return list(dict.fromkeys(symptom for r in reports for symptom in r.get("other_symptoms", [])))
+
+
 def build_ground_summary(
     astronaut_id: str,
     day: date,
@@ -34,11 +49,13 @@ def build_ground_summary(
     assessment: Mapping[str, Any] | None,
     self_reports: Sequence[Mapping[str, Any]],
     sessions: Sequence[SessionRow],
+    contacts: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """GroundSummary of `day` (UTC) for `revision`, made at `now`.
 
     `assessment` is the latest of the day (the caller picks it). Reports and sessions of other days are ignored, so
-    the caller may pass a wider window. The escalation reasons are the `rule_id` of the fired rules, only when required.
+    the caller may pass a wider window, and so may it with `contacts` (medical contacts: code and instant, never their note).
+    The escalation reasons are the `rule_id` of the fired rules, only when required.
     """
     todays_reports = [r for r in self_reports if instant(r["timestamp"]).date() == day]
     todays_sessions = sorted((s for s in sessions if instant(s.payload["started_at"]).date() == day), key=lambda s: instant(s.payload["started_at"]))
@@ -56,10 +73,18 @@ def build_ground_summary(
         "data_total": None,
         "drivers": [],
         "red_flags": day_red_flags(todays_reports),
-        "sessions": [{"session_id": s.payload["session_id"], "state": s.state, "protocol_id": s.payload["protocol_id"]} for s in todays_sessions],
+        "other_symptoms": _day_other_symptoms(todays_reports),
+        "sessions": [
+            {"session_id": s.payload["session_id"], "state": s.state, "protocol_id": s.payload["protocol_id"], "pain_stop": _pain_stop(s)}
+            for s in todays_sessions
+        ],
         "recommendations": [],
         "escalation": None,
-        "contacts": None,
+        "contacts": [
+            {"contact_id": c["contact_id"], "at": c["at"], "contact": c["contact"]}
+            for c in sorted(contacts, key=lambda c: instant(c["at"]))
+            if instant(c["at"]).date() == day
+        ],
     }
     if assessment is not None:
         trust = _trust(assessment)

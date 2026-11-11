@@ -3,8 +3,10 @@
 `create_app` is a factory (`uvicorn --factory monitor.main:create_app`), so the database is not opened
 on import. The lifespan recovers what a dead process left (command timers, `processing` sessions), then starts
 the bus connection, the ground sender, one "analysis-recovery" task (the `ended` sessions, then the retry loop of
-transient analysis failures) and the "assessment-refresh" loop (stale assessments are requested again), and stops them
-all. Startup never waits for the engine. Tests inject the MQTT
+transient analysis failures), the "assessment-refresh" loop (stale assessments are requested again) and the
+"store-maintenance" loop (backup copies, then the retention of raw chunks), and stops them all. Opening the store migrates
+an older file after copying it; every /ui route goes through the token guard of `monitor.ui_auth`. Startup never waits for
+the engine. Tests inject the MQTT
 client, the HTTP transport of the engine, the ground transport and the clock; in production they come from
 `AppSettings` (SPINE_APP_*), and the ground transport is the simulated one, the only adapter so far.
 """

@@ -44,6 +44,12 @@ Lado de escritura para la UI. Separada de la API de solo lectura de `contracts/a
 usa el servidor MCP (ver más abajo). La app rellena ids, `schema_version`, instantes y `source`, y valida la entidad
 contra su schema. Los errores son problem details de `app/error`.
 
+Toda petición a `/ui` necesita `Authorization: Bearer <token>` (si no, 401) y, cuando trata de un astronauta (su ruta lo nombra,
+o nombra una sesión o un comando suyos), `X-Astronaut-Id` con el astronauta desbloqueado en la UI: otro distinto es un 403 con
+problem details. `GET /ui/crew` y `PUT /ui/crew/{id}` solo necesitan el token. El token es `SPINE_APP_UI_TOKEN`, o el contenido
+de `SPINE_APP_UI_TOKEN_FILE` (por defecto `ui-token` junto a la base de datos), que se genera ahí con permisos solo del dueño
+en el primer arranque sin token. `/health` y la API de solo lectura no necesitan token.
+
 | Método | Ruta | Qué |
 |---|---|---|
 | PUT | `/ui/crew/{astronaut_id}` | Registra un id que asignó la UI (sin cuerpo: nombres y PIN se quedan en la UI). 201 si es nuevo, 200 si ya estaba |
@@ -86,6 +92,22 @@ de compose), así el servidor MCP nunca llega a los endpoints de escritura `/ui`
 - Se prueba contra el contrato con `openapi_drift` y se fuzzea con Schemathesis.
 
 Arrancarla sola: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
+
+## Base de datos: migraciones, copias, retención y exportación
+
+- El esquema está versionado (`PRAGMA user_version`, `STORE_SCHEMA_VERSION` en `db.py`). Un fichero más antiguo se copia
+  primero con la API de backup de sqlite3 a `backups/<nombre>.v<N>.<instante>.db` y luego se migra paso a paso
+  (`MIGRATIONS[n]`: n -> n+1) en una transacción junto con el cambio de versión: una migración que falla lo deja como estaba.
+  Un fichero más nuevo, o ajeno, se rechaza.
+- WAL. La API de solo lectura (conexión query-only) nunca escribe ni migra: rechaza un fichero que el backend aún no ha
+  migrado y lee lo que el backend escribe mientras ambos están abiertos.
+- Cada `SPINE_APP_BACKUP_INTERVAL_S` (por defecto un día) va una copia a `SPINE_APP_BACKUP_DIR` (por defecto `backups/` junto a
+  la base de datos, o sea en el volumen `backend_data`), y se guardan las `SPINE_APP_BACKUP_KEEP` (7) más recientes. Tras esa
+  copia se borran los chunks crudos de las sesiones `processed` que empezaron hace más de `SPINE_APP_CHUNK_RETENTION_DAYS` (30;
+  sin valor se guardan siempre) y la sesión queda marcada (`chunks_purged_at`). Feature sets, baselines, evaluaciones y
+  autoinformes no se borran nunca.
+- `GET /ui/crew/{astronaut_id}/export`: todo lo guardado del astronauta (perfil, contextos diarios, sesiones con su estado,
+  feature sets, baselines, evaluaciones, autoinformes, contactos médicos, estados de dispositivos) salvo los chunks crudos.
 
 ## Arrancarla
 ```

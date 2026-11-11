@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Self
 
-from pydantic import AwareDatetime, Field, model_validator
+from pydantic import AwareDatetime, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from monitor.ground.link import GroundWindows
@@ -25,6 +25,17 @@ class AppSettings(BaseSettings):
 
     # SQLite: the app owns all the state.
     db_path: Path = Path("spine_monitor.db")
+    # Copies of the database (before a migration and every backup_interval_s); default `backups/` next to db_path.
+    backup_dir: Path | None = None
+    backup_interval_s: float = Field(default=86400.0, gt=0)
+    backup_keep: int = Field(default=7, ge=1)
+    # Raw chunks of a processed session are purged this many days after it started (after a backup); None keeps them.
+    chunk_retention_days: int | None = Field(default=30, ge=0)
+
+    # Shared secret of the /ui API (Authorization: Bearer). Unset: read from ui_token_file, or generated there on first start
+    # (default `ui-token` next to db_path). /health and the read-only API need none.
+    ui_token: SecretStr | None = None
+    ui_token_file: Path | None = None
 
     # A command with no ack within this time becomes `timeout`.
     ack_timeout_s: float = 10.0
@@ -99,3 +110,7 @@ class AppSettings(BaseSettings):
         if self.ground_window_anchor is None:
             return None
         return GroundWindows(self.ground_window_anchor, self.ground_window_period_min, self.ground_window_up_min)
+
+
+def backup_dir_of(settings: AppSettings) -> Path:
+    return settings.backup_dir or settings.db_path.parent / "backups"

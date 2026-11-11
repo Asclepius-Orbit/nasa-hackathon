@@ -42,6 +42,12 @@ Write side for the UI. Separate from the read-only API of `contracts/app-openapi
 server (see below). The app fills ids, `schema_version`, instants and `source`, then validates the entity against
 its schema. Errors are `app/error` problem details.
 
+Every `/ui` request needs `Authorization: Bearer <token>` (401 otherwise) and, when it is about one astronaut (its path names
+the astronaut, or a session or command of theirs), `X-Astronaut-Id` with the astronaut unlocked in the UI: another one is a
+403 problem details. `GET /ui/crew` and `PUT /ui/crew/{id}` need the token only. The token is `SPINE_APP_UI_TOKEN`, or the
+content of `SPINE_APP_UI_TOKEN_FILE` (default `ui-token` next to the database), generated there with owner-only permissions on
+the first start without one. `/health` and the read-only API need no token.
+
 | Method | Path | What |
 |---|---|---|
 | PUT | `/ui/crew/{astronaut_id}` | Registers an id the UI assigned (no body: names and PINs stay in the UI). 201 new, 200 already registered |
@@ -82,6 +88,20 @@ the MCP server never reaches the `/ui` write endpoints. It opens the same SQLite
 - Tested against the contract with `openapi_drift` and fuzzed with Schemathesis.
 
 Run it alone: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
+
+## Database: migrations, backups, retention and export
+
+- The schema is versioned (`PRAGMA user_version`, `STORE_SCHEMA_VERSION` in `db.py`). An older file is first copied with the
+  sqlite3 backup API to `backups/<name>.v<N>.<timestamp>.db` and then migrated step by step (`MIGRATIONS[n]`: n -> n+1) in
+  one transaction with the version bump: a failed migration leaves it as it was. A newer file, or a foreign one, is refused.
+- WAL. The read-only API (query-only connection) never writes and never migrates: it refuses a file the backend has not
+  migrated yet, and reads what the backend writes while both are open.
+- Every `SPINE_APP_BACKUP_INTERVAL_S` (default a day) a copy goes to `SPINE_APP_BACKUP_DIR` (default `backups/` next to the
+  database, so in the `backend_data` volume), keeping the newest `SPINE_APP_BACKUP_KEEP` (7). After that copy, the raw chunks of
+  the `processed` sessions started more than `SPINE_APP_CHUNK_RETENTION_DAYS` (30; unset keeps them) ago are deleted and the
+  session is marked (`chunks_purged_at`). Feature sets, baselines, assessments and self-reports are never deleted.
+- `GET /ui/crew/{astronaut_id}/export`: everything stored for the astronaut (profile, daily contexts, sessions with their
+  state, feature sets, baselines, assessments, self-reports, medical contacts, device statuses) except the raw chunks.
 
 ## Running it
 ```

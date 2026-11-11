@@ -45,6 +45,12 @@ Costat d'escriptura per a la UI. Separada de l'API de només lectura de `contrac
 que fa servir el servidor MCP (vegeu més avall). L'app omple ids, `schema_version`, instants i `source`, i valida
 l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
 
+Tota petició a `/ui` necessita `Authorization: Bearer <token>` (si no, 401) i, quan tracta d'un astronauta (la ruta el
+nomena, o nomena una sessió o una comanda seves), `X-Astronaut-Id` amb l'astronauta desbloquejat a la UI: un altre és un 403
+amb problem details. `GET /ui/crew` i `PUT /ui/crew/{id}` només necessiten el token. El token és `SPINE_APP_UI_TOKEN`, o el
+contingut de `SPINE_APP_UI_TOKEN_FILE` (per defecte `ui-token` al costat de la base de dades), que s'hi genera amb permisos
+només del propietari en la primera arrencada sense token. `/health` i l'API de només lectura no necessiten token.
+
 | Mètode | Ruta | Què |
 |---|---|---|
 | PUT | `/ui/crew/{astronaut_id}` | Registra un id que ha assignat la UI (sense cos: noms i PIN es queden a la UI). 201 si és nou, 200 si ja hi era |
@@ -87,6 +93,21 @@ compose), així el servidor MCP mai no arriba als endpoints d'escriptura `/ui`. 
 - Es prova contra el contracte amb `openapi_drift` i es fuzzeja amb Schemathesis.
 
 Engegar-la sola: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
+
+## Base de dades: migracions, còpies, retenció i exportació
+
+- L'esquema està versionat (`PRAGMA user_version`, `STORE_SCHEMA_VERSION` a `db.py`). Un fitxer més antic es copia primer
+  amb l'API de backup de sqlite3 a `backups/<nom>.v<N>.<instant>.db` i després es migra pas a pas (`MIGRATIONS[n]`: n -> n+1)
+  en una transacció amb el canvi de versió: una migració que falla el deixa com estava. Un fitxer més nou, o aliè, es rebutja.
+- WAL. L'API de només lectura (connexió query-only) mai escriu ni migra: rebutja un fitxer que el backend encara no ha migrat
+  i llegeix el que el backend escriu mentre tots dos estan oberts.
+- Cada `SPINE_APP_BACKUP_INTERVAL_S` (per defecte un dia) va una còpia a `SPINE_APP_BACKUP_DIR` (per defecte `backups/` al
+  costat de la base de dades, o sigui al volum `backend_data`), i es guarden les `SPINE_APP_BACKUP_KEEP` (7) més recents.
+  Després d'aquesta còpia s'esborren els chunks crus de les sessions `processed` que van començar fa més de
+  `SPINE_APP_CHUNK_RETENTION_DAYS` (30; sense valor es guarden sempre) i la sessió queda marcada (`chunks_purged_at`). Feature
+  sets, baselines, avaluacions i autoinformes no s'esborren mai.
+- `GET /ui/crew/{astronaut_id}/export`: tot el que hi ha guardat de l'astronauta (perfil, contextos diaris, sessions amb el seu
+  estat, feature sets, baselines, avaluacions, autoinformes, contactes mèdics, estats de dispositius) llevat dels chunks crus.
 
 ## Engegar-la
 ```

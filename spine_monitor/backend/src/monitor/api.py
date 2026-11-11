@@ -18,6 +18,8 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
   PINs stay in the UI.
 - Medical contacts (`POST/GET /ui/crew/{id}/contacts`): calls to the crew medical officer; each one requeues the ground summary
   of its day. A stop for pain (`aborted_pain`, with the repetition) and an urgent report also requeue it and ask for /assess.
+- Export (`GET /ui/crew/{id}/export`): everything stored for the astronaut but the raw chunks, for the ground or the end of the mission.
+- Every route needs the shared token and, when it is about one astronaut, that astronaut unlocked (`monitor.ui_auth`).
 """
 
 import json
@@ -28,7 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from spine_contracts import SCHEMA_VERSION, topics, validation
@@ -41,6 +43,7 @@ from monitor.live.stream import RepEventResponse, RepStream
 from monitor.live.tracker import has_live_reps
 from monitor.models import CalibrateBody, EventBody, StopBody
 from monitor.settings import AppSettings
+from monitor.ui_auth import AuthProblem
 from monitor.views.baseline import build_baseline, build_first_day
 from monitor.views.due import reports_due
 from monitor.views.history import build_history
@@ -62,6 +65,8 @@ TITLES = {
     "no_reps": "No repetitions",
     "conflict": "Conflict",
     "unavailable": "Service unavailable",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
     "internal": "Internal error",
 }
 
@@ -92,6 +97,13 @@ def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(Problem)
     async def _problem(_: Request, exc: Problem) -> JSONResponse:
         return problem_response(exc.status, exc.type, exc.detail, exc.errors)
+
+    @app.exception_handler(AuthProblem)
+    async def _auth(_: Request, exc: AuthProblem) -> JSONResponse:
+        response = problem_response(exc.status, "unauthorized" if exc.status == 401 else "forbidden", exc.detail)
+        if exc.status == 401:
+            response.headers["WWW-Authenticate"] = "Bearer"
+        return response
 
     @app.exception_handler(CommandError)
     async def _command(_: Request, exc: CommandError) -> JSONResponse:
@@ -195,8 +207,9 @@ def build_router(
     reps: RepStream,
     clock=lambda: datetime.now(UTC),
     queue_day: Callable[[str, date], None] = lambda astronaut_id, day: None,
+    guard: Callable[[Request], Any] | None = None,
 ) -> APIRouter:
-    router = APIRouter(prefix="/ui", tags=["ui"])
+    router = APIRouter(prefix="/ui", tags=["ui"], dependencies=[] if guard is None else [Depends(guard)])
 
     def today() -> str:
         return clock().date().isoformat()
@@ -212,6 +225,11 @@ def build_router(
     @router.get("/crew")
     async def crew_view() -> dict[str, Any]:
         return _conforming("app/ui-crew", {"schema_version": SCHEMA_VERSION, "crew": store.crew_overview()})
+
+    @router.get("/crew/{astronaut_id}/export")
+    async def export_astronaut(astronaut_id: str) -> dict[str, Any]:
+        """Everything stored for the astronaut except the raw chunks; an astronaut with nothing gets empty lists and nulls."""
+        return {"schema_version": SCHEMA_VERSION, "exported_at": clock().isoformat(), **store.export_astronaut(_astronaut(astronaut_id))}
 
     # --- medical contacts --------------------------------------------------------------------------
 

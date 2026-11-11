@@ -102,7 +102,7 @@ def seed_start_command(db_path: Path, state: str, *, age_s: float) -> None:
 
 def build(tmp_path: Path, engine: Engine | None = None, clock: Callable[[], datetime] | None = None, **settings):
     return create_app(
-        AppSettings(_env_file=None, db_path=tmp_path / "app.db", processing_retry_tick_s=0.05, **settings),
+        AppSettings(_env_file=None, db_path=tmp_path / "app.db", processing_retry_tick_s=0.05, ui_token="t", **settings),
         mqtt_client_factory=lambda: IdleClient([]),  # pyright: ignore[reportArgumentType]
         engine_transport=engine,
         **({"clock": clock} if clock else {}),
@@ -224,7 +224,7 @@ def test_final_failure_is_left_alone_at_startup_until_a_reprocess_is_asked(tmp_p
         assert probe.state() == "processing_failed"
         assert engine.calls == 0
 
-        response = client.post(f"/ui/sessions/{SESSION}/reprocess")
+        response = client.post(f"/ui/sessions/{SESSION}/reprocess", headers={"Authorization": "Bearer t", "X-Astronaut-Id": "AST-01"})
 
         assert response.status_code == 202
         wait_for(lambda: probe.state() == "processed")

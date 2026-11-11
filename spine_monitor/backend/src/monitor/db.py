@@ -6,9 +6,15 @@ order is time order even when messages arrive with another offset.
 
 A single connection, used from the event loop (every endpoint is `async`), so there are no
 concurrent writes. WAL so that an external reader (e.g. the read-only API) does not block.
+
+Schema versions (`PRAGMA user_version`): a file of an older version is copied (sqlite3 backup API) and then migrated one
+step at a time (`MIGRATIONS[n]` takes it from n to n+1), all in one transaction with the version bump, so a failed migration
+leaves the file as it was. A read-only connection never writes: it refuses a file the writer has not migrated yet.
+Raw chunks of processed sessions can be purged (`purge_chunks`); feature sets, assessments and self-reports are never deleted.
 """
 
 import json
+import logging
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -44,7 +50,7 @@ CREATE TABLE IF NOT EXISTS calibrations (
 CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT PRIMARY KEY, astronaut_id TEXT NOT NULL, device_id TEXT NOT NULL,
     started_at TEXT NOT NULL, phase TEXT NOT NULL, state TEXT NOT NULL, error TEXT,
-    payload TEXT NOT NULL
+    payload TEXT NOT NULL, chunks_purged_at TEXT
 );
 CREATE INDEX IF NOT EXISTS sessions_by_astronaut ON sessions (astronaut_id, started_at);
 
@@ -119,8 +125,19 @@ CREATE INDEX IF NOT EXISTS medical_contacts_by_astronaut ON medical_contacts (as
 """
 
 # Stored in PRAGMA user_version. Bump it with any change to SCHEMA that an existing file would not get
-# from CREATE ... IF NOT EXISTS (new columns, changed tables).
-STORE_SCHEMA_VERSION = 1
+# from CREATE ... IF NOT EXISTS (new columns, changed tables), and add the step to MIGRATIONS.
+STORE_SCHEMA_VERSION = 2
+
+_log = logging.getLogger(__name__)
+
+
+def _v1_to_v2(db: sqlite3.Connection) -> None:
+    # When the raw chunks of the session were purged; null while they are kept.
+    db.execute("ALTER TABLE sessions ADD COLUMN chunks_purged_at TEXT")
+
+
+# MIGRATIONS[n] takes a file of version n to n+1. It runs inside the migration transaction: it must not commit.
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2}
 
 
 class IncompatibleDatabaseError(RuntimeError):
@@ -144,6 +161,10 @@ def _columns(db: sqlite3.Connection) -> dict[str, list[str]]:
 # At most this many invalid messages are kept, to diagnose without filling the disk.
 REJECTED_KEEP = 1000
 _REJECTED_PAYLOAD_MAX = 4096
+
+
+def _stamp() -> str:
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def utc_key(value: str | datetime) -> str:
@@ -229,17 +250,29 @@ SERVED_SESSION_STATES = ("running", "ended", "processing", "processed", "process
 
 
 class Store:
-    def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
-        """`read_only`: the connection refuses every write (`PRAGMA query_only`), for the read-only API."""
-        if str(path) != ":memory:":
+    def __init__(self, path: Path | str, *, read_only: bool = False, backup_dir: Path | None = None) -> None:
+        """`read_only`: the connection refuses every write (`PRAGMA query_only`), for the read-only API; it only creates the
+        schema in a brand new file and never migrates. `backup_dir`: where the copy taken before a migration goes (default:
+        `backups/` next to the file)."""
+        memory = str(path) == ":memory:"
+        if not memory:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
         try:
-            self._check_schema(path)
+            version = self._check_schema(path)
+            if 0 < version < STORE_SCHEMA_VERSION:
+                if read_only:
+                    raise IncompatibleDatabaseError(f"{path}: schema version {version}; the backend must migrate it to {STORE_SCHEMA_VERSION} first")
+                if not memory:
+                    self.backup((backup_dir or Path(path).parent / "backups") / f"{Path(path).stem}.v{version}.{_stamp()}.db")
+                self._migrate(version)
         except IncompatibleDatabaseError:
             self._db.close()
             raise
+        if read_only and version == STORE_SCHEMA_VERSION:
+            self._db.execute("PRAGMA query_only=ON")
+            return
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
         self._db.executescript(SCHEMA)
@@ -247,14 +280,35 @@ class Store:
         if read_only:
             self._db.execute("PRAGMA query_only=ON")
 
-    def _check_schema(self, path: Path | str) -> None:
-        """A file of this schema (or empty) is accepted; anything else is refused untouched."""
+    def _migrate(self, version: int) -> None:
+        """From `version` to the current one, step by step, in one transaction with the version bump."""
+
+        def work() -> None:
+            for step in range(version, STORE_SCHEMA_VERSION):
+                MIGRATIONS[step](self._db)
+            self._db.execute(f"PRAGMA user_version = {STORE_SCHEMA_VERSION}")
+
+        self._immediate(work)
+        _log.info("store migrated from schema version %s to %s", version, STORE_SCHEMA_VERSION)
+
+    def backup(self, target: Path) -> Path:
+        """A consistent copy of the whole database (sqlite3 backup API), safe while the app keeps writing."""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        copy = sqlite3.connect(target)
+        try:
+            self._db.backup(copy)
+        finally:
+            copy.close()
+        return target
+
+    def _check_schema(self, path: Path | str) -> int:
+        """The version of a file this app can open (0 when empty); anything else is refused untouched."""
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
         if version > STORE_SCHEMA_VERSION:
             raise IncompatibleDatabaseError(f"{path}: schema version {version} is newer than this app ({STORE_SCHEMA_VERSION})")
         found = _columns(self._db)
-        if version == STORE_SCHEMA_VERSION or not found:
-            return
+        if version > 0 or not found:
+            return version
         # Version 0 with tables: adopted only when every table is one of ours, with our columns.
         expected = _expected_columns()
         wrong = sorted(table for table, columns in found.items() if expected.get(table) != columns)
@@ -263,6 +317,7 @@ class Store:
                 f"{path}: written by another version of the app (tables with another schema: {', '.join(wrong)}). "
                 "Move the file away or point SPINE_APP_DB_PATH to another one."
             )
+        return STORE_SCHEMA_VERSION
 
     def close(self) -> None:
         self._db.close()
@@ -403,7 +458,7 @@ class Store:
 
     def insert_session(self, session: dict[str, Any], state: str) -> None:
         self._db.execute(
-            "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, NULL, ?)",
+            "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, NULL, ?, NULL)",
             (
                 session["session_id"], session["astronaut_id"], session["device_id"], utc_key(session["started_at"]),
                 session["mission_context"]["phase"], state, _dumps(session),
@@ -738,6 +793,56 @@ class Store:
         return self._all(
             "SELECT payload FROM medical_contacts WHERE astronaut_id = ? AND at >= ? AND at <= ? ORDER BY at", astronaut_id, low, high
         )
+
+    # --- retention and export ------------------------------------------------------------------------
+
+    def purge_chunks(self, started_before: datetime, now: datetime) -> list[str]:
+        """Deletes the raw chunks of the `processed` sessions started before `started_before` and marks them purged, in
+        one transaction; returns their ids. The feature sets, assessments and self-reports are kept."""
+
+        def work() -> list[str]:
+            ids = [
+                row[0]
+                for row in self._db.execute(
+                    "SELECT session_id FROM sessions WHERE state = 'processed' AND chunks_purged_at IS NULL AND started_at < ?",
+                    (utc_key(started_before),),
+                )
+            ]
+            for session_id in ids:
+                self._db.execute("DELETE FROM chunks WHERE session_id = ?", (session_id,))
+                self._db.execute("UPDATE sessions SET chunks_purged_at = ? WHERE session_id = ?", (utc_key(now), session_id))
+            return ids
+
+        return self._immediate(work)
+
+    def chunks_purged_at(self, session_id: str) -> str | None:
+        row = self._db.execute("SELECT chunks_purged_at FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+        return None if row is None else row[0]
+
+    def export_astronaut(self, astronaut_id: str) -> dict[str, Any]:
+        """Everything stored for the astronaut except the raw chunks, oldest first: for the ground or the end of the mission."""
+
+        def every(table: str, order: str) -> list[dict[str, Any]]:
+            return self._all(f"SELECT payload FROM {table} WHERE astronaut_id = ? ORDER BY {order}", astronaut_id)
+
+        sessions = self._db.execute(
+            "SELECT payload, state, error, chunks_purged_at FROM sessions WHERE astronaut_id = ? ORDER BY started_at", (astronaut_id,)
+        ).fetchall()
+        return {
+            "astronaut_id": astronaut_id,
+            "profile": self.profile(astronaut_id),
+            "daily_contexts": every("daily_context", "date"),
+            "sessions": [
+                {"session": json.loads(r["payload"]), "state": r["state"], "error": r["error"], "chunks_purged_at": r["chunks_purged_at"]}
+                for r in sessions
+            ],
+            "feature_sets": every("feature_sets", "anchor_at"),
+            "baselines": every("baselines", "version"),
+            "assessments": every("assessments", "as_of"),
+            "self_reports": every("self_reports", "timestamp"),
+            "medical_contacts": every("medical_contacts", "at"),
+            "device_statuses": self.device_statuses(astronaut_id),
+        }
 
     # --- ground outbox -------------------------------------------------------------------------------
 

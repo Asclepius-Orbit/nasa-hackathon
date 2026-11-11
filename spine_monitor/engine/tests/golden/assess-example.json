@@ -6,16 +6,12 @@
   "mission_day": 87,
   "level": "amber",
   "risk_score": -0.0,
-  "confidence": 0.4,
+  "confidence": 0.444444,
   "completeness": {
-    "score": 0.4,
+    "score": 0.444444,
     "missing": [
       {
         "what": "exercise.rep_count",
-        "reason": "no_baseline"
-      },
-      {
-        "what": "symptoms.pain_nrs_7d_max",
         "reason": "no_baseline"
       },
       {
@@ -68,7 +64,7 @@
       "description": "Incomplete data",
       "evidence": {
         "datum": "completeness",
-        "value": 0.4,
+        "value": 0.444444,
         "operator": "<",
         "threshold": 1.0
       }

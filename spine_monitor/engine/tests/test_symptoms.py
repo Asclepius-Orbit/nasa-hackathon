@@ -1,4 +1,4 @@
-"""Features de síntomas (#47): medias y máximos de 7 días sobre autoinformes, sin rellenar nunca con ceros."""
+"""Features de síntomas (#47): medias de 7 días sobre autoinformes, sin rellenar nunca con ceros."""
 
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
@@ -13,11 +13,11 @@ from spine_engine.features.symptoms import WINDOW, symptom_feature_set
 AS_OF = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 AST = "AST-01"
 PAIN_MEAN = "symptoms.pain_nrs_7d_mean"
-PAIN_MAX = "symptoms.pain_nrs_7d_max"
+RETIRED_PAIN_MAX = "symptoms.pain_nrs_7d_max"  # retirada del catálogo: el engine ya no la produce
 STIFF = "symptoms.stiffness_nrs_7d_mean"
 SLEEP = "symptoms.sleep_hours_7d_mean"
 FLAGS = "symptoms.red_flag_count_7d"
-ALL_IDS = [FLAGS, PAIN_MAX, PAIN_MEAN, SLEEP, STIFF]
+ALL_IDS = [FLAGS, PAIN_MEAN, SLEEP, STIFF]
 
 
 def daily(
@@ -110,7 +110,7 @@ def test_envelope_is_rolling_window_without_session() -> None:
     assert timedelta(days=7) == WINDOW
 
 
-def test_mean_and_max_of_known_values() -> None:
+def test_mean_of_known_values() -> None:
     fs = run(
         [
             daily(AS_OF - timedelta(days=1), pain=2, stiffness=1),
@@ -119,7 +119,8 @@ def test_mean_and_max_of_known_values() -> None:
         ]
     )
     assert values(fs)[PAIN_MEAN] == pytest.approx(4.0)
-    assert values(fs)[PAIN_MAX] == 7
+    assert RETIRED_PAIN_MAX not in values(fs)
+    assert RETIRED_PAIN_MAX not in skipped(fs)
     assert values(fs)[STIFF] == pytest.approx(2.0)
 
 
@@ -187,7 +188,7 @@ def test_unanswered_daily_is_not_counted_as_a_flag_observation() -> None:
 def test_only_a_red_flag_report_gives_a_count_and_skips_the_daily_metrics() -> None:
     fs = run([red_flag_report(flags=("leg_weakness", "trauma_event"))])
     assert values(fs) == {FLAGS: 2}
-    assert skipped(fs) == {PAIN_MEAN: Reason.NO_DATA, PAIN_MAX: Reason.NO_DATA, STIFF: Reason.NO_DATA, SLEEP: Reason.NO_DATA}
+    assert skipped(fs) == {PAIN_MEAN: Reason.NO_DATA, STIFF: Reason.NO_DATA, SLEEP: Reason.NO_DATA}
 
 
 def test_weekly_odi_contributes_to_nothing() -> None:
@@ -205,13 +206,12 @@ def test_no_reports_skips_everything_with_no_data() -> None:
     assert fs.features == []
     assert skipped(fs) == dict.fromkeys(ALL_IDS, Reason.NO_DATA)
     assert fs.skipped is not None
-    assert len(fs.skipped) == 5
+    assert len(fs.skipped) == 4
 
 
 def test_zero_pain_is_a_value_not_missing() -> None:
     fs = run([daily(pain=0, stiffness=0)])
     assert values(fs)[PAIN_MEAN] == 0
-    assert values(fs)[PAIN_MAX] == 0
 
 
 def test_reports_of_another_astronaut_are_ignored() -> None:
@@ -219,7 +219,7 @@ def test_reports_of_another_astronaut_are_ignored() -> None:
     assert fs.features == []
     assert skipped(fs) == dict.fromkeys(ALL_IDS, Reason.NO_DATA)
     mixed = run([daily(pain=2), daily(pain=9, astronaut="AST-02")])
-    assert values(mixed)[PAIN_MAX] == 2
+    assert values(mixed)[PAIN_MEAN] == 2
 
 
 EDGES = [

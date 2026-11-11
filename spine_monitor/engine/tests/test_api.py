@@ -92,7 +92,7 @@ def test_assess_returns_a_valid_assessment(client):
     body = response.json()
     assert validation.errors("domain/assessment", body) == []
     assert body["astronaut_id"] == "AST-01"
-    assert body["completeness"]["score"] == 0.4
+    assert body["completeness"]["score"] == pytest.approx(4 / 9)
 
 
 def test_assess_without_mission_day_omits_it_instead_of_sending_null(client):

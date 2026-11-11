@@ -3,7 +3,8 @@
 Separate from the read-only API of `app-openapi.yaml` (the one of the MCP server), not touched here.
 - Profile and daily context: PUT of the full entity.
 - Tiered self-reports: daily (quick), weekly Oswestry and red flags, always available. Every
-  self-report triggers /assess; `GET .../self-reports/due` says what is due today.
+  self-report triggers /assess; `GET .../self-reports/due` says what is due today. A stored profile or
+  daily context also asks for an /assess, debounced per astronaut (`Analysis.request_assess`).
 - Step-by-step protocol: create a session (start_session), mark events, calibrate and stop. Each step
   returns its command; its state (acks) is read at `GET /ui/commands/{command_id}`.
 
@@ -211,6 +212,7 @@ def build_router(
         profile = {"schema_version": SCHEMA_VERSION, "updated_at": clock().isoformat(), **body, "astronaut_id": astronaut_id}
         _schema_errors("domain/astronaut-profile", profile)
         store.put_profile(profile)
+        analysis.request_assess(astronaut_id)
         return profile
 
     @router.get("/crew/{astronaut_id}/profile")
@@ -228,6 +230,7 @@ def build_router(
         context = {"schema_version": SCHEMA_VERSION, **body, "astronaut_id": astronaut_id, "date": day.isoformat()}
         _schema_errors("domain/daily-context", context)
         store.put_daily_context(context)
+        analysis.request_assess(astronaut_id)
         return context
 
     @router.get("/crew/{astronaut_id}/daily-context/{day}")

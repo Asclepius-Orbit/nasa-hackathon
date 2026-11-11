@@ -391,14 +391,26 @@ def build_router(
             raise Problem(404, f"unknown session {session_id}", type_="not_found")
         return {"session": row.payload, "state": row.state, "error": row.error, "feature_set": store.feature_set(session_id)}
 
+    def _announce_pain_stop(row: SessionRow) -> None:
+        """Like an urgent report: the ground hears of it now, and the assessment is redone (debounced) with it.
+
+        The day is the one the session started in, the only one whose summary lists the session."""
+        astronaut_id = row.payload["astronaut_id"]
+        _queue_day(queue_day, astronaut_id, instant(row.payload["started_at"]).date())
+        analysis.request_assess(astronaut_id)
+
     @router.post("/sessions/{session_id}/stop", status_code=202)
     async def stop_session(session_id: str, body: StopBody) -> dict[str, Any]:
-        command = await control.stop_session(session_id, body.reason, body.rep_index)
-        if body.reason == "aborted_pain":
-            # Like an urgent report: the ground hears of it now, and the assessment is redone (debounced) with it.
-            astronaut_id = command["astronaut_id"]
-            _queue_day(queue_day, astronaut_id, instant(command["issued_at"]).date())
-            analysis.request_assess(astronaut_id)
+        row = store.session(session_id)
+        try:
+            command = await control.stop_session(session_id, body.reason, body.rep_index)
+        except CommandError as exc:
+            # The pain is stored even when the bus is down (the event goes in before the send): the ground and the assessment must hear of it.
+            if body.reason == "aborted_pain" and exc.status == 503 and row is not None:
+                _announce_pain_stop(row)
+            raise
+        if body.reason == "aborted_pain" and row is not None:
+            _announce_pain_stop(row)
         return {"command": command}
 
     @router.post("/sessions/{session_id}/reprocess", status_code=202)

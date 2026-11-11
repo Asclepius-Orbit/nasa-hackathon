@@ -208,10 +208,11 @@ class Control:
         command and with `rep_index` when given: the backend keeps it whatever the device answers."""
         session = self._active(session_id)
         command = self._command(session["astronaut_id"], session["device_id"], "stop_session", session_id=session_id, reason=reason)
-        await self._send(command)
         if reason == "aborted_pain":
+            # Before the send: a bus that is down or an ack that races the await must not lose the pain.
             event = {"session_id": session_id, "event_type": "pain_reported", "issued_at": command["issued_at"]}
             self._add_event(event if rep_index is None else {**event, "rep_index": rep_index})
+        await self._send(command)
         return command
 
     async def mark_event(self, session_id: str, event_type: str, rep_index: int | None = None, note: str | None = None) -> dict[str, Any]:

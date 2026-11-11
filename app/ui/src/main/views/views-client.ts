@@ -23,6 +23,7 @@ import type {
   TodayView,
 } from '../../contracts/v1';
 import type { ViewRange } from '../../shared/api';
+import { type AuthHeaders, authHeaders } from './backend-auth';
 import { parseBackendUrl } from './backend-url';
 import { ViewsError } from './views-error';
 
@@ -31,7 +32,7 @@ export const DEFAULT_TIMEOUT_MS = 5_000;
 /** The part of `fetch` used here, so tests can pass a hand-written fake. */
 export type ViewFetch = (
   url: string,
-  init: { method: 'GET'; headers: { accept: string }; redirect: 'error'; signal: AbortSignal },
+  init: { method: 'GET'; headers: { accept: string } & AuthHeaders; redirect: 'error'; signal: AbortSignal },
 ) => Promise<Response>;
 
 export interface ViewsClient {
@@ -53,6 +54,8 @@ export interface ViewsClientOptions {
   baseUrl: string;
   fetch?: ViewFetch;
   timeoutMs?: number;
+  /** Shared token of the /ui API (`backend-auth`); null sends none. */
+  token?: string | null;
 }
 
 const object = z.looseObject({});
@@ -85,18 +88,20 @@ export function createViewsClient({
   baseUrl,
   fetch: doFetch = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  token = null,
 }: ViewsClientOptions): ViewsClient {
   const origin = parseBackendUrl(baseUrl);
   if (origin === null) throw new Error('backend URL must be an http(s) loopback origin');
   const base: string = origin;
 
-  async function get<T>(path: string, schema: z.ZodType): Promise<T> {
+  /** `astronautId`: the unlocked astronaut the request is made for (the backend checks it owns what is asked). */
+  async function get<T>(path: string, schema: z.ZodType, astronautId: string): Promise<T> {
     let body: unknown;
     try {
       // One signal for the whole exchange: a server that sends headers and then stalls is cut off as well.
       const response = await doFetch(`${base}${path}`, {
         method: 'GET',
-        headers: { accept: 'application/json' },
+        headers: { accept: 'application/json', ...authHeaders(token, astronautId) },
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -117,21 +122,21 @@ export function createViewsClient({
     `/ui/crew/${encodeURIComponent(astronautId)}/views/${name}`;
 
   return {
-    strip: (id) => get(crewPath(id, 'strip'), SCHEMAS.strip(id)),
-    today: (id) => get(crewPath(id, 'today'), SCHEMAS.today()),
+    strip: (id) => get(crewPath(id, 'strip'), SCHEMAS.strip(id), id),
+    today: (id) => get(crewPath(id, 'today'), SCHEMAS.today(), id),
     history(id, { from, to }) {
       const query = new URLSearchParams();
       if (from !== undefined) query.set('from', from);
       if (to !== undefined) query.set('to', to);
       const suffix = query.size === 0 ? '' : `?${query.toString()}`;
-      return get(`${crewPath(id, 'history')}${suffix}`, SCHEMAS.history());
+      return get(`${crewPath(id, 'history')}${suffix}`, SCHEMAS.history(), id);
     },
-    houston: (id) => get(`/ui/crew/${encodeURIComponent(id)}/houston`, SCHEMAS.houston(id)),
-    outbox: (id) => get(`/ui/crew/${encodeURIComponent(id)}/outbox`, SCHEMAS.outbox(id)),
-    baseline: (id) => get(crewPath(id, 'baseline'), SCHEMAS.baseline()),
-    firstDay: (id) => get(crewPath(id, 'first-day'), SCHEMAS.firstDay()),
+    houston: (id) => get(`/ui/crew/${encodeURIComponent(id)}/houston`, SCHEMAS.houston(id), id),
+    outbox: (id) => get(`/ui/crew/${encodeURIComponent(id)}/outbox`, SCHEMAS.outbox(id), id),
+    baseline: (id) => get(crewPath(id, 'baseline'), SCHEMAS.baseline(), id),
+    firstDay: (id) => get(crewPath(id, 'first-day'), SCHEMAS.firstDay(), id),
     async session(astronautId, sessionId) {
-      const body = await get<SessionView>(`/ui/sessions/${encodeURIComponent(sessionId)}/view`, SCHEMAS.session(sessionId));
+      const body = await get<SessionView>(`/ui/sessions/${encodeURIComponent(sessionId)}/view`, SCHEMAS.session(sessionId), astronautId);
       // A session of another crew member must look like one that does not exist, never leak across astronauts.
       if (body.astronaut_id !== astronautId) throw new ViewsError('not_found');
       return body;

@@ -3,6 +3,7 @@
 // Dev-only behaviour (dev server URL, relaxed CSP, DevTools, default menu, demo crew) is gated on build-time
 // constants (`import.meta.env`), never on Electron's "is packaged" flag, which only reflects the exe name. Production
 // bundles therefore do not contain that code at all; `pnpm check:bundle` verifies it.
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { app, BrowserWindow, ipcMain, Menu, protocol, safeStorage, session } from 'electron';
@@ -18,6 +19,7 @@ import { createCrewStore, crewFileSchema } from './store/crew-store';
 import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
+import { resolveBackendToken } from './views/backend-auth';
 import { BACKEND_URL_ENV, resolveBackendUrl } from './views/backend-url';
 import { createRepsService } from './views/reps-service';
 import { createRepsStreamClient } from './views/reps-stream';
@@ -79,14 +81,16 @@ if (!app.requestSingleInstanceLock()) {
     const backendUrl = resolveBackendUrl(process.env[BACKEND_URL_ENV], () => {
       console.error(`${BACKEND_URL_ENV} ignored: only http(s) loopback URLs are accepted`);
     });
+    // The /ui token stays in this process: it is never handed to the renderer.
+    const token = resolveBackendToken(process.env, (path) => readFileSync(path, 'utf8'), console.error);
     // The store owns the crew; the backend only learns each id (never a name or PIN), retried while it is down.
-    const crew = withCrewRegistry(crewStore, createCrewRegistry({ baseUrl: backendUrl, logError: console.error }));
+    const crew = withCrewRegistry(crewStore, createCrewRegistry({ baseUrl: backendUrl, token, logError: console.error }));
     void crew.list();
-    const views = createViewsService({ auth, crew, client: createViewsClient({ baseUrl: backendUrl }) });
+    const views = createViewsService({ auth, crew, client: createViewsClient({ baseUrl: backendUrl, token }) });
     const reps = createRepsService({
       auth,
       views,
-      streams: createRepsStreamClient({ baseUrl: backendUrl, logError: console.error }),
+      streams: createRepsStreamClient({ baseUrl: backendUrl, token, logError: console.error }),
       logError: console.error,
     });
     registerIpc(ipcMain, { crew, auth, settings, views, reps }, createSenderGuard(policy));

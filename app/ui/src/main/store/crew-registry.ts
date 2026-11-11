@@ -7,6 +7,7 @@
  * the id stays pending and is tried again on the next `list` or `create` (and so at startup, when the store is first
  * listed). Ids confirmed in this run are not sent again.
  */
+import { type AuthHeaders, authHeaders } from '../views/backend-auth';
 import type { CrewStore } from './crew-store';
 
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -14,7 +15,7 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 /** The part of `fetch` used here, so tests can pass a hand-written fake. */
 export type RegisterFetch = (
   url: string,
-  init: { method: 'PUT'; redirect: 'error'; signal: AbortSignal },
+  init: { method: 'PUT'; headers: AuthHeaders; redirect: 'error'; signal: AbortSignal },
 ) => Promise<Pick<Response, 'ok'>>;
 
 export interface CrewRegistryOptions {
@@ -23,6 +24,8 @@ export interface CrewRegistryOptions {
   fetch?: RegisterFetch;
   timeoutMs?: number;
   logError?: (message: string) => void;
+  /** Shared token of the /ui API: registering needs no unlocked astronaut. */
+  token?: string | null;
 }
 
 export interface CrewRegistry {
@@ -35,6 +38,7 @@ export function createCrewRegistry({
   fetch: doFetch = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   logError = () => undefined,
+  token = null,
 }: CrewRegistryOptions): CrewRegistry {
   const confirmed = new Set<string>();
 
@@ -42,6 +46,7 @@ export function createCrewRegistry({
     try {
       const response = await doFetch(`${baseUrl}/ui/crew/${encodeURIComponent(id)}`, {
         method: 'PUT',
+        headers: authHeaders(token),
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });

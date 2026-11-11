@@ -1,4 +1,4 @@
-"""Familia ``imu`` (#44): rango de movimiento, velocidad angular pico y suavidad por plano, y RMS del acelerómetro.
+"""Familia ``imu`` (#44): rango de movimiento y velocidad angular pico por plano, y RMS del acelerómetro.
 
 Basada en el giróscopo, que no depende de la gravedad (comparable entre Tierra y microgravedad). Por cada stream
 IMU declarado en la sesión, con su ``placement.spine_level`` (nunca fijado aquí):
@@ -9,25 +9,17 @@ IMU declarado en la sesión, con su ``placement.spine_level`` (nunca fijado aqu�
 - ``gyro_bias_dps`` de la calibración se resta a cada eje del sensor.
 - Por repetición (ventana activa, ``start <= t < end``) y plano: ``rom_deg`` = recorrido (máx − mín) del ángulo
   integrado (cada muestra con el periodo de su chunk) desde
-  0 antes de la primera muestra; ``peak_angular_velocity_dps`` = máximo de ``|ω|``;
-  ``smoothness_sparc`` = SPARC de ``|ω|`` (solo con todos los chunks del stream a ``SPARC_MIN_SAMPLE_RATE_HZ`` o
-  más; si no, ``insufficient_sample_rate``). Sin movimiento SPARC no está definido (NaN -> ``no_data``).
+  0 antes de la primera muestra; ``peak_angular_velocity_dps`` = máximo de ``|ω|``.
 - ``accel_rms_g`` = RMS de la magnitud del acelerómetro tras quitar a cada eje su media en la repetición (la
   componente estática: gravedad y ``accel_bias_g``, que esa resta ya cancela).
-- Valor publicado = media sobre las repeticiones con muestras y valor finito; ``n`` = cuántas. Una repetición sin
-  movimiento no tiene SPARC (NaN) y no cuenta para él; si ninguna lo tiene, ``no_data``. Cada repetición lee el segmento
+- Valor publicado = media sobre las repeticiones con muestras; ``n`` = cuántas. Cada repetición lee el segmento
   (``boot_id``) con más muestras en su ventana: nunca se unen dos arranques.
 
 Motivos de ``skipped`` en orden: ``stream_missing``, la calibración (``no_calibration``/``calibration_expired``),
-``no_data`` (sin segmentos con UTC o sin muestras en ninguna repetición), ``too_few_repetitions`` (ninguna). El
-de SPARC por frecuencia de muestreo se da antes que estos dos últimos. Nunca lanza.
-
-Limitación conocida: SPARC usa una sola frecuencia por segmento, la de su chunk más lento. Si un mismo ``boot_id``
-mezcla dos frecuencias de 50 Hz o más, el eje de frecuencias del espectro de las muestras rápidas es incorrecto (el
-simulador no lo genera; el ROM sí integra cada muestra con el periodo de su chunk).
+``no_data`` (sin segmentos con UTC o sin muestras en ninguna repetición), ``too_few_repetitions`` (ninguna). La
+frecuencia de muestreo no descarta ninguna feature de esta familia. Nunca lanza.
 """
 
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
@@ -45,19 +37,9 @@ from spine_engine.features.registry import ComputedFeature, FamilyResult, Skippe
 from spine_engine.features.repetitions import RepetitionService, RepWindow
 from spine_engine.features.signals import segment_samples
 
-# Origen: catálogo de features (``smoothness_sparc``: "Needs at least ~50 Hz IMU sampling").
-SPARC_MIN_SAMPLE_RATE_HZ = 50.0
-# Parámetros por defecto de SPARC publicados en Balasubramanian, Melendez-Calderon, Roby-Brami y Burdet (2015),
-# "On the analysis of movement smoothness", J. NeuroEng. Rehabil. 12:112: relleno de ceros 2^4, corte del
-# espectro en 10 Hz y umbral de amplitud (normalizada) del 5 %.
-SPARC_PAD_LEVEL = 4
-SPARC_CUTOFF_HZ = 10.0
-SPARC_AMPLITUDE_THRESHOLD = 0.05
-
 TEMPLATES = (
     "imu.{spine_level}.{anatomical_plane}.rom_deg",
     "imu.{spine_level}.{anatomical_plane}.peak_angular_velocity_dps",
-    "imu.{spine_level}.{anatomical_plane}.smoothness_sparc",
     "imu.{spine_level}.accel_rms_g",
 )
 
@@ -98,25 +80,6 @@ def peak_angular_velocity_dps(omega_dps: Signal) -> float:
     return float(np.abs(omega_dps).max())
 
 
-def sparc(speed: Signal, rate_hz: float) -> float:
-    """SPARC (longitud de arco espectral) de un perfil de velocidad ``>= 0``; ≤ 0, más cerca de 0 = más suave. NaN si es nulo.
-
-    Con velocidades no negativas el máximo del espectro es el de 0 Hz (la suma), así que el tramo sobre el umbral
-    empieza siempre en 0 Hz y solo se recorta por arriba, como en la implementación publicada.
-    """
-    nfft = 2 ** (int(np.ceil(np.log2(len(speed)))) + SPARC_PAD_LEVEL)
-    magnitude = np.abs(np.fft.rfft(speed, nfft))
-    peak = magnitude.max()
-    if peak == 0.0:
-        return math.nan
-    freqs = np.arange(len(magnitude)) * rate_hz / nfft
-    keep = freqs <= SPARC_CUTOFF_HZ
-    freqs, magnitude = freqs[keep], magnitude[keep] / peak
-    last = np.nonzero(magnitude >= SPARC_AMPLITUDE_THRESHOLD)[0][-1]
-    freqs, magnitude = freqs[: last + 1], magnitude[: last + 1]
-    return -float(np.sum(np.sqrt((np.diff(freqs) / freqs[last]) ** 2 + np.diff(magnitude) ** 2)))
-
-
 def accel_rms_g(ax: Signal, ay: Signal, az: Signal) -> float:
     """RMS de la magnitud de la aceleración dinámica (cada eje menos su media)."""
     dynamic = sum((axis - axis.mean()) ** 2 for axis in (ax, ay, az))
@@ -125,7 +88,6 @@ def accel_rms_g(ax: Signal, ay: Signal, az: Signal) -> float:
 
 @dataclass(frozen=True, slots=True)
 class _RepSamples:
-    rate_hz: float  # el chunk más lento del segmento: el de SPARC
     sample_rates_hz: Signal  # la frecuencia del chunk de cada muestra: la de la integración del ROM
     channels: dict[str, Signal]
 
@@ -162,29 +124,20 @@ class ImuFamily:
         segments = context.segments(stream_id)
         if not segments:
             return _skip(all_ids, Reason.NO_DATA)
-        slow = min(c.sample_rate_hz for s in segments for c in s.chunks) < SPARC_MIN_SAMPLE_RATE_HZ
-        early = _skip([plane_ids[2] for plane_ids in ids.values()], Reason.INSUFFICIENT_SAMPLE_RATE) if slow else FamilyResult()
         windows = self.repetitions.windows(context).windows
         reps = [found for window in windows if (found := _rep_samples(context, segments, window)) is not None]
         if not reps:
             reason = Reason.NO_DATA if windows else Reason.TOO_FEW_REPETITIONS
-            return _merge(early, _skip([i for i in all_ids if i not in {s.feature_id for s in early.skipped}], reason))
-        return _merge(early, _compute(stream_id, calibration, ids, reps, level, sparc_ok=not slow))
+            return _skip(all_ids, reason)
+        return _compute(stream_id, calibration, ids, reps, level)
 
 
-def _ids(level: str) -> dict[AnatomicalPlane, tuple[str, str, str]]:
-    return {
-        plane: (f"imu.{level}.{plane.value}.rom_deg", f"imu.{level}.{plane.value}.peak_angular_velocity_dps", f"imu.{level}.{plane.value}.smoothness_sparc")
-        for plane in AnatomicalPlane
-    }
+def _ids(level: str) -> dict[AnatomicalPlane, tuple[str, str]]:
+    return {plane: (f"imu.{level}.{plane.value}.rom_deg", f"imu.{level}.{plane.value}.peak_angular_velocity_dps") for plane in AnatomicalPlane}
 
 
 def _skip(feature_ids: Sequence[str], reason: Reason) -> FamilyResult:
     return FamilyResult(skipped=tuple(SkippedFeature(feature_id, reason) for feature_id in feature_ids))
-
-
-def _merge(first: FamilyResult, second: FamilyResult) -> FamilyResult:
-    return FamilyResult(first.computed + second.computed, first.skipped + second.skipped)
 
 
 def _rep_samples(context: ExtractionContext, segments: Sequence[Segment], window: RepWindow) -> _RepSamples | None:
@@ -206,17 +159,15 @@ def _segment_rep(context: ExtractionContext, segment: Segment, window: RepWindow
         for name, values in samples.channels.items():
             parts[name].append(values)
     channels = {name: np.concatenate(values) for name, values in parts.items()}
-    return _RepSamples(min(c.sample_rate_hz for c in segment.chunks), np.asarray(rates), channels)
+    return _RepSamples(np.asarray(rates), channels)
 
 
 def _compute(
     stream_id: str,
     calibration: ImuCalibration,
-    ids: dict[AnatomicalPlane, tuple[str, str, str]],
+    ids: dict[AnatomicalPlane, tuple[str, str]],
     reps: Sequence[_RepSamples],
     level: str,
-    *,
-    sparc_ok: bool,
 ) -> FamilyResult:
     bias = calibration.gyro_bias_dps
     offsets = {"gyro_x": bias.x, "gyro_y": bias.y, "gyro_z": bias.z}
@@ -225,20 +176,16 @@ def _compute(
     skipped: list[SkippedFeature] = []
 
     def add(feature_id: str, per_rep: Sequence[float]) -> None:
-        # media sobre las repeticiones con valor finito (SPARC sin movimiento es NaN); sin ninguna, NaN -> no_data
-        finite = [value for value in per_rep if math.isfinite(value)]
-        computed.append(ComputedFeature(feature_id, float(np.mean(finite)) if finite else math.nan, (stream_id,), n=len(finite) or n))
+        computed.append(ComputedFeature(feature_id, float(np.mean(per_rep)), (stream_id,), n=n))
 
-    for plane, (rom_id, peak_id, sparc_id) in ids.items():
+    for plane, (rom_id, peak_id) in ids.items():
         found = plane_channel(calibration.mounting, plane)
         if found is None:
-            skipped += [SkippedFeature(i, Reason.NO_CALIBRATION) for i in (rom_id, peak_id, sparc_id) if sparc_ok or i != sparc_id]
+            skipped += [SkippedFeature(i, Reason.NO_CALIBRATION) for i in (rom_id, peak_id)]
             continue
         channel, sign = found
         omegas = [(sign * (r.channels[channel] - offsets[channel]), r) for r in reps]
         add(rom_id, [range_of_motion_deg(omega, r.sample_rates_hz) for omega, r in omegas])
         add(peak_id, [peak_angular_velocity_dps(omega) for omega, _ in omegas])
-        if sparc_ok:
-            add(sparc_id, [sparc(np.abs(omega), r.rate_hz) for omega, r in omegas])
     add(f"imu.{level}.accel_rms_g", [accel_rms_g(*(r.channels[name] for name in _ACCEL)) for r in reps])
     return FamilyResult(tuple(computed), tuple(skipped))

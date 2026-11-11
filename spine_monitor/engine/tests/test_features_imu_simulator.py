@@ -2,7 +2,7 @@
 
 La verdad es la del simulador (``expected_features``): ``rom_deg`` = ROM efectivo del protocolo y
 ``peak_angular_velocity_dps`` = 1,875·ROM/(duración_rep/2), solo en el plano del protocolo (sagital). No hay verdad
-para SPARC ni para ``accel_rms_g``: solo se comprueba que salen y su signo. Sin fallos de calidad simulados.
+para ``accel_rms_g``: solo se comprueba que sale y su signo. Sin fallos de calidad simulados.
 """
 
 from pathlib import Path
@@ -19,10 +19,9 @@ from spine_engine.features.registry import default_registry
 _MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 ROM = "imu.l3.sagittal.rom_deg"
 PEAK = "imu.l3.sagittal.peak_angular_velocity_dps"
-SPARC_IDS = tuple(f"imu.l3.{plane}.smoothness_sparc" for plane in ("sagittal", "frontal", "transverse"))
 ACCEL = "imu.l3.accel_rms_g"
 PLANES = ("sagittal", "frontal", "transverse")
-ALL_IDS = (*(f"imu.l3.{p}.{n}" for p in PLANES for n in ("rom_deg", "peak_angular_velocity_dps", "smoothness_sparc")), ACCEL)
+ALL_IDS = (*(f"imu.l3.{p}.{n}" for p in PLANES for n in ("rom_deg", "peak_angular_velocity_dps")), ACCEL)
 
 # ROM: el sesgo residual de la calibración (error de medida del simulador) se integra durante la rep. Error
 # observado 0,07 % (semilla 7) y 0,10 % (semilla 20261113), igual en 1 g y microgravedad; umbral con margen > 4x.
@@ -97,18 +96,18 @@ def test_sagittal_rom_and_peak_angular_velocity_match_the_simulator_truth(seed: 
     assert features[ROM]["value"] == pytest.approx(truth[ROM], rel=ROM_REL_TOLERANCE)
     assert features[PEAK]["value"] == pytest.approx(truth[PEAK], rel=PEAK_REL_TOLERANCE)
     assert features[ROM]["n"] == features[PEAK]["n"] == truth["exercise.rep_count"]
-    assert all(features[i]["value"] <= 0.0 for i in SPARC_IDS)
+    assert not [i for i in features if i.startswith("imu.") and "sparc" in i]
     assert features[ACCEL]["value"] >= 0.0
     for feature_id in ALL_IDS:
         assert features[feature_id]["unit"] == unit_for(feature_id)
 
 
 @pytest.mark.integration
-def test_the_10_hz_background_imu_skips_sparc_as_insufficient_sample_rate():
+def test_the_10_hz_background_imu_no_longer_skips_anything_for_its_sample_rate():
     request, _truth = _simulate(7, "microgravity", slot="background")
     assert {c.sample_rate_hz for c in request.chunks if c.stream_kind == "imu"} == {10.0}
 
     result = _extract(request)
 
-    skipped = {s["feature_id"]: s["reason"] for s in result["skipped"]}
-    assert {i: skipped.get(i) for i in SPARC_IDS} == dict.fromkeys(SPARC_IDS, "insufficient_sample_rate")
+    assert not [s for s in result.get("skipped", []) if s["reason"] == "insufficient_sample_rate"]
+    assert not [s for s in result.get("skipped", []) if "sparc" in s["feature_id"]]

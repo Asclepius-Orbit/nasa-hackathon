@@ -27,6 +27,10 @@ class GatewaySettings(BaseSettings):
     # Puerto serie tal como lo entiende pyserial `serial_for_url`: COM3, /dev/ttyACM0 o socket://host:puerto.
     serial_url: str = Field(default="COM3", min_length=1)
     serial_baud: int = Field(default=250000, gt=0)
+    # Reconexión del puerto serie con backoff exponencial si no abre o se desenchufa: espera inicial (s), factor y tope (s).
+    serial_reconnect_initial_s: float = Field(default=1.0, gt=0)
+    serial_reconnect_factor: float = Field(default=2.0, ge=1)
+    serial_reconnect_max_s: float = Field(default=10.0, gt=0)
 
     astronaut_id: str = "AST-01"
     device_id: str = "wb-01"
@@ -43,6 +47,12 @@ class GatewaySettings(BaseSettings):
     # Periodos (s) de los mensajes de status y de la sincronización de reloj con el dispositivo.
     status_interval_s: float = Field(default=30.0, gt=0)
     clock_sync_interval_s: float = Field(default=60.0, gt=0)
+    # Error estimado (ms) del ancla de reloj: hora de llegada del tick al gateway (latencia USB + lectura de línea).
+    clock_uncertainty_ms: float = Field(default=20.0, gt=0)
+    # Un stream sin lotes durante este tiempo (s) pasa a `stalled` y el estado a `degraded`.
+    stall_timeout_s: float = Field(default=2.0, gt=0)
+    # Duración (s) de un `calibrate` sin `duration_s`.
+    calibration_default_duration_s: float = Field(default=5.0, gt=0)
 
     emg_stream_id: str = "emg_lat_left"
     imu_stream_id: str = "imu_l3"
@@ -85,4 +95,6 @@ class GatewaySettings(BaseSettings):
     def _reconnect_cap(self) -> Self:
         if self.mqtt_reconnect_max_s < self.mqtt_reconnect_initial_s:
             raise ValueError("mqtt_reconnect_max_s must be >= mqtt_reconnect_initial_s")
+        if self.serial_reconnect_max_s < self.serial_reconnect_initial_s:
+            raise ValueError("serial_reconnect_max_s must be >= serial_reconnect_initial_s")
         return self

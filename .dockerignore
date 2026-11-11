@@ -32,9 +32,10 @@
 .vscode
 .idea
 docs
-firmware
 app
 **/.pio
+# firmware/ SI entra en el contexto (firmware/Dockerfile); solo se excluye su salida de build
+firmware/**/build
 ml/datasets
 logs
 traces

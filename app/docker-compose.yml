@@ -170,6 +170,20 @@ services:
     command: ["sh", "-c", "pnpm install --frozen-lockfile && pnpm check"]
     profiles: ["quality"]
 
+  firmware-build:
+    # Build reproducible del firmware del wearable (issue #13): test de paridad del protocolo en host (gcc)
+    # y compilacion del sketch para arduino:avr:uno. No depende del broker. Perfil "firmware":
+    #   docker compose -f app/docker-compose.yml --profile firmware run --rm firmware-build
+    # Sale distinto de 0 si falla el test o la compilacion (el comando esta en firmware/Dockerfile).
+    build:
+      context: ..
+      dockerfile: firmware/Dockerfile
+    image: spine-firmware:dev
+    # Las fuentes del host pisan la copia de la imagen: editar y volver a ejecutar sin reconstruir.
+    volumes:
+      - ../firmware:/work/firmware:ro
+    profiles: ["firmware"]
+
 volumes:
   backend_data:
   ui_node_modules:

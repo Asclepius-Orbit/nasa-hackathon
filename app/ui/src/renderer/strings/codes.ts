@@ -98,10 +98,8 @@ const FEATURES: Readonly<Record<string, string>> = {
   'emg.latissimus_dorsi.left.rms_pct_mvc': 'Left latissimus EMG effort',
   'emg.latissimus_dorsi.right.rms_pct_mvc': 'Right latissimus EMG effort',
   'symptoms.pain_nrs_7d_mean': 'Pain, 7-day mean',
-  'symptoms.pain_nrs_7d_max': 'Pain, 7-day peak',
   'symptoms.stiffness_nrs_7d_mean': 'Stiffness, 7-day mean',
   'symptoms.sleep_hours_7d_mean': 'Sleep, 7-day mean',
-  'symptoms.odi_pct': 'Oswestry score',
   'symptoms.red_flag_count_7d': 'Warning symptoms, 7 days',
 };
 

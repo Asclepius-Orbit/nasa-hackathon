@@ -348,9 +348,9 @@ def test_feature_set_accepts_calibration_expired_as_skip_reason(validator_for):
 
 
 def test_feature_set_accepts_insufficient_sample_rate_as_skip_reason(validator_for):
-    # SPARC needs a fast enough IMU (#44): a slower stream skips it with its own reason
+    # an IMU feature needs a fast enough stream (#44): a slower stream skips it with its own reason
     document = load_json(EXAMPLES_DIR / "valid" / "domain" / "feature-set.preflight.json")
-    document["skipped"].append({"feature_id": "imu.l3.sagittal.smoothness_sparc", "reason": "insufficient_sample_rate"})
+    document["skipped"].append({"feature_id": "imu.l3.sagittal.rom_deg", "reason": "insufficient_sample_rate"})
     assert validator_for("domain/feature-set").is_valid(document)
     document["skipped"][-1]["reason"] = "sample_rate_too_low"
     assert not validator_for("domain/feature-set").is_valid(document)

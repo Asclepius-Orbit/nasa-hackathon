@@ -174,8 +174,14 @@ UI_ACTIONS = {
     "/ui/crew/{astronaut_id}/self-reports": "201",
     "/ui/crew/{astronaut_id}/contacts": "201",
 }
-SESSION_COMMANDS = ["/ui/crew/{astronaut_id}/sessions", "/ui/sessions/{session_id}/stop", "/ui/sessions/{session_id}/events", "/ui/sessions/{session_id}/calibrations"]
+SESSION_COMMANDS = [
+    "/ui/crew/{astronaut_id}/sessions",
+    "/ui/sessions/{session_id}/stop",
+    "/ui/sessions/{session_id}/events",
+    "/ui/sessions/{session_id}/calibrations",
+]
 DUE_PATH = "/ui/crew/{astronaut_id}/self-reports/due"
+SESSION_PATH = "/ui/sessions/{session_id}"
 
 
 def test_ui_openapi_is_openapi_3_1():
@@ -183,7 +189,7 @@ def test_ui_openapi_is_openapi_3_1():
 
 
 def test_ui_openapi_paths_are_the_view_and_crew_data_endpoints():
-    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH, DEVICES_PATH, DUE_PATH} | set(UI_CREW_DATA) | set(UI_ACTIONS)
+    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH, DEVICES_PATH, DUE_PATH, SESSION_PATH} | set(UI_CREW_DATA) | set(UI_ACTIONS)
 
 
 def test_ui_openapi_writes_only_the_crew_data_and_the_actions():
@@ -200,6 +206,12 @@ def test_ui_actions_document_their_success_and_refusals(path):
         assert {"409", "503"} <= set(post["responses"]), path
     if not path.endswith("/reprocess"):
         assert post["requestBody"]["required"] is True
+
+
+def test_ui_raw_session_carries_the_domain_session_and_its_state():
+    answer = load("ui-openapi.yaml")["paths"][SESSION_PATH]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert answer["properties"]["session"] == {"$ref": "schemas/v1/domain/session.schema.json"}
+    assert set(answer["required"]) == {"session", "state", "error", "feature_set"}
 
 
 def test_ui_reprocess_refuses_a_session_that_did_not_fail():
@@ -288,7 +300,7 @@ def test_ui_errors_are_problem_details_with_the_app_error_schema():
 def test_ui_only_the_session_view_answers_404():
     """The crew views answer 200 with `nodata`/nulls for an astronaut without data; only an unknown session is a 404."""
     paths = load("ui-openapi.yaml")["paths"]
-    for path in [*UI_VIEWS, REPS_PATH, DEVICES_PATH, DUE_PATH]:
+    for path in [*UI_VIEWS, REPS_PATH, DEVICES_PATH, DUE_PATH, SESSION_PATH]:
         assert ("404" in paths[path]["get"]["responses"]) == (path.startswith("/ui/sessions/")), path
 
 

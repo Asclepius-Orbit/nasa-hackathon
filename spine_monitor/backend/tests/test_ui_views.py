@@ -102,12 +102,11 @@ async def test_view_routes_cover_exactly_the_paths_and_methods_of_ui_openapi(har
     contract = yaml.safe_load((CONTRACTS / "ui-openapi.yaml").read_text(encoding="utf-8"))
     served = (await harness.http.get("/openapi.json")).json()["paths"]
 
-    # Served under /ui but outside the UI contract: the crew registry (main process only), the export, the raw session
-    # read and the command state (the UI follows the session view instead).
+    # Served under /ui but outside the UI contract: the crew registry (main process only), the export and the command
+    # state (the UI follows the session view instead).
     outside = {
         ("/ui/crew/{astronaut_id}", "put"),
         ("/ui/crew/{astronaut_id}/export", "get"),
-        ("/ui/sessions/{session_id}", "get"),
         ("/ui/commands/{command_id}", "get"),
     }
 

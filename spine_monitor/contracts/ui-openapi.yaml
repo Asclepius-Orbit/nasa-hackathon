@@ -669,6 +669,42 @@ paths:
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
+  /ui/sessions/{session_id}:
+    get:
+      operationId: getStoredSession
+      summary: A session as stored
+      description: The domain session (with its declared streams), its app state, why it failed if it did, and its feature set once analysed. Served for running, ended, processing, processed and processing_failed sessions; 404 otherwise.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, state, error, feature_set]
+                properties:
+                  session:
+                    $ref: 'schemas/v1/domain/session.schema.json'
+                  state:
+                    $ref: 'schemas/v1/app/ui-common.schema.json#/$defs/session_state'
+                  error:
+                    type: [string, 'null']
+                  feature_set:
+                    oneOf:
+                      - $ref: 'schemas/v1/domain/feature-set.schema.json'
+                      - type: 'null'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /ui/sessions/{session_id}/view:
     get:
       operationId: getSessionView

@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 spine-gateway = "spine_gateway.__main__:main"
+spine-arduino-emulator = "spine_gateway.emulator:main"
 
 [build-system]
 requires = ["uv_build>=0.11.20,<0.12.0"]

@@ -87,6 +87,51 @@ services:
     profiles: ["sim"]
     restart: unless-stopped
 
+  gateway:
+    # Real wearable gateway (issue #13): Arduino over USB serial -> MQTT v1 chunks. Profile "hardware":
+    #   docker compose -f app/docker-compose.yml --profile hardware up -d gateway
+    # Only works on Linux: Docker Desktop on Windows/macOS cannot pass a USB device through to a container.
+    # On Windows the gateway runs natively instead (from spine_monitor/): uv run spine-gateway
+    # with SPINE_GATEWAY_SERIAL_URL=COM3 and SPINE_GATEWAY_MQTT_HOST=127.0.0.1.
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
+    image: spine-gateway:dev
+    environment:
+      SPINE_GATEWAY_MQTT_HOST: mosquitto
+      # Port as seen inside the container: the device below is always mapped to /dev/ttyACM0.
+      SPINE_GATEWAY_SERIAL_URL: "${SPINE_GATEWAY_SERIAL_URL:-/dev/ttyACM0}"
+    devices:
+      - "${SPINE_GATEWAY_SERIAL_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    profiles: ["hardware"]
+    restart: unless-stopped
+
+  arduino-emulator:
+    # Fake Arduino over TCP (spine_gateway.emulator) for the gateway demo without hardware. Profile "gateway-demo":
+    #   docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
+    image: spine-gateway:dev
+    command: ["spine-arduino-emulator", "--host", "0.0.0.0", "--port", "5000"]
+    profiles: ["gateway-demo"]
+    restart: unless-stopped
+
+  gateway-demo:
+    # The real gateway reading the emulator through pyserial's socket:// instead of a USB port.
+    image: spine-gateway:dev
+    command: ["spine-gateway"]
+    environment:
+      SPINE_GATEWAY_SERIAL_URL: socket://arduino-emulator:5000
+      SPINE_GATEWAY_MQTT_HOST: mosquitto
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      arduino-emulator:
+        condition: service_started
+    profiles: ["gateway-demo"]
+    restart: "no"
+
   ollama:
     # Local LLM runtime for the spine agent (profile "llm": docker compose --profile llm up -d).
     # Model cache: the ollama-models volume survives `down`/`up`, so models are downloaded once.

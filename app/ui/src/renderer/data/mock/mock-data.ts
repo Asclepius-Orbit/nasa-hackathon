@@ -1,4 +1,4 @@
-import type { BaselineData, DayRecord, FirstDayData, OswestryData, SessionData, TodayData } from '../types';
+import type { BaselineData, DayRecord, FirstDayData, SessionData, TodayData } from '../types';
 
 /** Static values copied from the on-board app mock (v11). Mock only: a real DataSource replaces this file. */
 
@@ -113,54 +113,4 @@ export const SESSION: SessionData = {
   calibration: { commandId: 'c0ffee00-0000-4000-8000-000000000004', acked: true, ackedAt: '2026-11-05T13:37:00Z' },
   stretchedCm: null,
   plannedAt: null,
-};
-
-/** Reduced item set, statements scored 0-5. Item ids follow the contract ODI sections where one exists. */
-export const ODI: OswestryData = {
-  items: [
-    {
-      id: 'pain_intensity',
-      title: 'Pain intensity',
-      options: ['No pain', 'Very mild', 'Moderate', 'Fairly severe', 'Very severe', 'Worst imaginable'],
-    },
-    {
-      id: 'personal_care',
-      title: 'Personal care',
-      options: [
-        'Normal, no extra pain',
-        'Normal, but painful',
-        'Slow and careful',
-        'Need some help',
-        'Need help every day',
-        'Cannot manage',
-      ],
-    },
-    {
-      id: 'lifting',
-      title: 'Lifting and pulling',
-      options: [
-        'Heavy loads, no pain',
-        'Heavy loads, with pain',
-        'Only if well placed',
-        'Light to medium only',
-        'Very light only',
-        'Cannot lift anything',
-      ],
-    },
-    {
-      id: 'sleeping',
-      title: 'Sleeping',
-      options: ['Never disturbed', 'Sometimes disturbed', 'Under 6 h', 'Under 4 h', 'Under 2 h', 'Cannot sleep'],
-    },
-    {
-      id: 'working',
-      title: 'Working',
-      options: ['Full workload', 'Full, with pain', 'Most tasks', 'Some tasks', 'Very few tasks', 'Cannot work'],
-    },
-    {
-      id: 'exercise_countermeasures',
-      title: 'Exercise and countermeasures',
-      options: ['As planned', 'As planned, with pain', 'Shortened', 'Much shortened', 'Barely', 'Cannot do them'],
-    },
-  ],
 };

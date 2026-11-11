@@ -2,12 +2,14 @@ import { useState } from 'react';
 
 import { LoadFailure } from '../../components/layout/NoMonitor';
 import pick from '../../components/ui/Pick.module.css';
+import { useData } from '../../data/DataContext';
 import type { DataSource } from '../../data/DataSource';
 import type { OdiItem } from '../../data/types';
 import { useLoad } from '../../data/useLoad';
 import { oswestry as copy } from '../../strings/oswestry';
 import form from '../report/Form.module.css';
 import { SaveBar } from '../report/SaveBar';
+import { useFormSave } from '../report/useFormSave';
 import styles from './OswestryView.module.css';
 
 const selectOswestry = (data: DataSource): ReturnType<DataSource['getOswestry']> => data.getOswestry();
@@ -39,7 +41,8 @@ function Item({ item, value, onChange }: { item: OdiItem; value: number | undefi
 export function OswestryView(): React.JSX.Element {
   const { data, error } = useLoad(selectOswestry);
   const [answers, setAnswers] = useState<Readonly<Record<string, number>>>({});
-  const [saved, setSaved] = useState(false);
+  const source = useData();
+  const save = useFormSave([], copy.failure);
   const items = data?.items ?? [];
   const left = items.filter((item) => answers[item.id] === undefined).length;
   return (
@@ -68,10 +71,14 @@ export function OswestryView(): React.JSX.Element {
             label={copy.save}
             canSave={left === 0}
             note={copy.left(left, items.length)}
+            busy={save.state.status === 'saving'}
+            busyLabel={copy.saving}
+            problem={{ failure: save.state.failure, errors: save.state.errors, fixMarked: '' }}
             onSave={() => {
-              setSaved(true);
+              const answered = items.flatMap((item) => (answers[item.id] === undefined ? [] : [{ item_id: item.id, score: answers[item.id] as number }]));
+              save.run(() => source.saveOswestry(answered));
             }}
-            savedMessage={saved ? copy.saved : null}
+            savedMessage={save.state.status === 'saved' ? copy.saved : null}
           />
         </>
       )}

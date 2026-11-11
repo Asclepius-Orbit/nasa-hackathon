@@ -1,4 +1,17 @@
-import type { AstronautProfile, DailyContext, DailyContextFields, DeviceStatus, ProfileFields, WriteResult } from '../../shared/api';
+import type {
+  AstronautProfile,
+  CommandSent,
+  DailyContext,
+  DailyContextFields,
+  DailyReportFields,
+  DeviceStatus,
+  OdiAnswer,
+  ProfileFields,
+  ProtocolId,
+  ReportSaved,
+  StartSessionResult,
+  WriteResult,
+} from '../../shared/api';
 import type {
   BaselineData,
   ContactEntry,
@@ -25,7 +38,10 @@ export interface DataSource {
   getFirstDay(): Promise<FirstDayData>;
   getHistory(): Promise<HistoryData>;
   getReportForm(): Promise<ReportFormData>;
-  /** The session in progress with its protocol facts, or `null` when there is none (never an invented one). */
+  /**
+   * The session in progress with its protocol facts, or `null` when there is none (never an invented one). The real source
+   * also follows the last session it started or showed, so an ended, rejected or failed one stays visible.
+   */
   getSession(): Promise<SessionData | null>;
   getStopped(): Promise<StoppedData>;
   getBaseline(): Promise<BaselineData>;
@@ -37,14 +53,31 @@ export interface DataSource {
    * update; returns unsubscribe. The mock ignores the id; the real source never answers with simulated data.
    */
   subscribeReps(sessionId: string, cb: (update: RepsUpdate) => void): () => void;
-  /** Records that the session was stopped for pain at the current rep (shows in the Houston summary). */
-  stopSessionForPain(): Promise<void>;
-  /** True when `sendUrgentReport` really records and delivers. The real source cannot yet (#63), so the Urgent dialog must not promise anything. */
+  /** Starts a session of `protocolId`. `no_harness` (nothing sent) when the unlocked member has no paired harness; a refusal is a result. */
+  startSession(protocolId: ProtocolId): Promise<StartSessionResult>;
+  /**
+   * Stops the session for pain at `repIndex` (from 1; `null` when the live counter does not know it). Rejects when it was not
+   * recorded: the caller must then say so and never behave as if the stop happened.
+   */
+  stopSessionForPain(sessionId: string, repIndex: number | null): Promise<void>;
+  /** Ends the session as completed (stop reason `completed`). */
+  finishSession(sessionId: string): Promise<WriteResult<CommandSent>>;
+  /** Marks an artefact at `repIndex` (`null` when the counter does not know it). */
+  markArtifact(sessionId: string, repIndex: number | null): Promise<WriteResult<CommandSent>>;
+  /** Asks the harness for the EMG maximum-effort calibration. */
+  calibrateMvc(sessionId: string): Promise<WriteResult<CommandSent>>;
+  /** Analyses again a session whose processing failed (`conflict` for any other state). */
+  reprocessSession(sessionId: string): Promise<WriteResult<{ sessionId: string }>>;
+  /** Stores today's daily report; only `ok: true` means saved. */
+  saveDailyReport(fields: DailyReportFields): Promise<WriteResult<ReportSaved>>;
+  /** Stores the weekly Oswestry answers (`score` = option index, 0-5); only `ok: true` means saved. */
+  saveOswestry(answers: readonly OdiAnswer[]): Promise<WriteResult<ReportSaved>>;
+  /** True when `sendUrgentReport` really records and delivers; the Urgent dialog may then promise queueing. */
   readonly sendsUrgentReports: boolean;
-  /** Sends the urgent symptom report. Rejects when it was not recorded: the caller must then say so and never show it as queued or sent. */
-  sendUrgentReport(codes: readonly string[]): Promise<void>;
-  /** Logs a call to the crew medical officer (shows in the Stop screen and the Houston summary). */
-  logCrewMedicalOfficerCall(): Promise<ContactEntry>;
+  /** Sends the urgent symptom report for `crewId`. Rejects when it was not recorded: the caller must then say so and never show it as queued or sent. */
+  sendUrgentReport(crewId: string, codes: readonly string[]): Promise<void>;
+  /** Logs a call to the crew medical officer, with the session it relates to if any (shows in the Stop screen). */
+  logCrewMedicalOfficerCall(sessionId: string | null): Promise<ContactEntry>;
   /** The stored profile, or `null` when none is stored yet. Rejects with the bridge error (`locked`, `not_found`, `unavailable`). */
   getProfile(): Promise<AstronautProfile | null>;
   /** Stores the edited part of the profile. Only `ok: true` means stored; a refusal comes back as a result, not a rejection. */

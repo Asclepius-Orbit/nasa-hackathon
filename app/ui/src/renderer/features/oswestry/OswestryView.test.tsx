@@ -1,6 +1,6 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { RealDataSource } from '../../data/real/RealDataSource';
 import { FakeAsclepiusApi } from '../../test/fake-api';
@@ -32,7 +32,7 @@ it('counts down while answering and enables Save when complete, then confirms', 
   }
   expect(screen.getByText('Ready to save.')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Save questionnaire' }));
-  expect(screen.getByRole('status')).toHaveTextContent('Questionnaire saved.');
+  expect(await screen.findByRole('status')).toHaveTextContent('Questionnaire saved.');
 });
 
 it('allows changing an answer (one option per item)', async () => {
@@ -45,12 +45,94 @@ it('allows changing an answer (one option per item)', async () => {
   expect(screen.getByText('5 of 6 still to answer.')).toBeInTheDocument();
 });
 
-it('with the backend (real mode) says it is not available and offers no questionnaire to save', async () => {
+const realSetup = async (): Promise<FakeAsclepiusApi> => {
   const api = new FakeAsclepiusApi();
   renderInWorld(<OswestryView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/oswestry' });
-  expect(await screen.findByTestId('not-built')).toBeInTheDocument();
-  expect(screen.getByText('Not available yet.')).toBeInTheDocument();
-  expect(screen.queryByText(/did not answer/)).not.toBeInTheDocument();
-  expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Save questionnaire' })).not.toBeInTheDocument();
+  await screen.findByRole('radiogroup', { name: 'Pain intensity' });
+  return api;
+};
+
+const answerAll = async (): Promise<void> => {
+  for (const group of screen.getAllByRole('radiogroup')) {
+    await userEvent.click(within(group).getAllByRole('radio')[2] as HTMLElement);
+  }
+};
+
+describe('with the backend (real mode)', () => {
+  it('serves the same provisional items, still tagged pending validation', async () => {
+    await realSetup();
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(6);
+    expect(screen.getByText('Item set pending validation by Aguado')).toBeInTheDocument();
+  });
+
+  it('saves each answer as item id and option index', async () => {
+    const api = await realSetup();
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Pain intensity' })).getByRole('radio', { name: '4. Very severe' }));
+    for (const group of screen.getAllByRole('radiogroup')) {
+      if (group.getAttribute('aria-label') === 'Pain intensity') continue;
+      await userEvent.click(within(group).getAllByRole('radio')[0] as HTMLElement);
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Save questionnaire' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Questionnaire saved.');
+    expect(api.lastArg['reports.saveOswestry']).toEqual({
+      items: [
+        { item_id: 'pain_intensity', score: 4 },
+        { item_id: 'personal_care', score: 0 },
+        { item_id: 'lifting', score: 0 },
+        { item_id: 'sleeping', score: 0 },
+        { item_id: 'working', score: 0 },
+        { item_id: 'exercise_countermeasures', score: 0 },
+      ],
+    });
+  });
+
+  it('is busy while saving and says saved only after the backend took it', async () => {
+    const api = await realSetup();
+    let release: () => void = () => undefined;
+    api.reports.saveOswestry = () =>
+      new Promise((resolve) => {
+        release = () => {
+          resolve({ ok: true, value: { reportId: 'r', assessmentLevel: null, assessmentSkipped: null } });
+        };
+      });
+    await answerAll();
+    await userEvent.click(screen.getByRole('button', { name: 'Save questionnaire' }));
+    expect(screen.getByRole('button', { name: 'Saving' })).toBeDisabled();
+    expect(screen.queryByText('Questionnaire saved.')).not.toBeInTheDocument();
+    act(() => {
+      release();
+    });
+    expect(await screen.findByText('Questionnaire saved.')).toBeInTheDocument();
+  });
+
+  it('a refusal lists the backend messages and does not say saved; the answers stay', async () => {
+    const api = await realSetup();
+    api.forced.set('reports.saveOswestry', { ok: false, reason: 'invalid', fields: [{ pointer: '/items/1/score', message: 'must be at most 5' }] });
+    await answerAll();
+    await userEvent.click(screen.getByRole('button', { name: 'Save questionnaire' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('/items/1/score: must be at most 5');
+    expect(screen.queryByText('Questionnaire saved.')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('radiogroup', { name: 'Pain intensity' })).getAllByRole('radio')[2]).toBeChecked();
+  });
+
+  it.each([
+    ['unavailable', 'The monitor did not answer. Nothing was saved; your answers are still here, try again.'],
+    ['locked', 'The app is locked. Unlock it, then save again.'],
+    ['conflict', 'The monitor already holds a different questionnaire for this week. Nothing was saved; reload the screen.'],
+  ] as const)('on %s says nothing was saved', async (reason, text) => {
+    const api = await realSetup();
+    api.forced.set('reports.saveOswestry', { ok: false, reason });
+    await answerAll();
+    await userEvent.click(screen.getByRole('button', { name: 'Save questionnaire' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(screen.queryByText('Questionnaire saved.')).not.toBeInTheDocument();
+  });
+
+  it('says the monitor did not answer when the bridge itself fails', async () => {
+    const api = await realSetup();
+    api.rejecting.add('reports.saveOswestry');
+    await answerAll();
+    await userEvent.click(screen.getByRole('button', { name: 'Save questionnaire' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nothing was saved');
+  });
 });

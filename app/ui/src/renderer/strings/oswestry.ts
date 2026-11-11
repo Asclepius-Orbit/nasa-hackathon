@@ -9,4 +9,11 @@ export const oswestry = {
   save: 'Save questionnaire',
   left: (left: number, total: number): string => (left > 0 ? `${String(left)} of ${String(total)} still to answer.` : 'Ready to save.'),
   saved: 'Questionnaire saved.',
+  saving: 'Saving',
+  failure: {
+    unavailable: 'The monitor did not answer. Nothing was saved; your answers are still here, try again.',
+    locked: 'The app is locked. Unlock it, then save again.',
+    conflict: 'The monitor already holds a different questionnaire for this week. Nothing was saved; reload the screen.',
+    invalid: 'The monitor refused the questionnaire. Nothing was saved; your answers are still here.',
+  },
 } as const;

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { FakeScheduler } from '../../test/fake-scheduler';
+import type { DataSource } from '../DataSource';
 import type { RedFlagCode, RepState } from '../types';
 import { MockDataSource } from './MockDataSource';
 
@@ -183,14 +184,49 @@ describe('houston and stop', () => {
     const entry = await data.logCrewMedicalOfficerCall();
     expect(entry.atGmt).toBe('13:52');
     expect(entry.text).toBe('13:52 GMT: call to the crew medical officer logged. Included in the day 87 report to Houston.');
-    await data.stopSessionForPain();
+    await data.stopSessionForPain('mock-session', 4);
     const h = await data.getHouston();
     expect(h.summary?.sessions).toMatchObject([{ state: 'ended' }]);
     expect(h.summary?.contacts).toBeNull();
     const stopped = await data.getStopped();
-    expect(stopped.rep).toBe(4);
+    expect(stopped).toMatchObject({ sessionId: 'mock-session', rep: 4, groundLink: { state: 'down', backInMin: 12 } });
     expect(stopped.contacts).toEqual([entry]);
-    expect(stopped.crewMedicalOfficerOnBoard).toBe(true);
+    expect(stopped).not.toHaveProperty('crewMedicalOfficerOnBoard');
+  });
+});
+
+describe('sessions in memory', () => {
+  it('has a session in progress until it is stopped, and none after', async () => {
+    expect(await data.getSession()).toMatchObject({ state: 'running' });
+    await data.stopSessionForPain('mock-session', 4);
+    expect(await data.getSession()).toBeNull();
+  });
+
+  it('starts a new session in state starting, for the chosen protocol', async () => {
+    await data.stopSessionForPain('mock-session', 4);
+    const result = await data.startSession('spine_length_rest_v1');
+    expect(result).toMatchObject({ ok: true, value: { state: 'starting' } });
+    expect(await data.getSession()).toMatchObject({ state: 'starting', protocolId: 'spine_length_rest_v1' });
+  });
+
+  it('finish ends the session; artefact and calibration are accepted; reprocess answers ok', async () => {
+    const source: DataSource = data;
+    expect(await source.markArtifact('mock-session', 2)).toMatchObject({ ok: true });
+    expect(await source.calibrateMvc('mock-session')).toMatchObject({ ok: true });
+    expect(await source.reprocessSession('mock-session')).toMatchObject({ ok: true });
+    expect(await source.finishSession('mock-session')).toMatchObject({ ok: true });
+    expect(await data.getSession()).toBeNull();
+  });
+});
+
+describe('reports in memory', () => {
+  it('accepts the daily report, the Oswestry answers and urgent reports without storing them anywhere', async () => {
+    const fields = { pain_nrs: 1, stiffness_nrs: 1, pain_locations: [], sleep_hours: null, sleep_quality_nrs: null, red_flags: [], exercise: null };
+    const source: DataSource = data;
+    expect(await source.saveDailyReport(fields)).toMatchObject({ ok: true });
+    expect(await source.saveOswestry([{ item_id: 'pain_intensity', score: 1 }])).toMatchObject({ ok: true });
+    expect(source.sendsUrgentReports).toBe(true);
+    await expect(source.sendUrgentReport('AST-01', ['leg_weakness'])).resolves.toBeUndefined();
   });
 });
 

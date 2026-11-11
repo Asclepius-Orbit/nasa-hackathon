@@ -248,10 +248,12 @@ export interface ContactEntry {
 }
 
 export interface StoppedData {
-  /** Rep at which the session stopped. */
-  rep: number;
-  groundLink: GroundLink;
-  crewMedicalOfficerOnBoard: boolean;
+  /** The session that was stopped; `null` when this app did not stop one. */
+  sessionId: string | null;
+  /** Rep at which the session stopped for pain; `null` when unknown (never invented). */
+  rep: number | null;
+  /** `null` = unknown: never shown as up. */
+  groundLink: GroundLink | null;
   contacts: readonly ContactEntry[];
 }
 

@@ -58,6 +58,8 @@ services:
       SPINE_APP_GROUND_WINDOW_UP_MIN: "5"
       # Shared with the Electron main process (ASCLEPIUS_BACKEND_TOKEN). Empty: generated in /data/ui-token.
       SPINE_APP_UI_TOKEN: "${SPINE_APP_UI_TOKEN:-}"
+      # Preflight sessions the baseline needs (the demo and pnpm e2e:real pass 1).
+      SPINE_APP_BASELINE_REQUIRED: "${SPINE_APP_BASELINE_REQUIRED:-3}"
     volumes:
       - backend_data:/data
     ports:

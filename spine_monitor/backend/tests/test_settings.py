@@ -122,3 +122,12 @@ def test_reassess_tick_is_read_from_the_environment(monkeypatch: pytest.MonkeyPa
 def test_a_reassess_tick_that_is_not_positive_is_refused(tick: float) -> None:
     with pytest.raises(ValidationError, match="reassess_tick_s"):
         settings(reassess_tick_s=tick)
+
+
+def test_raw_chunks_are_kept_thirty_days_by_default() -> None:
+    assert settings().chunk_retention_days == 30
+
+
+def test_null_in_the_environment_keeps_raw_chunks_forever(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_CHUNK_RETENTION_DAYS", "null")
+    assert settings().chunk_retention_days is None

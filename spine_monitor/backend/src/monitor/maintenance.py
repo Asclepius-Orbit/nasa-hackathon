@@ -17,6 +17,15 @@ from monitor.db import Store
 _log = logging.getLogger(__name__)
 
 BACKUP_PREFIX = "backup-"
+BACKUP_STAMP = "%Y%m%dT%H%M%SZ"
+
+
+def _taken_at(copy: Path) -> datetime | None:
+    """The instant in the name of a copy of this loop; None for any other file."""
+    try:
+        return datetime.strptime(copy.stem.removeprefix(BACKUP_PREFIX), BACKUP_STAMP).replace(tzinfo=UTC)
+    except ValueError:
+        return None
 
 
 class Maintenance:
@@ -43,7 +52,7 @@ class Maintenance:
         """One round: the copy, the pruning of old copies and the purge. Returns the new copy, or None when it failed."""
         now = self._clock()
         try:
-            copy = self._store.backup(self._dir / f"{BACKUP_PREFIX}{now.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}.db")
+            copy = self._store.backup(self._dir / f"{BACKUP_PREFIX}{now.astimezone(UTC).strftime(BACKUP_STAMP)}.db")
         except Exception as exc:
             # No fresh copy: nothing is purged this round either.
             _log.error("store backup failed: %s", type(exc).__name__)
@@ -56,7 +65,22 @@ class Maintenance:
                 _log.info("raw chunks purged for %d processed sessions", len(purged))
         return copy
 
+    def _first_wait(self) -> float:
+        """What is left of the interval since the newest copy of this loop (by the instant in its name); none: no wait."""
+        taken = [instant for copy in self._dir.glob(f"{BACKUP_PREFIX}*.db") if (instant := _taken_at(copy)) is not None]
+        if not taken:
+            return 0
+        return max(0.0, self._interval_s - (self._clock() - max(taken)).total_seconds())
+
     async def run(self) -> None:
+        """A round once the interval since the newest copy is over (at once without one), then one every interval, so a
+        restart neither skips nor repeats a round."""
+        wait = self._first_wait()
         while True:
-            await self._sleep(self._interval_s)
-            self.run_once()
+            await self._sleep(wait)
+            wait = self._interval_s
+            try:
+                self.run_once()
+            except Exception as exc:
+                # E.g. a copy that cannot be pruned or a locked database: the loop goes on, the next round tries again.
+                _log.error("store maintenance failed: %s", type(exc).__name__)

@@ -104,7 +104,7 @@ Engegar-la sola: `uv run uvicorn --factory monitor.readonly:create_read_app --po
 - Cada `SPINE_APP_BACKUP_INTERVAL_S` (per defecte un dia) va una còpia a `SPINE_APP_BACKUP_DIR` (per defecte `backups/` al
   costat de la base de dades, o sigui al volum `backend_data`), i es guarden les `SPINE_APP_BACKUP_KEEP` (7) més recents.
   Després d'aquesta còpia s'esborren els chunks crus de les sessions `processed` que van començar fa més de
-  `SPINE_APP_CHUNK_RETENTION_DAYS` (30; sense valor es guarden sempre) i la sessió queda marcada (`chunks_purged_at`). Feature
+  `SPINE_APP_CHUNK_RETENTION_DAYS` (30; amb `=null` es guarden sempre) i la sessió queda marcada (`chunks_purged_at`). Feature
   sets, baselines, avaluacions i autoinformes no s'esborren mai.
 - `GET /ui/crew/{astronaut_id}/export`: tot el que hi ha guardat de l'astronauta (perfil, contextos diaris, sessions amb el seu
   estat, feature sets, baselines, avaluacions, autoinformes, contactes mèdics, estats de dispositius) llevat dels chunks crus.

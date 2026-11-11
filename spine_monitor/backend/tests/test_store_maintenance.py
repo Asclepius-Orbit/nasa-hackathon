@@ -2,7 +2,9 @@
 periodic backup (#66)."""
 
 import json
+import logging
 import sqlite3
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -127,4 +129,123 @@ def test_maintenance_keeps_the_newest_copies(tmp_path):
     copies = [maintenance.run_once() for _ in range(3)]
 
     assert sorted((tmp_path / "backups").glob("backup-*.db")) == copies[1:]
+    store.close()
+
+
+class Stop(Exception):
+    """Raised by the fake sleep to end `Maintenance.run` after a set number of waits."""
+
+
+class Waits:
+    """Injected sleep of the maintenance loop: records each wait and stops the loop at the `stop_at`-th one."""
+
+    def __init__(self, stop_at: int) -> None:
+        self.seconds: list[float] = []
+        self._stop_at = stop_at
+
+    async def __call__(self, seconds: float) -> None:
+        self.seconds.append(seconds)
+        if len(self.seconds) == self._stop_at:
+            raise Stop
+
+
+class FlakyStore(Store):
+    """The real Store; its first purge fails as a locked database would."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.purges = 0
+
+    def purge_chunks(self, started_before: datetime, now: datetime) -> list[str]:
+        self.purges += 1
+        if self.purges == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return super().purge_chunks(started_before, now)
+
+
+@pytest.mark.anyio
+async def test_a_failed_round_is_logged_and_the_next_round_still_runs(tmp_path, caplog):
+    store = FlakyStore(tmp_path / "app.db")
+    old = stored_session(store, "2027-01-01T10:00:00Z")
+    times = iter([NOW, NOW + timedelta(days=1), NOW + timedelta(days=2)])
+    maintenance = Maintenance(store, tmp_path / "backups", interval_s=1, keep=7, chunk_retention_days=30, clock=lambda: next(times), sleep=Waits(stop_at=3))
+
+    with caplog.at_level(logging.ERROR, logger="monitor.maintenance"), pytest.raises(Stop):
+        await maintenance.run()
+
+    assert store.purges == 2
+    assert store.chunks_purged_at(old) is not None
+    assert "OperationalError" in caplog.text
+    store.close()
+
+
+@pytest.mark.parametrize(
+    ("copies", "first_wait"),
+    [
+        ([], 0),
+        (["backup-20270228T230000Z.db", "backup-20270227T000000Z.db"], 86400 - 3600),
+        (["backup-20270227T000000Z.db"], 0),
+        (["backup-20270301T000000Z.db"], 86400),
+        (["backup-junk.db", "app.v1.20270228T230000Z.db"], 0),
+    ],
+    ids=["no_copy", "newest_an_hour_old", "older_than_the_interval", "taken_now", "no_copy_of_maintenance"],
+)
+@pytest.mark.anyio
+async def test_the_first_round_waits_only_what_is_left_since_the_newest_copy(tmp_path, copies, first_wait):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    for name in copies:
+        (backups / name).touch()
+    store = Store(tmp_path / "app.db")
+    waits = Waits(stop_at=1)
+    maintenance = Maintenance(store, backups, interval_s=86400, keep=7, chunk_retention_days=None, clock=lambda: NOW, sleep=waits)
+
+    with pytest.raises(Stop):
+        await maintenance.run()
+
+    assert waits.seconds == [first_wait]
+    store.close()
+
+
+def test_a_round_copies_the_store_then_purges_only_sessions_past_the_retention(tmp_path):
+    store = Store(tmp_path / "app.db")
+    old = stored_session(store, "2027-01-29T00:00:00Z", n=1)  # 31 days before NOW
+    recent = stored_session(store, "2027-01-31T00:00:00Z", n=2)  # 29 days before NOW
+    maintenance = Maintenance(store, tmp_path / "backups", interval_s=1, keep=7, chunk_retention_days=30, clock=lambda: NOW)
+
+    copy = maintenance.run_once()
+
+    assert copy is not None
+    assert copy.exists()
+    astronaut = example("domain/session.exercise")["astronaut_id"]
+    assert store.session_chunks(astronaut, old) == []
+    assert len(store.session_chunks(astronaut, recent)) == 1
+    assert store.chunks_purged_at(recent) is None
+    store.close()
+
+
+def test_without_a_fresh_copy_nothing_is_purged(tmp_path, caplog):
+    store = Store(tmp_path / "app.db")
+    old = stored_session(store, "2027-01-01T10:00:00Z")
+    not_a_dir = tmp_path / "backups"
+    not_a_dir.write_text("a file where the copies should go")
+    maintenance = Maintenance(store, not_a_dir, interval_s=1, keep=7, chunk_retention_days=30, clock=lambda: NOW)
+
+    with caplog.at_level(logging.ERROR, logger="monitor.maintenance"):
+        assert maintenance.run_once() is None
+
+    assert store.chunks_purged_at(old) is None
+    assert len(store.session_chunks(example("domain/session.exercise")["astronaut_id"], old)) == 1
+    assert "store backup failed" in caplog.text
+    store.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_copies_hold_health_data_so_only_the_owner_can_read_them(tmp_path):
+    store = Store(tmp_path / "app.db")
+
+    copy = store.backup(tmp_path / "backups" / "copy.db")
+
+    assert copy.parent.stat().st_mode & 0o777 == 0o700
+    assert copy.stat().st_mode & 0o777 == 0o600
     store.close()

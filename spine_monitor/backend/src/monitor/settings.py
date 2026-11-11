@@ -10,7 +10,8 @@ from monitor.ground.link import GroundWindows
 
 
 class AppSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SPINE_APP_", env_file=".env", extra="ignore")
+    # `null` sets an optional setting to None from the environment (e.g. SPINE_APP_CHUNK_RETENTION_DAYS=null).
+    model_config = SettingsConfigDict(env_prefix="SPINE_APP_", env_file=".env", extra="ignore", env_parse_none_str="null")
 
     # MQTT broker (on-board Mosquitto).
     mqtt_host: str = "127.0.0.1"
@@ -29,7 +30,7 @@ class AppSettings(BaseSettings):
     backup_dir: Path | None = None
     backup_interval_s: float = Field(default=86400.0, gt=0)
     backup_keep: int = Field(default=7, ge=1)
-    # Raw chunks of a processed session are purged this many days after it started (after a backup); None keeps them.
+    # Raw chunks of a processed session are purged this many days after it started (after a backup); None (`null`) keeps them.
     chunk_retention_days: int | None = Field(default=30, ge=0)
 
     # Shared secret of the /ui API (Authorization: Bearer). Unset: read from ui_token_file, or generated there on first start

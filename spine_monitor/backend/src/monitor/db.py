@@ -15,6 +15,7 @@ Raw chunks of processed sessions can be purged (`purge_chunks`); feature sets, a
 
 import json
 import logging
+import os
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -292,13 +293,15 @@ class Store:
         _log.info("store migrated from schema version %s to %s", version, STORE_SCHEMA_VERSION)
 
     def backup(self, target: Path) -> Path:
-        """A consistent copy of the whole database (sqlite3 backup API), safe while the app keeps writing."""
-        target.parent.mkdir(parents=True, exist_ok=True)
+        """A consistent copy of the whole database (sqlite3 backup API), safe while the app keeps writing. It holds health
+        data: only the owner can read it (a new directory 0700, the copy 0600)."""
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         copy = sqlite3.connect(target)
         try:
             self._db.backup(copy)
         finally:
             copy.close()
+        os.chmod(target, 0o600)
         return target
 
     def _check_schema(self, path: Path | str) -> int:

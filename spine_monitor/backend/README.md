@@ -98,7 +98,7 @@ Run it alone: `uv run uvicorn --factory monitor.readonly:create_read_app --port 
   migrated yet, and reads what the backend writes while both are open.
 - Every `SPINE_APP_BACKUP_INTERVAL_S` (default a day) a copy goes to `SPINE_APP_BACKUP_DIR` (default `backups/` next to the
   database, so in the `backend_data` volume), keeping the newest `SPINE_APP_BACKUP_KEEP` (7). After that copy, the raw chunks of
-  the `processed` sessions started more than `SPINE_APP_CHUNK_RETENTION_DAYS` (30; unset keeps them) ago are deleted and the
+  the `processed` sessions started more than `SPINE_APP_CHUNK_RETENTION_DAYS` (30; `=null` keeps them) ago are deleted and the
   session is marked (`chunks_purged_at`). Feature sets, baselines, assessments and self-reports are never deleted.
 - `GET /ui/crew/{astronaut_id}/export`: everything stored for the astronaut (profile, daily contexts, sessions with their
   state, feature sets, baselines, assessments, self-reports, medical contacts, device statuses) except the raw chunks.

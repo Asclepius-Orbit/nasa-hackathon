@@ -104,6 +104,8 @@ class Analysis:
             self._store.transition_session(session_id, ("processing",), "processing_failed", str(exc))
             if _transient(exc):
                 self._schedule_retry(session_id, str(exc))
+            else:
+                self._store.reset_processing_attempts(session_id)
             return
         self._store.transition_session(session_id, ("processing",), "processed")
         self._store.reset_processing_attempts(session_id)

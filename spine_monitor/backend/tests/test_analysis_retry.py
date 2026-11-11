@@ -49,10 +49,11 @@ class Clock:
 
 
 class Engine:
-    """Answers with the examples; `down` makes it unreachable, `broken` raises an unexpected error for those sessions."""
+    """Answers with the examples; `down` makes it unreachable, `rejecting` makes it answer 422, `broken` raises an unexpected error for those sessions."""
 
     def __init__(self) -> None:
         self.down = False
+        self.rejecting = False
         self.broken: set[str] = set()
         self.features_calls: list[str] = []
 
@@ -61,6 +62,8 @@ class Engine:
         self.features_calls.append(session["session_id"])
         if session["session_id"] in self.broken:
             raise RuntimeError("bug")
+        if self.rejecting:
+            raise EngineError("/features: rejected", status=422)
         if self.down:
             raise EngineError("/features: engine unreachable") from httpx.ConnectError("refused")
         return example("domain/feature-set.preflight") | {"session_id": session["session_id"], "astronaut_id": session["astronaut_id"]}
@@ -182,6 +185,21 @@ async def test_retries_stop_at_the_limit(store, engine, analysis, clock):
     assert await loop.retry_due() == []
 
     assert store.session(session_id).state == "processing_failed"
+    assert engine.features_calls == [session_id, session_id]
+
+
+async def test_a_final_failure_after_a_transient_one_is_not_retried_again(store, engine, analysis, clock):
+    session_id = await failed_session(store, analysis, engine)
+    engine.rejecting = True
+    loop = retrier(store, analysis, clock)
+    clock.advance(seconds=30)
+    assert await loop.retry_due() == [session_id]
+    clock.advance(hours=1)
+
+    assert await loop.retry_due() == []
+
+    assert store.session(session_id).state == "processing_failed"
+    assert store.processing_attempt(session_id) is None
     assert engine.features_calls == [session_id, session_id]
 
 

@@ -3,7 +3,8 @@
  * (medication, exercise, countermeasures...) as stored; when the current one cannot be read nothing is written.
  *
  * `ensureToday` fills in a missing day from the profile's launch and landing dates, with the backend's rules
- * (`spine_monitor/backend/src/monitor/views/mission.py`). It never overwrites a stored context and never fails: it is
+ * (`spine_monitor/backend/src/monitor/views/mission.py`). It never overwrites a stored context, not even one saved
+ * between its read and its write (the write is create-only, so the backend refuses it then), and never fails: it is
  * best effort, run after sign-in and after a profile update.
  */
 import type { AstronautProfile, DailyContext, DailyContextFields, WriteResult } from '../../shared/api';
@@ -22,7 +23,7 @@ export interface DailyContextService {
 export interface DailyContextServiceOptions {
   auth: Pick<AuthService, 'current'>;
   records: Pick<RecordsClient, 'profile' | 'dailyContext'>;
-  writer: Pick<WriteClient, 'putDailyContext'>;
+  writer: Pick<WriteClient, 'putDailyContext' | 'createDailyContext'>;
   now: () => number;
   logError?: (error: unknown) => void;
 }
@@ -100,8 +101,9 @@ export function createDailyContextService({
         const profile = await records.profile(astronautId);
         const derived = profile === null ? null : deriveDailyContext(profile, day);
         if (derived === null) return;
-        const result = await writer.putDailyContext(astronautId, day, contextBody(astronautId, day, {}, derived));
-        if (!result.ok) logError(`daily context: ${day} not stored automatically (${result.reason})`);
+        const result = await writer.createDailyContext(astronautId, day, contextBody(astronautId, day, {}, derived));
+        // `exists`: one was stored meanwhile (by hand or by another client); it wins and there is nothing to do.
+        if (!result.ok && result.reason !== 'exists') logError(`daily context: ${day} not stored automatically (${result.reason})`);
       } catch (error) {
         logError(error);
       }

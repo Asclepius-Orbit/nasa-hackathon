@@ -215,3 +215,12 @@ def test_profile_astronaut_ids_lists_every_profile_in_order_and_is_empty_without
     store.put_profile(example("domain/astronaut-profile") | {"astronaut_id": "AST-01", "updated_at": "2026-11-11T09:00:00Z"})  # replaces
 
     assert store.profile_astronaut_ids() == ["AST-01", "AST-02", "AST-03"]
+
+
+def test_create_daily_context_stores_only_when_the_day_is_empty(store):
+    first = example("domain/daily-context")
+    other = {**first, "phase": "inflight", "gravity_environment": "microgravity"}
+
+    assert store.create_daily_context(first) is True
+    assert store.create_daily_context(other) is False
+    assert store.daily_context(first["astronaut_id"], first["date"]) == first

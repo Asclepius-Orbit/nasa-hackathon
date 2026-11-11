@@ -142,10 +142,15 @@ paths:
     put:
       operationId: putDailyContext
       summary: Store the daily context of an astronaut on a day
-      description: Replaces the context of that day. `astronaut_id` and `date` come from the path (different ones in the body are a 422). Starting a session needs today's context; the assessment is redone.
+      description: |
+        Replaces the context of that day. `astronaut_id` and `date` come from the path (different ones in the body are a 422).
+        Starting a session needs today's context; the assessment is redone.
+        With `If-None-Match: *` it only creates it, in one atomic step: when a context is already stored for that day the
+        answer is 412, the stored one is left as it was and nothing is reassessed.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
         - $ref: '#/components/parameters/Day'
+        - $ref: '#/components/parameters/IfNoneMatch'
       requestBody:
         required: true
         content:
@@ -163,6 +168,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/AlreadyStored'
         '422':
           $ref: '#/components/responses/Invalid'
         default:
@@ -389,6 +396,14 @@ components:
       description: Calendar day (ISO 8601 date).
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/date'
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: '`*` stores the body only when nothing is stored yet (412 otherwise). Any other value is a 422.'
+      schema:
+        type: string
+        const: '*'
     FromDate:
       name: from
       in: query
@@ -424,6 +439,12 @@ components:
             $ref: 'schemas/v1/app/error.schema.json'
     Invalid:
       description: The body does not conform to its schema, or names another astronaut or day than the path (problem details, type `invalid_request`, with `errors[].pointer` into the body).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    AlreadyStored:
+      description: '`If-None-Match: *` and something is already stored there; it was left untouched (problem details; branch on the status, the body type is `invalid_request`).'
       content:
         application/problem+json:
           schema:

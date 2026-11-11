@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, FastAPI, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from spine_contracts import SCHEMA_VERSION, topics, validation
@@ -279,13 +279,19 @@ def build_router(
         return profile
 
     @router.put("/crew/{astronaut_id}/daily-context/{day}")
-    async def put_daily_context(astronaut_id: str, day: date, request: Request) -> dict[str, Any]:
+    async def put_daily_context(astronaut_id: str, day: date, request: Request, if_none_match: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+        if if_none_match not in (None, "*"):
+            raise Problem(422, "If-None-Match only accepts *", errors=[{"pointer": "If-None-Match", "message": "only * is accepted"}])
         body = await _body(request)
         _same(body, "astronaut_id", _astronaut(astronaut_id))
         _same(body, "date", day.isoformat())
         context = {"schema_version": SCHEMA_VERSION, **body, "astronaut_id": astronaut_id, "date": day.isoformat()}
         _schema_errors("domain/daily-context", context)
-        store.put_daily_context(context)
+        if if_none_match is None:
+            store.put_daily_context(context)
+        elif not store.create_daily_context(context):
+            # Only create (the UI's automatic context): a context stored meanwhile, by hand or by another client, wins.
+            raise Problem(412, f"a daily context is already stored for {astronaut_id} on {day}", type_="conflict")
         analysis.request_assess(astronaut_id)
         return context
 

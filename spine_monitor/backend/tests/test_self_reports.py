@@ -103,6 +103,41 @@ async def test_profile_and_daily_context_round_trip(harness):
     assert (await harness.http.get(url)).json() == context
 
 
+async def test_conditional_daily_context_put_creates_a_missing_day(harness):
+    context = harness.example("domain/daily-context")
+    url = f"/ui/crew/{harness.astronaut_id}/daily-context/{context['date']}"
+
+    response = await harness.http.put(url, json=context, headers={"If-None-Match": "*"})
+
+    assert (response.status_code, response.json()) == (200, context)
+    assert (await harness.http.get(url)).json() == context
+
+
+async def test_conditional_daily_context_put_leaves_a_stored_day_untouched(harness):
+    stored = harness.example("domain/daily-context")
+    url = f"/ui/crew/{harness.astronaut_id}/daily-context/{stored['date']}"
+    assert (await harness.http.put(url, json=stored)).status_code == 200
+    automatic = {key: stored[key] for key in ("astronaut_id", "date", "phase", "gravity_environment")}
+
+    response = await harness.http.put(url, json=automatic, headers={"If-None-Match": "*"})
+
+    assert response.status_code == 412
+    assert response.headers["content-type"] == "application/problem+json"
+    assert validation.errors("app/error", response.json()) == []
+    assert (await harness.http.get(url)).json() == stored
+
+
+async def test_daily_context_put_only_accepts_the_star_as_if_none_match(harness):
+    context = harness.example("domain/daily-context")
+    url = f"/ui/crew/{harness.astronaut_id}/daily-context/{context['date']}"
+
+    response = await harness.http.put(url, json=context, headers={"If-None-Match": '"v1"'})
+
+    assert response.status_code == 422
+    assert response.json()["errors"] == [{"pointer": "If-None-Match", "message": "only * is accepted"}]
+    assert (await harness.http.get(url)).status_code == 404
+
+
 async def test_path_and_body_must_agree(harness):
     profile = {**harness.example("domain/astronaut-profile"), "astronaut_id": "AST-02"}
 

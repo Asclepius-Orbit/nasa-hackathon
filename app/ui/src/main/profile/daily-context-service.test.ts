@@ -150,8 +150,19 @@ describe('ensureToday', () => {
       {
         path: `${ID}/daily-context/${TODAY}`,
         body: { astronaut_id: ID, date: TODAY, phase: 'inflight', gravity_environment: 'microgravity', mission_day: 11 },
+        onlyCreate: true,
       },
     ]);
+  });
+
+  it('leaves alone a context stored between its read and its write: the 412 is neither logged nor retried', async () => {
+    const { backend, service, logged } = build();
+    backend.profiles.set(ID, profile('2026-11-01'));
+    backend.beforeCreate = () => backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    await expect(service.ensureToday(ID)).resolves.toBeUndefined();
+    expect(backend.contexts.get(`${ID}/${TODAY}`)).toEqual(STORED);
+    expect(backend.puts).toHaveLength(1);
+    expect(logged).toEqual([]);
   });
 
   it('never overwrites an existing context', async () => {

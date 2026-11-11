@@ -742,6 +742,16 @@ class Store:
             (context["astronaut_id"], context["date"], _dumps(context)),
         )
 
+    def create_daily_context(self, context: dict[str, Any]) -> bool:
+        """Stores the context only when none is stored for that astronaut and day, in one statement. False when one was."""
+        return (
+            self._db.execute(
+                "INSERT INTO daily_context VALUES (?, ?, ?) ON CONFLICT (astronaut_id, date) DO NOTHING",
+                (context["astronaut_id"], context["date"], _dumps(context)),
+            ).rowcount
+            == 1
+        )
+
     def daily_context(self, astronaut_id: str, date: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM daily_context WHERE astronaut_id = ? AND date = ?", astronaut_id, date)
 

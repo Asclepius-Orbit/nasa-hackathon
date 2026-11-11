@@ -17,6 +17,10 @@ import { createDevicesService } from './profile/devices-service';
 import { createHarnessService } from './profile/harness-service';
 import { createProfileService } from './profile/profile-service';
 import { FakeBackend } from './profile/test-fakes';
+import { createContactsService } from './reports/contacts-service';
+import { createReportsService } from './reports/reports-service';
+import { createUrgentService } from './reports/urgent-service';
+import { createSessionsService } from './sessions/sessions-service';
 import type { RepsService } from './views/reps-service';
 import type { ViewsClient } from './views/views-client';
 import { ViewsError } from './views/views-error';
@@ -46,6 +50,15 @@ const PROFILE_FIELDS = {
   height_standing_cm: 171,
   height_sitting_cm: null,
   body_mass_kg: 61.5,
+};
+const DAILY_FIELDS = {
+  pain_nrs: 3,
+  stiffness_nrs: 2,
+  pain_locations: [],
+  sleep_hours: 7,
+  sleep_quality_nrs: null,
+  red_flags: [],
+  exercise: null,
 };
 const CONTEXT_FIELDS = { phase: 'inflight', gravity_environment: 'microgravity', mission_day: 5 };
 const SESSION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
@@ -155,6 +168,10 @@ beforeEach(async () => {
     dailyContext,
     devices: createDevicesService({ auth, records: records.records }),
     harness: createHarnessService({ auth, crew }),
+    sessions: createSessionsService({ auth, crew, records: records.records, writer: records.writer }),
+    reports: createReportsService({ auth, records: records.records, writer: records.writer, dailyContext }),
+    urgent: createUrgentService({ auth, crew, writer: records.writer, now: clock.now }),
+    contacts: createContactsService({ auth, records: records.records, writer: records.writer }),
   };
   ipc = new FakeIpcMain();
   logged = [];
@@ -236,6 +253,28 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.dailyContextUpdateToday, [{ ...CONTEXT_FIELDS, phase: 'orbit' }]],
     [IPC_CHANNELS.dailyContextUpdateToday, [{ ...CONTEXT_FIELDS, date: '2026-11-01' }]],
     [IPC_CHANNELS.devicesList, ['AST-02']],
+    [IPC_CHANNELS.sessionsStart, []],
+    [IPC_CHANNELS.sessionsStart, [{ protocolId: 'deadlift_v1' }]],
+    [IPC_CHANNELS.sessionsStart, [{ protocolId: 'spine_length_rest_v1', deviceId: 'wb-09' }]],
+    [IPC_CHANNELS.sessionsStop, [{ sessionId: SESSION, reason: 'bored' }]],
+    [IPC_CHANNELS.sessionsStop, [{ sessionId: SESSION, reason: 'completed', repIndex: 3 }]],
+    [IPC_CHANNELS.sessionsStop, [{ sessionId: SESSION, reason: 'aborted_pain', repIndex: 0 }]],
+    [IPC_CHANNELS.sessionsStop, [{ sessionId: '../../etc', reason: 'completed' }]],
+    [IPC_CHANNELS.sessionsMarkArtifact, [{ sessionId: SESSION }]],
+    [IPC_CHANNELS.sessionsMarkArtifact, [{ sessionId: SESSION, repIndex: 1.5 }]],
+    [IPC_CHANNELS.sessionsCalibrateMvc, [{ sessionId: SESSION.toUpperCase() }]],
+    [IPC_CHANNELS.sessionsReprocess, [{ sessionId: SESSION, astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.reportsSaveDaily, [{ ...DAILY_FIELDS, astronaut_id: 'AST-02' }]],
+    [IPC_CHANNELS.reportsSaveDaily, [{ ...DAILY_FIELDS, red_flags: ['Not A Code'] }]],
+    [IPC_CHANNELS.reportsSaveDaily, [{ ...DAILY_FIELDS, exercise: { modality: 'yoga', duration_min: 10 } }]],
+    [IPC_CHANNELS.reportsSaveOswestry, [{ items: [] }]],
+    [IPC_CHANNELS.reportsSaveOswestry, [{ items: [{ item_id: 'lifting', score: 2.5 }] }]],
+    [IPC_CHANNELS.reportsDue, ['AST-02']],
+    [IPC_CHANNELS.urgentSend, [{ red_flags: ['leg_weakness'], other_symptoms: [] }]],
+    [IPC_CHANNELS.urgentSend, [{ crewId: 'AST-1', red_flags: [], other_symptoms: [] }]],
+    [IPC_CHANNELS.contactsList, [{ astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.contactsLogOfficerCall, [{}]],
+    [IPC_CHANNELS.contactsLogOfficerCall, [{ sessionId: null, text: 'call' }]],
   ])('rejects invalid input on %s %j without echoing it', async (channel, args) => {
     await expect(call(channel, ...args)).rejects.toThrow(/^invalid input$/);
     expect(repsCalls).toEqual([]);
@@ -509,5 +548,79 @@ describe('profile, daily context, devices and harness channels', () => {
     });
     expect(await call(IPC_CHANNELS.crewSetHarness, { harnessId: null })).toMatchObject({ ok: true, member: { harnessId: null } });
     expect(await call(IPC_CHANNELS.crewList)).toContainEqual({ id: 'AST-01', name: 'Elena Ruiz', harnessId: null });
+  });
+});
+
+describe('session, report, urgent and contact channels', () => {
+  const unlock = () => call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-01', pin: '1234' });
+  const OTHER = '0f1e2d3c-4b5a-4968-8776-655443322110';
+
+  it("starts a session on the unlocked member's harness and returns the result", async () => {
+    await unlock();
+    records.sendAnswer = { session: { session_id: SESSION }, state: 'starting', command: { command_id: OTHER } };
+    expect(await call(IPC_CHANNELS.sessionsStart, { protocolId: 'spine_length_rest_v1' })).toEqual({
+      ok: true,
+      value: { sessionId: SESSION, state: 'starting' },
+    });
+    expect(records.sent[0]).toMatchObject({ path: '/ui/crew/AST-01/sessions', body: { device_id: 'wb-01' } });
+  });
+
+  it('sends the session commands for the unlocked astronaut', async () => {
+    await unlock();
+    records.sendAnswer = { command: { command_id: OTHER } };
+    const sent = { ok: true, value: { commandId: OTHER } };
+    expect(await call(IPC_CHANNELS.sessionsStop, { sessionId: SESSION, reason: 'aborted_pain', repIndex: 4 })).toEqual(sent);
+    expect(await call(IPC_CHANNELS.sessionsMarkArtifact, { sessionId: SESSION, repIndex: null })).toEqual(sent);
+    records.sessionStreams.set(SESSION, [{ streamId: 'emg_lat_left', kind: 'emg' }]);
+    expect(await call(IPC_CHANNELS.sessionsCalibrateMvc, { sessionId: SESSION })).toEqual(sent);
+    records.sendAnswer = { session: SESSION, state: 'ended' };
+    expect(await call(IPC_CHANNELS.sessionsReprocess, { sessionId: SESSION })).toEqual({ ok: true, value: { sessionId: SESSION } });
+    expect(records.sent.map((r) => r.path)).toEqual([
+      `/ui/sessions/${SESSION}/stop`,
+      `/ui/sessions/${SESSION}/events`,
+      `/ui/sessions/${SESSION}/calibrations`,
+      `/ui/sessions/${SESSION}/reprocess`,
+    ]);
+  });
+
+  it('saves the reports and reads what is due', async () => {
+    await unlock();
+    records.sendAnswer = { report: { report_id: OTHER }, assessment: null, assessment_skipped: 'no_profile' };
+    const saved = { ok: true, value: { reportId: OTHER, assessmentLevel: null, assessmentSkipped: 'no_profile' } };
+    expect(await call(IPC_CHANNELS.reportsSaveDaily, DAILY_FIELDS)).toEqual(saved);
+    expect(await call(IPC_CHANNELS.reportsSaveOswestry, { items: [{ item_id: 'lifting', score: 2 }] })).toEqual(saved);
+    expect(await call(IPC_CHANNELS.reportsDue)).toEqual(records.due);
+  });
+
+  it('logs and lists contacts with the crew medical officer', async () => {
+    await unlock();
+    records.sendAnswer = { contact_id: OTHER, at: '2026-11-05T10:00:00Z' };
+    expect(await call(IPC_CHANNELS.contactsLogOfficerCall, { sessionId: null })).toEqual({
+      ok: true,
+      value: { contactId: OTHER, at: '2026-11-05T10:00:00Z', sessionId: null },
+    });
+    records.contacts = [{ contactId: OTHER, at: '2026-11-05T10:00:00Z', sessionId: null }];
+    expect(await call(IPC_CHANNELS.contactsList)).toEqual(records.contacts);
+  });
+
+  it('sends an urgent report without a PIN for a crew member, but for nobody unknown', async () => {
+    records.sendAnswer = { report: { report_id: OTHER }, assessment: { level: 'red' }, assessment_skipped: null };
+    const input = { crewId: 'AST-02', red_flags: ['leg_weakness'], other_symptoms: [] };
+    expect(await call(IPC_CHANNELS.urgentSend, input)).toMatchObject({ ok: true, value: { assessmentLevel: 'red' } });
+    expect(await call(IPC_CHANNELS.urgentSend, { ...input, crewId: 'AST-09' })).toEqual({ ok: false, reason: 'locked' });
+    expect(records.sent.map((r) => r.astronautId)).toEqual(['AST-02']);
+  });
+
+  it.each([IPC_CHANNELS.reportsDue, IPC_CHANNELS.contactsList])('rejects %s with "locked" when nobody is unlocked', async (channel) => {
+    await expect(call(channel)).rejects.toThrow(/^locked$/);
+  });
+
+  it('answers the writes with locked when nobody is unlocked', async () => {
+    const locked = { ok: false, reason: 'locked' };
+    expect(await call(IPC_CHANNELS.sessionsStart, { protocolId: 'spine_length_rest_v1' })).toEqual(locked);
+    expect(await call(IPC_CHANNELS.sessionsStop, { sessionId: SESSION, reason: 'completed' })).toEqual(locked);
+    expect(await call(IPC_CHANNELS.reportsSaveDaily, DAILY_FIELDS)).toEqual(locked);
+    expect(await call(IPC_CHANNELS.contactsLogOfficerCall, { sessionId: SESSION })).toEqual(locked);
+    expect(records.sent).toEqual([]);
   });
 });

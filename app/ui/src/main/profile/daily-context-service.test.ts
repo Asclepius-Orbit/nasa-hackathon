@@ -192,3 +192,43 @@ describe('ensureToday', () => {
     expect(logged).toHaveLength(2);
   });
 });
+
+describe('addExercise', () => {
+  const ENTRY = { modality: 'cevis', duration_min: 30 } as const;
+
+  it("appends the exercise to today's stored context, keeping the rest", async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    await service.addExercise(ID, ENTRY);
+    const { schema_version: _version, ...kept } = STORED;
+    expect(backend.puts).toEqual([
+      { path: `${ID}/daily-context/${TODAY}`, body: { ...kept, exercise: [{ kind: 'treadmill' }, ENTRY] } },
+    ]);
+  });
+
+  it('starts the list when the context has no exercise yet', async () => {
+    const { backend, service } = build();
+    const { exercise: _exercise, ...without } = STORED as unknown as Record<string, unknown>;
+    backend.contexts.set(`${ID}/${TODAY}`, without as unknown as DailyContext);
+    await service.addExercise(ID, ENTRY);
+    expect(backend.puts[0]?.body['exercise']).toEqual([ENTRY]);
+  });
+
+  it('writes nothing when today has no context', async () => {
+    const { backend, service, logged } = build();
+    await service.addExercise(ID, ENTRY);
+    expect(backend.puts).toEqual([]);
+    expect(logged).toEqual([]);
+  });
+
+  it('only logs a failed read or a refused write, never rejects', async () => {
+    const { backend, service, logged } = build();
+    backend.readFailure = new ViewsError('unavailable');
+    await service.addExercise(ID, ENTRY);
+    backend.readFailure = null;
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    backend.writeAnswer = { ok: false, reason: 'unavailable' };
+    await service.addExercise(ID, ENTRY);
+    expect(logged).toHaveLength(2);
+  });
+});

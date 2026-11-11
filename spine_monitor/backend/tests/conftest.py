@@ -35,6 +35,9 @@ from spine_physiology.signals import exercise_duration_s
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
 ASTRONAUT, DEVICE = "AST-01", "wb-01"
+UI_TOKEN = "test-ui-token"
+# What the Electron main process sends with every /ui request: the shared token and the unlocked astronaut.
+UI_HEADERS = {"Authorization": f"Bearer {UI_TOKEN}", "X-Astronaut-Id": ASTRONAUT}
 NOW = datetime(2026, 11, 13, 10, 0, tzinfo=UTC)
 # From the installed simulator package, not this file: mutmut runs a copy of the tests in another directory.
 SIM_CONFIG = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
@@ -184,6 +187,9 @@ class Harness:
         """Waits until every delivered message is handled and the background analysis is done."""
         await self.mqtt.queue.join()
         await self.runtime.control.idle()
+        # A reassessment may start more ground work, so look at both again until nothing is left.
+        await self.runtime.analysis.idle()
+        await self.runtime.control.idle()
 
     async def ack(self, command: dict[str, Any], status: str, **extra: Any) -> None:
         self.acks += 1
@@ -260,12 +266,13 @@ async def harness(tmp_path: Path, anyio_backend: str, harness_settings: dict[str
         baseline_builder=default_baseline_builder(),
         feature_extractor=extractor,
     )
-    settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2, **harness_settings)
+    defaults = {"reassess_debounce_s": 0.0, "ui_token": UI_TOKEN}
+    settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2, **{**defaults, **harness_settings})
     app = create_app(settings, mqtt_client_factory=mqtt.factory, engine_transport=httpx.ASGITransport(app=engine_app), clock=clock)
     runtime = app.state.runtime
     bus_task = asyncio.create_task(runtime.bus.run(runtime.ingest))
     await asyncio.wait_for(runtime.bus.connected.wait(), 2)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://app") as http:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://app", headers=UI_HEADERS) as http:
         yield Harness(http, mqtt, runtime, clock, extractor)
     bus_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):

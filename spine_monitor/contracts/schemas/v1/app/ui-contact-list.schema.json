@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-contact-list.schema.json",
+  "title": "UiContactList",
+  "description": "Response of GET /ui/crew/{astronaut_id}/contacts: the medical contacts logged for the astronaut, oldest first. Empty for an astronaut without contacts.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "contacts": {
+      "type": "array",
+      "items": { "$ref": "../domain/medical-contact.schema.json" }
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "contacts"],
+  "additionalProperties": false
+}

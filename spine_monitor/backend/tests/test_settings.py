@@ -93,3 +93,41 @@ def test_processing_retry_defaults() -> None:
 def test_processing_retry_max_below_min_is_refused() -> None:
     with pytest.raises(ValidationError, match="processing_retry_max_s"):
         settings(processing_retry_min_s=60, processing_retry_max_s=30)
+
+
+def test_reassess_debounce_defaults_to_five_seconds() -> None:
+    assert settings().reassess_debounce_s == 5.0
+
+
+def test_reassess_debounce_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_REASSESS_DEBOUNCE_S", "0")
+    assert settings().reassess_debounce_s == 0  # zero is allowed: the harness turns the delay off
+
+
+def test_negative_reassess_debounce_is_refused() -> None:
+    with pytest.raises(ValidationError, match="reassess_debounce_s"):
+        settings(reassess_debounce_s=-0.1)
+
+
+def test_reassess_tick_defaults_to_one_hour() -> None:
+    assert settings().reassess_tick_s == 3600.0
+
+
+def test_reassess_tick_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_REASSESS_TICK_S", "60")
+    assert settings().reassess_tick_s == 60
+
+
+@pytest.mark.parametrize("tick", [0, -1])
+def test_a_reassess_tick_that_is_not_positive_is_refused(tick: float) -> None:
+    with pytest.raises(ValidationError, match="reassess_tick_s"):
+        settings(reassess_tick_s=tick)
+
+
+def test_raw_chunks_are_kept_thirty_days_by_default() -> None:
+    assert settings().chunk_retention_days == 30
+
+
+def test_null_in_the_environment_keeps_raw_chunks_forever(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_CHUNK_RETENTION_DAYS", "null")
+    assert settings().chunk_retention_days is None

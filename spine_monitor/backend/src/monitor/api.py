@@ -3,7 +3,8 @@
 Separate from the read-only API of `app-openapi.yaml` (the one of the MCP server), not touched here.
 - Profile and daily context: PUT of the full entity.
 - Tiered self-reports: daily (quick), weekly Oswestry and red flags, always available. Every
-  self-report triggers /assess; `GET .../self-reports/due` says what is due today.
+  self-report triggers /assess; `GET .../self-reports/due` says what is due today. A stored profile or
+  daily context also asks for an /assess, debounced per astronaut (`Analysis.request_assess`).
 - Step-by-step protocol: create a session (start_session), mark events, calibrate and stop. Each step
   returns its command; its state (acks) is read at `GET /ui/commands/{command_id}`.
 
@@ -13,6 +14,12 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
   builders of `monitor.views`; each result is validated against its schema before it is served.
 - Live repetition counter (`GET /ui/sessions/{id}/reps`, `ui-openapi.yaml`): server-sent events from `monitor.live.stream`.
 - Ground (`GET /ui/crew/{id}/houston` and `/outbox`, `ui-openapi.yaml`): the outbox that `monitor.ground.sender` empties.
+- Crew (`PUT /ui/crew/{id}` registers an id the UI assigned, `GET /ui/crew` lists what is stored for each): ids only; names and
+  PINs stay in the UI.
+- Medical contacts (`POST/GET /ui/crew/{id}/contacts`): calls to the crew medical officer; each one requeues the ground summary
+  of its day. A stop for pain (`aborted_pain`, with the repetition) and an urgent report also requeue it and ask for /assess.
+- Export (`GET /ui/crew/{id}/export`): everything stored for the astronaut but the raw chunks, for the ground or the end of the mission.
+- Every route needs the shared token and, when it is about one astronaut, that astronaut unlocked (`monitor.ui_auth`).
 """
 
 import json
@@ -23,7 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from spine_contracts import SCHEMA_VERSION, topics, validation
@@ -36,6 +43,7 @@ from monitor.live.stream import RepEventResponse, RepStream
 from monitor.live.tracker import has_live_reps
 from monitor.models import CalibrateBody, EventBody, StopBody
 from monitor.settings import AppSettings
+from monitor.ui_auth import AuthProblem
 from monitor.views.baseline import build_baseline, build_first_day
 from monitor.views.due import reports_due
 from monitor.views.history import build_history
@@ -57,6 +65,8 @@ TITLES = {
     "no_reps": "No repetitions",
     "conflict": "Conflict",
     "unavailable": "Service unavailable",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
     "internal": "Internal error",
 }
 
@@ -87,6 +97,13 @@ def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(Problem)
     async def _problem(_: Request, exc: Problem) -> JSONResponse:
         return problem_response(exc.status, exc.type, exc.detail, exc.errors)
+
+    @app.exception_handler(AuthProblem)
+    async def _auth(_: Request, exc: AuthProblem) -> JSONResponse:
+        response = problem_response(exc.status, "unauthorized" if exc.status == 401 else "forbidden", exc.detail)
+        if exc.status == 401:
+            response.headers["WWW-Authenticate"] = "Bearer"
+        return response
 
     @app.exception_handler(CommandError)
     async def _command(_: Request, exc: CommandError) -> JSONResponse:
@@ -190,11 +207,51 @@ def build_router(
     reps: RepStream,
     clock=lambda: datetime.now(UTC),
     queue_day: Callable[[str, date], None] = lambda astronaut_id, day: None,
+    guard: Callable[[Request], Any] | None = None,
 ) -> APIRouter:
-    router = APIRouter(prefix="/ui", tags=["ui"])
+    router = APIRouter(prefix="/ui", tags=["ui"], dependencies=[] if guard is None else [Depends(guard)])
 
     def today() -> str:
         return clock().date().isoformat()
+
+    # --- crew ------------------------------------------------------------------------------------
+
+    @router.put("/crew/{astronaut_id}")
+    async def register_crew(astronaut_id: str) -> JSONResponse:
+        """Idempotent: 201 when the id is new, 200 when it was already registered. No body: the backend keeps no name or PIN."""
+        created = store.register_crew(_astronaut(astronaut_id), clock())
+        return JSONResponse({"astronaut_id": astronaut_id, "registered": True}, status_code=201 if created else 200)
+
+    @router.get("/crew")
+    async def crew_view() -> dict[str, Any]:
+        return _conforming("app/ui-crew", {"schema_version": SCHEMA_VERSION, "crew": store.crew_overview()})
+
+    @router.get("/crew/{astronaut_id}/export")
+    async def export_astronaut(astronaut_id: str) -> dict[str, Any]:
+        """Everything stored for the astronaut except the raw chunks; an astronaut with nothing gets empty lists and nulls."""
+        return {"schema_version": SCHEMA_VERSION, "exported_at": clock().isoformat(), **store.export_astronaut(_astronaut(astronaut_id))}
+
+    # --- medical contacts --------------------------------------------------------------------------
+
+    @router.post("/crew/{astronaut_id}/contacts", status_code=201)
+    async def post_contact(astronaut_id: str, request: Request) -> JSONResponse:
+        body = await _body(request)
+        _same(body, "astronaut_id", _astronaut(astronaut_id))
+        contact = {"schema_version": SCHEMA_VERSION, "contact_id": str(uuid.uuid4()), "at": clock().isoformat(), **body, "astronaut_id": astronaut_id}
+        _schema_errors("domain/medical-contact", contact)
+        if (existing := store.contact(contact["contact_id"])) is not None:
+            # UI retry with the same contact_id: idempotent when it is the same contact.
+            if {k: v for k, v in existing.items() if k != "at" or "at" in body} != {k: v for k, v in contact.items() if k != "at" or "at" in body}:
+                raise Problem(409, f"contact {contact['contact_id']} already exists with other content", type_="conflict")
+            return JSONResponse(existing, status_code=200)
+        store.put_contact(contact)
+        _queue_day(queue_day, astronaut_id, instant(contact["at"]).date())
+        return JSONResponse(contact, status_code=201)
+
+    @router.get("/crew/{astronaut_id}/contacts")
+    async def contacts_view(astronaut_id: str) -> dict[str, Any]:
+        view = {"schema_version": SCHEMA_VERSION, "astronaut_id": _astronaut(astronaut_id), "contacts": store.contacts(astronaut_id)}
+        return _conforming("app/ui-contact-list", view)
 
     # --- devices ----------------------------------------------------------------------------
 
@@ -211,6 +268,7 @@ def build_router(
         profile = {"schema_version": SCHEMA_VERSION, "updated_at": clock().isoformat(), **body, "astronaut_id": astronaut_id}
         _schema_errors("domain/astronaut-profile", profile)
         store.put_profile(profile)
+        analysis.request_assess(astronaut_id)
         return profile
 
     @router.get("/crew/{astronaut_id}/profile")
@@ -228,6 +286,7 @@ def build_router(
         context = {"schema_version": SCHEMA_VERSION, **body, "astronaut_id": astronaut_id, "date": day.isoformat()}
         _schema_errors("domain/daily-context", context)
         store.put_daily_context(context)
+        analysis.request_assess(astronaut_id)
         return context
 
     @router.get("/crew/{astronaut_id}/daily-context/{day}")
@@ -266,8 +325,8 @@ def build_router(
             return JSONResponse({"report": existing, "assessment": None, "assessment_skipped": "duplicate"}, status_code=200)
         store.put_self_report(report)
         outcome = await analysis.assess(astronaut_id)
-        if report.get("red_flags") and outcome.assessment is None:
-            # Nothing was announced (assess skipped): a red flag must still reach the ground. With an assessment, its listener queued it.
+        if (report.get("red_flags") or report.get("other_symptoms")) and outcome.assessment is None:
+            # Nothing was announced (assess skipped): an urgent report must still reach the ground. With an assessment, its listener queued it.
             _queue_day(queue_day, astronaut_id, instant(report["timestamp"]).date())
         return JSONResponse(
             {"report": report, "assessment": outcome.assessment, "assessment_skipped": outcome.skipped},
@@ -332,9 +391,27 @@ def build_router(
             raise Problem(404, f"unknown session {session_id}", type_="not_found")
         return {"session": row.payload, "state": row.state, "error": row.error, "feature_set": store.feature_set(session_id)}
 
+    def _announce_pain_stop(row: SessionRow) -> None:
+        """Like an urgent report: the ground hears of it now, and the assessment is redone (debounced) with it.
+
+        The day is the one the session started in, the only one whose summary lists the session."""
+        astronaut_id = row.payload["astronaut_id"]
+        _queue_day(queue_day, astronaut_id, instant(row.payload["started_at"]).date())
+        analysis.request_assess(astronaut_id)
+
     @router.post("/sessions/{session_id}/stop", status_code=202)
     async def stop_session(session_id: str, body: StopBody) -> dict[str, Any]:
-        return {"command": await control.stop_session(session_id, body.reason)}
+        row = store.session(session_id)
+        try:
+            command = await control.stop_session(session_id, body.reason, body.rep_index)
+        except CommandError as exc:
+            # The pain is stored even when the bus is down (the event goes in before the send): the ground and the assessment must hear of it.
+            if body.reason == "aborted_pain" and exc.status == 503 and row is not None:
+                _announce_pain_stop(row)
+            raise
+        if body.reason == "aborted_pain" and row is not None:
+            _announce_pain_stop(row)
+        return {"command": command}
 
     @router.post("/sessions/{session_id}/reprocess", status_code=202)
     async def reprocess_session(session_id: str) -> dict[str, Any]:

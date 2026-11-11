@@ -20,6 +20,7 @@ import { repStateSchema } from '../../shared/ipc-schema';
 import { parseBackendUrl } from './backend-url';
 import { createSseParser } from './sse-parser';
 import type { ViewFetch } from './views-client';
+import { authHeaders } from './backend-auth';
 
 export const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 /** Silence after which a stream is considered dead. The backend should send a comment line more often than this. */
@@ -50,6 +51,8 @@ export interface RepsStreamOptions {
   backoffMs?: readonly number[];
   /** Where the technical cause of a final stream error goes (it never reaches the renderer). */
   logError?: (error: unknown) => void;
+  /** Shared token of the /ui API (`backend-auth`); null sends none. */
+  token?: string | null;
 }
 
 export interface RepsStreamClient {
@@ -57,7 +60,8 @@ export interface RepsStreamClient {
    * Starts reading the session's events and returns the function that stops it. `onEvent` gets `state`, `end`,
    * `lost` and `error` events; after `end` or `error` it is never called again. Stopping is idempotent and silent.
    */
-  open(sessionId: string, onEvent: (event: RepsEvent) => void): () => void;
+  /** `astronautId`: the unlocked astronaut, sent to the backend, which checks the session is theirs. */
+  open(sessionId: string, onEvent: (event: RepsEvent) => void, astronautId?: string): () => void;
 }
 
 interface Attempt {
@@ -82,12 +86,13 @@ export function createRepsStreamClient({
   idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
   backoffMs = DEFAULT_BACKOFF_MS,
   logError = () => undefined,
+  token = null,
 }: RepsStreamOptions): RepsStreamClient {
   const origin = parseBackendUrl(baseUrl);
   if (origin === null) throw new Error('backend URL must be an http(s) loopback origin');
 
   return {
-    open(sessionId, onEvent) {
+    open(sessionId, onEvent, astronautId) {
       const url = `${origin}/ui/sessions/${encodeURIComponent(sessionId)}/reps`;
       let closed = false;
       let controller: AbortController | null = null;
@@ -117,7 +122,7 @@ export function createRepsStreamClient({
         try {
           response = await doFetch(url, {
             method: 'GET',
-            headers: { accept: 'text/event-stream' },
+            headers: { accept: 'text/event-stream', ...authHeaders(token, astronautId) },
             redirect: 'error',
             signal: abort.signal,
           });

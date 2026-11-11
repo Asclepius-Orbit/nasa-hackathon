@@ -24,11 +24,13 @@
       }
     ],
     "red_flags": [],
+    "other_symptoms": [],
     "sessions": [
       {
         "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03",
         "state": "processed",
-        "protocol_id": "lat_pulldown_standing_v1"
+        "protocol_id": "lat_pulldown_standing_v1",
+        "pain_stop": null
       }
     ],
     "recommendations": [
@@ -40,7 +42,7 @@
       "urgency": null,
       "reasons": []
     },
-    "contacts": null
+    "contacts": []
   },
   "ground_link": {
     "state": "down",

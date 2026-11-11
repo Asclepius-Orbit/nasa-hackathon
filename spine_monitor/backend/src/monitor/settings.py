@@ -3,14 +3,15 @@
 from pathlib import Path
 from typing import Self
 
-from pydantic import AwareDatetime, Field, model_validator
+from pydantic import AwareDatetime, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from monitor.ground.link import GroundWindows
 
 
 class AppSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SPINE_APP_", env_file=".env", extra="ignore")
+    # `null` sets an optional setting to None from the environment (e.g. SPINE_APP_CHUNK_RETENTION_DAYS=null).
+    model_config = SettingsConfigDict(env_prefix="SPINE_APP_", env_file=".env", extra="ignore", env_parse_none_str="null")
 
     # MQTT broker (on-board Mosquitto).
     mqtt_host: str = "127.0.0.1"
@@ -25,12 +26,29 @@ class AppSettings(BaseSettings):
 
     # SQLite: the app owns all the state.
     db_path: Path = Path("spine_monitor.db")
+    # Copies of the database (before a migration and every backup_interval_s); default `backups/` next to db_path.
+    backup_dir: Path | None = None
+    backup_interval_s: float = Field(default=86400.0, gt=0)
+    backup_keep: int = Field(default=7, ge=1)
+    # Raw chunks of a processed session are purged this many days after it started (after a backup); None (`null`) keeps them.
+    chunk_retention_days: int | None = Field(default=30, ge=0)
+
+    # Shared secret of the /ui API (Authorization: Bearer). Unset: read from ui_token_file, or generated there on first start
+    # (default `ui-token` next to db_path). /health and the read-only API need none.
+    ui_token: SecretStr | None = None
+    ui_token_file: Path | None = None
 
     # A command with no ack within this time becomes `timeout`.
     ack_timeout_s: float = 10.0
 
     # /assess: days of history (feature sets, self-reports, daily context) sent to the engine.
     assess_window_days: int = 14
+    # A debounced reassessment (e.g. after a new baseline) runs this many seconds after the last request for the astronaut;
+    # an immediate /assess in between replaces it. 0 still defers it to the loop, without waiting.
+    reassess_debounce_s: float = Field(default=5.0, ge=0)
+    # An astronaut whose latest assessment is missing or older than `stale_assessment_hours` is reassessed by a loop that
+    # looks every this many seconds, so it is also the precision of that threshold.
+    reassess_tick_s: float = Field(default=3600.0, gt=0)
 
     # Chunks whose session_id is not an app session (e.g. the gateway's background monitoring).
     store_unknown_session_chunks: bool = True
@@ -93,3 +111,7 @@ class AppSettings(BaseSettings):
         if self.ground_window_anchor is None:
             return None
         return GroundWindows(self.ground_window_anchor, self.ground_window_period_min, self.ground_window_up_min)
+
+
+def backup_dir_of(settings: AppSettings) -> Path:
+    return settings.backup_dir or settings.db_path.parent / "backups"

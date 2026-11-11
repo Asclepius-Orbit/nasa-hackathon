@@ -27,7 +27,11 @@ SQLite, envia les comandes que guien el protocol i crida el motor, que no té es
 - **Crides al motor** (`analysis.py`): quan acaba una sessió, `/features`. Si és de pre-vol,
   `/baseline` amb tots els feature sets de pre-vol (una versió nova cada vegada). Després, `/assess` amb
   perfil, baseline, feature sets recents, autoinformes i context diari. Cada autoinforme també dispara
-  `/assess`. Sense perfil, baseline o feature sets l'avaluació s'omet i es diu per què. L'absència mai
+  `/assess`. Desar el perfil o el context diari, o una baseline nova, demana una reavaluació amb
+  debounce per astronauta (`REASSESS_DEBOUNCE_S`, 5 s després de l'última petició; una ràfega en fa
+  una sola, i un `/assess` immediat mentrestant la substitueix). Un bucle de fons (`assessment-refresh`,
+  cada `REASSESS_TICK_S`, 1 h) la demana per a cada astronauta amb perfil l'última avaluació del qual
+  falta o és més antiga que `STALE_ASSESSMENT_HOURS`; si no es pot avaluar, es reintenta al tick següent. Sense perfil, baseline o feature sets l'avaluació s'omet i es diu per què. L'absència mai
   no es converteix en un verd. Una fallada de `/features` perquè el motor no respon o contesta 5xx es
   reintenta amb backoff exponencial (de `PROCESSING_RETRY_MIN_S` a `PROCESSING_RETRY_MAX_S`), fins a
   `PROCESSING_MAX_ATTEMPTS` intents, comptats a SQLite (`processing_attempts`) perquè un reinici
@@ -41,19 +45,28 @@ Costat d'escriptura per a la UI. Separada de l'API de només lectura de `contrac
 que fa servir el servidor MCP (vegeu més avall). L'app omple ids, `schema_version`, instants i `source`, i valida
 l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
 
+Tota petició a `/ui` necessita `Authorization: Bearer <token>` (si no, 401) i, quan tracta d'un astronauta (la ruta el
+nomena, o nomena una sessió o una comanda seves), `X-Astronaut-Id` amb l'astronauta desbloquejat a la UI: un altre és un 403
+amb problem details. `GET /ui/crew` i `PUT /ui/crew/{id}` només necessiten el token. El token és `SPINE_APP_UI_TOKEN`, o el
+contingut de `SPINE_APP_UI_TOKEN_FILE` (per defecte `ui-token` al costat de la base de dades), que s'hi genera amb permisos
+només del propietari en la primera arrencada sense token. `/health` i l'API de només lectura no necessiten token.
+
 | Mètode | Ruta | Què |
 |---|---|---|
+| PUT | `/ui/crew/{astronaut_id}` | Registra un id que ha assignat la UI (sense cos: noms i PIN es queden a la UI). 201 si és nou, 200 si ja hi era |
+| GET | `/ui/crew` | Ids que coneix el backend (registrats o amb dades), si cadascun té perfil i baseline, i quantes sessions (`ui-crew`, `ui-openapi.yaml`) |
 | GET | `/ui/crew/{astronaut_id}/devices` | Últim estat de cada dispositiu |
+| POST/GET | `/ui/crew/{astronaut_id}/contacts` | Trucades a l'oficial mèdic de bord (`domain/medical-contact`: qui, quan, nota opcional). Cadascuna torna a encuar el resum de terra del seu dia, que porta el codi i l'instant, mai la nota |
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Perfil de l'astronauta |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Context diari |
-| POST | `/ui/crew/{astronaut_id}/self-reports` | Diari, ODI setmanal o bandera vermella; retorna l'informe i la nova avaluació (o per què s'ha omès). Repetir el mateix `report_id` és idempotent |
+| POST | `/ui/crew/{astronaut_id}/self-reports` | Diari, ODI setmanal o bandera vermella (amb `other_symptoms`: `very_severe_pain`, `other`, a part de les banderes vermelles fins que Aguado decideixi com es trien); retorna l'informe i la nova avaluació (o per què s'ha omès). Repetir el mateix `report_id` és idempotent |
 | GET | `/ui/crew/{astronaut_id}/self-reports/due` | Si toca l'autoinforme diari i l'ODI setmanal; les banderes vermelles sempre estan disponibles |
 | POST | `/ui/crew/{astronaut_id}/sessions` | Pla de la sessió (dispositiu, tipus, protocol, streams, càrrega...) -> `start_session`. `mission_context` agafa per defecte el context diari d'avui |
 | GET | `/ui/sessions/{session_id}` | Sessió, estat (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) i feature set |
 | POST | `/ui/sessions/{session_id}/reprocess` | Només per a `processing_failed` (409 en un altre cas, 404 si no existeix): reinicia els intents, la passa a `ended` i la processa en segon pla. 202 `{"session": id, "state": "ended"}`. És l'única manera de rellançar una sessió que ha fallat de manera definitiva o abans que es comptessin els intents |
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
-| POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu |
+| POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu. `aborted_pain` admet `rep_index` opcional (422 amb un altre motiu): la sessió rep un esdeveniment `pain_reported` amb la repetició i l'instant, el resum de terra del dia el mostra (`pain_stop`) i es demana un /assess |
 | GET | `/ui/sessions/{session_id}/reps` | Server-sent events amb el comptador de repeticions en viu (`ui-openapi.yaml`): `state` a cada canvi, `end` quan acaba la sessió |
 | GET | `/ui/commands/{command_id}` | Estat de la comanda i els seus acks (la UI el consulta per passar al pas següent) |
 | GET | `/health` | Vida, connexió MQTT i comptadors de missatges |
@@ -81,13 +94,28 @@ compose), així el servidor MCP mai no arriba als endpoints d'escriptura `/ui`. 
 
 Engegar-la sola: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
 
+## Base de dades: migracions, còpies, retenció i exportació
+
+- L'esquema està versionat (`PRAGMA user_version`, `STORE_SCHEMA_VERSION` a `db.py`). Un fitxer més antic es copia primer
+  amb l'API de backup de sqlite3 a `backups/<nom>.v<N>.<instant>.db` i després es migra pas a pas (`MIGRATIONS[n]`: n -> n+1)
+  en una transacció amb el canvi de versió: una migració que falla el deixa com estava. Un fitxer més nou, o aliè, es rebutja.
+- WAL. L'API de només lectura (connexió query-only) mai escriu ni migra: rebutja un fitxer que el backend encara no ha migrat
+  i llegeix el que el backend escriu mentre tots dos estan oberts.
+- Cada `SPINE_APP_BACKUP_INTERVAL_S` (per defecte un dia) va una còpia a `SPINE_APP_BACKUP_DIR` (per defecte `backups/` al
+  costat de la base de dades, o sigui al volum `backend_data`), i es guarden les `SPINE_APP_BACKUP_KEEP` (7) més recents.
+  Després d'aquesta còpia s'esborren els chunks crus de les sessions `processed` que van començar fa més de
+  `SPINE_APP_CHUNK_RETENTION_DAYS` (30; amb `=null` es guarden sempre) i la sessió queda marcada (`chunks_purged_at`). Feature
+  sets, baselines, avaluacions i autoinformes no s'esborren mai.
+- `GET /ui/crew/{astronaut_id}/export`: tot el que hi ha guardat de l'astronauta (perfil, contextos diaris, sessions amb el seu
+  estat, feature sets, baselines, avaluacions, autoinformes, contactes mèdics, estats de dispositius) llevat dels chunks crus.
+
 ## Engegar-la
 ```
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuració són variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
-`WEEKLY_ODI_INTERVAL_DAYS`. A Docker Compose la base de dades viu al volum `backend_data`
+`WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. A Docker Compose la base de dades viu al volum `backend_data`
 (`/data/spine_monitor.db`).
 
 Reintents de l'anàlisi, també `SPINE_APP_*`:

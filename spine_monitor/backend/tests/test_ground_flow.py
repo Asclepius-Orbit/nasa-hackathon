@@ -71,7 +71,8 @@ async def test_the_end_of_a_session_queues_its_day_and_nothing_is_sent_by_itself
     assert item.payload["as_of"] == harness.clock().isoformat().replace("+00:00", "Z")
     assert validation.errors("app/ground-summary", item.payload) == []
     (session,) = harness.store.session_rows(harness.astronaut_id)
-    assert item.payload["sessions"] == [{"session_id": session.payload["session_id"], "state": "processed", "protocol_id": session.payload["protocol_id"]}]
+    expected = {"session_id": session.payload["session_id"], "state": "processed", "protocol_id": session.payload["protocol_id"], "pain_stop": None}
+    assert item.payload["sessions"] == [expected]
     assert harness.runtime.ground.deliveries == []
 
 

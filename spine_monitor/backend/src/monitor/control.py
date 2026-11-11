@@ -203,9 +203,15 @@ class Control:
         await self._send(command)
         return command
 
-    async def stop_session(self, session_id: str, reason: str) -> dict[str, Any]:
+    async def stop_session(self, session_id: str, reason: str, rep_index: int | None = None) -> dict[str, Any]:
+        """A stop for pain (`aborted_pain`) is also recorded on the session as a `pain_reported` event, at the instant of the
+        command and with `rep_index` when given: the backend keeps it whatever the device answers."""
         session = self._active(session_id)
         command = self._command(session["astronaut_id"], session["device_id"], "stop_session", session_id=session_id, reason=reason)
+        if reason == "aborted_pain":
+            # Before the send: a bus that is down or an ack that races the await must not lose the pain.
+            event = {"session_id": session_id, "event_type": "pain_reported", "issued_at": command["issued_at"]}
+            self._add_event(event if rep_index is None else {**event, "rep_index": rep_index})
         await self._send(command)
         return command
 

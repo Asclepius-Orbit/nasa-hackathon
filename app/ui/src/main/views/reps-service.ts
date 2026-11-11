@@ -139,9 +139,13 @@ export function createRepsService({
       }
       const subscription: Subscription = { id: newId(), sessionId, crewId, close: () => undefined };
       state.subscriptions.set(subscription.id, subscription);
-      subscription.close = streams.open(sessionId, (event) => {
-        deliver(sender, subscription, event);
-      });
+      subscription.close = streams.open(
+        sessionId,
+        (event) => {
+          deliver(sender, subscription, event);
+        },
+        crewId,
+      );
       return subscription.id;
     },
     unsubscribe(sender, subscriptionId) {

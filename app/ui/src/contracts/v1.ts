@@ -300,32 +300,26 @@ export type WeeklyOdiReport = ReportBase & {
 export type RedFlagReport = ReportBase & {
   kind: "red_flag";
   /**
-   * @minItems 1
+   * Red flags present; may be empty only when other_symptoms is not.
    *
    * Items: Symptoms that suggest nerve involvement or an emergency. Any one of them escalates, regardless of the model.
    */
-  red_flags: [
-    (
-      | "radiating_leg_pain"
-      | "numbness_or_tingling"
-      | "leg_weakness"
-      | "bladder_or_bowel_dysfunction"
-      | "saddle_numbness"
-      | "severe_night_pain"
-      | "fever_with_back_pain"
-      | "trauma_event"
-    ),
-    ...(
-      | "radiating_leg_pain"
-      | "numbness_or_tingling"
-      | "leg_weakness"
-      | "bladder_or_bowel_dysfunction"
-      | "saddle_numbness"
-      | "severe_night_pain"
-      | "fever_with_back_pain"
-      | "trauma_event"
-    )[]
-  ];
+  red_flags: (
+    | "radiating_leg_pain"
+    | "numbness_or_tingling"
+    | "leg_weakness"
+    | "bladder_or_bowel_dysfunction"
+    | "saddle_numbness"
+    | "severe_night_pain"
+    | "fever_with_back_pain"
+    | "trauma_event"
+  )[];
+  /**
+   * Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model (Aguado): they are reported, not triaged here.
+   *
+   * Items: Urgent symptom outside the red-flag catalogue: 'very_severe_pain' (pain the astronaut cannot bear) or 'other' (described in the note). Kept apart from red_flag until the clinical model decides how it is triaged.
+   */
+  other_symptoms?: ("very_severe_pain" | "other")[];
   /**
    * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
    */
@@ -893,6 +887,8 @@ export interface ContractsV1 {
   "app/status"?: Status;
   "app/ui-baseline"?: BaselineView;
   "app/ui-common"?: UIViewDefinitions;
+  "app/ui-contact-list"?: UiContactList;
+  "app/ui-crew"?: UiCrew;
   "app/ui-first-day"?: FirstDayView;
   "app/ui-history"?: HistoryView;
   "app/ui-houston"?: HoustonView;
@@ -908,6 +904,7 @@ export interface ContractsV1 {
   "domain/calibration"?: Calibration;
   "domain/daily-context"?: DailyContext;
   "domain/feature-set"?: FeatureSet;
+  "domain/medical-contact"?: MedicalContact;
   "domain/self-report"?: SelfReport;
   "domain/session"?: Session;
   "engine/assess-request"?: AssessRequest;
@@ -1363,6 +1360,12 @@ export interface GroundSummary {
     | "trauma_event"
   )[];
   /**
+   * Urgent symptoms outside the red-flag catalogue reported that day; empty when none.
+   *
+   * Items: Urgent symptom outside the red-flag catalogue: 'very_severe_pain' (pain the astronaut cannot bear) or 'other' (described in the note). Kept apart from red_flag until the clinical model decides how it is triaged.
+   */
+  other_symptoms: ("very_severe_pain" | "other")[];
+  /**
    * Sessions of the day.
    */
   sessions: GroundSession[];
@@ -1375,9 +1378,9 @@ export interface GroundSummary {
    */
   escalation: GroundEscalation | null;
   /**
-   * Reserved for the contacts the ground may reach the astronaut with (issue #63). Always null until that is modelled; its content is not part of this schema yet.
+   * Medical contacts logged that day, oldest first; empty when none. Code and instant only: the note of the crew stays on board.
    */
-  contacts: null;
+  contacts: GroundContact[];
 }
 export interface GroundDriver {
   /**
@@ -1396,6 +1399,17 @@ export interface GroundSession {
    * Standardised exercise or measurement protocol. The protocol is part of the comparison key: only data from the same protocol is comparable.
    */
   protocol_id: string;
+  /**
+   * The session was stopped for pain (end reason aborted_pain): at which repetition (null when not known) and when. Null otherwise.
+   */
+  pain_stop: GroundPainStop | null;
+}
+export interface GroundPainStop {
+  rep_index: number | null;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  at: string;
 }
 export interface GroundEscalation {
   required: boolean;
@@ -1407,6 +1421,20 @@ export interface GroundEscalation {
    * Rules that justify the escalation (rule_id of the fired rules of the assessment); empty when none.
    */
   reasons: string[];
+}
+export interface GroundContact {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  contact_id: string;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  at: string;
+  /**
+   * Who was contacted. Adding a role is a compatible change.
+   */
+  contact: "crew_medical_officer";
 }
 /**
  * Response of GET /crew/{astronaut_id}/history; backs the MCP tool get_history (and, with two calls, compare_periods, which the MCP server computes). Feature sets and assessments of a time window. Feature sets are filtered by the start of their session, assessments by as_of. limit caps each collection; truncated says some collection had more, and the most recent items are kept.
@@ -1746,6 +1774,82 @@ export interface BaselineViewSession {
  */
 export interface UIViewDefinitions {
   [k: string]: unknown | undefined;
+}
+/**
+ * Response of GET /ui/crew/{astronaut_id}/contacts: the medical contacts logged for the astronaut, oldest first. Empty for an astronaut without contacts.
+ */
+export interface UiContactList {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  contacts: MedicalContact[];
+}
+/**
+ * A medical contact the crew logged on board: who was contacted, when, and an optional note. Today only calls to the crew medical officer (CMO), logged from the stop screen of the UI. The note is free text and stays on board: the ground summary carries only the code and the instant.
+ */
+export interface MedicalContact {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  contact_id: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  at: string;
+  /**
+   * Who was contacted. Adding a role is a compatible change.
+   */
+  contact: "crew_medical_officer";
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id?: string;
+  /**
+   * Optional note of the crew; never leaves the station.
+   */
+  text?: string;
+}
+/**
+ * Response of GET /ui/crew: the astronaut ids the backend knows (registered by the UI or with data stored) and what it holds for each, ordered by id. Ids and flags only: no name, PIN or profile data. The UI keeps names and PINs and assigns the AST-NN ids.
+ */
+export interface UiCrew {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  crew: UiCrewMember[];
+}
+export interface UiCrewMember {
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  /**
+   * The UI registered this id (PUT /ui/crew/{astronaut_id}).
+   */
+  registered: boolean;
+  /**
+   * A profile is stored; without one /assess is skipped.
+   */
+  has_profile: boolean;
+  has_baseline: boolean;
+  /**
+   * Sessions stored, in any state.
+   */
+  sessions: number;
 }
 /**
  * Response of GET /ui/crew/{astronaut_id}/views/first-day: what is left to set up before the first assessment, for the first-day screen of the desktop UI. Carries no name of the astronaut: the desktop app adds it locally.

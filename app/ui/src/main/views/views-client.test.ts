@@ -203,6 +203,10 @@ describe('createViewsClient errors', () => {
     expect(await codeOf(foreign.session(ASTRONAUT, SESSION))).toBe('not_found');
   });
 
+  it('answers not_found when the backend guard answers 403 for another astronaut session', async () => {
+    expect(await codeOf(client(() => problem(403, 'forbidden')).session(ASTRONAUT, SESSION))).toBe('not_found');
+  });
+
   it('rejects a session view that names no astronaut as unavailable', async () => {
     const { astronaut_id: _omitted, ...anonymous } = BODIES.session;
     expect(await codeOf(client(() => json(anonymous)).session(ASTRONAUT, SESSION))).toBe('unavailable');

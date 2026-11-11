@@ -154,6 +154,8 @@ UI_VIEWS = {
     "/ui/crew/{astronaut_id}/houston": "app/ui-houston",
     "/ui/crew/{astronaut_id}/outbox": "app/ui-outbox",
     "/ui/sessions/{session_id}/view": "app/ui-session",
+    "/ui/crew": "app/ui-crew",
+    "/ui/crew/{astronaut_id}/contacts": "app/ui-contact-list",
 }
 REPS_PATH = "/ui/sessions/{session_id}/reps"
 

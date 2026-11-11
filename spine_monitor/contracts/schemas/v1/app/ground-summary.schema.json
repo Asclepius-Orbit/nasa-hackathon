@@ -63,6 +63,12 @@
       "items": { "$ref": "../domain/self-report.schema.json#/$defs/red_flag" },
       "uniqueItems": true
     },
+    "other_symptoms": {
+      "description": "Urgent symptoms outside the red-flag catalogue reported that day; empty when none.",
+      "type": "array",
+      "items": { "$ref": "../domain/self-report.schema.json#/$defs/other_symptom" },
+      "uniqueItems": true
+    },
     "sessions": {
       "description": "Sessions of the day.",
       "type": "array",
@@ -72,9 +78,25 @@
         "properties": {
           "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
           "state": { "$ref": "ui-common.schema.json#/$defs/session_state" },
-          "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" }
+          "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+          "pain_stop": {
+            "description": "The session was stopped for pain (end reason aborted_pain): at which repetition (null when not known) and when. Null otherwise.",
+            "oneOf": [
+              {
+                "title": "GroundPainStop",
+                "type": "object",
+                "properties": {
+                  "rep_index": { "type": ["integer", "null"], "minimum": 1 },
+                  "at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
+                },
+                "required": ["rep_index", "at"],
+                "additionalProperties": false
+              },
+              { "type": "null" }
+            ]
+          }
         },
-        "required": ["session_id", "state", "protocol_id"],
+        "required": ["session_id", "state", "protocol_id", "pain_stop"],
         "additionalProperties": false
       }
     },
@@ -112,13 +134,24 @@
       ]
     },
     "contacts": {
-      "description": "Reserved for the contacts the ground may reach the astronaut with (issue #63). Always null until that is modelled; its content is not part of this schema yet.",
-      "type": "null"
+      "description": "Medical contacts logged that day, oldest first; empty when none. Code and instant only: the note of the crew stays on board.",
+      "type": "array",
+      "items": {
+        "title": "GroundContact",
+        "type": "object",
+        "properties": {
+          "contact_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+          "at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+          "contact": { "$ref": "../domain/medical-contact.schema.json#/$defs/contact_role" }
+        },
+        "required": ["contact_id", "at", "contact"],
+        "additionalProperties": false
+      }
     }
   },
   "required": [
     "schema_version", "astronaut_id", "date", "mission_day", "revision", "as_of", "level", "assessment_id",
-    "confidence", "data_available", "data_total", "drivers", "red_flags", "sessions", "recommendations",
+    "confidence", "data_available", "data_total", "drivers", "red_flags", "other_symptoms", "sessions", "recommendations",
     "escalation", "contacts"
   ],
   "if": { "properties": { "level": { "const": "nodata" } }, "required": ["level"] },

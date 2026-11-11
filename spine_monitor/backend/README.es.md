@@ -26,7 +26,11 @@ SQLite, envía los comandos que guían el protocolo y llama al motor, que no tie
 - **Llamadas al motor** (`analysis.py`): al terminar una sesión, `/features`. Si es pre-vuelo,
   `/baseline` con todos los feature sets pre-vuelo (una versión nueva cada vez). Después, `/assess` con
   perfil, baseline, feature sets recientes, autoinformes y contexto diario. Cada autoinforme también
-  dispara `/assess`. Sin perfil, baseline o feature sets la evaluación se omite y se dice por qué. La
+  dispara `/assess`. Guardar el perfil o el contexto diario, o una baseline nueva, pide una reevaluación
+  con debounce por astronauta (`REASSESS_DEBOUNCE_S`, 5 s tras la última petición; una ráfaga da una sola,
+  y un `/assess` inmediato entretanto la sustituye). Un bucle de fondo (`assessment-refresh`, cada
+  `REASSESS_TICK_S`, 1 h) la pide para cada astronauta con perfil cuya última evaluación falta o es más
+  vieja que `STALE_ASSESSMENT_HOURS`; si no se puede evaluar, se reintenta en el siguiente tick. Sin perfil, baseline o feature sets la evaluación se omite y se dice por qué. La
   ausencia nunca se convierte en un verde. Un fallo de `/features` porque el motor no responde o contesta
   5xx se reintenta con backoff exponencial (de `PROCESSING_RETRY_MIN_S` a `PROCESSING_RETRY_MAX_S`), hasta
   `PROCESSING_MAX_ATTEMPTS` intentos, contados en SQLite (`processing_attempts`) para que un reinicio siga
@@ -40,19 +44,28 @@ Lado de escritura para la UI. Separada de la API de solo lectura de `contracts/a
 usa el servidor MCP (ver más abajo). La app rellena ids, `schema_version`, instantes y `source`, y valida la entidad
 contra su schema. Los errores son problem details de `app/error`.
 
+Toda petición a `/ui` necesita `Authorization: Bearer <token>` (si no, 401) y, cuando trata de un astronauta (su ruta lo nombra,
+o nombra una sesión o un comando suyos), `X-Astronaut-Id` con el astronauta desbloqueado en la UI: otro distinto es un 403 con
+problem details. `GET /ui/crew` y `PUT /ui/crew/{id}` solo necesitan el token. El token es `SPINE_APP_UI_TOKEN`, o el contenido
+de `SPINE_APP_UI_TOKEN_FILE` (por defecto `ui-token` junto a la base de datos), que se genera ahí con permisos solo del dueño
+en el primer arranque sin token. `/health` y la API de solo lectura no necesitan token.
+
 | Método | Ruta | Qué |
 |---|---|---|
+| PUT | `/ui/crew/{astronaut_id}` | Registra un id que asignó la UI (sin cuerpo: nombres y PIN se quedan en la UI). 201 si es nuevo, 200 si ya estaba |
+| GET | `/ui/crew` | Ids que conoce el backend (registrados o con datos), si cada uno tiene perfil y baseline, y cuántas sesiones (`ui-crew`, `ui-openapi.yaml`) |
 | GET | `/ui/crew/{astronaut_id}/devices` | Último estado de cada dispositivo |
+| POST/GET | `/ui/crew/{astronaut_id}/contacts` | Llamadas al oficial médico de a bordo (`domain/medical-contact`: quién, cuándo, nota opcional). Cada una vuelve a encolar el resumen de tierra de su día, que lleva el código y el instante, nunca la nota |
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Perfil del astronauta |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Contexto diario |
-| POST | `/ui/crew/{astronaut_id}/self-reports` | Diario, ODI semanal o bandera roja; devuelve el informe y la nueva evaluación (o por qué se omitió). Repetir el mismo `report_id` es idempotente |
+| POST | `/ui/crew/{astronaut_id}/self-reports` | Diario, ODI semanal o bandera roja (con `other_symptoms`: `very_severe_pain`, `other`, aparte de las banderas rojas hasta que Aguado decida cómo se trian); devuelve el informe y la nueva evaluación (o por qué se omitió). Repetir el mismo `report_id` es idempotente |
 | GET | `/ui/crew/{astronaut_id}/self-reports/due` | Si toca el autoinforme diario y el ODI semanal; las banderas rojas siempre están disponibles |
 | POST | `/ui/crew/{astronaut_id}/sessions` | Plan de la sesión (dispositivo, tipo, protocolo, streams, carga...) -> `start_session`. `mission_context` toma por defecto el contexto diario de hoy |
 | GET | `/ui/sessions/{session_id}` | Sesión, estado (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) y feature set |
 | POST | `/ui/sessions/{session_id}/reprocess` | Solo para `processing_failed` (409 en otro caso, 404 si no existe): reinicia los intentos, la pasa a `ended` y la procesa en segundo plano. 202 `{"session": id, "state": "ended"}`. Es la única forma de relanzar una sesión que falló de forma definitiva o antes de que se contaran los intentos |
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
-| POST | `/ui/sessions/{session_id}/stop` | `stop_session` con un motivo |
+| POST | `/ui/sessions/{session_id}/stop` | `stop_session` con un motivo. `aborted_pain` admite `rep_index` opcional (422 con otro motivo): la sesión recibe un evento `pain_reported` con la repetición y el instante, el resumen de tierra del día lo muestra (`pain_stop`) y se pide un /assess |
 | GET | `/ui/sessions/{session_id}/reps` | Server-sent events con el contador de repeticiones en vivo (`ui-openapi.yaml`): `state` en cada cambio, `end` al terminar la sesión |
 | GET | `/ui/commands/{command_id}` | Estado del comando y sus acks (la UI lo consulta para pasar al siguiente paso) |
 | GET | `/health` | Vida, conexión MQTT y contadores de mensajes |
@@ -80,13 +93,29 @@ de compose), así el servidor MCP nunca llega a los endpoints de escritura `/ui`
 
 Arrancarla sola: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
 
+## Base de datos: migraciones, copias, retención y exportación
+
+- El esquema está versionado (`PRAGMA user_version`, `STORE_SCHEMA_VERSION` en `db.py`). Un fichero más antiguo se copia
+  primero con la API de backup de sqlite3 a `backups/<nombre>.v<N>.<instante>.db` y luego se migra paso a paso
+  (`MIGRATIONS[n]`: n -> n+1) en una transacción junto con el cambio de versión: una migración que falla lo deja como estaba.
+  Un fichero más nuevo, o ajeno, se rechaza.
+- WAL. La API de solo lectura (conexión query-only) nunca escribe ni migra: rechaza un fichero que el backend aún no ha
+  migrado y lee lo que el backend escribe mientras ambos están abiertos.
+- Cada `SPINE_APP_BACKUP_INTERVAL_S` (por defecto un día) va una copia a `SPINE_APP_BACKUP_DIR` (por defecto `backups/` junto a
+  la base de datos, o sea en el volumen `backend_data`), y se guardan las `SPINE_APP_BACKUP_KEEP` (7) más recientes. Tras esa
+  copia se borran los chunks crudos de las sesiones `processed` que empezaron hace más de `SPINE_APP_CHUNK_RETENTION_DAYS` (30;
+  con `=null` se guardan siempre) y la sesión queda marcada (`chunks_purged_at`). Feature sets, baselines, evaluaciones y
+  autoinformes no se borran nunca.
+- `GET /ui/crew/{astronaut_id}/export`: todo lo guardado del astronauta (perfil, contextos diarios, sesiones con su estado,
+  feature sets, baselines, evaluaciones, autoinformes, contactos médicos, estados de dispositivos) salvo los chunks crudos.
+
 ## Arrancarla
 ```
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
-`WEEKLY_ODI_INTERVAL_DAYS`. En Docker Compose la base de datos vive en el volumen `backend_data`
+`WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. En Docker Compose la base de datos vive en el volumen `backend_data`
 (`/data/spine_monitor.db`).
 
 Reintentos del análisis, también `SPINE_APP_*`:

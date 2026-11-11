@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "crew": [
+    { "astronaut_id": "AST-01", "registered": true, "has_profile": true, "has_baseline": true, "sessions": 4 },
+    { "astronaut_id": "AST-02", "registered": true, "has_profile": false, "has_baseline": false, "sessions": 0 }
+  ]
+}

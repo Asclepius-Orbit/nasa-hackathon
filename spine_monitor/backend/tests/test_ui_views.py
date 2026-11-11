@@ -103,7 +103,9 @@ async def test_view_routes_cover_exactly_the_paths_and_methods_of_ui_openapi(har
     served = (await harness.http.get("/openapi.json")).json()["paths"]
 
     def views(paths: dict[str, Any]) -> set[tuple[str, str]]:
-        return {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith(("/view", "/reps", "/houston", "/outbox")) for m in item}
+        read = {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith(("/view", "/reps", "/houston", "/outbox", "/contacts")) for m in item}
+        # The contacts are written on the same path (POST), outside this read-only contract; the crew list is GET /ui/crew.
+        return {(p, m) for p, m in read if m == "get" or not p.endswith("/contacts")} | {(p, m) for p, item in paths.items() if p == "/ui/crew" for m in item}
 
     assert views(served) == {(p, m) for p, item in contract["paths"].items() for m in item}
 

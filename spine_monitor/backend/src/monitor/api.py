@@ -470,7 +470,9 @@ def build_router(
         return list(tasks_for(daily_due, odi_due, baseline_pending, session_today))
 
     @router.get("/crew/{astronaut_id}/views/strip")
-    async def strip_view(astronaut_id: str) -> dict[str, Any]:
+    async def strip_view(
+        astronaut_id: str, device_id: Annotated[str | None, Query(pattern=f"^{topics.DEVICE_ID.pattern}$")] = None
+    ) -> dict[str, Any]:
         _astronaut(astronaut_id)
         view = build_strip(
             astronaut_id,
@@ -483,6 +485,7 @@ def build_router(
             views.stale_device_hours,
             link_state(views.ground_windows, clock()),
             minutes_since(store.last_ground_contact(astronaut_id), clock()),
+            device_id,
         )
         return _conforming("app/ui-strip", view)
 

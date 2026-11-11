@@ -13,9 +13,12 @@ from monitor.views.mission import mission_for
 WEAK_STATES = ("stalled", "disabled")
 
 
-def _latest_device(astronaut_id: str, statuses: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
-    """Status of the astronaut's most recently reported device (ties: the greater device_id); None without any."""
-    own = [s for s in statuses if s["astronaut_id"] == astronaut_id]
+def _latest_device(astronaut_id: str, statuses: Sequence[Mapping[str, Any]], device_id: str | None = None) -> Mapping[str, Any] | None:
+    """Status of the astronaut's most recently reported device (ties: the greater device_id); None without any.
+
+    With `device_id`, only that device is considered: its last status, or None when it never reported.
+    """
+    own = [s for s in statuses if s["astronaut_id"] == astronaut_id and (device_id is None or s["device_id"] == device_id)]
     return max(own, key=lambda s: (datetime.fromisoformat(s["timestamp"]), s["device_id"]), default=None)
 
 
@@ -51,6 +54,7 @@ def build_strip(
     stale_device_hours: float,
     ground_link: Mapping[str, Any] | None,
     last_contact_min_ago: int | None,
+    device_id: str | None = None,
 ) -> dict[str, Any]:
     """The strip of `astronaut_id` at `now`.
 
@@ -59,13 +63,16 @@ def build_strip(
     last status is older than `stale_device_hours` is still listed, with `stale` true and `last_seen_at` the
     timestamp of that status. The ground link (null when not configured) and the minutes since the last contact (null
     when there was none yet) come already computed, as they depend on the settings and on the outbox.
+
+    With `device_id` (the harness paired in the app) the harness describes that device instead of the latest one: its last
+    status, with the same stale and offline rules, or null when it has never reported for the astronaut.
     """
     daily_due, odi_due = reports_due(last_daily, last_odi, now, odi_interval_days)
     return {
         "schema_version": SCHEMA_VERSION,
         "astronaut_id": astronaut_id,
         "mission": mission_for(profile, now.date()),
-        "harness": _harness(_latest_device(astronaut_id, device_statuses), now, stale_device_hours),
+        "harness": _harness(_latest_device(astronaut_id, device_statuses, device_id), now, stale_device_hours),
         "ground_link": ground_link,
         "last_contact_min_ago": last_contact_min_ago,
         "reports_due": {"daily": daily_due, "weekly_odi": odi_due},

@@ -37,7 +37,18 @@ export function createViewsService({ auth, crew, client }: ViewsServiceOptions):
   }
 
   return {
-    strip: async () => client.strip(await astronaut()),
+    /**
+     * The strip shows the harness paired on this device, not whichever one reported last. The pairing lives only in the
+     * crew store, so it travels as `device_id`; the backend keeps the stale/offline rules. The contract has no way to ask
+     * for "no device", so for a member without pairing (or one that cannot be found) the view is asked for plainly and
+     * its harness is dropped here: unpaired is never shown as a device.
+     */
+    async strip() {
+      const id = await astronaut();
+      const harnessId = (await crew.list())?.find((candidate) => candidate.id === id)?.harnessId ?? null;
+      if (harnessId !== null) return client.strip(id, harnessId);
+      return { ...(await client.strip(id)), harness: null };
+    },
     today: async () => client.today(await astronaut()),
     history: async (range) => client.history(await astronaut(), range),
     baseline: async () => client.baseline(await astronaut()),

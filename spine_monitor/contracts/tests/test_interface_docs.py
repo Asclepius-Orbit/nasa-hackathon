@@ -292,3 +292,14 @@ def test_ui_reps_stream_is_sse_of_rep_state_views():
 def test_ui_rep_state_examples_validate():
     for example in sorted((EXAMPLES_DIR / "app").glob("ui-rep-state*.json")):
         assert validation.errors("app/ui-rep-state", json.loads(example.read_text(encoding="utf-8"))) == [], example.name
+
+
+def test_ui_strip_can_be_asked_for_one_device():
+    """`device_id` is an optional query: the strip then describes that device, not the latest to report."""
+    document = load("ui-openapi.yaml")
+    item = document["paths"]["/ui/crew/{astronaut_id}/views/strip"]["get"]
+    params = {p["name"]: p for p in (document["components"]["parameters"][r["$ref"].rsplit("/", 1)[1]] for r in item["parameters"])}
+    assert params["device_id"]["in"] == "query"
+    assert params["device_id"]["required"] is False
+    assert params["device_id"]["schema"] == {"$ref": "schemas/v1/common.schema.json#/$defs/device_id"}
+    assert "latest" in item["description"] and "device_id" in item["description"]

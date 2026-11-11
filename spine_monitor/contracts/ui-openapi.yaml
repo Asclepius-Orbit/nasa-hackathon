@@ -202,9 +202,10 @@ paths:
     get:
       operationId: getStripView
       summary: Always-visible strip
-      description: Mission day and phase, paired harness, ground link and reports still due today.
+      description: Mission day and phase, paired harness, ground link and reports still due today. Without `device_id` the harness is the astronaut's device with the latest status (null when none, or when it is offline). With `device_id` the harness describes that device, whatever the others report, from its last status (`stale` and offline computed as without it), or null when that device has never reported for the astronaut. A `device_id` that is not a device id is a 422.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
           description: The strip view.
@@ -404,6 +405,13 @@ components:
       schema:
         type: string
         const: '*'
+    DeviceId:
+      name: device_id
+      in: query
+      required: false
+      description: Device to describe (the one paired in the app). Omitted, the device that reported last.
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/device_id'
     FromDate:
       name: from
       in: query

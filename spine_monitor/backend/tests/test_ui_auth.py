@@ -1,6 +1,8 @@
 """The /ui API needs the shared token and only writes or reads for the unlocked astronaut; /health needs nothing (#67).
 The astronaut export (#66) goes through the same rules."""
 
+import sys
+
 import pytest
 from monitor.settings import AppSettings
 from monitor.ui_auth import ui_token_of
@@ -79,7 +81,28 @@ def test_without_a_configured_token_one_is_generated_once_in_the_token_file(tmp_
     assert ui_token_of(settings) == token
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes do not apply on Windows")
+def test_an_empty_token_file_left_world_readable_is_regenerated_owner_only(tmp_path):
+    path = tmp_path / "ui-token"
+    path.write_text("", encoding="utf-8")
+    path.chmod(0o644)
+
+    token = ui_token_of(AppSettings(_env_file=None, db_path=tmp_path / "app.db"))
+
+    assert len(token) >= 32
+    assert path.read_text(encoding="utf-8") == token
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_an_empty_token_file_is_regenerated(tmp_path):
+    (tmp_path / "ui-token").write_text("\n", encoding="utf-8")
+
+    token = ui_token_of(AppSettings(_env_file=None, db_path=tmp_path / "app.db"))
+
+    assert len(token) >= 32
+    assert (tmp_path / "ui-token").read_text(encoding="utf-8") == token
+
+
 def test_the_configured_token_wins(tmp_path):
     assert ui_token_of(AppSettings(_env_file=None, db_path=tmp_path / "app.db", ui_token="configured")) == "configured"
     assert not (tmp_path / "ui-token").exists()
-

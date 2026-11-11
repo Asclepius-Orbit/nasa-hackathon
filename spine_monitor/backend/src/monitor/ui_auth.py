@@ -48,6 +48,8 @@ def ui_token_of(settings: AppSettings) -> str:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as file:
         file.write(token)
+    # The mode of os.open applies only on creation: tighten a file that already existed (e.g. an empty one made with touch).
+    os.chmod(path, 0o600)
     _log.info("generated the /ui token in %s", path)
     return token
 

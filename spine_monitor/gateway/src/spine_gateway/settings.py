@@ -63,6 +63,8 @@ class GatewaySettings(BaseSettings):
     imu_dlpf_hz: int = Field(default=44, gt=0)
     emg_gain: float = Field(default=1.0, gt=0)
     stretch_rest_length_mm: float = Field(default=100.0, gt=0)
+    # Ventana (ms) del RMS deslizante de la calibración emg_mvc; 250 ms como el ejemplo del contrato.
+    emg_mvc_window_ms: int = Field(default=250, gt=0)
 
     @field_validator("astronaut_id")
     @classmethod

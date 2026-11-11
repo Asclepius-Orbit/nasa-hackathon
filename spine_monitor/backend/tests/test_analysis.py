@@ -1,7 +1,12 @@
-"""Analysis with a scripted engine: what is sent, what is stored, and every way it can refuse."""
+"""Analysis with a scripted engine: what is sent, what is stored, and every way it can refuse.
 
+The debounced reassessment waits in an injected sleep the test releases: no wall clock.
+"""
+
+import asyncio
 import copy
 import json
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -37,6 +42,7 @@ class ScriptedEngine:
 
     async def _answer(self, name: str, request: dict, default: dict) -> dict:
         self.calls.append((name, request))
+        await asyncio.sleep(0)  # a real call suspends: a cancellation lands here, as it would on the HTTP request
         if name in self.fail:
             raise self.fail[name]
         return self.override.get(name, default)
@@ -362,3 +368,186 @@ async def test_recovery_reprocesses_interrupted_and_pending_sessions(store, engi
 
     assert sorted(recovered) == sorted([interrupted, pending])
     assert [store.session(s).state for s in (interrupted, pending, failed)] == ["processed", "processed", "processing_failed"]
+
+
+# --- debounced reassessment ----------------------------------------------------------------------
+
+
+class Sleeps:
+    """Injected sleep of the debounce: records each wait as it starts and parks it until the test releases them all."""
+
+    def __init__(self) -> None:
+        self.started: asyncio.Queue[float] = asyncio.Queue()
+        self._go = asyncio.Event()
+
+    async def __call__(self, seconds: float) -> None:
+        self.started.put_nowait(seconds)
+        await self._go.wait()
+
+    async def next_start(self) -> float:
+        return await asyncio.wait_for(self.started.get(), 5)
+
+    def release(self) -> None:
+        self._go.set()
+
+
+class RecordingAnalysis(Analysis):
+    """The real Analysis; it only notes who asked for a debounced reassessment."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.requested: list[str] = []
+
+    def request_assess(self, astronaut_id: str) -> None:
+        self.requested.append(astronaut_id)
+        super().request_assess(astronaut_id)
+
+
+@pytest.fixture
+def sleeps() -> Sleeps:
+    return Sleeps()
+
+
+@pytest.fixture
+def heard() -> list[dict]:
+    return []
+
+
+@pytest.fixture
+async def debounced(store, engine, sleeps, heard):
+    analysis = RecordingAnalysis(store, engine, window_days=14, clock=lambda: NOW, on_assessment=heard.append, debounce_s=5.0, sleep=sleeps)
+    yield analysis
+    await analysis.close()
+
+
+def assess_calls(engine: ScriptedEngine) -> list[dict]:
+    return [request for name, request in engine.calls if name == "assess"]
+
+
+async def test_a_burst_of_requests_makes_one_assessment(store, engine, sleeps, debounced):
+    ready_for_assessment(store)
+    for _ in range(3):
+        debounced.request_assess("AST-01")
+
+    assert await sleeps.next_start() == 5.0
+    sleeps.release()
+    await debounced.idle()
+
+    assert len(assess_calls(engine)) == 1
+    assert sleeps.started.empty()
+
+
+async def test_each_new_request_restarts_the_window(store, engine, sleeps, debounced):
+    ready_for_assessment(store)
+    for _ in range(3):
+        debounced.request_assess("AST-01")
+        await sleeps.next_start()
+    assert engine.calls == []
+
+    sleeps.release()
+    await debounced.idle()
+
+    assert len(assess_calls(engine)) == 1
+
+
+async def test_astronauts_are_debounced_independently(store, engine, sleeps, debounced, caplog):
+    caplog.set_level(logging.INFO, logger="monitor.analysis")
+    ready_for_assessment(store)
+    debounced.request_assess("AST-01")
+    debounced.request_assess("AST-02")
+
+    sleeps.release()
+    await debounced.idle()
+
+    assert [request["astronaut_id"] for request in assess_calls(engine)] == ["AST-01"]
+    assert "AST-02: debounced assessment skipped: no_profile" in caplog.text
+
+
+async def test_a_failing_debounced_assessment_is_logged_and_not_raised(store, engine, sleeps, debounced, caplog):
+    ready_for_assessment(store)
+    engine.fail["assess"] = RuntimeError("text that may quote health data")
+    debounced.request_assess("AST-01")
+    sleeps.release()
+
+    await debounced.idle()
+
+    assert "AST-01: debounced assessment failed: RuntimeError" in caplog.text
+    assert "health data" not in caplog.text
+    del engine.fail["assess"]
+    debounced.request_assess("AST-01")
+    await debounced.idle()
+    assert store.latest_assessment("AST-01") is not None
+
+
+async def test_idle_waits_until_nothing_is_pending(store, engine, sleeps, debounced, heard):
+    ready_for_assessment(store)
+    debounced.request_assess("AST-01")
+    await sleeps.next_start()
+    waiting = asyncio.create_task(debounced.idle())
+    await asyncio.sleep(0)
+    debounced.request_assess("AST-01")  # the task idle was waiting for is gone, a new one is pending
+    await sleeps.next_start()
+    assert not waiting.done()
+
+    sleeps.release()
+    await waiting
+
+    assert len(heard) == 1
+
+
+async def test_close_cancels_what_is_pending(store, engine, sleeps, debounced):
+    ready_for_assessment(store)
+    debounced.request_assess("AST-01")
+    await sleeps.next_start()
+
+    await debounced.close()
+    sleeps.release()
+    await debounced.idle()
+
+    assert engine.calls == []
+
+
+async def test_an_immediate_assessment_cancels_the_pending_one(store, engine, sleeps, debounced):
+    ready_for_assessment(store)
+    debounced.request_assess("AST-01")
+    await sleeps.next_start()
+
+    await debounced.assess("AST-01")
+    sleeps.release()
+    await debounced.idle()
+
+    assert len(assess_calls(engine)) == 1
+
+
+async def test_the_debounced_assessment_does_not_cancel_itself(store, sleeps, debounced, heard):
+    ready_for_assessment(store)
+    debounced.request_assess("AST-01")
+    sleeps.release()
+
+    await debounced.idle()
+
+    assert heard == [store.latest_assessment("AST-01")]
+
+
+async def test_a_new_baseline_requests_a_reassessment(store, debounced):
+    await debounced.process_session(ended_session(store))
+
+    assert debounced.requested == ["AST-01"]
+
+
+async def test_a_baseline_that_is_not_stored_requests_nothing(store, engine, debounced):
+    engine.fail["baseline"] = EngineError("insufficient")
+
+    await debounced.process_session(ended_session(store))
+
+    assert debounced.requested == []
+
+
+async def test_a_preflight_session_is_assessed_once(store, engine, sleeps, debounced):
+    ready_for_assessment(store)
+
+    await debounced.process_session(ended_session(store))
+    sleeps.release()
+    await debounced.idle()
+
+    assert len(assess_calls(engine)) == 1

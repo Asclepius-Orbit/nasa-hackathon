@@ -93,3 +93,17 @@ def test_processing_retry_defaults() -> None:
 def test_processing_retry_max_below_min_is_refused() -> None:
     with pytest.raises(ValidationError, match="processing_retry_max_s"):
         settings(processing_retry_min_s=60, processing_retry_max_s=30)
+
+
+def test_reassess_debounce_defaults_to_five_seconds() -> None:
+    assert settings().reassess_debounce_s == 5.0
+
+
+def test_reassess_debounce_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_REASSESS_DEBOUNCE_S", "0")
+    assert settings().reassess_debounce_s == 0  # zero is allowed: the harness turns the delay off
+
+
+def test_negative_reassess_debounce_is_refused() -> None:
+    with pytest.raises(ValidationError, match="reassess_debounce_s"):
+        settings(reassess_debounce_s=-0.1)

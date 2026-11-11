@@ -100,6 +100,7 @@ def create_app(
         on_assessment=queue_for_ground,
         retry_min_s=settings.processing_retry_min_s,
         retry_max_s=settings.processing_retry_max_s,
+        debounce_s=settings.reassess_debounce_s,
     )
     retrier = ProcessingRetrier(store, analysis, clock=clock, max_attempts=settings.processing_max_attempts, tick_s=settings.processing_retry_tick_s)
     hub = RepHub(store, clock, no_signal_s=settings.live_no_signal_s)
@@ -138,6 +139,7 @@ def create_app(
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
             await control.idle()
+            await analysis.close()
             control.close()
             await http.aclose()
             store.close()

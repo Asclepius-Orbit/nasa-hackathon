@@ -31,6 +31,9 @@ class AppSettings(BaseSettings):
 
     # /assess: days of history (feature sets, self-reports, daily context) sent to the engine.
     assess_window_days: int = 14
+    # A debounced reassessment (e.g. after a new baseline) runs this many seconds after the last request for the astronaut;
+    # an immediate /assess in between replaces it. 0 still defers it to the loop, without waiting.
+    reassess_debounce_s: float = Field(default=5.0, ge=0)
 
     # Chunks whose session_id is not an app session (e.g. the gateway's background monitoring).
     store_unknown_session_chunks: bool = True

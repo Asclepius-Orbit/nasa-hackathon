@@ -12,6 +12,10 @@ reason is returned and nothing is stored, so absence never looks like a green.
 
 Every assessment is stored at one place, whatever triggered it; `on_assessment` hears of each one there.
 
+`request_assess` asks for a debounced reassessment: it runs `debounce_s` after the last request for that astronaut (a burst
+makes one), through `assess`, and what it skips or what fails is only logged. A new baseline requests one. An immediate
+assessment cancels the one still waiting, since it already reads the current data; `close` cancels them all at shutdown.
+
 A /features failure is final (state `processing_failed`, no retry) unless it is transient: the engine unreachable or
 answering 5xx. Then it is also recorded in `processing_attempts` with its next retry time (`backoff_s`), which
 `ProcessingRetrier` picks up; a success clears it. On startup `reset_interrupted` puts back the sessions a dead
@@ -21,7 +25,7 @@ process left `processing` (before the bus runs) and `process_pending` processes 
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -63,6 +67,8 @@ class Analysis:
         on_assessment: Callable[[dict[str, Any]], None] | None = None,
         retry_min_s: float = 30.0,
         retry_max_s: float = 900.0,
+        debounce_s: float = 5.0,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._store = store
         self._engine = engine
@@ -72,6 +78,11 @@ class Analysis:
         self._retry_min_s = retry_min_s
         self._retry_max_s = retry_max_s
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._debounce_s = debounce_s
+        self._sleep = sleep
+        # Debounced reassessments: the one still waiting out its window per astronaut, and every one alive (waiting or assessing).
+        self._pending: dict[str, asyncio.Task[None]] = {}
+        self._tasks: set[asyncio.Task[None]] = set()
 
     def reset_interrupted(self) -> list[str]:
         """Startup only, sync and before the bus starts: `processing` sessions were cut by a dead process, so back to
@@ -169,6 +180,7 @@ class Analysis:
             _log.warning("%s: engine returned baseline version %s, not newer than %s", astronaut_id, baseline["version"], previous["version"])
             return None
         self._store.put_baseline(baseline)
+        self.request_assess(astronaut_id)
         return baseline
 
     # --- assessment ------------------------------------------------------------------------------
@@ -178,6 +190,8 @@ class Analysis:
             return await self._assess_locked(astronaut_id, as_of)
 
     async def _assess_locked(self, astronaut_id: str, as_of: datetime | None = None) -> AssessOutcome:
+        # It reads the data as it is now, so a debounced reassessment still waiting would only repeat it.
+        self._cancel_pending(astronaut_id)
         as_of = as_of or self._clock()
         profile = self._store.profile(astronaut_id)
         if profile is None:
@@ -213,6 +227,53 @@ class Analysis:
         self._store.put_assessment(assessment)
         self._announce(assessment)
         return AssessOutcome(assessment=assessment)
+
+    # --- debounced reassessment -----------------------------------------------------------------
+
+    def request_assess(self, astronaut_id: str) -> None:
+        """Assesses the astronaut `debounce_s` after the last request (from within the running loop): a burst makes one
+        assessment. What it skips or what fails is logged, never raised."""
+        self._cancel_pending(astronaut_id)
+        task = asyncio.get_running_loop().create_task(self._reassess_later(astronaut_id), name=f"reassess-{astronaut_id}")
+        self._pending[astronaut_id] = task
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def idle(self) -> None:
+        """Returns once no debounced reassessment is waiting or running, including those requested meanwhile."""
+        while live := [task for task in self._tasks if not task.done()]:
+            await asyncio.wait(live)
+
+    async def close(self) -> None:
+        """Shutdown: cancels every debounced reassessment, waiting or running, and waits for them to end."""
+        self._pending.clear()
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _cancel_pending(self, astronaut_id: str) -> None:
+        if (pending := self._pending.pop(astronaut_id, None)) is not None:
+            pending.cancel()
+
+    async def _reassess_later(self, astronaut_id: str) -> None:
+        try:
+            await self._debounce(astronaut_id)
+            outcome = await self.assess(astronaut_id)
+        except Exception as exc:
+            _log.error("%s: debounced assessment failed: %s", astronaut_id, type(exc).__name__)  # type only: text may quote health data
+            return
+        if outcome.skipped:
+            _log.info("%s: debounced assessment skipped: %s", astronaut_id, outcome.skipped)
+
+    async def _debounce(self, astronaut_id: str) -> None:
+        """Waits out the window, then leaves the pending map. A cancelled one was already taken out by whoever cancelled
+        it, and its place may hold the newer request."""
+        try:
+            await self._sleep(self._debounce_s)
+        finally:
+            if self._pending.get(astronaut_id) is asyncio.current_task():
+                del self._pending[astronaut_id]
 
     def _announce(self, assessment: dict[str, Any]) -> None:
         """The assessment is already stored: what a listener does wrong must not cost it. Only the type is logged, its text may quote clinical data."""

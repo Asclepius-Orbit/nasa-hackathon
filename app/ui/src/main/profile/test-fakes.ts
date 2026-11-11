@@ -1,26 +1,54 @@
-/** Hand-written fakes of the backend clients for the profile and daily context services. Test-only. */
-import type { AstronautProfile, DailyContext, DeviceStatus, WriteResult } from '../../shared/api';
-import type { RecordsClient } from '../views/records-client';
+/** Hand-written fakes of the backend clients for the profile, daily context, session and report services. Test-only. */
+import type {
+  AstronautProfile,
+  DailyContext,
+  DeviceStatus,
+  MedicalContactEntry,
+  ReportsDue,
+  WriteResult,
+} from '../../shared/api';
+import type { RecordsClient, SessionStream } from '../views/records-client';
 import type { ViewsError } from '../views/views-error';
-import type { WriteClient } from '../views/write-client';
+import type { WriteClient, WriteRequest } from '../views/write-client';
 
-/** In-memory backend: stored records by key, an optional failure for reads, and every PUT body it got. */
+/**
+ * In-memory backend: stored records by key, an optional failure for reads, every PUT body it got, and every `send`
+ * request with the body it answers (run through the request's own schema, as the real client does).
+ */
 export class FakeBackend {
   profiles = new Map<string, AstronautProfile>();
   contexts = new Map<string, DailyContext>();
   devices: DeviceStatus[] = [];
+  sessionStreams = new Map<string, SessionStream[]>();
+  due: ReportsDue = { dailyDue: true, weeklyOdiDue: false, lastDailyAt: null, lastWeeklyOdiAt: null };
+  contacts: MedicalContactEntry[] = [];
   readFailure: ViewsError | null = null;
   /** Answer to the next writes instead of storing them. */
   writeAnswer: WriteResult<never> | null = null;
   readonly puts: { path: string; body: Record<string, unknown> }[] = [];
+  readonly sent: Omit<WriteRequest<unknown>, 'schema'>[] = [];
+  /** Body of the 2xx answer to the next `send`s. */
+  sendAnswer: unknown = {};
 
   readonly records: RecordsClient = {
     profile: (id) => this.read(() => this.profiles.get(id) ?? null),
     dailyContext: (id, day) => this.read(() => this.contexts.get(`${id}/${day}`) ?? null),
     devices: () => this.read(() => this.devices),
+    sessionStreams: (_id, sessionId) => this.read(() => this.sessionStreams.get(sessionId) ?? null),
+    reportsDue: () => this.read(() => this.due),
+    contacts: () => this.read(() => this.contacts),
   };
 
-  readonly writer: Pick<WriteClient, 'putProfile' | 'putDailyContext'> = {
+  readonly writer: Pick<WriteClient, 'putProfile' | 'putDailyContext' | 'send'> = {
+    send: <T>({ schema, ...request }: WriteRequest<T>): Promise<WriteResult<T>> => {
+      this.sent.push(request);
+      if (this.writeAnswer !== null) return Promise.resolve(this.writeAnswer);
+      const parsed = schema.safeParse(this.sendAnswer);
+      if (!parsed.success) {
+        return Promise.reject(new Error(`fake answer outside the schema of ${request.path}`, { cause: parsed.error }));
+      }
+      return Promise.resolve({ ok: true, value: parsed.data });
+    },
     putProfile: (id, body) => {
       this.puts.push({ path: `${id}/profile`, body });
       if (this.writeAnswer !== null) return Promise.resolve(this.writeAnswer);

@@ -53,7 +53,7 @@ test('renderer has no Node: no require, no process', async () => {
   expect(await page.evaluate(() => typeof process)).toBe('undefined');
 });
 
-test('bridge exposes exactly the crew, auth, settings, views, profile, daily context, devices and reps functions', async () => {
+test('bridge exposes exactly the crew, auth, settings, views, profile, daily context, devices, sessions, reports, urgent, contacts and reps functions', async () => {
   const shape = await page.evaluate(() => {
     const api = (globalThis as unknown as RendererGlobals).asclepius as unknown as Record<string, Record<string, unknown>>;
     return Object.fromEntries(
@@ -82,6 +82,10 @@ test('bridge exposes exactly the crew, auth, settings, views, profile, daily con
     profile: ['get:function', 'update:function'],
     dailyContext: ['today:function', 'updateToday:function'],
     devices: ['list:function'],
+    sessions: ['calibrateMvc:function', 'markArtifact:function', 'reprocess:function', 'start:function', 'stop:function'],
+    reports: ['due:function', 'saveDaily:function', 'saveOswestry:function'],
+    urgent: ['send:function'],
+    contacts: ['list:function', 'logOfficerCall:function'],
     reps: ['subscribe:function'],
   });
 });

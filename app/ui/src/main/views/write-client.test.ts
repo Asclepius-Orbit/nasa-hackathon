@@ -87,6 +87,13 @@ describe('createWriteClient requests', () => {
     expect(calls[0]?.init.headers).not.toHaveProperty('authorization');
   });
 
+  it('POSTs without a body when the request has none', async () => {
+    const { client, calls } = build(() => json({}, 202));
+    await client.send({ method: 'POST', path: '/ui/x', astronautId: ASTRONAUT, body: undefined, schema: z.looseObject({}) });
+    expect(calls[0]?.init).not.toHaveProperty('body');
+    expect(calls[0]?.init.headers).not.toHaveProperty('content-type');
+  });
+
   it('refuses a non-loopback backend', () => {
     expect(() => createWriteClient({ baseUrl: 'http://example.com' })).toThrow(/loopback/);
   });
@@ -98,6 +105,7 @@ describe('createWriteClient status mapping', () => {
     [403, 'locked'],
     [409, 'conflict'],
     [500, 'unavailable'],
+    [503, 'unavailable'],
     [404, 'unavailable'],
     [302, 'unavailable'],
   ])('%i is %s', async (status, reason) => {

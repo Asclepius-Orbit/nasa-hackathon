@@ -22,8 +22,9 @@ export type WriteFetch = (
   url: string,
   init: {
     method: WriteMethod;
-    headers: { accept: string; 'content-type': string } & AuthHeaders;
-    body: string;
+    /** `content-type` and `body` only when the request has a body. */
+    headers: { accept: string; 'content-type'?: string } & AuthHeaders;
+    body?: string;
     redirect: 'error';
     signal: AbortSignal;
   },
@@ -35,6 +36,7 @@ export interface WriteRequest<T> {
   path: string;
   /** The unlocked astronaut the request is made for. */
   astronautId: string;
+  /** `undefined` sends no body (e.g. `POST reprocess`). */
   body: unknown;
   /** Minimum shape of a 2xx answer; the backend validates the full schema. */
   schema: z.ZodType<T>;
@@ -95,10 +97,15 @@ export function createWriteClient({
 
   async function send<T>({ method, path, astronautId, body, schema }: WriteRequest<T>): Promise<WriteResult<T>> {
     try {
+      const content = body === undefined ? {} : { body: JSON.stringify(body) };
       const response = await doFetch(`${base}${path}`, {
         method,
-        headers: { accept: 'application/json', 'content-type': 'application/json', ...authHeaders(token, astronautId) },
-        body: JSON.stringify(body),
+        headers: {
+          accept: 'application/json',
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...authHeaders(token, astronautId),
+        },
+        ...content,
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });

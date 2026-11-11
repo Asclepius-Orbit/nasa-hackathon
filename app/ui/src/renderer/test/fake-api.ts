@@ -3,8 +3,17 @@ import type {
   AstronautProfile,
   AuthSession,
   BaselineView,
+  CommandSent,
   CreateCrewResult,
   CrewMember,
+  DailyReportFields,
+  MedicalContactEntry,
+  OdiAnswer,
+  ReportSaved,
+  ReportsDue,
+  StartSessionResult,
+  StopInput,
+  UrgentInput,
   DailyContext,
   DailyContextFields,
   DeviceStatus,
@@ -130,6 +139,66 @@ export class FakeAsclepiusApi implements AsclepiusApi {
       this.calls.push('devices.list');
       return this.read('devices', [...this.devicesValue]);
     },
+  };
+
+  /** Forced answers by method name, e.g. `sessions.start`; a method with none stores/answers `ok`. */
+  forced = new Map<string, unknown>();
+  /** Methods whose promise rejects (the bridge itself failing). */
+  rejecting = new Set<string>();
+  /** First argument of the last call of each method, e.g. `sessions.stop`. */
+  lastArg: Record<string, unknown> = {};
+  contactsValue: MedicalContactEntry[] = [];
+  dueValue: ReportsDue = { dailyDue: true, weeklyOdiDue: true, lastDailyAt: null, lastWeeklyOdiAt: null };
+
+  /** Records the call, then answers the forced result, rejects, or answers `ok` with `fallback`. */
+  private act<T>(name: string, arg: unknown, fallback: T): Promise<WriteResult<T>> {
+    this.calls.push(name);
+    this.lastArg[name] = arg;
+    if (this.rejecting.has(name)) return Promise.reject(new Error('bridge down'));
+    const forced = this.forced.get(name);
+    return Promise.resolve(forced === undefined ? { ok: true, value: fallback } : (forced as WriteResult<T>));
+  }
+
+  sessions = {
+    start: (input: { protocolId: string }): Promise<StartSessionResult> => {
+      this.calls.push('sessions.start');
+      this.lastArg['sessions.start'] = input;
+      if (this.rejecting.has('sessions.start')) return Promise.reject(new Error('bridge down'));
+      const forced = this.forced.get('sessions.start') as StartSessionResult | undefined;
+      return Promise.resolve(forced ?? { ok: true, value: { sessionId: 'started-session', state: 'starting' } });
+    },
+    stop: (input: StopInput): Promise<WriteResult<CommandSent>> => this.act('sessions.stop', input, { commandId: 'cmd-stop' }),
+    markArtifact: (input: { sessionId: string; repIndex: number | null }): Promise<WriteResult<CommandSent>> =>
+      this.act('sessions.markArtifact', input, { commandId: 'cmd-artifact' }),
+    calibrateMvc: (input: { sessionId: string }): Promise<WriteResult<CommandSent>> =>
+      this.act('sessions.calibrateMvc', input, { commandId: 'cmd-mvc' }),
+    reprocess: (input: { sessionId: string }): Promise<WriteResult<{ sessionId: string }>> =>
+      this.act('sessions.reprocess', input, { sessionId: input.sessionId }),
+  };
+
+  reports = {
+    saveDaily: (fields: DailyReportFields): Promise<WriteResult<ReportSaved>> =>
+      this.act('reports.saveDaily', fields, { reportId: 'report-1', assessmentLevel: 'green', assessmentSkipped: null }),
+    saveOswestry: (input: { items: OdiAnswer[] }): Promise<WriteResult<ReportSaved>> =>
+      this.act('reports.saveOswestry', input, { reportId: 'report-2', assessmentLevel: null, assessmentSkipped: 'no_baseline' }),
+    due: (): Promise<ReportsDue> => {
+      this.calls.push('reports.due');
+      return Promise.resolve(this.dueValue);
+    },
+  };
+
+  urgent = {
+    send: (input: UrgentInput): Promise<WriteResult<ReportSaved>> =>
+      this.act('urgent.send', input, { reportId: 'urgent-1', assessmentLevel: 'red', assessmentSkipped: null }),
+  };
+
+  contacts = {
+    list: (): Promise<MedicalContactEntry[]> => {
+      this.calls.push('contacts.list');
+      return Promise.resolve([...this.contactsValue]);
+    },
+    logOfficerCall: (input: { sessionId: string | null }): Promise<WriteResult<MedicalContactEntry>> =>
+      this.act('contacts.logOfficerCall', input, { contactId: 'contact-1', at: '2026-11-05T13:52:00Z', sessionId: input.sessionId }),
   };
 
   private read<T>(name: keyof FakeAsclepiusApi['readErrors'], value: T): Promise<T> {

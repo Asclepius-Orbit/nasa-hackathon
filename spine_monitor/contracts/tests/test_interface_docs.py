@@ -6,7 +6,7 @@ import yaml
 from spine_contracts import openapi_drift, topics, validation
 
 CONTRACTS_DIR = Path(__file__).resolve().parents[1]
-DOCS = ["asyncapi.yaml", "openapi.yaml", "app-openapi.yaml", "ui-openapi.yaml"]
+DOCS = ["asyncapi.yaml", "openapi.yaml", "app-openapi.yaml", "ui-openapi.yaml", "agent-openapi.yaml"]
 EXAMPLES_DIR = CONTRACTS_DIR / "examples" / "valid"
 
 
@@ -332,3 +332,58 @@ def test_ui_reps_stream_is_sse_of_rep_state_views():
 def test_ui_rep_state_examples_validate():
     for example in sorted((EXAMPLES_DIR / "app").glob("ui-rep-state*.json")):
         assert validation.errors("app/ui-rep-state", json.loads(example.read_text(encoding="utf-8"))) == [], example.name
+
+
+# ---- LLM agent chat API (agent-openapi.yaml) ----------------------------------
+
+AGENT_OPERATIONS = {("/chat", "post"): "askAgent", ("/chat/{conversation_id}", "delete"): "forgetConversation", ("/health", "get"): "agentHealth"}
+CHAT_EVENTS = ("text", "tool_call", "fallback", "notice", "end", "error")
+
+
+def test_agent_openapi_is_openapi_3_1_with_the_chat_operations():
+    document = load("agent-openapi.yaml")
+    assert document["openapi"] == "3.1.0"
+    operations = {(path, method): op["operationId"] for path, item in document["paths"].items() for method, op in item.items()}
+    assert operations == AGENT_OPERATIONS
+
+
+def test_agent_operation_ids_are_not_shared_with_the_other_apis():
+    agent = {op["operationId"] for item in load("agent-openapi.yaml")["paths"].values() for op in item.values()}
+    others = {op["operationId"] for name in ("app-openapi.yaml", "ui-openapi.yaml") for item in load(name)["paths"].values() for op in item.values()}
+    assert not agent & others
+
+
+def test_agent_chat_takes_the_chat_request_and_streams_chat_events():
+    post = load("agent-openapi.yaml")["paths"]["/chat"]["post"]
+    assert post["requestBody"]["required"] is True
+    assert post["requestBody"]["content"]["application/json"]["schema"] == {"$ref": "schemas/v1/agent/chat-request.schema.json"}
+    ok = post["responses"]["200"]
+    assert list(ok["content"]) == ["text/event-stream"]
+    assert ok["content"]["text/event-stream"]["schema"] == {"type": "string"}
+    assert ok["content"]["text/event-stream"]["x-sse-data"] == {"$ref": "schemas/v1/agent/chat-event.schema.json"}
+    for word in ("data:", ": ping", *(f"event: {name}" for name in CHAT_EVENTS)):
+        assert word in ok["description"], word
+    assert {"401", "403", "409", "422", "503"} <= set(post["responses"])
+
+
+def test_agent_forget_is_idempotent_and_guarded():
+    document = load("agent-openapi.yaml")
+    delete = document["paths"]["/chat/{conversation_id}"]["delete"]
+    assert {"204", "401", "403", "422"} <= set(delete["responses"])
+    assert "404" not in delete["responses"]
+    params = [document["components"]["parameters"][p["$ref"].rsplit("/", 1)[1]] for p in delete["parameters"]]
+    assert {(p["in"], p["name"]) for p in params} == {("path", "conversation_id"), ("header", "X-Astronaut-Id")}
+
+
+def test_agent_errors_are_problem_details_with_the_app_error_schema():
+    document = load("agent-openapi.yaml")
+    for name, response in document["components"]["responses"].items():
+        assert response["content"] == {"application/problem+json": {"schema": {"$ref": "schemas/v1/app/error.schema.json"}}}, name
+
+
+def test_agent_chat_event_types_match_the_sse_event_names():
+    schema = json.loads((CONTRACTS_DIR / "schemas/v1/agent/chat-event.schema.json").read_text(encoding="utf-8"))
+    types = [schema["$defs"][ref["$ref"].rsplit("/", 1)[1]]["properties"]["type"]["const"] for ref in schema["oneOf"]]
+    assert tuple(types) == CHAT_EVENTS
+    for example in sorted((EXAMPLES_DIR / "agent").glob("chat-event.*.json")):
+        assert validation.errors("agent/chat-event", json.loads(example.read_text(encoding="utf-8"))) == [], example.name

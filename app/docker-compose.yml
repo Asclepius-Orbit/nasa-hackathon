@@ -92,6 +92,35 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  agent:
+    # Chat HTTP+SSE API of the LLM agent for the desktop app (contracts/agent-openapi.yaml), profile "llm".
+    # Its MCP server runs as a subprocess on the real app data (--dataset http): read API and engine.
+    build:
+      context: ..
+      dockerfile: spine_monitor/agent/Dockerfile
+    image: spine-agent:dev
+    environment:
+      SPINE_AGENT_OLLAMA_BASE_URL: http://ollama:11434/v1
+      SPINE_AGENT_MODEL: "${SPINE_AGENT_MODEL:-qwen3.5:4b}"
+      SPINE_AGENT_MCP_ARGS: '["-m", "spine_mcp_server", "--dataset", "http"]'
+      SPINE_APP_URL: http://read-api:8002
+      SPINE_ENGINE_URL: http://engine:8001
+      # Shared with the Electron main process (ASCLEPIUS_AGENT_TOKEN). Empty: generated in /data/agent-http-token.
+      SPINE_AGENT_HTTP_TOKEN: "${SPINE_AGENT_HTTP_TOKEN:-}"
+    volumes:
+      - agent_data:/data
+    ports:
+      - "127.0.0.1:8003:8003"
+    depends_on:
+      ollama:
+        condition: service_healthy
+      read-api:
+        condition: service_started
+      engine:
+        condition: service_started
+    profiles: ["llm"]
+    restart: unless-stopped
+
   simulator:
     build:
       context: ..
@@ -201,5 +230,6 @@ services:
 
 volumes:
   backend_data:
+  agent_data:
   ui_node_modules:
   ollama-models:

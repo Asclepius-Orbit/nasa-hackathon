@@ -31,7 +31,9 @@ spine-agent (CLI, xat en streaming)
 Necessita Docker. Ollama corre a Docker sota el perfil `llm` de compose i els models **es guarden en memòria cau al volum `ollama-models`**: es descarreguen una sola vegada i els arrencs següents no necessiten xarxa.
 
 ```bash
-# Des de l'arrel del repositori. La primera vegada descarrega qwen3.5:4b (3,3 GB) al volum.
+# Des de l'arrel del repositori. Un cop: les credencials del broker (compose les necessita).
+sh app/mosquitto/setup.sh
+# El perfil llm també arrenca l'API de xat (agent, 127.0.0.1:8003). La primera vegada descarrega qwen3.5:4b (3,3 GB) al volum.
 docker compose -f app/docker-compose.yml --profile llm up -d
 
 # Xat (streaming, multitorn). Sortir amb /exit, /quit, Ctrl-D o Ctrl-C.
@@ -55,6 +57,32 @@ uv run spine-agent --astronaut AST-01
 | `SPINE_AGENT_REQUEST_TIMEOUT_S` | `60` | Temps màxim de la petició al model, en segons |
 | `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | aquest Python / `["-m","spine_mcp_server"]` | Com es llança el servidor MCP (args en JSON); afegeix `"--dataset","examples"` per als exemples estàtics dels contractes |
 | `SPINE_AGENT_MCP_LOG_FILE` | cap | On va el log del servidor MCP; es descarta per defecte perquè no es barregi amb el xat |
+| `SPINE_AGENT_HTTP_HOST` / `SPINE_AGENT_HTTP_PORT` | `127.0.0.1` / `8003` | Adreça del servidor HTTP de xat |
+| `SPINE_AGENT_HTTP_TOKEN` | cap | Token Bearer del servidor HTTP de xat, compartit amb el procés principal d'Electron |
+| `SPINE_AGENT_HTTP_TOKEN_FILE` | `~/.spine-agent/http-token` | D'on es llegeix el token si `SPINE_AGENT_HTTP_TOKEN` no està definit; si no hi és, es crea amb un token aleatori (només llegible pel propietari) |
+| `SPINE_AGENT_HTTP_MAX_CONVERSATIONS` | `16` | Converses en memòria; si està ple, s'oblida la inactiva usada fa més temps |
+| `SPINE_AGENT_HTTP_IDLE_TTL_S` | `3600` | Una conversa inactiva s'oblida després d'aquests segons |
+| `SPINE_AGENT_HTTP_KEEPALIVE_S` | `15` | S'envia un comentari SSE `: ping` després d'aquests segons sense esdeveniments |
+
+## Servidor HTTP de xat (per a l'app d'escriptori)
+
+L'app d'escriptori parla amb l'agent per HTTP local amb esdeveniments SSE (server-sent events). El contracte és [`contracts/agent-openapi.yaml`](../contracts/agent-openapi.yaml) amb els schemas `contracts/schemas/v1/agent/chat-request.schema.json` i `chat-event.schema.json`.
+
+```bash
+cd spine_monitor
+SPINE_AGENT_HTTP_TOKEN=canvia-ho uv run spine-agent-http     # http://127.0.0.1:8003
+
+curl -N http://127.0.0.1:8003/chat \
+  -H "Authorization: Bearer canvia-ho" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
+  -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000001","question":"Per què estic en ambre?"}'
+```
+
+- `POST /chat` respon 200 amb un `text/event-stream`. Cada esdeveniment és `event: <tipus>` més una línia `data:` amb JSON: `text` (`delta`), `tool_call` (`tool_name`, `tool_args`), `fallback` (`text`), `notice` (`code` `mid_stream` o `correction`, `text`) i, al final, exactament un `end` o un `error` (`code` `busy`, `unavailable`, `invalid` o `internal`, `message`). Els comentaris `: ping` mantenen viva la connexió mentre el model pensa (en CPU el primer token triga uns 27 s, de vegades un minut).
+- El client genera `conversation_id`: un id nou comença una conversa i el mateix id la continua. L'historial només viu en memòria, acotat i amb TTL d'inactivitat; una conversa pertany a l'astronauta de la seva primera pregunta.
+- Una resposta alhora per conversa (una segona pregunta mentrestant és un 409). Per cancel·lar una resposta es tanca la connexió: l'execució del model s'atura i el torn no es desa. `DELETE /chat/{conversation_id}` oblida una conversa (204, també si no existeix).
+- Tota petició excepte `/health` necessita `Authorization: Bearer <token>` i `X-Astronaut-Id` (l'astronauta desbloquejat, igual a l'`astronaut_id` del cos): 401, 403, 422 i 503 són problem details amb el schema `app/error`.
+- Sense LLM (Ollama caigut o fallant) la resposta continua sent un stream: un resum `fallback` fet amb les tools MCP i després `end`. Si el mateix servidor MCP no pot arrencar, el stream acaba amb `error` `unavailable`.
+- El servidor arrenca el servidor MCP una vegada (subprocés stdio) i l'atura en apagar-se. Hi ha una imatge Docker a `agent/Dockerfile` (escolta a `0.0.0.0:8003` dins del contenidor i desa el token generat a `/data`).
 
 ## Evals
 

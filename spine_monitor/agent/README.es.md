@@ -31,7 +31,9 @@ spine-agent (CLI, chat en streaming)
 Necesita Docker. Ollama corre en Docker bajo el perfil `llm` de compose y los modelos **se guardan en caché en el volumen `ollama-models`**: se descargan una sola vez y los arranques siguientes no necesitan red.
 
 ```bash
-# Desde la raíz del repositorio. La primera vez descarga qwen3.5:4b (3,3 GB) al volumen.
+# Desde la raíz del repositorio. Una vez: las credenciales del broker (compose las necesita).
+sh app/mosquitto/setup.sh
+# El perfil llm también arranca la API de chat (agent, 127.0.0.1:8003). La primera vez descarga qwen3.5:4b (3,3 GB) al volumen.
 docker compose -f app/docker-compose.yml --profile llm up -d
 
 # Chat (streaming, multi-turno). Salir con /exit, /quit, Ctrl-D o Ctrl-C.
@@ -55,6 +57,32 @@ uv run spine-agent --astronaut AST-01
 | `SPINE_AGENT_REQUEST_TIMEOUT_S` | `60` | Tiempo máximo de la petición al modelo, en segundos |
 | `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | este Python / `["-m","spine_mcp_server"]` | Cómo se lanza el servidor MCP (args en JSON); añade `"--dataset","examples"` para los ejemplos estáticos de los contratos |
 | `SPINE_AGENT_MCP_LOG_FILE` | ninguno | Dónde va el log del servidor MCP; se descarta por defecto para que no se mezcle con el chat |
+| `SPINE_AGENT_HTTP_HOST` / `SPINE_AGENT_HTTP_PORT` | `127.0.0.1` / `8003` | Dirección del servidor HTTP de chat |
+| `SPINE_AGENT_HTTP_TOKEN` | ninguno | Token Bearer del servidor HTTP de chat, compartido con el proceso principal de Electron |
+| `SPINE_AGENT_HTTP_TOKEN_FILE` | `~/.spine-agent/http-token` | De dónde se lee el token si `SPINE_AGENT_HTTP_TOKEN` no está definido; si falta, se crea con un token aleatorio (solo legible por el propietario) |
+| `SPINE_AGENT_HTTP_MAX_CONVERSATIONS` | `16` | Conversaciones en memoria; si está lleno, se olvida la inactiva usada hace más tiempo |
+| `SPINE_AGENT_HTTP_IDLE_TTL_S` | `3600` | Una conversación inactiva se olvida tras estos segundos |
+| `SPINE_AGENT_HTTP_KEEPALIVE_S` | `15` | Se envía un comentario SSE `: ping` tras estos segundos sin eventos |
+
+## Servidor HTTP de chat (para la app de escritorio)
+
+La app de escritorio habla con el agente por HTTP local con eventos SSE (server-sent events). El contrato es [`contracts/agent-openapi.yaml`](../contracts/agent-openapi.yaml) con los schemas `contracts/schemas/v1/agent/chat-request.schema.json` y `chat-event.schema.json`.
+
+```bash
+cd spine_monitor
+SPINE_AGENT_HTTP_TOKEN=cambialo uv run spine-agent-http     # http://127.0.0.1:8003
+
+curl -N http://127.0.0.1:8003/chat \
+  -H "Authorization: Bearer cambialo" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
+  -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000001","question":"¿Por qué estoy en ámbar?"}'
+```
+
+- `POST /chat` responde 200 con un `text/event-stream`. Cada evento es `event: <tipo>` más una línea `data:` con JSON: `text` (`delta`), `tool_call` (`tool_name`, `tool_args`), `fallback` (`text`), `notice` (`code` `mid_stream` o `correction`, `text`) y, al final, exactamente un `end` o un `error` (`code` `busy`, `unavailable`, `invalid` o `internal`, `message`). Los comentarios `: ping` mantienen viva la conexión mientras el modelo piensa (en CPU el primer token tarda unos 27 s, a veces un minuto).
+- El cliente genera `conversation_id`: un id nuevo empieza una conversación y el mismo id la continúa. El historial vive solo en memoria, acotado y con TTL de inactividad; una conversación pertenece al astronauta de su primera pregunta.
+- Una respuesta a la vez por conversación (una segunda pregunta mientras tanto es un 409). Para cancelar una respuesta se cierra la conexión: la ejecución del modelo se detiene y el turno no se guarda. `DELETE /chat/{conversation_id}` olvida una conversación (204, también si no existe).
+- Toda petición salvo `/health` necesita `Authorization: Bearer <token>` y `X-Astronaut-Id` (el astronauta desbloqueado, igual al `astronaut_id` del cuerpo): 401, 403, 422 y 503 son problem details con el schema `app/error`.
+- Sin LLM (Ollama caído o fallando) la respuesta sigue siendo un stream: un resumen `fallback` hecho con las tools MCP y luego `end`. Si el propio servidor MCP no puede arrancar, el stream termina con `error` `unavailable`.
+- El servidor arranca el servidor MCP una vez (subproceso stdio) y lo para al apagarse. Hay una imagen Docker en `agent/Dockerfile` (escucha en `0.0.0.0:8003` dentro del contenedor y guarda el token generado en `/data`).
 
 ## Evals
 

@@ -14,6 +14,8 @@ from spine_contracts import (
     Baseline,
     BaselineRequest,
     BaselineView,
+    ChatEvent,
+    ChatRequest,
     ClockSync,
     CommandAck,
     ComparePeriods,
@@ -96,6 +98,8 @@ PARSERS = {
     "app/ui-rep-state": RepStateView.model_validate,
     "app/ui-session": SessionView.model_validate,
     "mcp/compare-periods": ComparePeriods.model_validate,
+    "agent/chat-request": ChatRequest.model_validate,
+    "agent/chat-event": ChatEvent.model_validate,
 }
 
 # RFC 9457 problem details carry no schema_version

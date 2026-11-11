@@ -31,7 +31,9 @@ spine-agent (CLI, streaming chat)
 Needs Docker. Ollama runs in Docker under the `llm` compose profile, and the models are **cached in the `ollama-models` volume**: they are downloaded once, and later starts need no network.
 
 ```bash
-# From the repository root. First time: downloads qwen3.5:4b (3.3 GB) into the volume.
+# From the repository root. Once: the broker credentials (compose needs them).
+sh app/mosquitto/setup.sh
+# The LLM profile also starts the chat API (agent, 127.0.0.1:8003). First time: downloads qwen3.5:4b (3.3 GB) into the volume.
 docker compose -f app/docker-compose.yml --profile llm up -d
 
 # Chat (streaming, multi-turn). Exit with /exit, /quit, Ctrl-D or Ctrl-C.
@@ -55,6 +57,32 @@ uv run spine-agent --astronaut AST-01
 | `SPINE_AGENT_REQUEST_TIMEOUT_S` | `60` | Model request timeout, in seconds |
 | `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | this Python / `["-m","spine_mcp_server"]` | How the MCP server is launched (args as JSON); add `"--dataset","examples"` for the static contract examples |
 | `SPINE_AGENT_MCP_LOG_FILE` | none | Where the MCP server log goes; discarded by default so it does not mix with the chat |
+| `SPINE_AGENT_HTTP_HOST` / `SPINE_AGENT_HTTP_PORT` | `127.0.0.1` / `8003` | Address of the chat HTTP server |
+| `SPINE_AGENT_HTTP_TOKEN` | none | Bearer token of the chat HTTP server, shared with the Electron main process |
+| `SPINE_AGENT_HTTP_TOKEN_FILE` | `~/.spine-agent/http-token` | Where the token is read from when `SPINE_AGENT_HTTP_TOKEN` is unset; created with a random token (owner-only) when missing |
+| `SPINE_AGENT_HTTP_MAX_CONVERSATIONS` | `16` | Conversations kept in memory; when full, the least recently used idle one is forgotten |
+| `SPINE_AGENT_HTTP_IDLE_TTL_S` | `3600` | An idle conversation is forgotten after this many seconds |
+| `SPINE_AGENT_HTTP_KEEPALIVE_S` | `15` | A `: ping` SSE comment is sent after this many seconds without an event |
+
+## Chat HTTP server (for the desktop app)
+
+The desktop app talks to the agent over local HTTP with server-sent events. The contract is [`contracts/agent-openapi.yaml`](../contracts/agent-openapi.yaml) with the schemas `contracts/schemas/v1/agent/chat-request.schema.json` and `chat-event.schema.json`.
+
+```bash
+cd spine_monitor
+SPINE_AGENT_HTTP_TOKEN=change-me uv run spine-agent-http     # http://127.0.0.1:8003
+
+curl -N http://127.0.0.1:8003/chat \
+  -H "Authorization: Bearer change-me" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
+  -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000001","question":"Why am I amber?"}'
+```
+
+- `POST /chat` answers 200 with a `text/event-stream`. Each event is `event: <type>` plus one `data:` JSON line: `text` (`delta`), `tool_call` (`tool_name`, `tool_args`), `fallback` (`text`), `notice` (`code` `mid_stream` or `correction`, `text`), and exactly one `end` or `error` (`code` `busy`, `unavailable`, `invalid` or `internal`, `message`) last. `: ping` comments keep the connection alive while the model thinks (on CPU the first token takes about 27 s, sometimes a minute).
+- The client generates `conversation_id`: a new id starts a conversation, the same id continues it. The history lives in memory only, bounded and with an idle TTL; a conversation belongs to the astronaut of its first question.
+- One answer at a time per conversation (a second question meanwhile is a 409). To cancel an answer, close the connection: the model run stops and the turn is not kept. `DELETE /chat/{conversation_id}` forgets a conversation (204, also when unknown).
+- Every request but `/health` needs `Authorization: Bearer <token>` and `X-Astronaut-Id` (the unlocked astronaut, equal to the body's `astronaut_id`): 401, 403, 422 and 503 are problem details with the `app/error` schema.
+- Without the LLM (Ollama down or failing) the answer is still a stream: a `fallback` summary built from the MCP tools, then `end`. If the MCP server itself cannot start, the stream ends with `error` `unavailable`.
+- The server starts the MCP server once (stdio subprocess) and stops it on shutdown. A Docker image is in `agent/Dockerfile` (it listens on `0.0.0.0:8003` inside the container and keeps the generated token in `/data`).
 
 ## Evals
 

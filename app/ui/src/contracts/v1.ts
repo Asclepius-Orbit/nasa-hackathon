@@ -5,6 +5,13 @@
  */
 
 /**
+ * The `data:` of one server-sent event of the answer stream of POST /chat (agent-openapi.yaml). The SSE `event:` name always equals `type`. A stream is (text | tool_call)* followed by: on success, an optional notice `correction` and `end`; when the model fails, an optional notice `mid_stream`, one `fallback` and `end`; when the server cannot go on, `error`. Exactly one `end` or `error` closes every stream and nothing follows it.
+ */
+export type ChatEvent =
+  ChatTextEvent | ChatToolCallEvent | ChatFallbackEvent | ChatNoticeEvent | ChatEndEvent | ChatErrorEvent;
+export type ChatNoticeCode = "mid_stream" | "correction";
+export type ChatErrorCode = "busy" | "unavailable" | "invalid" | "internal";
+/**
  * What the astronaut tells the app. Three kinds, by effort: 'daily' (quick, under 30 s, usable with gloves), 'weekly_odi' (reduced Oswestry Disability Index, once a week) and 'red_flag' (neurological or emergency symptoms, available at any time, escalates immediately). The daily report also asks the red flags, so a red_flag report is only needed outside the daily routine.
  */
 export type SelfReport = DailySelfReport | WeeklyOdiReport | RedFlagReport;
@@ -877,6 +884,8 @@ export type CalibrateCommand = CommandBase & {
  * Index of every v1 contract, keyed by schema name. Only used to generate the types.
  */
 export interface ContractsV1 {
+  "agent/chat-event"?: ChatEvent;
+  "agent/chat-request"?: ChatRequest;
   "app/assessment-list"?: AssessmentList;
   "app/error"?: AppErrorResponse;
   "app/explanation"?: Explanation;
@@ -919,6 +928,95 @@ export interface ContractsV1 {
   "telemetry/command"?: Command;
   "telemetry/device-status"?: DeviceStatus;
   "telemetry/stream-chunk"?: StreamChunk;
+}
+/**
+ * A piece of the answer, to append to the text shown so far (streamed as the model writes it).
+ */
+export interface ChatTextEvent {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  type: "text";
+  delta: string;
+}
+/**
+ * The model called one of the read-only MCP tools (for display, e.g. a 'reading your status' line). The arguments are the model's, as it sent them.
+ */
+export interface ChatToolCallEvent {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  type: "tool_call";
+  tool_name: string;
+  tool_args: {};
+}
+/**
+ * The model failed or could not be reached: a deterministic summary of the current status built without the LLM (English plain text, several lines). It replaces any text streamed before it.
+ */
+export interface ChatFallbackEvent {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  type: "fallback";
+  text: string;
+}
+/**
+ * A warning about the answer. `mid_stream`: the model failed after streaming some text, which must be discarded (a `fallback` follows). `correction`: the answer streamed contained wording that sounds like a diagnosis; keep the text and show the notice next to it (`end` follows). `text` is an English rendering; the UI may write its own words from `code`.
+ */
+export interface ChatNoticeEvent {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  type: "notice";
+  code: ChatNoticeCode;
+  text: string;
+}
+/**
+ * The answer is complete. The turn joined the conversation history unless a `fallback` was sent.
+ */
+export interface ChatEndEvent {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  type: "end";
+}
+/**
+ * The stream ends without a complete answer; the turn is not in the history. `unavailable`: the agent cannot reach what it needs (the MCP tool server) or is shutting down; retrying later may work. `invalid`: the conversation was forgotten (DELETE) while answering. `internal`: a bug in the agent. `busy` is not sent by this version once the stream is open (a busy conversation is refused with 409 before it); it is in the enum so that a client treats it like that 409. `message` is English, for logs.
+ */
+export interface ChatErrorEvent {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  type: "error";
+  code: ChatErrorCode;
+  message: string;
+}
+/**
+ * Body of POST /chat of the LLM agent (agent-openapi.yaml): one question of a conversation about one astronaut. The client generates `conversation_id`: a new id starts a new conversation, the same id continues it (the agent keeps the history in memory; the client never sends it). A conversation belongs to the astronaut of its first question.
+ */
+export interface ChatRequest {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Pseudonymous crew identifier. Never a real name: this id travels over the MQTT bus.
+   */
+  astronaut_id: string;
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  conversation_id: string;
+  /**
+   * What the astronaut asks, as typed. 1 to 2000 characters, at least one of them not blank.
+   */
+  question: string;
 }
 /**
  * Response of GET /crew/{astronaut_id}/assessments: assessments with as_of inside the window, oldest first. limit caps items; truncated says there were more, and the most recent items are kept.

@@ -13,12 +13,14 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 | `schemas/v1/domain/` | Entities: session, calibration, astronaut profile, self-report, daily context, feature set, baseline, assessment |
 | `schemas/v1/engine/` | HTTP bodies of the engine: `/features`, `/baseline`, `/assess`, `/simulate`, errors |
 | `schemas/v1/app/` | HTTP bodies of the read-only API of the app: status, history, explanation, lists of assessments, sessions and self-reports, errors; and the UI views of `ui-openapi.yaml` (`ui-*`) |
+| `schemas/v1/agent/` | HTTP bodies of the LLM agent chat API (`agent-openapi.yaml`): the question (`chat-request`) and the server-sent events of the answer (`chat-event`) |
 | `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements; ranges owned by Aguado |
 | `catalog/protocol-catalog.json` | Fixed facts of each protocol (band, reps, rest, fit item ids) quoted by the UI views |
 | `asyncapi.yaml` | MQTT topics, direction, QoS and retain (the gateway's point of view) |
 | `openapi.yaml` | Engine HTTP API |
 | `app-openapi.yaml` | Read-only HTTP API of the app (GET only), used by the MCP server |
 | `ui-openapi.yaml` | View API of the app for the desktop UI (GET only): one screen per endpoint, codes and data, no prose |
+| `agent-openapi.yaml` | Chat API of the LLM agent for the desktop app: POST a question, stream the answer as server-sent events |
 | `examples/valid/` | One valid example per message; they are the mocks for everyone |
 | `src/spine_contracts/` | Python package: generated `models/`, `messages` (unions), `topics`, `validation`, `openapi_drift` |
 

@@ -118,3 +118,18 @@ test('lock: the strip Lock button hides health data until the PIN is entered', a
   await tapPin(page, '1234');
   await expect(page.locator('#today-title')).toBeVisible();
 });
+
+test('profile: from Settings, fill the profile and save it', async () => {
+  const { page } = ctx;
+  await signInAs(page, 'Elena Ruiz');
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Open profile' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible();
+  const panel = page.getByRole('region', { name: 'Your profile' });
+  await panel.getByLabel('Date of birth').fill('1988-04-12');
+  await panel.getByRole('button', { name: 'Female' }).click();
+  await panel.getByLabel('Standing height (cm)').fill('171');
+  await panel.getByLabel('Body mass (kg)').fill('64.5');
+  await panel.getByRole('button', { name: 'Save profile' }).click();
+  await expect(panel.getByText('Saved')).toBeVisible();
+});

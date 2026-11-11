@@ -1,3 +1,4 @@
+import type { AstronautProfile, DailyContext, DailyContextFields, DeviceStatus, ProfileFields, WriteResult } from '../../shared/api';
 import type {
   BaselineData,
   ContactEntry,
@@ -44,4 +45,13 @@ export interface DataSource {
   sendUrgentReport(codes: readonly string[]): Promise<void>;
   /** Logs a call to the crew medical officer (shows in the Stop screen and the Houston summary). */
   logCrewMedicalOfficerCall(): Promise<ContactEntry>;
+  /** The stored profile, or `null` when none is stored yet. Rejects with the bridge error (`locked`, `not_found`, `unavailable`). */
+  getProfile(): Promise<AstronautProfile | null>;
+  /** Stores the edited part of the profile. Only `ok: true` means stored; a refusal comes back as a result, not a rejection. */
+  saveProfile(fields: ProfileFields): Promise<WriteResult<AstronautProfile>>;
+  /** Today's mission context, or `null` when none is stored yet. */
+  getTodayContext(): Promise<DailyContext | null>;
+  saveTodayContext(fields: DailyContextFields): Promise<WriteResult<DailyContext>>;
+  /** Harnesses that published a status for the signed-in astronaut (the ones that can be paired). */
+  listDevices(): Promise<DeviceStatus[]>;
 }

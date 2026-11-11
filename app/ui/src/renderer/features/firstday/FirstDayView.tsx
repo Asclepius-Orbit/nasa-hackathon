@@ -3,6 +3,7 @@ import type { DataSource } from '../../data/DataSource';
 import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { LoadFailure } from '../../components/layout/NoMonitor';
 import { firstDay } from '../../strings/firstday';
+import { ProfileNotice } from '../profile/ProfileNotice';
 import { TodoRows } from '../today/TodoRows';
 import styles from './FirstDayView.module.css';
 
@@ -17,6 +18,7 @@ export function FirstDayView(): React.JSX.Element {
       {error !== null && <LoadFailure error={error} fallback={firstDay.error} />}
       {data !== null && (
         <>
+          <ProfileNotice />
           <p className={styles.lede}>{firstDay.lede}</p>
           <Panel className={styles.panel}>
             <p className={styles.chip}>

@@ -21,6 +21,7 @@ it.each([
   ['/stopped', 'stopped'],
   ['/history', 'history'],
   ['/settings', 'settings'],
+  ['/profile', 'profile'],
   ['/first-day', 'firstday'],
   ['/baseline', 'baseline'],
   ['/oswestry', 'oswestry'],

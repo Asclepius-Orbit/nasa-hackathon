@@ -19,7 +19,7 @@ function backend(houston = 'ui-houston', outbox = 'ui-outbox'): { api: FakeAscle
   const api = new FakeAsclepiusApi();
   api.viewData.houston = example<HoustonContract>(houston);
   api.viewData.outbox = example<OutboxView>(outbox);
-  return { api, data: new RealDataSource(api.views, api.reps) };
+  return { api, data: new RealDataSource(api.views, api.reps, api) };
 }
 
 /** A mock whose Houston data is changed by `patch`. */

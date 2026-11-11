@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 
 import type { Settings } from '../../../shared/api';
+import { Button } from '../../components/ui/Button';
 import pick from '../../components/ui/Pick.module.css';
 import { cx } from '../../components/ui/cx';
 import { useSettings } from '../../settings/SettingsProvider';
 import { settingsText } from '../../strings/settings';
+import { HarnessSection } from './HarnessSection';
 import styles from './Settings.module.css';
 
 interface Choice<Value> {
@@ -50,6 +53,7 @@ function SettingRow<Value extends string | boolean>({ label, note, choices, curr
 /** Settings: each choice is saved at once through the bridge; the screen then shows what main stored. */
 export function SettingsView(): React.JSX.Element {
   const { settings, update } = useSettings();
+  const navigate = useNavigate();
   const [failed, setFailed] = useState(false);
 
   const choose =
@@ -116,6 +120,19 @@ export function SettingsView(): React.JSX.Element {
       <p className={styles.error} role="alert">
         {failed ? t.saveError : ''}
       </p>
+      <section aria-labelledby="settings-profile" className={styles.harness}>
+        <h2 id="settings-profile">{t.profile}</h2>
+        <p className={styles.current}>{t.profileNote}</p>
+        <Button
+          variant="quiet"
+          onClick={() => {
+            void navigate('/profile');
+          }}
+        >
+          {t.openProfile}
+        </Button>
+      </section>
+      <HarnessSection />
     </section>
   );
 }

@@ -159,7 +159,7 @@ it('says so when today cannot be loaded', async () => {
 const realSetup = (today: TodayViewPayload | null): ReturnType<typeof renderInWorld> => {
   const api = new FakeAsclepiusApi();
   if (today) api.viewData.today = today;
-  return setup({ api, data: new RealDataSource(api.views, api.reps) });
+  return setup({ api, data: new RealDataSource(api.views, api.reps, api) });
 };
 
 it('shows a real amber day from the backend example: plan from codes, an unknown code kept as it is', async () => {
@@ -206,7 +206,7 @@ it('on a locked bridge it does not claim the monitor is down: it re-reads the se
     api.session = { crewId: 'AST-01', locked: true };
     return Promise.reject(new Error('locked'));
   };
-  setup({ api, data: new RealDataSource(api.views, api.reps) });
+  setup({ api, data: new RealDataSource(api.views, api.reps, api) });
   await screen.findByRole('status');
   await waitFor(() => {
     expect(api.calls.filter((c) => c === 'auth.current').length).toBeGreaterThan(1);
@@ -286,11 +286,16 @@ describe('what to do today', () => {
 describe('live rep on Today (real data)', () => {
   const SID = '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01';
   const rep = (name: string): RepStateView => example<RepStateView>(name);
-  const line = async (): Promise<HTMLElement> => (await screen.findByText('Session in progress')).closest('li') as HTMLElement;
+  /** The in-progress line, once the live counter is subscribed (the subscription runs in an effect after it renders). */
+  const line = async (api?: FakeAsclepiusApi): Promise<HTMLElement> => {
+    const row = (await screen.findByText('Session in progress')).closest('li') as HTMLElement;
+    if (api) await waitFor(() => { expect(api.repsListenerCount(SID)).toBe(1); });
+    return row;
+  };
 
   it('with signal it says "rep N of M"; without signal or lost it goes back to the line with no counter', async () => {
     const world = realSetup(example<TodayViewPayload>('ui-today.nodata'));
-    await line();
+    await line(world.api);
     const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
     expect(row()).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
     expect(row()).not.toHaveTextContent('rep 3');
@@ -314,7 +319,7 @@ describe('live rep on Today (real data)', () => {
 
   it('end goes back to the line without a counter, and a rep past the total drops "of N"', async () => {
     const world = realSetup(example<TodayViewPayload>('ui-today.nodata'));
-    await line();
+    await line(world.api);
     const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
     act(() => {
       world.api.emitReps(SID, { kind: 'state', state: { ...rep('ui-rep-state'), rep: 11 } });
@@ -358,7 +363,7 @@ describe('live rep on Today (real data)', () => {
 
   it('unsubscribes on unmount and does not subscribe without a session in progress', async () => {
     const world = realSetup(example<TodayViewPayload>('ui-today.nodata'));
-    await line();
+    await line(world.api);
     expect(world.api.repsListenerCount(SID)).toBe(1);
     world.unmount();
     expect(world.api.repsListenerCount(SID)).toBe(0);
@@ -366,4 +371,24 @@ describe('live rep on Today (real data)', () => {
     await screen.findAllByRole('heading', { level: 1, name: 'Amber' });
     expect(other.api.calls).not.toContain('reps.subscribe');
   });
+});
+
+it('points to the profile when none is stored', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.today = example<TodayViewPayload>('ui-today');
+  api.profileValue = null;
+  setup({ api, data: new RealDataSource(api.views, api.reps, api) });
+  expect(await screen.findByText('Add your profile so your assessments can start')).toBeInTheDocument();
+});
+
+it('shows no profile notice when reading the profile is rejected', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.today = example<TodayViewPayload>('ui-today');
+  api.readErrors = { profile: 'unavailable' };
+  setup({ api, data: new RealDataSource(api.views, api.reps, api) });
+  await screen.findByRole('heading', { level: 1, name: 'Amber' });
+  await waitFor(() => {
+    expect(api.calls).toContain('profile.get');
+  });
+  expect(screen.queryByText('Add your profile so your assessments can start')).not.toBeInTheDocument();
 });

@@ -47,7 +47,7 @@ it('allows changing an answer (one option per item)', async () => {
 
 it('with the backend (real mode) says it is not available and offers no questionnaire to save', async () => {
   const api = new FakeAsclepiusApi();
-  renderInWorld(<OswestryView />, { api, data: new RealDataSource(api.views, api.reps), route: '/oswestry' });
+  renderInWorld(<OswestryView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/oswestry' });
   expect(await screen.findByTestId('not-built')).toBeInTheDocument();
   expect(screen.getByText('Not available yet.')).toBeInTheDocument();
   expect(screen.queryByText(/did not answer/)).not.toBeInTheDocument();

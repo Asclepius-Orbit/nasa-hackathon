@@ -48,6 +48,7 @@ producció arrenca sense tripulants: el primer es dona d'alta amb "New crew memb
 El mateix gate s'executa a Docker i a CI:
 
 ```bash
+sh app/mosquitto/setup.sh   # un cop: credencials del broker a app/.env
 docker compose -f app/docker-compose.yml --profile quality run --rm ui-quality
 ```
 

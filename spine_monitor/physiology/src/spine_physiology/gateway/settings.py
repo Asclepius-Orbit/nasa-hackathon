@@ -7,7 +7,7 @@ aquí solo va dónde está ese YAML, a qué broker conectarse y a qué ritmo ava
 from pathlib import Path
 from typing import Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,14 @@ class GatewaySettings(BaseSettings):
     # Prefijo del identificador MQTT: cada dispositivo abre su conexión `<prefijo>-<device_id>` (con su
     # propio Last Will, que MQTT solo admite uno por conexión).
     mqtt_client_id: str = "spine-sim-gateway"
+    # Credenciales del broker (app/mosquitto/setup.sh las deja en app/.env). `{device_id}` en el usuario se cambia por
+    # el id de cada dispositivo: el simulador entra como `sim-01`, `sim-02`... (cada uno con su ACL) con la misma
+    # contraseña. None = sin credenciales (anónimo).
+    mqtt_username: str | None = None
+    mqtt_password: SecretStr | None = None
+    # TLS al broker (listener 8883 de la LAN); sin fichero de CA verifican el certificado las CA del sistema.
+    mqtt_tls: bool = False
+    mqtt_tls_ca_file: Path | None = None
     # Reconexión con backoff exponencial si el broker rechaza la conexión o la corta: espera inicial (s),
     # factor por intento fallido y tope (s). Vuelve a la inicial tras conectar.
     mqtt_reconnect_initial_s: float = Field(default=1.0, gt=0)

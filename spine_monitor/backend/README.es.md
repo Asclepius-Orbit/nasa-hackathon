@@ -83,6 +83,11 @@ de compose), así el servidor MCP nunca llega a los endpoints de escritura `/ui`
 - `/assessments/{assessment_id}/explanation` (`explain_assessment`): la evaluación con sus entradas de
   baseline (solo de los drivers), feature sets y autoinformes resueltos; lo que ya no existe va en
   `unresolved`.
+- `/crew/{astronaut_id}/assess-base` (`simulate_scenario`): la petición /assess que la app enviaría ahora (perfil,
+  último baseline, y feature sets, autoinformes y contexto diario de los últimos `assess_window_days`, con
+  `as_of` = el reloj de la app), construida por el mismo código que la valoración real y nunca enviada. Un
+  astronauta desconocido, o sin datos para construirla, es `404 not_found` con `detail` `no_profile`, `no_baseline`
+  o `no_feature_sets`.
 - Recursos: una evaluación, sesión (solo las que se llegaron a ejecutar), feature set de una sesión,
   autoinforme o baseline, y listas de evaluaciones, sesiones y autoinformes de una ventana.
 - Las ventanas son inclusivas, RFC 3339 con offset; `to` anterior a `from` es `invalid_range`. Las listas
@@ -113,7 +118,7 @@ Arrancarla sola: `uv run uvicorn --factory monitor.readonly:create_read_app --po
 ```
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
-La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`,
+La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TLS`, `MQTT_TLS_CA_FILE`, `ENGINE_URL`,
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
 `WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. En Docker Compose la base de datos vive en el volumen `backend_data`
 (`/data/spine_monitor.db`).
@@ -140,6 +145,63 @@ backoff por entrada y sin límite de intentos; tras un reinicio sigue desde SQLi
 | `GROUND_RETRY_MAX_S` | 300 | Espera máxima; no menor que la mínima. |
 | `GROUND_TICK_S` | 1 | Cada cuánto el emisor busca una ventana abierta o un backoff vencido. |
 | `GROUND_SEND_TIMEOUT_S` | 30 | Espera máxima a que tierra responda a un envío; pasada, el envío falla con código `timeout` y se aplica backoff. |
+
+## Broker MQTT: usuarios, ACL y acceso por la LAN
+El Mosquitto de a bordo (`app/docker-compose.yml`) rechaza los clientes anónimos: cada cliente se identifica y solo llega a
+los topics de su ACL (`app/mosquitto/acl.template` y `acl-device.template`, a partir de los topics de `contracts/asyncapi.yaml`).
+En el repo no hay ninguna credencial. Antes del primer `docker compose`, desde la raíz del repo (Linux, macOS o Git Bash en
+Windows; solo necesita docker):
+```bash
+sh app/mosquitto/setup.sh
+```
+Escribe contraseñas aleatorias en `app/.env` y genera `app/mosquitto/auth/passwd` (con el hash de `mosquitto_passwd` dentro
+de la imagen del broker) y `app/mosquitto/auth/acl`; todos están en `.gitignore`, y todo comando de compose falla con
+`run sh app/mosquitto/setup.sh` mientras falten. Volver a ejecutarlo conserva las contraseñas; `--force` las rota. Tras
+cualquier cambio, recrea el broker (`docker compose -f app/docker-compose.yml up -d --force-recreate mosquitto`) y, tras una
+rotación, los clientes. La CI genera unas desechables en cada ejecución.
+
+| Usuario | Quién | Permisos |
+|---|---|---|
+| `spine-app` | backend | lee `stream/+`, `status`, `ack`, `clock` y `calibration/+` de todos los dispositivos; escribe todo `cmd` |
+| `spine-health` | healthcheck de compose | lee `$SYS/broker/uptime` |
+| `spine-itest` | tests `mosquitto` | los mismos que `spine-app` |
+| `<device_id>` | un dispositivo: `sim-01`, `sim-02` (simulador), `itest-01`, `itest-02` (tests), los reales | solo bajo `asclepius/v1/crew/<astronaut_id>/device/<device_id>/`: escribe `stream/+`, `status`, `ack`, `clock`, `calibration/+`; lee `cmd` |
+
+Un publish que la ACL deniega se descarta en silencio, y una suscripción denegada no recibe nada. La configuración del
+backend es `SPINE_APP_MQTT_USERNAME`, `SPINE_APP_MQTT_PASSWORD` (nunca se registra ni se muestra), `SPINE_APP_MQTT_TLS`
+(`true` para conectar por TLS) y `SPINE_APP_MQTT_TLS_CA_FILE` (la CA que firmó el certificado del broker; sin ella, las CA
+del sistema). Compose fija las dos primeras desde `app/.env`.
+
+### Dar de alta un dispositivo
+```bash
+sh app/mosquitto/setup.sh --device AST-03:wb-01
+docker compose -f app/docker-compose.yml up -d --force-recreate mosquitto
+```
+El usuario es el device id (`wb-01`) y su contraseña es `SPINE_MQTT_DEVICE_PASSWORD_WB_01` de `app/.env`; configura ambos en
+el gateway del dispositivo (en el gateway simulado, `SPINE_SIM_MQTT_USERNAME` y `SPINE_SIM_MQTT_PASSWORD`). Los ids siguen
+`spine_contracts.topics` (`AST-NN`, `[a-z0-9][a-z0-9_-]{1,31}`); con solo `wb-01` el dispositivo puede publicar para
+cualquier astronauta. Para darlo de baja, bórralo de `SPINE_MQTT_DEVICES` junto con la línea de su contraseña en `app/.env`,
+vuelve a ejecutar el script y recrea el broker.
+
+### Acceso por la LAN con TLS
+El puerto 1883 (MQTT sin cifrar) solo se publica en `127.0.0.1`. Para un gateway en otra máquina, `app/docker-compose.lan.yml`
+añade un listener TLS en el 8883, con los mismos usuarios y ACL, publicado en una dirección del host y con los certificados
+montados desde una carpeta fuera del repo (nunca se commitean):
+```bash
+export SPINE_MQTT_TLS_DIR="$HOME/spine-mqtt-certs" SPINE_MQTT_LAN_ADDRESS=192.168.1.20
+docker compose -f app/docker-compose.yml -f app/docker-compose.lan.yml up -d mosquitto
+```
+La carpeta contiene `ca.crt`, `server.crt` y `server.key`. Una CA privada y un certificado para esa dirección:
+```bash
+mkdir -p "$SPINE_MQTT_TLS_DIR" && cd "$SPINE_MQTT_TLS_DIR"
+openssl req -x509 -newkey rsa:3072 -nodes -days 365 -keyout ca.key -out ca.crt -subj "/CN=spine-mqtt-ca"
+openssl req -newkey rsa:3072 -nodes -keyout server.key -out server.csr -subj "/CN=spine-broker"
+printf 'subjectAltName=IP:%s\n' "$SPINE_MQTT_LAN_ADDRESS" > san.ext
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 365 -extfile san.ext -out server.crt
+chmod 600 ca.key server.key
+```
+Saca `ca.key` de la estación una vez firmado el certificado. El gateway se conecta a esa dirección en el puerto 8883 con TLS
+y `ca.crt` como CA (`SPINE_SIM_MQTT_TLS=true`, `SPINE_SIM_MQTT_TLS_CA_FILE=ca.crt`).
 
 ## Tipos TypeScript para la UI
 `app/ui/src/contracts/v1.ts` se genera desde `contracts/schemas/v1`. Ejecuta `pnpm run gen:types` en

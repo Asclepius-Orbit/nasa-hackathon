@@ -17,6 +17,12 @@ class AppSettings(BaseSettings):
     mqtt_host: str = "127.0.0.1"
     mqtt_port: int = 1883
     mqtt_client_id: str = "spine-app"
+    # Broker credentials (app/mosquitto/setup.sh writes them to app/.env); None connects without them (anonymous).
+    mqtt_username: str | None = None
+    mqtt_password: SecretStr | None = None
+    # TLS to the broker (the LAN listener 8883); without a CA file the system CAs verify its certificate.
+    mqtt_tls: bool = False
+    mqtt_tls_ca_file: Path | None = None
     mqtt_reconnect_min_s: float = 1.0
     mqtt_reconnect_max_s: float = 30.0
 

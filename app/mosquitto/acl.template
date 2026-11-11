@@ -1,0 +1,27 @@
+# Mosquitto ACL template (topics of spine_monitor/contracts/asyncapi.yaml). app/mosquitto/setup.sh renders it into
+# app/mosquitto/auth/acl, replacing the @DEVICES@ line with one block of acl-device.template per device user.
+# Anything not granted here is denied: a denied publish is dropped silently, a denied subscription gets nothing.
+
+# Backend (on-board app): reads every device channel, sends commands.
+user spine-app
+topic read asclepius/v1/crew/+/device/+/stream/+
+topic read asclepius/v1/crew/+/device/+/status
+topic read asclepius/v1/crew/+/device/+/ack
+topic read asclepius/v1/crew/+/device/+/clock
+topic read asclepius/v1/crew/+/device/+/calibration/+
+topic write asclepius/v1/crew/+/device/+/cmd
+
+# Integration tests (physiology/tests, marker mosquitto): the same rights as the backend.
+user spine-itest
+topic read asclepius/v1/crew/+/device/+/stream/+
+topic read asclepius/v1/crew/+/device/+/status
+topic read asclepius/v1/crew/+/device/+/ack
+topic read asclepius/v1/crew/+/device/+/clock
+topic read asclepius/v1/crew/+/device/+/calibration/+
+topic write asclepius/v1/crew/+/device/+/cmd
+
+# Compose healthcheck.
+user spine-health
+topic read $SYS/broker/uptime
+
+@DEVICES@

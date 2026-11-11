@@ -17,6 +17,7 @@ cd spine_monitor && uv run pytest <ruta> -q -p no:randomly
 Puerta de calidad (desde la raíz del repo). Ejecuta ruff, pyright y los tests con cobertura (líneas y ramas >= 90 %, orden aleatorio, timeout, contra un mosquitto real):
 
 ```bash
+sh app/mosquitto/setup.sh   # una vez: credenciales del broker en app/.env
 docker compose -f app/docker-compose.yml run --rm quality
 GATE_MUTATION=changed docker compose -f app/docker-compose.yml run --rm quality
 GATE_MUTATION=full docker compose -f app/docker-compose.yml run --rm quality

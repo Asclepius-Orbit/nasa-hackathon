@@ -12,6 +12,7 @@ from typing import Any
 import aiomqtt
 import pytest
 import yaml
+from pydantic import SecretStr
 from spine_contracts import topics, validation
 from spine_physiology import MissionGenerator
 from spine_physiology.config import MissionConfig
@@ -1004,6 +1005,54 @@ def test_settings_come_from_spine_sim_env(monkeypatch):
     monkeypatch.delenv("SPINE_SIM_SPEED")
     with pytest.raises(ValueError):
         GatewaySettings()
+
+
+# --- credenciales y TLS del broker (#96) ------------------------------------------------------------------------------
+
+
+def test_mqtt_credentials_and_tls_are_off_by_default():
+    s = settings()
+    assert (s.mqtt_username, s.mqtt_password, s.mqtt_tls, s.mqtt_tls_ca_file) == (None, None, False, None)
+
+
+def test_mqtt_credentials_come_from_spine_sim_env_and_the_password_is_never_shown(monkeypatch):
+    monkeypatch.setenv("SPINE_SIM_MQTT_USERNAME", "{device_id}")
+    monkeypatch.setenv("SPINE_SIM_MQTT_PASSWORD", "s3cret-value")
+    monkeypatch.setenv("SPINE_SIM_MQTT_TLS", "1")
+    monkeypatch.setenv("SPINE_SIM_MQTT_TLS_CA_FILE", "/certs/ca.crt")
+    s = settings()
+    assert s.mqtt_username == "{device_id}" and s.mqtt_tls and s.mqtt_tls_ca_file == Path("/certs/ca.crt")
+    assert s.mqtt_password is not None and s.mqtt_password.get_secret_value() == "s3cret-value"
+    assert "s3cret-value" not in repr(s) and "s3cret-value" not in str(s)
+
+
+async def _first_attempts(s: GatewaySettings) -> list[dict]:
+    """Abre las conexiones de `_serve` (una por dispositivo) contra clientes falsos y devuelve sus kwargs."""
+    connections = Connections(lambda identifier, n: FakeClient())
+    task = asyncio.create_task(_serve(MissionGenerator(make_config()), s, client_factory=connections, clock=lambda: datetime.now(UTC)))
+    await asyncio.wait_for(_until(lambda: len(connections.attempts) >= 2), timeout=10)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    return connections.attempts
+
+
+def test_each_device_connects_with_its_own_username_and_the_password():
+    s = settings(mqtt_username="{device_id}", mqtt_password=SecretStr("pw"), mqtt_tls=True, mqtt_tls_ca_file=Path("/certs/ca.crt"))
+    attempts = go(_first_attempts(s))
+    assert [(a["username"], a["password"]) for a in attempts] == [("sim-01", "pw"), ("sim-02", "pw")]
+    assert all(isinstance(a["tls_params"], aiomqtt.TLSParameters) and a["tls_params"].ca_certs == str(Path("/certs/ca.crt")) for a in attempts)
+
+
+def test_a_fixed_username_is_used_as_is_and_tls_without_a_ca_uses_the_system_cas():
+    attempts = go(_first_attempts(settings(mqtt_username="wb-gw", mqtt_tls=True)))
+    assert [(a["username"], a["password"]) for a in attempts] == [("wb-gw", None), ("wb-gw", None)]
+    assert all(a["tls_params"].ca_certs is None for a in attempts)
+
+
+def test_without_credentials_or_tls_the_connection_is_anonymous_and_plain():
+    attempts = go(_first_attempts(settings()))
+    assert all((a["username"], a["password"], a["tls_params"]) == (None, None, None) for a in attempts)
 
 
 # --- textos y límites de los rechazos ------------------------------------------------------------------

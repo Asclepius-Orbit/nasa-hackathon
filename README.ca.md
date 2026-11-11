@@ -6,6 +6,8 @@
 
 `spine_monitor/` és un workspace d'uv: un sol `.venv` i un sol `uv.lock` per a tots els paquets. Treballa sempre des de `spine_monitor/` (`uv sync --all-packages`, `uv run pytest`). A PyCharm, obre la carpeta `spine_monitor/` i tria com a intèrpret el seu `.venv`.
 
+Docker Compose (`app/docker-compose.yml`): el broker MQTT exigeix usuaris i ACL, i les seves credencials mai no són al repo. Executa `sh app/mosquitto/setup.sh` un cop abans de qualsevol `docker compose` (Git Bash a Windows); les escriu a `app/.env` (al `.gitignore`). Els usuaris, l'alta de dispositius i l'accés per la LAN amb TLS són a [spine_monitor/backend/README.ca.md](spine_monitor/backend/README.ca.md).
+
 ## Skills de Claude Code per a pull requests
 
 Dues skills del projecte a `.claude/skills/` porten la revisió de PRs amb subagents:

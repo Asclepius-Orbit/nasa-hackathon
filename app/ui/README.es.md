@@ -48,6 +48,7 @@ producción arranca sin tripulantes: el primero se da de alta con "New crew memb
 El mismo gate se ejecuta en Docker y en CI:
 
 ```bash
+sh app/mosquitto/setup.sh   # una vez: credenciales del broker en app/.env
 docker compose -f app/docker-compose.yml --profile quality run --rm ui-quality
 ```
 

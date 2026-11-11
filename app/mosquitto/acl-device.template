@@ -1,0 +1,8 @@
+# Device @DEVICE@ (astronaut @ASTRONAUT@): publishes only its own channels and reads only its own commands.
+user @DEVICE@
+topic write asclepius/v1/crew/@ASTRONAUT@/device/@DEVICE@/stream/+
+topic write asclepius/v1/crew/@ASTRONAUT@/device/@DEVICE@/status
+topic write asclepius/v1/crew/@ASTRONAUT@/device/@DEVICE@/ack
+topic write asclepius/v1/crew/@ASTRONAUT@/device/@DEVICE@/clock
+topic write asclepius/v1/crew/@ASTRONAUT@/device/@DEVICE@/calibration/+
+topic read asclepius/v1/crew/@ASTRONAUT@/device/@DEVICE@/cmd

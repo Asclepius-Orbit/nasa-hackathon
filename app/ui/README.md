@@ -47,6 +47,7 @@ starts with no crew: add the first member with "New crew member".
 The same gate runs in Docker and in CI:
 
 ```bash
+sh app/mosquitto/setup.sh   # once: broker credentials in app/.env
 docker compose -f app/docker-compose.yml --profile quality run --rm ui-quality
 ```
 

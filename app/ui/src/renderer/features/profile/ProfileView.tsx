@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import type { AstronautProfile, DailyContext, DailyContextFields, ProfileFields, WriteResult } from '../../../shared/api';
 import { LoadFailure } from '../../components/layout/NoMonitor';
@@ -41,6 +41,8 @@ const IDLE: SaveState = { status: 'idle', errors: NO_ERRORS, failure: null };
 /**
  * One form's save: "Saved" only after `ok: true`; a refusal keeps the entries and shows its reason (by field when its
  * pointer is one of `known`, otherwise in the general alert). Any change to the form clears the previous outcome.
+ * While a send is in flight nothing is cleared and a second send is ignored: the form is locked (see `saving`), so the
+ * answer always belongs to the values on screen and writes cannot finish out of order.
  */
 function useSave<T>(known: readonly string[]): {
   state: SaveState;
@@ -49,15 +51,21 @@ function useSave<T>(known: readonly string[]): {
   run: (send: () => Promise<WriteResult<T>>) => void;
 } {
   const [state, setState] = useState<SaveState>(IDLE);
+  /** A ref, not `state`: two submits in the same tick would both see a stale `idle`. */
+  const inFlight = useRef(false);
   const run = (send: () => Promise<WriteResult<T>>): void => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setState({ ...IDLE, status: 'saving' });
     send().then(
       (result) => {
+        inFlight.current = false;
         if (result.ok) setState({ ...IDLE, status: 'saved' });
         else if (result.reason === 'invalid') setState({ ...IDLE, errors: sortFieldErrors(result.fields, known) });
         else setState({ ...IDLE, failure: t.failure[result.reason] });
       },
       () => {
+        inFlight.current = false;
         setState({ ...IDLE, failure: t.failure.unavailable });
       },
     );
@@ -65,7 +73,7 @@ function useSave<T>(known: readonly string[]): {
   return {
     state,
     clear: () => {
-      setState(IDLE);
+      if (!inFlight.current) setState(IDLE);
     },
     reject: (errors) => {
       setState({ ...IDLE, errors });
@@ -172,15 +180,17 @@ function ProfileForm({ stored, source }: { stored: AstronautProfile | null; sour
           else save.run(() => source.saveProfile(read));
         }}
       >
-        <div className={styles.grid}>
-          <TextField type="date" label={t.dateOfBirth} value={form.dateOfBirth} onChange={set('dateOfBirth')} error={error('/date_of_birth')} />
-          <TextField label={t.standingHeight} value={form.standing} onChange={set('standing')} error={error('/anthropometry/height_standing_cm')} />
-          <TextField label={t.sittingHeight} value={form.sitting} onChange={set('sitting')} error={error('/anthropometry/height_sitting_cm')} />
-          <TextField label={t.bodyMass} value={form.mass} onChange={set('mass')} error={error('/anthropometry/body_mass_kg')} />
-          <TextField type="date" label={t.launchDate} value={form.launch} onChange={set('launch')} error={error('/launch_date')} />
-          <TextField type="date" label={t.landingDate} value={form.landing} onChange={set('landing')} error={error('/landing_date')} />
-        </div>
-        <ChoiceField label={t.sexAtBirth} options={options(t.sexOptions)} value={form.sex} onChange={set('sex')} error={error('/sex_at_birth')} />
+        <fieldset className={styles.fields} disabled={save.state.status === 'saving'}>
+          <div className={styles.grid}>
+            <TextField type="date" label={t.dateOfBirth} value={form.dateOfBirth} onChange={set('dateOfBirth')} error={error('/date_of_birth')} />
+            <TextField label={t.standingHeight} value={form.standing} onChange={set('standing')} error={error('/anthropometry/height_standing_cm')} />
+            <TextField label={t.sittingHeight} value={form.sitting} onChange={set('sitting')} error={error('/anthropometry/height_sitting_cm')} />
+            <TextField label={t.bodyMass} value={form.mass} onChange={set('mass')} error={error('/anthropometry/body_mass_kg')} />
+            <TextField type="date" label={t.launchDate} value={form.launch} onChange={set('launch')} error={error('/launch_date')} />
+            <TextField type="date" label={t.landingDate} value={form.landing} onChange={set('landing')} error={error('/landing_date')} />
+          </div>
+          <ChoiceField label={t.sexAtBirth} options={options(t.sexOptions)} value={form.sex} onChange={set('sex')} error={error('/sex_at_birth')} />
+        </fieldset>
         <SaveBar label={t.saveProfile} state={save.state} />
       </form>
     </Panel>
@@ -234,11 +244,13 @@ function ContextForm({ stored, source }: { stored: DailyContext | null; source: 
           submit();
         }}
       >
-        <ChoiceField label={t.phase} options={options(t.phaseOptions)} value={form.phase} onChange={set('phase')} error={error('/phase')} />
-        <ChoiceField label={t.gravity} options={options(t.gravityOptions)} value={form.gravity} onChange={set('gravity')} error={error('/gravity_environment')} />
-        <div className={styles.grid}>
-          <TextField label={t.missionDay} value={form.day} onChange={set('day')} error={error('/mission_day')} />
-        </div>
+        <fieldset className={styles.fields} disabled={save.state.status === 'saving'}>
+          <ChoiceField label={t.phase} options={options(t.phaseOptions)} value={form.phase} onChange={set('phase')} error={error('/phase')} />
+          <ChoiceField label={t.gravity} options={options(t.gravityOptions)} value={form.gravity} onChange={set('gravity')} error={error('/gravity_environment')} />
+          <div className={styles.grid}>
+            <TextField label={t.missionDay} value={form.day} onChange={set('day')} error={error('/mission_day')} />
+          </div>
+        </fieldset>
         <SaveBar label={t.saveContext} state={save.state} />
       </form>
     </Panel>

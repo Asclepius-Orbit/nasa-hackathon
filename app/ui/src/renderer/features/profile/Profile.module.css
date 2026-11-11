@@ -4,6 +4,7 @@
 .panels { display: grid; gap: 20px; }
 .panel h2 { margin-bottom: 4px; }
 .form { display: grid; gap: 4px; margin-top: 8px; }
+.fields { display: grid; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 24px; max-width: 960px; }
 .field { display: grid; gap: 6px; padding: 10px 0; align-content: start; }
 .label { font-weight: 700; }

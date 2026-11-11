@@ -1,4 +1,4 @@
-"""App settings: broker, engine, database and thresholds. SPINE_APP_* variables or `.env`."""
+"""App settings: broker, engine, database, retries and thresholds. SPINE_APP_* variables or `.env`."""
 
 from pathlib import Path
 from typing import Self
@@ -70,12 +70,22 @@ class AppSettings(BaseSettings):
     # Longest wait for the ground to answer one send; past it the send counts as a failure (code `timeout`) and backs off.
     ground_send_timeout_s: float = Field(default=30.0, gt=0)
 
+    # Analysis retries: a session whose /features failed because the engine was unreachable or answered 5xx is processed
+    # again after a wait that doubles from min to max, at most `max_attempts` times in all. The tick is how often the
+    # retrier looks for due sessions, so it is also the precision of the wait.
+    processing_retry_min_s: float = Field(default=30.0, gt=0)
+    processing_retry_max_s: float = Field(default=900.0, gt=0)
+    processing_max_attempts: int = Field(default=5, ge=1)
+    processing_retry_tick_s: float = Field(default=5.0, gt=0)
+
     @model_validator(mode="after")
     def _ground_ranges(self) -> Self:
         if self.ground_window_up_min >= self.ground_window_period_min:
             raise ValueError("ground_window_up_min must be below ground_window_period_min")
         if self.ground_retry_max_s < self.ground_retry_min_s:
             raise ValueError("ground_retry_max_s must not be below ground_retry_min_s")
+        if self.processing_retry_max_s < self.processing_retry_min_s:
+            raise ValueError("processing_retry_max_s must not be below processing_retry_min_s")
         return self
 
     @property

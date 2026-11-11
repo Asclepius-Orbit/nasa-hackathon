@@ -11,6 +11,11 @@ An assessment that cannot be requested (no profile, no baseline, no features) is
 reason is returned and nothing is stored, so absence never looks like a green.
 
 Every assessment is stored at one place, whatever triggered it; `on_assessment` hears of each one there.
+
+A /features failure is final (state `processing_failed`, no retry) unless it is transient: the engine unreachable or
+answering 5xx. Then it is also recorded in `processing_attempts` with its next retry time (`backoff_s`), which
+`ProcessingRetrier` picks up; a success clears it. On startup `reset_interrupted` puts back the sessions a dead
+process left `processing` (before the bus runs) and `process_pending` processes every `ended` one.
 """
 
 import asyncio
@@ -21,8 +26,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 from spine_contracts import SCHEMA_VERSION, validation
 
+from monitor.analysis_retry import backoff_s
 from monitor.db import Store
 from monitor.engine import EngineClient, EngineError
 
@@ -35,6 +42,16 @@ class AssessOutcome:
     skipped: str | None = None
 
 
+def _transient(exc: Exception) -> bool:
+    """Worth retrying: the engine did not answer (the client wraps the HTTP error) or answered 5xx. A request or
+    response that breaks the contract also has no status, but it is not transient."""
+    if not isinstance(exc, EngineError):
+        return False
+    if exc.status is None:
+        return isinstance(exc.__cause__, httpx.HTTPError)
+    return exc.status >= 500
+
+
 class Analysis:
     def __init__(
         self,
@@ -44,13 +61,31 @@ class Analysis:
         window_days: int,
         clock=lambda: datetime.now(UTC),
         on_assessment: Callable[[dict[str, Any]], None] | None = None,
+        retry_min_s: float = 30.0,
+        retry_max_s: float = 900.0,
     ) -> None:
         self._store = store
         self._engine = engine
         self._window = timedelta(days=window_days)
         self._clock = clock
         self._on_assessment = on_assessment
+        self._retry_min_s = retry_min_s
+        self._retry_max_s = retry_max_s
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+    def reset_interrupted(self) -> list[str]:
+        """Startup only, sync and before the bus starts: `processing` sessions were cut by a dead process, so back to
+        `ended`. Later it would also reset an analysis that is running. Returns the ids it reset."""
+        ids = [row.payload["session_id"] for row in self._store.sessions_in_states(("processing",))]
+        return [i for i in ids if self._store.transition_session(i, ("processing",), "ended")]
+
+    async def process_pending(self) -> list[str]:
+        """Startup recovery: processes every `ended` session, one after another (each waits for the engine).
+        Returns the ids it went through; one already taken by another task is skipped by `process_session`."""
+        ids = [row.payload["session_id"] for row in self._store.sessions_in_states(("ended",))]
+        for session_id in ids:
+            await self.process_session(session_id)
+        return ids
 
     # --- session ended ------------------------------------------------------------------------
 
@@ -67,8 +102,13 @@ class Analysis:
         except (EngineError, ValueError) as exc:
             _log.warning("session %s: features not computed: %s", session_id, exc)
             self._store.transition_session(session_id, ("processing",), "processing_failed", str(exc))
+            if _transient(exc):
+                self._schedule_retry(session_id, str(exc))
+            else:
+                self._store.reset_processing_attempts(session_id)
             return
         self._store.transition_session(session_id, ("processing",), "processed")
+        self._store.reset_processing_attempts(session_id)
 
         async with self._locks[astronaut_id]:
             if session["mission_context"]["phase"] == "preflight" and feature_set["features"]:
@@ -76,6 +116,11 @@ class Analysis:
             outcome = await self._assess_locked(astronaut_id)
         if outcome.skipped:
             _log.info("session %s: assessment skipped: %s", session_id, outcome.skipped)
+
+    def _schedule_retry(self, session_id: str, error: str) -> None:
+        attempt = self._store.processing_attempt(session_id)
+        delay = backoff_s((attempt.attempts if attempt else 0) + 1, self._retry_min_s, self._retry_max_s)
+        self._store.record_processing_failure(session_id, error, self._clock() + timedelta(seconds=delay))
 
     async def _features(self, session: dict[str, Any]) -> dict[str, Any]:
         astronaut_id, session_id = session["astronaut_id"], session["session_id"]

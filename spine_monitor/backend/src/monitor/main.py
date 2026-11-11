@@ -1,7 +1,9 @@
 """On-board app: bus ingestion, commands, engine calls and the UI API.
 
 `create_app` is a factory (`uvicorn --factory monitor.main:create_app`), so the database is not opened
-on import. The lifespan starts and stops the bus connection and the ground sender. Tests inject the MQTT
+on import. The lifespan recovers what a dead process left (command timers, `processing` sessions), then starts
+the bus connection, the ground sender and one "analysis-recovery" task (the `ended` sessions, then the retry loop of
+transient analysis failures), and stops them all. Startup never waits for the engine. Tests inject the MQTT
 client, the HTTP transport of the engine, the ground transport and the clock; in production they come from
 `AppSettings` (SPINE_APP_*), and the ground transport is the simulated one, the only adapter so far.
 """
@@ -20,6 +22,7 @@ import httpx
 from fastapi import FastAPI
 
 from monitor.analysis import Analysis
+from monitor.analysis_retry import ProcessingRetrier
 from monitor.api import ViewSettings, build_router, install_problem_handlers
 from monitor.control import Control
 from monitor.db import Store
@@ -46,6 +49,7 @@ class Runtime:
     reps: RepStream
     ground: GroundTransport
     sender: GroundSender
+    retrier: ProcessingRetrier
 
 
 def create_app(
@@ -88,18 +92,39 @@ def create_app(
         enqueue_ground_day(store, astronaut_id, day, clock())
         sender.wake()
 
-    analysis = Analysis(store, EngineClient(http), window_days=settings.assess_window_days, clock=clock, on_assessment=queue_for_ground)
+    analysis = Analysis(
+        store,
+        EngineClient(http),
+        window_days=settings.assess_window_days,
+        clock=clock,
+        on_assessment=queue_for_ground,
+        retry_min_s=settings.processing_retry_min_s,
+        retry_max_s=settings.processing_retry_max_s,
+    )
+    retrier = ProcessingRetrier(store, analysis, clock=clock, max_attempts=settings.processing_max_attempts, tick_s=settings.processing_retry_tick_s)
     hub = RepHub(store, clock, no_signal_s=settings.live_no_signal_s)
     bus = Bus(factory, reconnect_min_s=settings.mqtt_reconnect_min_s, reconnect_max_s=settings.mqtt_reconnect_max_s)
     control = Control(store, bus, analysis.process_session, ack_timeout_s=settings.ack_timeout_s, clock=clock, on_session_closed=hub.finish)
     ingest = Ingest(store, control, store_unknown_session_chunks=settings.store_unknown_session_chunks, live=hub)
     reps = RepStream(hub, tick_s=settings.live_tick_s, heartbeat_s=settings.live_heartbeat_s)
-    runtime = Runtime(store, bus, control, analysis, ingest, hub, reps, ground, sender)
+    runtime = Runtime(store, bus, control, analysis, ingest, hub, reps, ground, sender, retrier)
+
+    async def recover_and_retry() -> None:
+        """Background, so the engine's timeout (per session) does not delay startup: sessions left `ended`, then retries."""
+        try:
+            await analysis.process_pending()
+        except Exception as exc:
+            _log.error("recovery of pending analyses failed: %s", type(exc).__name__)  # type only: text may quote health data
+        await retrier.run()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # Both are sync and run before the bus exists: no ack or session end can interleave with them.
+        control.recover()
+        analysis.reset_interrupted()
         bus_task = asyncio.create_task(bus.run(ingest), name="mqtt-bus")
         sender_task = asyncio.create_task(sender.run(), name="ground-sender")
+        recovery_task = asyncio.create_task(recover_and_retry(), name="analysis-recovery")
         loop = asyncio.get_running_loop()
         try:
             # A signal handler runs between two bytecodes of whatever the loop was doing: the hub is closed from the loop.
@@ -108,7 +133,7 @@ def create_app(
         finally:
             hub.close()
             # A send in flight stays queued. An analysis still running below may queue more: the next start sends it.
-            for task in (sender_task, bus_task):
+            for task in (recovery_task, sender_task, bus_task):
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task

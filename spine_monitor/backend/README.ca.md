@@ -18,11 +18,21 @@ SQLite, envia les comandes que guien el protocol i crida el motor, que no té es
 - **Comandes** (`control.py`): `start_session`, `stop_session`, `mark_event`, `calibrate`, publicades
   a `.../cmd` i seguides pels seus acks (`accepted` -> `completed`/`failed`, `rejected`, o `timeout` en
   local). Els acks actualitzen la sessió (en curs, acabada, esdeveniments, ids de calibratge).
+  **Recuperació després d'un reinici**: en engegar, una comanda `sent` passada d'`ack_timeout_s` passa a
+  `timeout`; a les altres se'ls rearma el temporitzador amb el temps que els queda. Una sessió `starting`
+  el `start_session` de la qual va caducar, o que no té comanda pendent, passa a `rejected` amb
+  `ack_timeout` (un `accepted` tardà encara la revifa). Una sessió que un procés mort va deixar en
+  `processing` torna a `ended`, i tota sessió `ended` es processa en segon pla: l'engegada mai no espera
+  el motor.
 - **Crides al motor** (`analysis.py`): quan acaba una sessió, `/features`. Si és de pre-vol,
   `/baseline` amb tots els feature sets de pre-vol (una versió nova cada vegada). Després, `/assess` amb
   perfil, baseline, feature sets recents, autoinformes i context diari. Cada autoinforme també dispara
   `/assess`. Sense perfil, baseline o feature sets l'avaluació s'omet i es diu per què. L'absència mai
-  no es converteix en un verd.
+  no es converteix en un verd. Una fallada de `/features` perquè el motor no respon o contesta 5xx es
+  reintenta amb backoff exponencial (de `PROCESSING_RETRY_MIN_S` a `PROCESSING_RETRY_MAX_S`), fins a
+  `PROCESSING_MAX_ATTEMPTS` intents, comptats a SQLite (`processing_attempts`) perquè un reinici
+  continuï el compte. Els 4xx, els errors de contracte i les sessions sense chunks són definitius
+  (`processing_failed`).
 - **Ids pseudònims**: només ids del tipus `AST-01`. Les comandes només porten els camps del schema
   (que no n'admet d'altres). El perfil és una dada personal i mai no va pel bus.
 
@@ -40,6 +50,7 @@ l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
 | GET | `/ui/crew/{astronaut_id}/self-reports/due` | Si toca l'autoinforme diari i l'ODI setmanal; les banderes vermelles sempre estan disponibles |
 | POST | `/ui/crew/{astronaut_id}/sessions` | Pla de la sessió (dispositiu, tipus, protocol, streams, càrrega...) -> `start_session`. `mission_context` agafa per defecte el context diari d'avui |
 | GET | `/ui/sessions/{session_id}` | Sessió, estat (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) i feature set |
+| POST | `/ui/sessions/{session_id}/reprocess` | Només per a `processing_failed` (409 en un altre cas, 404 si no existeix): reinicia els intents, la passa a `ended` i la processa en segon pla. 202 `{"session": id, "state": "ended"}`. És l'única manera de rellançar una sessió que ha fallat de manera definitiva o abans que es comptessin els intents |
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu |
@@ -78,6 +89,15 @@ La configuració són variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQT
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
 `WEEKLY_ODI_INTERVAL_DAYS`. A Docker Compose la base de dades viu al volum `backend_data`
 (`/data/spine_monitor.db`).
+
+Reintents de l'anàlisi, també `SPINE_APP_*`:
+
+| Variable | Per defecte | Significat |
+|---|---|---|
+| `PROCESSING_RETRY_MIN_S` | 30 | Espera abans del primer reintent d'una fallada transitòria de `/features`; es dobla a cada fallada. |
+| `PROCESSING_RETRY_MAX_S` | 900 | Espera màxima; no menor que la mínima. |
+| `PROCESSING_MAX_ATTEMPTS` | 5 | Intents abans que la sessió es quedi en `processing_failed`. |
+| `PROCESSING_RETRY_TICK_S` | 5 | Cada quant el reintentador busca un backoff vençut. |
 
 Enllaç amb terra: cada assessment encua el resum del seu dia UTC a SQLite (`ground_outbox`) i una tasca de fons l'envia, per un
 transport simulat, mentre hi ha enllaç; `GET /ui/crew/{id}/houston` i `/outbox` el mostren. Un enviament fallit es reintenta amb un

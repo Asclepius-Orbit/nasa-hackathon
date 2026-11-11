@@ -3,7 +3,8 @@
 The UI drives the protocol step by step through the API; each step is a command that is validated
 against `telemetry/command`, stored and published QoS 1 on `topics.cmd(...)`. The gateway answers on
 `.../ack`: normally `accepted` and then `completed` (or `failed`); `rejected` is final. With no ack
-within `ack_timeout_s` the command becomes `timeout`.
+within `ack_timeout_s` the command becomes `timeout`. Those timers live in memory: at startup `recover`
+arms them again from the `sent` commands in the store and rejects `starting` sessions left without one.
 
 What each ack changes in the session:
 - start_session: `accepted` -> the session is `running`; `rejected`/`failed`/timeout -> `rejected`;
@@ -83,7 +84,8 @@ class Control:
                 _log.exception("on_session_closed failed for session %s", session_id)
         return True
 
-    def _spawn(self, coro: Awaitable[Any]) -> None:
+    def spawn(self, coro: Awaitable[Any]) -> None:
+        """Runs `coro` in the background: `idle` waits for it and a failure is logged, not lost."""
         task = asyncio.ensure_future(coro)
         self._tasks.add(task)
         task.add_done_callback(self._done)
@@ -104,6 +106,34 @@ class Control:
         for timer in self._timers.values():
             timer.cancel()
         self._timers.clear()
+
+    def recover(self) -> None:
+        """Arms again the ack timeouts lost in a restart. Once at startup, in the running loop, before consuming acks.
+
+        A `sent` command past its timeout expires now (through `_expire`, so a late `accepted` still revives
+        its session); one within it waits only the rest (at most `ack_timeout_s`, if the clock went back).
+        A `starting` session left with no `sent` start_session would block its device forever: it is rejected.
+        """
+        loop = asyncio.get_running_loop()
+        now = self._clock()
+        expired = rearmed = 0
+        for command in self._store.commands_in_state("sent"):
+            command_id = command.payload["command_id"]
+            elapsed = (now - datetime.fromisoformat(command.payload["issued_at"])).total_seconds()
+            if elapsed >= self._ack_timeout_s:
+                self._expire(command_id)
+                expired += 1
+            else:
+                delay = min(self._ack_timeout_s - elapsed, self._ack_timeout_s)
+                self._timers[command_id] = loop.call_later(delay, self._expire, command_id)
+                rearmed += 1
+        orphans = 0
+        for session in self._store.sessions_in_states(("starting",)):
+            session_id = session.payload["session_id"]
+            pending = any(c.state == "sent" for c in self._store.session_commands(session_id, "start_session"))
+            if not pending and self._close_session(session_id, ("starting",), "rejected", "ack_timeout"):
+                orphans += 1
+        _log.info("recovered commands: %d expired, %d waiting for their ack; %d starting sessions rejected", expired, rearmed, orphans)
 
     # --- sending -----------------------------------------------------------------------------------
 
@@ -263,7 +293,7 @@ class Control:
         session = {**row.payload, "ended_at": ended_at, "end_reason": reason}
         self._store.update_session(session_id, session)
         if self._close_session(session_id, ("starting", "running"), "ended"):
-            self._spawn(self._on_session_ended(session_id))
+            self.spawn(self._on_session_ended(session_id))
 
     def _add_event(self, command: dict[str, Any]) -> None:
         row = self._store.session(command["session_id"])

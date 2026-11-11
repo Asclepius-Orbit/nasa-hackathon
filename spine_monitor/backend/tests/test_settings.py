@@ -83,3 +83,13 @@ def test_bad_ground_settings_are_refused_at_startup(overrides: dict[str, Any], f
 )
 def test_the_limits_of_the_ground_settings_are_accepted(overrides: dict[str, Any]) -> None:
     assert settings(**overrides)
+
+
+def test_processing_retry_defaults() -> None:
+    loaded = settings()
+    assert (loaded.processing_retry_min_s, loaded.processing_retry_max_s, loaded.processing_max_attempts) == (30.0, 900.0, 5)
+
+
+def test_processing_retry_max_below_min_is_refused() -> None:
+    with pytest.raises(ValidationError, match="processing_retry_max_s"):
+        settings(processing_retry_min_s=60, processing_retry_max_s=30)

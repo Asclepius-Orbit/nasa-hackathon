@@ -17,11 +17,19 @@ SQLite, sends the commands that drive the protocol, and calls the stateless engi
 - **Commands** (`control.py`): `start_session`, `stop_session`, `mark_event`, `calibrate`, published
   on `.../cmd` and tracked through their acks (`accepted` -> `completed`/`failed`, `rejected`,
   or `timeout` locally). Acks update the session (running, ended, events, calibration ids).
+  **Restart recovery**: at startup a `sent` command past `ack_timeout_s` becomes `timeout`; the others get
+  their timer re-armed for the remaining time. A `starting` session whose `start_session` expired, or
+  that has no pending command, becomes `rejected` with `ack_timeout` (a late `accepted` still revives
+  it). A session a dead process left `processing` goes back to `ended`, and every `ended` session is
+  processed in the background: startup never waits for the engine.
 - **Engine calls** (`analysis.py`): when a session ends, `/features`. When it is pre-flight,
   `/baseline` with every pre-flight feature set (new version each time). Then `/assess` with profile,
   baseline, recent feature sets, self-reports and daily context. Every self-report also triggers
   `/assess`. A missing profile, baseline or feature set skips the assessment and says why. Absence is
-  never turned into a green.
+  never turned into a green. A `/features` failure because the engine is unreachable or answers 5xx is
+  retried with exponential backoff (`PROCESSING_RETRY_MIN_S` to `PROCESSING_RETRY_MAX_S`), up to
+  `PROCESSING_MAX_ATTEMPTS` attempts, counted in SQLite (`processing_attempts`) so a restart goes on
+  with the count. 4xx, contract errors and sessions without chunks are final (`processing_failed`).
 - **Pseudonymous ids**: `AST-01`-style ids only. Commands carry only the schema fields (which allow no
   others). The profile is personal data and never goes on the bus.
 
@@ -39,6 +47,7 @@ its schema. Errors are `app/error` problem details.
 | GET | `/ui/crew/{astronaut_id}/self-reports/due` | Whether the daily report and the weekly ODI are due; red flags are always available |
 | POST | `/ui/crew/{astronaut_id}/sessions` | Session plan (device, type, protocol, streams, load...) -> `start_session`. `mission_context` defaults to today's daily context |
 | GET | `/ui/sessions/{session_id}` | Session, state (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) and feature set |
+| POST | `/ui/sessions/{session_id}/reprocess` | Only for `processing_failed` (409 otherwise, 404 unknown): resets the attempts, moves it to `ended` and processes it in the background. 202 `{"session": id, "state": "ended"}`. The only way to re-run a session that failed for good or before attempts were tracked |
 | POST | `/ui/sessions/{session_id}/events` | `mark_event` |
 | POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` with a reason |
@@ -74,6 +83,15 @@ uv run uvicorn --factory monitor.main:create_app --port 8000
 Settings are `SPINE_APP_*` variables (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `ENGINE_URL`, `DB_PATH`,
 `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`, `WEEKLY_ODI_INTERVAL_DAYS`. In
 Docker Compose the database lives in the `backend_data` volume (`/data/spine_monitor.db`).
+
+Analysis retries, also `SPINE_APP_*`:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PROCESSING_RETRY_MIN_S` | 30 | Delay before the first retry of a transient `/features` failure; it doubles per failure. |
+| `PROCESSING_RETRY_MAX_S` | 900 | Longest delay; not below the minimum. |
+| `PROCESSING_MAX_ATTEMPTS` | 5 | Attempts before the session stays `processing_failed`. |
+| `PROCESSING_RETRY_TICK_S` | 5 | How often the retrier looks for an elapsed backoff. |
 
 Ground link: every assessment queues the summary of its UTC day in SQLite (`ground_outbox`), and a background task sends it, over a
 simulated transport, while the link is up; `GET /ui/crew/{id}/houston` and `/outbox` show it. A failed send is retried with a backoff

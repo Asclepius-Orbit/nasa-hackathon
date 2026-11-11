@@ -632,6 +632,10 @@ class Store:
     def profile(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM profiles WHERE astronaut_id = ?", astronaut_id)
 
+    def profile_astronaut_ids(self) -> list[str]:
+        """Every astronaut that has a profile, in id order."""
+        return [row["astronaut_id"] for row in self._db.execute("SELECT astronaut_id FROM profiles ORDER BY astronaut_id")]
+
     def put_self_report(self, report: dict[str, Any]) -> None:
         self._db.execute(
             "INSERT INTO self_reports VALUES (?, ?, ?, ?, ?)",

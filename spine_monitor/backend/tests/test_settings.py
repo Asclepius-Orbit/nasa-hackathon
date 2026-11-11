@@ -107,3 +107,18 @@ def test_reassess_debounce_is_read_from_the_environment(monkeypatch: pytest.Monk
 def test_negative_reassess_debounce_is_refused() -> None:
     with pytest.raises(ValidationError, match="reassess_debounce_s"):
         settings(reassess_debounce_s=-0.1)
+
+
+def test_reassess_tick_defaults_to_one_hour() -> None:
+    assert settings().reassess_tick_s == 3600.0
+
+
+def test_reassess_tick_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_REASSESS_TICK_S", "60")
+    assert settings().reassess_tick_s == 60
+
+
+@pytest.mark.parametrize("tick", [0, -1])
+def test_a_reassess_tick_that_is_not_positive_is_refused(tick: float) -> None:
+    with pytest.raises(ValidationError, match="reassess_tick_s"):
+        settings(reassess_tick_s=tick)

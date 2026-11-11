@@ -108,6 +108,23 @@ def test_startup_does_not_wait_for_the_engine_and_shutdown_cancels_the_recovery_
     assert task.cancelled() or task.done()
 
 
+def test_the_stale_assessment_refresher_runs_from_startup_and_is_cancelled_at_shutdown(tmp_path):
+    store = Store(tmp_path / "app.db")
+    store.put_profile(example("domain/astronaut-profile"))  # a profile and no assessment: stale
+    store.close()
+    app = create_app(
+        AppSettings(_env_file=None, db_path=tmp_path / "app.db"),
+        mqtt_client_factory=lambda: IdleClient([]),  # pyright: ignore[reportArgumentType]
+        engine_transport=HangingEngine(),
+    )
+
+    with TestClient(app) as client:
+        task = next(t for t in _tasks(client) if t.get_name() == "assessment-refresh")
+        assert not task.done()
+
+    assert task.cancelled()
+
+
 def _tasks(client: TestClient):
     return client.portal.call(_all_tasks)  # pyright: ignore[reportOptionalMemberAccess]
 

@@ -205,3 +205,13 @@ def test_due_processing_retries_filters_state_attempts_and_time_ordered_by_next_
 
     assert store.due_processing_retries(NOW + timedelta(minutes=10), max_attempts=3) == [ids[2], ids[1]]
     assert store.due_processing_retries(NOW - timedelta(seconds=1), max_attempts=3) == []
+
+
+def test_profile_astronaut_ids_lists_every_profile_in_order_and_is_empty_without_any(store):
+    assert store.profile_astronaut_ids() == []
+
+    for astronaut in ("AST-02", "AST-01", "AST-03"):
+        store.put_profile(example("domain/astronaut-profile") | {"astronaut_id": astronaut})
+    store.put_profile(example("domain/astronaut-profile") | {"astronaut_id": "AST-01", "updated_at": "2026-11-11T09:00:00Z"})  # replaces
+
+    assert store.profile_astronaut_ids() == ["AST-01", "AST-02", "AST-03"]

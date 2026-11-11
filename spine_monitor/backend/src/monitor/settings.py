@@ -34,6 +34,9 @@ class AppSettings(BaseSettings):
     # A debounced reassessment (e.g. after a new baseline) runs this many seconds after the last request for the astronaut;
     # an immediate /assess in between replaces it. 0 still defers it to the loop, without waiting.
     reassess_debounce_s: float = Field(default=5.0, ge=0)
+    # An astronaut whose latest assessment is missing or older than `stale_assessment_hours` is reassessed by a loop that
+    # looks every this many seconds, so it is also the precision of that threshold.
+    reassess_tick_s: float = Field(default=3600.0, gt=0)
 
     # Chunks whose session_id is not an app session (e.g. the gateway's background monitoring).
     store_unknown_session_chunks: bool = True

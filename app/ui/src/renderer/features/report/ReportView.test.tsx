@@ -106,7 +106,7 @@ it('shows a confirmation after saving', async () => {
   await choose(STIFF, '5');
   await userEvent.click(screen.getByRole('button', { name: 'None of these' }));
   await userEvent.click(save());
-  expect(screen.getByRole('status')).toHaveTextContent('Daily report saved. A new assessment is running.');
+  expect(await screen.findByRole('status')).toHaveTextContent('Daily report saved. A new assessment is running.');
 });
 
 it('clears an optional choice when it is pressed again', async () => {

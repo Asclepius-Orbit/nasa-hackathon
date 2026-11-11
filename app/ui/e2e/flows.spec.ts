@@ -80,6 +80,9 @@ test('urgent from the login screen: Send needs a chip, then Queued, Escape close
   const send = dialog.getByRole('button', { name: 'Send', exact: true });
   await expect(send).toBeDisabled();
   await dialog.getByRole('group', { name: 'Symptoms' }).getByRole('button').first().click();
+  // Nobody is signed in: the report is for the member chosen here.
+  await expect(send).toBeDisabled();
+  await dialog.getByRole('group', { name: 'Who needs help' }).getByRole('button', { name: 'Elena Ruiz' }).click();
   await expect(send).toBeEnabled();
   await send.click();
   await expect(dialog.getByText('Queued.')).toBeVisible();
@@ -107,6 +110,20 @@ test('session: Stop: pain lands on the stopped screen', async () => {
   await page.getByRole('link', { name: /Session/ }).click();
   await page.getByRole('button', { name: /Stop: pain/ }).click();
   await expect(page.getByRole('heading', { name: 'Session stopped for pain' })).toBeVisible();
+});
+
+test('session: after a stop a new session can be started and shows as starting', async () => {
+  const { page } = ctx;
+  await signInAs(page, 'Elena Ruiz');
+  await page.getByRole('link', { name: /Session/ }).click();
+  await page.getByRole('button', { name: /Stop: pain/ }).click();
+  await expect(page.getByRole('heading', { name: 'Session stopped for pain' })).toBeVisible();
+  await page.getByRole('link', { name: /Session/ }).click();
+  const start = page.getByRole('button', { name: 'Start session' });
+  await expect(start).toBeDisabled();
+  await page.getByRole('radiogroup', { name: 'Choose the session' }).getByText('Spine length check').click();
+  await start.click();
+  await expect(page.getByText('Starting. Waiting for the harness to confirm.')).toBeVisible();
 });
 
 test('lock: the strip Lock button hides health data until the PIN is entered', async () => {

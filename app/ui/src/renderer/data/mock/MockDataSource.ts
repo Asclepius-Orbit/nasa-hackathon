@@ -1,7 +1,18 @@
-import type { AstronautProfile, DailyContext, DailyContextFields, DeviceStatus, ProfileFields, WriteResult } from '../../../shared/api';
+import type {
+  AstronautProfile,
+  CommandSent,
+  DailyContext,
+  DailyContextFields,
+  DeviceStatus,
+  ProfileFields,
+  ProtocolId,
+  ReportSaved,
+  StartSessionResult,
+  WriteResult,
+} from '../../../shared/api';
 import { realScheduler, type Scheduler } from '../../clock/scheduler';
 import type { DataSource } from '../DataSource';
-import { CATALOG, REPORT_FORM } from '../form-data';
+import { CATALOG, ODI, REPORT_FORM } from '../form-data';
 import type {
   BaselineData,
   ContactEntry,
@@ -18,7 +29,7 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { BASELINE, buildDays, FIRST_DAY, ODI, SESSION, todayData } from './mock-data';
+import { BASELINE, buildDays, FIRST_DAY, SESSION, todayData } from './mock-data';
 
 const REP_TICK_MS = 450;
 const CYCLE_TICKS = 10;
@@ -26,6 +37,7 @@ const MISSION_DAY = 87;
 const MS_PER_DAY = 86_400_000;
 const MS_PER_MINUTE = 60_000;
 const OFFICER_CALL_GMT = '13:52';
+const MOCK_STARTED_ID = 'mock-started';
 
 export interface MockDataSourceOptions {
   /** Current time; the mission start is derived from it so today is always mission day 87. */
@@ -42,7 +54,8 @@ export class MockDataSource implements DataSource {
   private stopTimer: (() => void) | null = null;
   private tick = 0;
   private reps: RepState = { rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' };
-  private stoppedAtRep: number | null = null;
+  private stopped: { sessionId: string; rep: number | null } | null = null;
+  private session: SessionData | null = SESSION;
   private contacts: ContactEntry[] = [];
   private profile: AstronautProfile | null = null;
   private context: DailyContext | null = null;
@@ -139,14 +152,59 @@ export class MockDataSource implements DataSource {
   }
 
   getSession(): Promise<SessionData | null> {
-    return Promise.resolve(SESSION);
+    return Promise.resolve(this.session);
+  }
+
+  startSession(protocolId: ProtocolId): Promise<StartSessionResult> {
+    const counted = protocolId === 'lat_pulldown_standing_v1';
+    this.stopped = null;
+    this.session = {
+      ...SESSION,
+      sessionId: MOCK_STARTED_ID,
+      state: 'starting',
+      protocolId,
+      band: counted ? SESSION.band : null,
+      totalReps: counted ? SESSION.totalReps : null,
+      restSeconds: counted ? SESSION.restSeconds : null,
+      startedAt: null,
+      steps: SESSION.steps.map((step, index) => ({ id: step.id, status: index === 0 ? 'now' : 'todo' })),
+      sensorChecks: [],
+      calibration: null,
+    };
+    return Promise.resolve({ ok: true, value: { sessionId: MOCK_STARTED_ID, state: 'starting' } });
+  }
+
+  finishSession(): Promise<WriteResult<CommandSent>> {
+    this.session = null;
+    return Promise.resolve({ ok: true, value: { commandId: 'mock-command' } });
+  }
+
+  markArtifact(): Promise<WriteResult<CommandSent>> {
+    return Promise.resolve({ ok: true, value: { commandId: 'mock-command' } });
+  }
+
+  calibrateMvc(): Promise<WriteResult<CommandSent>> {
+    return Promise.resolve({ ok: true, value: { commandId: 'mock-command' } });
+  }
+
+  reprocessSession(sessionId: string): Promise<WriteResult<{ sessionId: string }>> {
+    return Promise.resolve({ ok: true, value: { sessionId } });
+  }
+
+  saveDailyReport(): Promise<WriteResult<ReportSaved>> {
+    return Promise.resolve({ ok: true, value: { reportId: 'mock-report', assessmentLevel: null, assessmentSkipped: 'mock' } });
+  }
+
+  saveOswestry(): Promise<WriteResult<ReportSaved>> {
+    return Promise.resolve({ ok: true, value: { reportId: 'mock-report', assessmentLevel: null, assessmentSkipped: 'mock' } });
   }
 
   getStopped(): Promise<StoppedData> {
     return Promise.resolve({
-      rep: this.stoppedAtRep ?? this.reps.rep,
+      sessionId: this.stopped?.sessionId ?? SESSION.sessionId,
+      // Opened from the mock menu without a stop: the counter's rep, as the mock's live counter shows it.
+      rep: this.stopped === null ? this.reps.rep : this.stopped.rep,
       groundLink: { state: 'down', backInMin: 12 },
-      crewMedicalOfficerOnBoard: true,
       contacts: [...this.contacts],
     });
   }
@@ -184,7 +242,7 @@ export class MockDataSource implements DataSource {
           { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8 },
         ],
         redFlags: [],
-        sessions: [{ sessionId: 'mock-session', state: this.stoppedAtRep === null ? 'running' : 'ended', protocolId: 'lat_pulldown_standing_v1' }],
+        sessions: [{ sessionId: 'mock-session', state: this.stopped === null ? 'running' : 'ended', protocolId: 'lat_pulldown_standing_v1' }],
         recommendations: ['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01'],
         escalation: { required: false, urgency: null, reasons: [] },
         contacts: null,
@@ -201,8 +259,9 @@ export class MockDataSource implements DataSource {
     });
   }
 
-  stopSessionForPain(): Promise<void> {
-    this.stoppedAtRep = this.reps.rep;
+  stopSessionForPain(sessionId: string, repIndex: number | null): Promise<void> {
+    this.stopped = { sessionId, rep: repIndex };
+    this.session = null;
     return Promise.resolve();
   }
 

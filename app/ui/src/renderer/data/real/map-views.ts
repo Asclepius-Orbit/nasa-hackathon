@@ -1,6 +1,7 @@
 /** Pure mapping from the contract view payloads (snake_case) to the view-models the screens read. Codes and nulls pass through unchanged. */
-import type { BaselineView, FirstDayResult, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
-import type { BaselineData, FirstDayData, GroundLink, HistoryData, HoustonData, RepState, SessionData, StripData, TodayData } from '../types';
+import type { BaselineView, FirstDayResult, HistoryView, HoustonView, MedicalContactEntry, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
+import { gmtClock } from '../../features/today/gmt';
+import type { BaselineData, ContactEntry, FirstDayData, GroundLink, HistoryData, HoustonData, RepState, SessionData, StripData, TodayData } from '../types';
 
 const PERCENT = 100;
 
@@ -180,4 +181,10 @@ export function toHouston(view: HoustonView, outbox: OutboxView): HoustonData {
     transport: view.transport,
     contentValidated: view.content_validated,
   };
+}
+
+/** A logged call to the crew medical officer as one GMT line of the Stopped screen. */
+export function toContactEntry(entry: MedicalContactEntry): ContactEntry {
+  const atGmt = gmtClock(entry.at);
+  return { atGmt, text: `${atGmt} GMT: call to the crew medical officer logged.` };
 }

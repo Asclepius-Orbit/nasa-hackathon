@@ -1,9 +1,6 @@
-import { useEffect, useState } from 'react';
-
 import { Button } from '../../components/ui/Button';
 import { useSessionRecheck } from '../../components/layout/NoMonitor';
 import { Panel } from '../../components/ui/Panel';
-import { useData } from '../../data/DataContext';
 import type { RepsUpdate, SessionData } from '../../data/types';
 import { checkDetail, fitItemText, streamLabel } from '../../strings/codes';
 import { session as sessionCopy, stages } from '../../strings/session';
@@ -66,7 +63,14 @@ export function CheckStage({ session }: { session: SessionData }): React.JSX.Ele
   );
 }
 
-export function CalibrateStage({ session }: { session: SessionData }): React.JSX.Element {
+export interface StageAction {
+  /** The session is running, so the harness can take the action. */
+  enabled: boolean;
+  /** Another action is on its way. */
+  busy: boolean;
+}
+
+export function CalibrateStage({ session, action, onCalibrate }: { session: SessionData; action: StageAction; onCalibrate: () => void }): React.JSX.Element {
   const copy = stages.mvc;
   const { calibration } = session;
   return (
@@ -80,12 +84,27 @@ export function CalibrateStage({ session }: { session: SessionData }): React.JSX
             ? copy.saved(gmtClock(calibration.ackedAt))
             : copy.waiting}
       </p>
+      <div className={styles.actions}>
+        <Button disabled={!action.enabled || action.busy} onClick={onCalibrate}>
+          {copy.calibrate}
+        </Button>
+      </div>
     </Panel>
   );
 }
 
 /** Live rep counter fed by the DataSource (the harness IMU, 450 ms); unsubscribes on unmount. */
-export function RepsStage({ session }: { session: SessionData }): React.JSX.Element {
+export function RepsStage({
+  session,
+  update,
+  action,
+  onArtifact,
+}: {
+  session: SessionData;
+  update: RepsUpdate | null;
+  action: StageAction;
+  onArtifact: () => void;
+}): React.JSX.Element {
   const copy = stages.reps;
   if (session.totalReps === null) {
     return (
@@ -94,14 +113,11 @@ export function RepsStage({ session }: { session: SessionData }): React.JSX.Elem
       </Panel>
     );
   }
-  return <CountedReps sessionId={session.sessionId} />;
+  return <CountedReps update={update} action={action} onArtifact={onArtifact} />;
 }
 
-function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
+function CountedReps({ update, action, onArtifact }: { update: RepsUpdate | null; action: StageAction; onArtifact: () => void }): React.JSX.Element {
   const copy = stages.reps;
-  const data = useData();
-  const [update, setUpdate] = useState<RepsUpdate | null>(null);
-  useEffect(() => data.subscribeReps(sessionId, setUpdate), [data, sessionId]);
   useSessionRecheck(update?.kind === 'locked' ? new Error('locked') : null);
   if (update?.kind === 'unavailable') {
     return (
@@ -189,7 +205,9 @@ function CountedReps({ sessionId }: { sessionId: string }): React.JSX.Element {
       </dl>
       {!ended && (
         <div className={styles.minor}>
-          <Button variant="quiet">{copy.artefact}</Button>
+          <Button variant="quiet" disabled={!action.enabled || action.busy} onClick={onArtifact}>
+            {copy.artefact}
+          </Button>
           <Button variant="quiet">{copy.recount}</Button>
         </div>
       )}
@@ -201,7 +219,7 @@ function formatRest(seconds: number): string {
   return `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function FinishStage({ session }: { session: SessionData }): React.JSX.Element {
+export function FinishStage({ session, action, onFinish }: { session: SessionData; action: StageAction; onFinish: () => void }): React.JSX.Element {
   const copy = stages.finish;
   return (
     <Panel className={styles.stage}>
@@ -218,7 +236,9 @@ export function FinishStage({ session }: { session: SessionData }): React.JSX.El
         </div>
       )}
       <div className={styles.actions}>
-        <Button disabled>{copy.finish}</Button>
+        <Button disabled={!action.enabled || action.busy} onClick={onFinish}>
+          {copy.finish}
+        </Button>
       </div>
       <p className={styles.hint}>{copy.hint}</p>
     </Panel>

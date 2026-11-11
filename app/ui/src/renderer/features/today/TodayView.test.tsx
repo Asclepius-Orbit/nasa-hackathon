@@ -348,6 +348,9 @@ describe('live rep on Today (real data)', () => {
     setup({ data: new TwoSessions(TODAY) });
     const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
     await screen.findByText('Session in progress');
+    await waitFor(() => {
+      expect(listeners.has(SID)).toBe(true);
+    });
     act(() => {
       listeners.get(SID)?.({ kind: 'state', state: { rep: 3, total: 10, phase: 'pulling', barPercent: 10, last: null, signal: 'ok' } });
     });

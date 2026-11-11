@@ -13,6 +13,8 @@
 .backMap button { min-height: 56px; }
 .saveBar { position: sticky; bottom: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 20px; padding: 14px 0; background: var(--panel); border-top: 1px solid var(--line); }
 .saveBar small { color: var(--muted); font-size: 1rem; }
+.line { display: block; }
+.fieldError { margin: 6px 0 0; color: var(--urgent); font-weight: 700; font-size: 1rem; }
 .confirm { margin-top: 12px; }
 .alertSlot { margin-top: 12px; }
 @media (max-width: 900px) { .backMap { grid-template-columns: 1fr; } }

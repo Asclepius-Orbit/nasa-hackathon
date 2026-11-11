@@ -37,8 +37,17 @@ export const report = {
     pain: 'pain',
     stiffness: 'stiffness',
     symptoms: 'warning symptoms',
+    exerciseMinutes: 'exercise duration',
     list: (parts: readonly string[]): string => `Still to answer: ${parts.join(', ')}.`,
     ready: 'Ready. Saving runs a new assessment.',
   },
   saved: 'Daily report saved. A new assessment is running.',
+  saving: 'Saving',
+  fixMarked: 'Check the marked answers.',
+  failure: {
+    unavailable: 'The monitor did not answer. Nothing was saved; your answers are still here, try again.',
+    locked: 'The app is locked. Unlock it, then save again.',
+    conflict: 'The monitor already holds a different report for this. Nothing was saved; reload the screen.',
+    invalid: 'The monitor refused the report. Nothing was saved; your answers are still here.',
+  },
 } as const;

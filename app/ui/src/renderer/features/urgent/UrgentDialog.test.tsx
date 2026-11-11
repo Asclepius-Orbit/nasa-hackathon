@@ -117,12 +117,74 @@ it.each([
   const dialog = await openDialog();
   const who = await within(dialog).findByRole('group', { name: 'Who needs help' });
   const elena = await within(who).findByRole('button', { name: 'Elena Ruiz' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Leg weakness' }));
+  expect(within(dialog).getByRole('button', { name: 'Send' })).toBeDisabled();
+  expect(within(dialog).getByText('Choose who needs help to send.')).toBeInTheDocument();
   await userEvent.click(elena);
   expect(elena).toHaveAttribute('aria-pressed', 'true');
+  expect(within(dialog).getByRole('button', { name: 'Send' })).toBeEnabled();
   await userEvent.click(within(who).getByRole('button', { name: 'Marc Dubois' }));
   expect(elena).toHaveAttribute('aria-pressed', 'false');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Leg weakness' }));
   expect(within(dialog).getByRole('button', { name: 'Send' })).toBeEnabled();
+});
+
+it.each([
+  ['signed out', null],
+  ['locked', { crewId: 'AST-01', locked: true }],
+])('sends the report %s for the member chosen in the picker, without a PIN', async (_name, session) => {
+  const api = new FakeAsclepiusApi();
+  api.session = session;
+  renderInWorld(<Opener />, { api, withRouter: false, signedIn: false, data: new RealDataSource(api.views, api.reps, api) });
+  await waitFor(() => {
+    expect(api.calls).toContain('auth.current');
+  });
+  const dialog = await openDialog();
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Marc Dubois' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Leg weakness' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Very severe pain' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  expect(await within(dialog).findByText('Queued.')).toBeInTheDocument();
+  expect(api.lastArg['urgent.send']).toEqual({ crewId: 'AST-02', red_flags: ['leg_weakness'], other_symptoms: ['very_severe_pain'] });
+});
+
+it('sends the report for the signed-in member', async () => {
+  const api = new FakeAsclepiusApi();
+  renderInWorld(<Opener />, { api, withRouter: false, data: new RealDataSource(api.views, api.reps, api) });
+  const dialog = await openDialog();
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Fever with back pain' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Something else' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  expect(await within(dialog).findByText('Queued.')).toBeInTheDocument();
+  expect(api.lastArg['urgent.send']).toEqual({ crewId: 'AST-01', red_flags: ['fever_with_back_pain'], other_symptoms: ['other'] });
+});
+
+it.each([
+  ['locked'],
+  ['conflict'],
+  ['unavailable'],
+] as const)('when the backend refuses (%s) says Not recorded and never Queued, and Send can be tried again', async (reason) => {
+  const api = new FakeAsclepiusApi();
+  api.forced.set('urgent.send', { ok: false, reason });
+  renderInWorld(<Opener />, { api, withRouter: false, data: new RealDataSource(api.views, api.reps, api) });
+  const dialog = await openDialog();
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Leg weakness' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  const alert = await within(dialog).findByRole('alert');
+  expect(alert).toHaveTextContent(/Not recorded/);
+  expect(alert).toHaveTextContent(/Tell the crew medical officer now/);
+  expect(dialog).not.toHaveTextContent(/Queued\./);
+  expect(within(dialog).queryByRole('button', { name: 'Queued' })).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Send' })).toBeEnabled();
+});
+
+it('when the bridge itself fails says Not recorded', async () => {
+  const api = new FakeAsclepiusApi();
+  api.rejecting.add('urgent.send');
+  renderInWorld(<Opener />, { api, withRouter: false, data: new RealDataSource(api.views, api.reps, api) });
+  const dialog = await openDialog();
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Leg weakness' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Not recorded/);
 });
 
 it('keeps Tab and Shift+Tab inside the dialog', async () => {
@@ -150,7 +212,7 @@ it('closes on Escape and gives focus back to the opener; aria-modal is set', asy
   expect(opener).toHaveFocus();
 });
 
-it('still works when the crew list cannot be read', async () => {
+it('when the crew list cannot be read cannot send from the login, and says to tell the officer', async () => {
   const api = new FakeAsclepiusApi();
   api.crew.list = () => Promise.reject(new Error('bridge down'));
   renderInWorld(<Opener />, { api, withRouter: false, signedIn: false });
@@ -160,7 +222,8 @@ it('still works when the crew list cannot be read', async () => {
   const dialog = await openDialog();
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Leg weakness' }));
   expect(within(dialog).queryByRole('group', { name: 'Who needs help' })).not.toBeInTheDocument();
-  expect(within(dialog).getByRole('button', { name: 'Send' })).toBeEnabled();
+  expect(within(dialog).getByRole('button', { name: 'Send' })).toBeDisabled();
+  expect(await within(dialog).findByText(/The crew list could not be read/)).toBeInTheDocument();
 });
 
 it('wraps Shift+Tab from the dialog itself to the last control, and leaves Tab alone mid-list', async () => {
@@ -197,22 +260,18 @@ it('treats an unknown ground link as no link: the report is queued, never promis
   expect(within(dialog).queryByText(/Link to the ground is up\./)).not.toBeInTheDocument();
 });
 
-// Real mode: nothing is saved, queued or sent, and nobody is alerted (#63). The dialog must say so before and after Send, whatever the link.
+// Real mode now delivers: it promises what the mock promises, nothing more.
 it.each([
   ['up', { state: 'up' }],
   ['down', { state: 'down', back_in_min: 12 }],
-] as const)('in real mode never claims saved, queued, sent or alerted, and says Not recorded (link %s)', async (_name, link) => {
+] as const)('in real mode says Queued after a recorded send, whatever the link (link %s), and never Sent', async (_name, link) => {
   const api = new FakeAsclepiusApi();
   api.viewData.strip = { ...(api.viewData.strip as object), ground_link: link } as never;
   renderInWorld(<Opener />, { api, withRouter: false, data: new RealDataSource(api.views, api.reps, api) });
   const dialog = await openDialog();
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Leg weakness' }));
-  expect(dialog).not.toHaveTextContent(/alerted|queue|saved on board|goes to the flight surgeon/i);
   await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
-  const alert = await within(dialog).findByRole('alert');
-  expect(alert).toHaveTextContent(/Not recorded/);
-  expect(alert).toHaveTextContent(/Tell the crew medical officer now/);
-  expect(dialog).not.toHaveTextContent(/alerted|queued|saved on board|goes to the flight surgeon/i);
-  expect(within(dialog).queryByRole('button', { name: 'Queued' })).not.toBeInTheDocument();
-  expect(within(dialog).getByRole('button', { name: 'Close' })).toBeEnabled();
+  expect(await within(dialog).findByText('Queued.')).toBeInTheDocument();
+  expect(within(dialog).queryByRole('button', { name: 'Sent' })).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
 });

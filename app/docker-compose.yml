@@ -112,6 +112,9 @@ services:
   arduino-emulator:
     # Fake Arduino over TCP (spine_gateway.emulator) for the gateway demo without hardware. Profile "gateway-demo":
     #   docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
     image: spine-gateway:dev
     command: ["spine-arduino-emulator", "--host", "0.0.0.0", "--port", "5000"]
     profiles: ["gateway-demo"]
@@ -119,6 +122,9 @@ services:
 
   gateway-demo:
     # The real gateway reading the emulator through pyserial's socket:// instead of a USB port.
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
     image: spine-gateway:dev
     command: ["spine-gateway"]
     environment:

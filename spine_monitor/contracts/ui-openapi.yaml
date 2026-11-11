@@ -8,7 +8,8 @@ info:
     Local HTTP API of the on-board app that backs the desktop UI. Each view endpoint returns one
     screen already chewed: the backend computes the view from the stored assessments, sessions,
     self-reports, baseline, device status and the protocol catalog (`catalog/protocol-catalog.json`).
-    Views are only GET. The crew data the UI keeps up to date is read and written whole with GET and PUT:
+    Views are only GET. The UI posts the astronaut's actions: starting, stopping and marking a session, self-reports
+    and contacts with the crew medical officer. The crew data the UI keeps up to date is read and written whole with GET and PUT:
     the astronaut profile and the daily context (`schemas/v1/domain/`). The UI also lists the devices that
     published a status for the astronaut, to pair a harness.
 
@@ -61,6 +62,37 @@ paths:
                 $ref: 'schemas/v1/app/ui-contact-list.schema.json'
         '422':
           $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: logMedicalContact
+      summary: Log a contact with the crew medical officer
+      description: >-
+        `contact_id` and `at` default to the app's; `astronaut_id` comes from the path. The contact reaches the ground
+        in the day's summary. Repeating a `contact_id` with the same content answers 200; with other content 409.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/domain/medical-contact.schema.json'
+      responses:
+        '201':
+          description: The stored contact.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/domain/medical-contact.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Invalid'
         default:
           $ref: '#/components/responses/Error'
   /ui/crew/{astronaut_id}/profile:
@@ -187,6 +219,316 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/sessions:
+    post:
+      operationId: startSession
+      summary: Start a session on the astronaut's harness
+      description: >-
+        The body is a `domain/session` without the fields the app sets (`session_id`, `started_at`, `ended_at`,
+        `end_reason`, `events`: sending one is a 422), plus an optional positive `max_duration_s` that only goes in the
+        command. `device_id` is required; `mission_context` defaults to today's daily context (none stored is a 422).
+        The command goes to the harness at once; the session stays `starting` until it acks, then `running`, or
+        `rejected` (also on ack timeout). Follow it with the session view.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/domain/session.schema.json'
+      responses:
+        '202':
+          description: The session and the start command sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, state, command]
+                properties:
+                  session:
+                    $ref: 'schemas/v1/domain/session.schema.json'
+                  state:
+                    const: starting
+                  command:
+                    $ref: 'schemas/v1/telemetry/command.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/BusDown'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/self-reports:
+    post:
+      operationId: postSelfReport
+      summary: Store a self-report (daily, weekly ODI or red flag)
+      description: >-
+        `report_id`, `timestamp`, `source` (`device`) and `mission_day` (from today's daily context) default to the
+        app's; `astronaut_id` comes from the path. The assessment is redone at once and comes back with the report
+        (`null` with the reason in `assessment_skipped`). A report with red flags or other symptoms reaches the ground
+        even when no assessment is made. Repeating a `report_id` with the same content answers 200 with
+        `assessment_skipped` `duplicate`; with other content 409.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/domain/self-report.schema.json'
+      responses:
+        '201':
+          description: The stored report and the assessment it led to.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report, assessment, assessment_skipped]
+                properties:
+                  report:
+                    $ref: 'schemas/v1/domain/self-report.schema.json'
+                  assessment:
+                    oneOf:
+                      - $ref: 'schemas/v1/domain/assessment.schema.json'
+                      - type: 'null'
+                  assessment_skipped:
+                    type: [string, 'null']
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/self-reports/due:
+    get:
+      operationId: getReportsDue
+      summary: Which self-reports are due today
+      description: Whether today's daily report and this week's ODI are still due, and when the last ones were made.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: What is due.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [date, daily_due, weekly_odi_due, red_flag_available, last_daily_at, last_weekly_odi_at]
+                properties:
+                  date:
+                    $ref: 'schemas/v1/common.schema.json#/$defs/date'
+                  daily_due:
+                    type: boolean
+                  weekly_odi_due:
+                    type: boolean
+                  red_flag_available:
+                    type: boolean
+                  last_daily_at:
+                    oneOf:
+                      - $ref: 'schemas/v1/common.schema.json#/$defs/utc_timestamp'
+                      - type: 'null'
+                  last_weekly_odi_at:
+                    oneOf:
+                      - $ref: 'schemas/v1/common.schema.json#/$defs/utc_timestamp'
+                      - type: 'null'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/sessions/{session_id}/stop:
+    post:
+      operationId: stopSession
+      summary: Stop a running session
+      description: >-
+        `reason` is `completed` (default), `aborted_by_user`, `aborted_pain` or `aborted_other`; `rep_index` (from 1) only
+        with `aborted_pain`. A stop for pain is stored as a `pain_reported` event before the command is sent, so it
+        reaches the ground and the assessment even when the bus is down (503).
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason:
+                  enum: [completed, aborted_by_user, aborted_pain, aborted_other]
+                rep_index:
+                  type: integer
+                  minimum: 1
+      responses:
+        '202':
+          description: The stop command sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [command]
+                properties:
+                  command:
+                    $ref: 'schemas/v1/telemetry/command.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/BusDown'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/sessions/{session_id}/events:
+    post:
+      operationId: markSessionEvent
+      summary: Mark an event in a running session
+      description: An event of the session (e.g. `artifact` at a repetition), sent to the harness so it lands on its clock.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [event_type]
+              properties:
+                event_type:
+                  enum: [rep_start, rep_end, mvc_start, mvc_end, rest_start, rest_end, pain_reported, artifact, note]
+                rep_index:
+                  type: integer
+                  minimum: 1
+                note:
+                  type: string
+                  maxLength: 200
+      responses:
+        '202':
+          description: The event command sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [command]
+                properties:
+                  command:
+                    $ref: 'schemas/v1/telemetry/command.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/BusDown'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/sessions/{session_id}/calibrations:
+    post:
+      operationId: calibrateSession
+      summary: Calibrate streams of a running session
+      description: '`stream_ids` must be streams declared in the session (otherwise 422). The session view shows when the harness acked it.'
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [calibration_type, stream_ids]
+              properties:
+                calibration_type:
+                  enum: [stretch, emg_mvc, imu]
+                stream_ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                duration_s:
+                  type: number
+                  exclusiveMinimum: 0
+      responses:
+        '202':
+          description: The calibration command sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [command]
+                properties:
+                  command:
+                    $ref: 'schemas/v1/telemetry/command.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/BusDown'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/sessions/{session_id}/reprocess:
+    post:
+      operationId: reprocessSession
+      summary: Analyse again a session whose analysis failed for good
+      description: Only a `processing_failed` session (otherwise 409); it goes back to `ended` and the analysis runs in the background.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '202':
+          description: The session is queued for analysis.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, state]
+                properties:
+                  session:
+                    $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+                  state:
+                    const: ended
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/Error'
         default:
@@ -424,6 +766,18 @@ components:
             $ref: 'schemas/v1/app/error.schema.json'
     Invalid:
       description: The body does not conform to its schema, or names another astronaut or day than the path (problem details, type `invalid_request`, with `errors[].pointer` into the body).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Conflict:
+      description: "Refused in the current state (problem details; branch on the status): another active session on the harness, the harness offline, the session not running, or an id already used with other content."
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    BusDown:
+      description: "The command could not be sent: the bus is down (problem details; branch on the status). Nothing reached the harness."
       content:
         application/problem+json:
           schema:

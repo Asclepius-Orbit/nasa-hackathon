@@ -1,6 +1,9 @@
 /** Contract between the preload bridge (main process) and the renderer. Types only. */
 import type {
+  AstronautProfile,
   BaselineView,
+  DailyContext,
+  DeviceStatus,
   FirstDayView,
   HistoryView,
   HoustonView,
@@ -11,7 +14,20 @@ import type {
   TodayView,
 } from '../contracts/v1';
 
-export type { BaselineView, FirstDayView, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView };
+export type {
+  AstronautProfile,
+  BaselineView,
+  DailyContext,
+  DeviceStatus,
+  FirstDayView,
+  HistoryView,
+  HoustonView,
+  OutboxView,
+  RepStateView,
+  SessionView,
+  StripView,
+  TodayView,
+};
 
 /** `id` is the astronaut identifier, `AST-NN`. Names stay on this device; the bus and Houston only see `id`. */
 export interface CrewMember {
@@ -84,12 +100,58 @@ export interface RepsMessage {
   event: RepsEvent;
 }
 
+/**
+ * Why a write to the backend was not stored: `locked` (nobody unlocked, or the backend refused the credentials),
+ * `invalid` (the backend rejected the body; `fields` points into it), `conflict` (it already holds other content under
+ * the same id) or `unavailable` (down, slow, or an answer outside the contract). Only `ok: true` means stored.
+ */
+export type WriteErrorCode = 'locked' | 'invalid' | 'conflict' | 'unavailable';
+
+/** One rejected field: a JSON pointer into the body sent (e.g. `/anthropometry/body_mass_kg`) and the backend's reason. */
+export interface FieldError {
+  pointer: string;
+  message: string;
+}
+
+/** Outcome of a write. A result, not a rejection, so the 422 field pointers survive the IPC hop. */
+export type WriteResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; reason: 'invalid'; fields: FieldError[] }
+  | { ok: false; reason: Exclude<WriteErrorCode, 'invalid'> };
+
+/**
+ * The part of the profile the UI edits (`domain/astronaut-profile`). Main keeps every other stored field as it was,
+ * and sets `astronaut_id`; no name ever goes in. `null` clears an optional field.
+ */
+export interface ProfileFields {
+  date_of_birth: string;
+  sex_at_birth: AstronautProfile['sex_at_birth'];
+  launch_date: string | null;
+  landing_date: string | null;
+  height_standing_cm: number;
+  height_sitting_cm: number | null;
+  body_mass_kg: number;
+}
+
+/** The part of today's daily context the UI edits (`domain/daily-context`); main keeps the rest and sets the ids and date. */
+export interface DailyContextFields {
+  phase: DailyContext['phase'];
+  gravity_environment: DailyContext['gravity_environment'];
+  /** `null` leaves it out (unknown). Launch day is 1, the day before -1: there is no day 0. */
+  mission_day: number | null;
+}
+
+/** Pairing a harness changes only the unlocked member; `locked` when nobody is, `unavailable` when it could not be stored. */
+export type SetHarnessResult = { ok: true; member: CrewMember } | { ok: false; reason: 'locked' | 'unavailable' };
+
 export interface AsclepiusApi {
   crew: {
     list(): Promise<CrewMember[]>;
     /** Crew code the next new member would get, e.g. `AST-03` (shown before they finish). */
     nextId(): Promise<string>;
     create(input: { name: string; pin: string }): Promise<CreateCrewResult>;
+    /** Pairs (`harnessId` = a `device_id`) or unpairs (`null`) the unlocked member's harness. Stored only on this device. */
+    setHarness(input: { harnessId: string | null }): Promise<SetHarnessResult>;
   };
   auth: {
     /** Signs in from the login screen, or unlocks the lock screen for the session's crew member. */
@@ -111,6 +173,23 @@ export interface AsclepiusApi {
     session(sessionId: string): Promise<SessionView>;
     houston(): Promise<HoustonView>;
     outbox(): Promise<OutboxView>;
+  };
+  /** The unlocked astronaut's profile. `get` is `null` when none is stored and rejects with a `ViewsErrorCode`. */
+  profile: {
+    get(): Promise<AstronautProfile | null>;
+    update(fields: ProfileFields): Promise<WriteResult<AstronautProfile>>;
+  };
+  /**
+   * The unlocked astronaut's daily context for today (UTC). `today` is `null` when none is stored and rejects with a
+   * `ViewsErrorCode`. Main also writes one on its own when today has none and the profile has a launch date.
+   */
+  dailyContext: {
+    today(): Promise<DailyContext | null>;
+    updateToday(fields: DailyContextFields): Promise<WriteResult<DailyContext>>;
+  };
+  /** Devices that published a status for the unlocked astronaut (to pair a harness). Rejects with a `ViewsErrorCode`. */
+  devices: {
+    list(): Promise<DeviceStatus[]>;
   };
   /** Live push from the backend, for the signed-in astronaut's own sessions only. */
   reps: {

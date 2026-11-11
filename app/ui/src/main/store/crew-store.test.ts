@@ -187,3 +187,38 @@ describe('findCredentials', () => {
     expect(await store(true).findCredentials('AST-42')).toEqual({ status: 'unknown' });
   });
 });
+
+describe('setHarness', () => {
+  it('pairs and unpairs a member, persisted', async () => {
+    const crew = store(true);
+    expect(await crew.setHarness('AST-02', 'wb-07')).toEqual({
+      ok: true,
+      member: { id: 'AST-02', name: 'Marc Dubois', harnessId: 'wb-07' },
+    });
+    expect((await store(false).list())?.find((m) => m.id === 'AST-02')?.harnessId).toBe('wb-07');
+    expect(await crew.setHarness('AST-02', null)).toEqual({
+      ok: true,
+      member: { id: 'AST-02', name: 'Marc Dubois', harnessId: null },
+    });
+    expect((await store(false).list())?.find((m) => m.id === 'AST-02')?.harnessId).toBeNull();
+  });
+
+  it('answers unknown for a member that does not exist, without writing', async () => {
+    const crew = store(true);
+    await crew.list();
+    const before = await readFile(crewPath());
+    expect(await crew.setHarness('AST-09', 'wb-07')).toEqual({ ok: false, reason: 'unknown' });
+    expect(await readFile(crewPath())).toEqual(before);
+  });
+
+  it('is unavailable when the store cannot be read or written, and keeps the old pairing', async () => {
+    const crew = store(true);
+    await crew.list();
+    fs.failRename = true;
+    expect(await crew.setHarness('AST-01', 'wb-07')).toEqual({ ok: false, reason: 'unavailable' });
+    fs.failRename = false;
+    expect((await crew.list())?.[0]?.harnessId).toBe('wb-01');
+    safeStorage.available = false;
+    expect(await store(false).setHarness('AST-01', 'wb-07')).toEqual({ ok: false, reason: 'unavailable' });
+  });
+});

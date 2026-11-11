@@ -11,6 +11,10 @@ import { app, BrowserWindow, ipcMain, Menu, protocol, safeStorage, session } fro
 import { authStateSchema, createAuthService } from './auth/auth-service';
 import { createPinHasher } from './auth/pin';
 import { registerIpc } from './ipc';
+import { createDailyContextService } from './profile/daily-context-service';
+import { createDevicesService } from './profile/devices-service';
+import { createHarnessService } from './profile/harness-service';
+import { createProfileService } from './profile/profile-service';
 import { APP_SCHEME_PRIVILEGES, createAppProtocolHandler } from './security/app-protocol';
 import { APP_SCHEME, createAppUrlPolicy, createSenderGuard } from './security/app-url';
 import { devCsp, PROD_CSP } from './security/csp';
@@ -22,9 +26,11 @@ import { createSettingsStore } from './store/settings-store';
 import { resolveBackendToken } from './views/backend-auth';
 import { BACKEND_URL_ENV, resolveBackendUrl } from './views/backend-url';
 import { createRepsService } from './views/reps-service';
+import { createRecordsClient } from './views/records-client';
 import { createRepsStreamClient } from './views/reps-stream';
 import { createViewsClient } from './views/views-client';
 import { createViewsService } from './views/views-service';
+import { createWriteClient } from './views/write-client';
 import { createMainWindow, hardenSession, installWebContentsGuard } from './window';
 
 const devServerUrl = import.meta.env.DEV ? process.env['ELECTRON_RENDERER_URL'] : undefined;
@@ -93,7 +99,17 @@ if (!app.requestSingleInstanceLock()) {
       streams: createRepsStreamClient({ baseUrl: backendUrl, token, logError: console.error }),
       logError: console.error,
     });
-    registerIpc(ipcMain, { crew, auth, settings, views, reps }, createSenderGuard(policy));
+    const records = createRecordsClient({ baseUrl: backendUrl, token });
+    const writer = createWriteClient({ baseUrl: backendUrl, token, logError: console.error });
+    const dailyContext = createDailyContextService({ auth, records, writer, now: Date.now, logError: console.error });
+    const profile = createProfileService({ auth, records, writer, dailyContext, logError: console.error });
+    const devices = createDevicesService({ auth, records });
+    const harness = createHarnessService({ auth, crew });
+    registerIpc(
+      ipcMain,
+      { crew, auth, settings, views, reps, profile, dailyContext, devices, harness },
+      createSenderGuard(policy),
+    );
 
     openWindow();
     app.on('activate', () => {

@@ -1,21 +1,28 @@
 import type {
   AsclepiusApi,
+  AstronautProfile,
   AuthSession,
   BaselineView,
   CreateCrewResult,
   CrewMember,
+  DailyContext,
+  DailyContextFields,
+  DeviceStatus,
   FirstDayResult,
   HistoryView,
   HoustonView,
   OutboxView,
   PinResult,
+  ProfileFields,
   RepsEvent,
   SessionView,
+  SetHarnessResult,
   Settings,
   StripView,
   TodayView,
   ViewRange,
   ViewsErrorCode,
+  WriteResult,
 } from '../../shared/api';
 
 const LOCK_MS = 5 * 60_000;
@@ -27,6 +34,26 @@ export const DEFAULT_SETTINGS: Settings = {
   textSize: 'large',
   voiceCommands: true,
   footPedal: false,
+};
+
+export const DEFAULT_PROFILE: AstronautProfile = {
+  schema_version: '1.0.0',
+  astronaut_id: 'AST-01',
+  updated_at: '2026-11-01T08:00:00Z',
+  date_of_birth: '1988-04-12',
+  sex_at_birth: 'female',
+  launch_date: '2026-08-20',
+  landing_date: null,
+  anthropometry: { height_standing_cm: 171, height_sitting_cm: 90, body_mass_kg: 64.5 },
+};
+
+export const DEFAULT_CONTEXT: DailyContext = {
+  schema_version: '1.0.0',
+  astronaut_id: 'AST-01',
+  date: '2026-11-05',
+  mission_day: 78,
+  phase: 'inflight',
+  gravity_environment: 'microgravity',
 };
 
 /** Hand-written in-memory AsclepiusApi for tests. Configure the public fields, then inspect `calls`. */
@@ -44,6 +71,71 @@ export class FakeAsclepiusApi implements AsclepiusApi {
   /** Names of the methods called, in order, e.g. `settings.update`. */
   calls: string[] = [];
   private wrong = new Map<string, number>();
+  /** Argument of the last `crew.setHarness`. */
+  lastHarnessId: string | null | undefined;
+  /** Makes `crew.setHarness` answer a failure. */
+  harnessFailure: 'locked' | 'unavailable' | undefined;
+
+  /** Stored profile (`null`: none yet). `profile.update` replaces it. */
+  profileValue: AstronautProfile | null = DEFAULT_PROFILE;
+  /** Today's stored context (`null`: none yet). */
+  contextValue: DailyContext | null = DEFAULT_CONTEXT;
+  devicesValue: DeviceStatus[] = [];
+  /** Makes the matching read reject with this code. */
+  readErrors: Partial<Record<'profile' | 'context' | 'devices', ViewsErrorCode>> = {};
+  /** Forces the answer of `profile.update` / `dailyContext.updateToday` (default: stores and answers `ok`). */
+  profileWrite: WriteResult<AstronautProfile> | undefined;
+  contextWrite: WriteResult<DailyContext> | undefined;
+  lastProfileFields: ProfileFields | undefined;
+  lastContextFields: DailyContextFields | undefined;
+
+  profile = {
+    get: (): Promise<AstronautProfile | null> => {
+      this.calls.push('profile.get');
+      return this.read('profile', this.profileValue);
+    },
+    update: (fields: ProfileFields): Promise<WriteResult<AstronautProfile>> => {
+      this.calls.push('profile.update');
+      this.lastProfileFields = fields;
+      if (this.profileWrite !== undefined) return Promise.resolve(this.profileWrite);
+      const { height_standing_cm, height_sitting_cm, body_mass_kg, ...rest } = fields;
+      const value: AstronautProfile = {
+        ...DEFAULT_PROFILE,
+        ...rest,
+        anthropometry: { height_standing_cm, body_mass_kg, ...(height_sitting_cm === null ? {} : { height_sitting_cm }) },
+      };
+      this.profileValue = value;
+      return Promise.resolve({ ok: true, value });
+    },
+  };
+
+  dailyContext = {
+    today: (): Promise<DailyContext | null> => {
+      this.calls.push('dailyContext.today');
+      return this.read('context', this.contextValue);
+    },
+    updateToday: (fields: DailyContextFields): Promise<WriteResult<DailyContext>> => {
+      this.calls.push('dailyContext.updateToday');
+      this.lastContextFields = fields;
+      if (this.contextWrite !== undefined) return Promise.resolve(this.contextWrite);
+      const { mission_day, ...rest } = fields;
+      const value: DailyContext = { ...DEFAULT_CONTEXT, ...rest, ...(mission_day === null ? {} : { mission_day }) };
+      this.contextValue = value;
+      return Promise.resolve({ ok: true, value });
+    },
+  };
+
+  devices = {
+    list: (): Promise<DeviceStatus[]> => {
+      this.calls.push('devices.list');
+      return this.read('devices', [...this.devicesValue]);
+    },
+  };
+
+  private read<T>(name: keyof FakeAsclepiusApi['readErrors'], value: T): Promise<T> {
+    const code = this.readErrors[name];
+    return code === undefined ? Promise.resolve(value) : Promise.reject(new Error(code));
+  }
 
   crew = {
     list: (): Promise<CrewMember[]> => {
@@ -53,6 +145,15 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     nextId: (): Promise<string> => {
       this.calls.push('crew.nextId');
       return Promise.resolve(`AST-${String(this.crewMembers.length + 1).padStart(2, '0')}`);
+    },
+    setHarness: (input: { harnessId: string | null }): Promise<SetHarnessResult> => {
+      this.calls.push('crew.setHarness');
+      this.lastHarnessId = input.harnessId;
+      if (this.harnessFailure !== undefined) return Promise.resolve({ ok: false, reason: this.harnessFailure });
+      const member = this.crewMembers.find((m) => m.id === this.session?.crewId);
+      if (member === undefined) return Promise.resolve({ ok: false, reason: 'locked' });
+      member.harnessId = input.harnessId;
+      return Promise.resolve({ ok: true, member: { ...member } });
     },
     create: (input: { name: string; pin: string }): Promise<CreateCrewResult> => {
       this.calls.push('crew.create');

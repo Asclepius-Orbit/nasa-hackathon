@@ -3,7 +3,7 @@ import { NavLink } from 'react-router';
 import type { DataSource } from '../../data/DataSource';
 import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { dueLabel, nav } from '../../strings/common';
-import { HistoryIcon, ReportIcon, SessionIcon, SettingsIcon, TodayIcon } from './icons';
+import { AskIcon, HistoryIcon, ReportIcon, SessionIcon, SettingsIcon, TodayIcon } from './icons';
 import { MockScreensMenu } from './MockScreensMenu';
 import styles from './Rail.module.css';
 
@@ -14,10 +14,11 @@ const TABS = [
   { to: '/report', label: nav.report, Icon: ReportIcon },
   { to: '/session', label: nav.session, Icon: SessionIcon },
   { to: '/history', label: nav.history, Icon: HistoryIcon },
+  { to: '/chat', label: nav.ask, Icon: AskIcon },
   { to: '/settings', label: nav.settings, Icon: SettingsIcon },
 ] as const;
 
-/** Left rail (bottom tab bar under 900 px) with the five tabs; the Report tab carries the "due" badge. */
+/** Left rail (bottom tab bar under 900 px) with the six tabs; the Report tab carries the "due" badge. */
 export function Rail(): React.JSX.Element {
   const { data } = useLoad(selectStrip, { refreshMs: REFRESH_MS });
   const due = data?.reportsDue ?? 0;

@@ -13,21 +13,36 @@ export const BACKEND_TOKEN_FILE_ENV = 'ASCLEPIUS_BACKEND_TOKEN_FILE';
 /** `authorization` and `x-astronaut-id`, each only when there is a value. */
 export type AuthHeaders = Record<string, string>;
 
-export function resolveBackendToken(
-  env: Readonly<Record<string, string | undefined>>,
+/** The agent's token (`/chat`), read the same way from its own variables; held by the main process only. */
+export const AGENT_TOKEN_ENV = 'ASCLEPIUS_AGENT_TOKEN';
+export const AGENT_TOKEN_FILE_ENV = 'ASCLEPIUS_AGENT_TOKEN_FILE';
+
+type Env = Readonly<Record<string, string | undefined>>;
+
+function resolveToken(
+  env: Env,
+  names: { direct: string; file: string },
   readFile: (path: string) => string,
   onError: (message: string) => void,
 ): string | null {
-  const direct = env[BACKEND_TOKEN_ENV]?.trim();
+  const direct = env[names.direct]?.trim();
   if (direct) return direct;
-  const path = env[BACKEND_TOKEN_FILE_ENV];
+  const path = env[names.file];
   if (!path) return null;
   try {
     return readFile(path).trim() || null;
   } catch {
-    onError(`${BACKEND_TOKEN_FILE_ENV}: the token file cannot be read`);
+    onError(`${names.file}: the token file cannot be read`);
     return null;
   }
+}
+
+export function resolveBackendToken(env: Env, readFile: (path: string) => string, onError: (message: string) => void): string | null {
+  return resolveToken(env, { direct: BACKEND_TOKEN_ENV, file: BACKEND_TOKEN_FILE_ENV }, readFile, onError);
+}
+
+export function resolveAgentToken(env: Env, readFile: (path: string) => string, onError: (message: string) => void): string | null {
+  return resolveToken(env, { direct: AGENT_TOKEN_ENV, file: AGENT_TOKEN_FILE_ENV }, readFile, onError);
 }
 
 /** The headers for one request: the token when there is one, and the astronaut when the request is about one. */

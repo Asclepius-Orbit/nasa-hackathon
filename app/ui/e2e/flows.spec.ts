@@ -150,3 +150,31 @@ test('profile: from Settings, fill the profile and save it', async () => {
   await panel.getByRole('button', { name: 'Save profile' }).click();
   await expect(panel.getByText('Saved')).toBeVisible();
 });
+
+test('ask: type a question and read the sample answer (mock data, no agent)', async () => {
+  const { page } = ctx;
+  await signInAs(page, 'Elena Ruiz');
+  await page.getByRole('link', { name: 'Ask' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Ask' })).toBeVisible();
+  await expect(page.getByText(/The assistant does not diagnose/)).toBeVisible();
+  await page.getByRole('textbox', { name: 'Your question' }).fill('How is my back today?');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('list', { name: 'Conversation' }).getByText('How is my back today?')).toBeVisible();
+  await expect(page.getByText('Looked at: your current status')).toBeVisible();
+  await expect(page.getByText(/This is a sample answer/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
+});
+
+test('sign out: from the strip and from the lock screen back to the login, so another member can sign in', async () => {
+  const { page } = ctx;
+  await signInAs(page, 'Elena Ruiz');
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('button', { name: /Marc Dubois/ })).toBeVisible();
+  await expect(page.locator('#today-title')).toHaveCount(0);
+  await signInAs(page, 'Marc Dubois');
+  await expect(page.locator('header')).toContainText('Marc Dubois');
+  await page.getByRole('button', { name: 'Lock', exact: true }).click();
+  await expect(page.getByTestId('lock-view')).toBeVisible();
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('button', { name: /Elena Ruiz/ })).toBeVisible();
+});

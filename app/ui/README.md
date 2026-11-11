@@ -6,7 +6,8 @@ Desktop app the astronaut uses on the tablet: today's verdict, the daily report,
 the urgent-symptom alert and the summary for Houston. Electron + React + TypeScript, built with Vite and pnpm.
 
 Every screen reads from a typed `DataSource` (`src/renderer/data/`). By default it is the backend (`/ui` on 8000),
-reached only through the main process; the e2e build and `VITE_MOCK_DATA=true` use the on-board mock instead.
+reached only through the main process (real mode). The `e2e` build and `VITE_MOCK_DATA=true` use the on-board mock instead;
+`pnpm start` without that variable is real mode and needs the stack below.
 
 ## Requirements
 
@@ -24,9 +25,38 @@ pnpm start          # from the repo root: pnpm -C app/ui start
 `pnpm start` installs anything missing (frozen lockfile), downloads the Electron binary if needed and opens the
 app in development mode with hot reload.
 
-In development (and in the e2e build only) two demo crew members exist: **Elena Ruiz** and **Marc Dubois**,
+In development (and in the e2e builds only) two demo crew members exist: **Elena Ruiz** and **Marc Dubois**,
 PIN **1234**. The "Mock screens" menu and "Mock: skip login or lock" are development-only too. A production build
-starts with no crew: add the first member with "New crew member".
+starts with no crew: add the first member with "New crew member". The demo members' harnesses are the simulator's
+(`sim-01` and `sim-02`, as in `spine_monitor/physiology/configs/example-mission.yaml`). **Sign out** (in the top strip
+and on the lock screen) ends the session and returns to the login, so another member can use the tablet; it also stops
+the live repetition counter and any open chat.
+
+## Run the full demo
+
+Simulator, Mosquitto, engine, backend and the app in real mode, from the repo root (Docker, and `sh` from Git Bash on
+Windows):
+
+```bash
+sh app/mosquitto/setup.sh                                          # once: broker credentials in app/.env
+export SPINE_APP_UI_TOKEN=$(openssl rand -hex 24)                  # shared token of the /ui API (or leave it empty, see below)
+export SPINE_APP_BASELINE_REQUIRED=1                               # optional: one preflight session completes the baseline (default 3)
+docker compose -f app/docker-compose.yml --profile sim up -d --build
+curl http://127.0.0.1:8000/health                                  # wait for "mqtt_connected": true
+ASCLEPIUS_BACKEND_TOKEN=$SPINE_APP_UI_TOKEN pnpm -C app/ui start   # real mode: no VITE_MOCK_DATA
+```
+
+Without `SPINE_APP_UI_TOKEN` the backend generates a token in its volume; hand it to the app with
+`ASCLEPIUS_BACKEND_TOKEN_FILE` (a copy of `/data/ui-token`, for example with `docker compose cp backend:/data/ui-token .`).
+The token reaches the app through the process environment on Windows and Linux alike. Sign in as Elena Ruiz (PIN 1234),
+save the profile with a launch date after today (so today is preflight), save the daily report and start the
+"Spine length check" session: the simulated harness answers and streams for about 2 minutes. Stop everything with
+`docker compose -f app/docker-compose.yml --profile sim down`.
+
+`pnpm e2e:real` does all of this unattended and checks it (local only, not CI): it runs `setup.sh`, starts the stack
+in its own Compose project (`asclepius-e2e`, thrown away with `down -v` afterwards), waits for the backend and the
+simulated harness, builds with `--mode e2e-real` (real data source, demo crew), runs `e2e/real.spec.ts` and always takes
+the stack down (`E2E_REAL_KEEP=1` keeps it). It needs Docker, `sh`, and ports 1883, 8000 and 8001 free.
 
 ## Scripts
 
@@ -38,6 +68,7 @@ starts with no crew: add the first member with "New crew member".
 | `pnpm dist` | Windows installer (NSIS, unsigned) into `release/` |
 | `pnpm test` / `pnpm test:cov` | Vitest unit and component tests (coverage ≥ 90 % lines, branches, functions, statements) |
 | `pnpm e2e` | Builds in `e2e` mode and runs the Playwright flows against the real app |
+| `pnpm e2e:real` | The full demo unattended: starts the Docker stack (simulator, broker, engine, backend), builds in `e2e-real` mode and runs `e2e/real.spec.ts` in real mode (local only) |
 | `pnpm e2e:packaged` | Packs the app (`--dir`) and checks the packaged exe renders the login |
 | `pnpm lint` / `pnpm typecheck` | ESLint (strict, no warnings) and `tsc -b` |
 | `pnpm gen:types` / `pnpm check:types` | Regenerate / check `src/contracts/v1.ts` from the JSON Schemas |
@@ -85,10 +116,11 @@ Copy lives in `src/renderer/strings/` (English, one file per screen) so other la
 - Self-reports: the daily report and the Oswestry are stored with `POST self-reports` (kinds `daily` and `weekly_odi`), and the exercise of the day is added to today's daily context. The six Oswestry items are provisional, pending validation by Aguado (#48). "Saved" appears only on `ok`.
 - Urgent symptom: a `red_flag` report. With someone unlocked it is sent for them. From the login or lock screen it is sent without a PIN for the crew member chosen in the dialog: this single write is allowed for an emergency, and nothing is read. It shows Queued only when stored.
 - Stopped screen: the repetition the stop was recorded at, the ground link, the call to the crew medical officer (`POST contacts`, also in the summary for Houston) and the logged contacts. There is no survey after the stop: symptoms go through Urgent, pain through the daily report.
+- Ask screen (chat with the spine agent): `POST /chat` as a server-sent stream, from the main process only. The agent URL is `ASCLEPIUS_AGENT_URL` (loopback only, default `http://127.0.0.1:8003`) and its token `ASCLEPIUS_AGENT_TOKEN` or the file `ASCLEPIUS_AGENT_TOKEN_FILE`; neither reaches the renderer. The astronaut is the one unlocked here, never an argument; the model's tool arguments are dropped in main (only the tool name is shown). There is no retry: a failed answer is re-asked by the user. The first words can take up to a minute on a CPU (up to 120 s of silence is allowed). The assistant does not diagnose and the screen says so; a `fallback` is shown as "Summary without the assistant". Locking or signing out stops live answers; "New conversation" forgets the old one on the agent. In mock data mode a scripted sample answer replaces the agent.
 - Crew and auth state are encrypted with Electron `safeStorage` and fail closed when encryption is unavailable.
 - Electron fuses: no `RunAsNode`, no `NODE_OPTIONS`, no inspect flags, asar integrity, app loaded only from asar.
 - Supply chain: exact versions, a lockfile, build scripts allowed only for `electron`, and a one-day minimum
   release age (`pnpm-workspace.yaml`).
 
-Known limits, kept for later work: no sign-out or crew switch; 4-digit PINs;
+Known limits, kept for later work: 4-digit PINs;
 per-user, unsigned installer; the packaged exe accepts `--remote-debugging-port`.

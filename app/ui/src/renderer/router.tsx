@@ -3,6 +3,7 @@ import { createHashRouter, Navigate, type RouteObject } from 'react-router';
 import { AuthGate } from './auth/AuthGate';
 import { AppLayout } from './components/layout/AppLayout';
 import { BaselineView } from './features/baseline/BaselineView';
+import { ChatView } from './features/chat/ChatView';
 import { FirstDayView } from './features/firstday/FirstDayView';
 import { HistoryView } from './features/history/HistoryView';
 import { HoustonView } from './features/houston/HoustonView';
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
           { path: '/session', element: <SessionView /> },
           { path: '/stopped', element: <StoppedView /> },
           { path: '/history', element: <HistoryView /> },
+          { path: '/chat', element: <ChatView /> },
           { path: '/settings', element: <SettingsView /> },
           { path: '/profile', element: <ProfileView /> },
           { path: '/first-day', element: <FirstDayView /> },

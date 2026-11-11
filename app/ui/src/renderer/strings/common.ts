@@ -18,6 +18,7 @@ export const strip = {
 export const urgentButton = 'Urgent symptom';
 
 export const lockButton = 'Lock';
+export const signOutButton = 'Sign out';
 
 export const nav = {
   label: 'Sections',
@@ -25,6 +26,7 @@ export const nav = {
   report: 'Report',
   session: 'Session',
   history: 'History',
+  ask: 'Ask',
   settings: 'Settings',
 } as const;
 

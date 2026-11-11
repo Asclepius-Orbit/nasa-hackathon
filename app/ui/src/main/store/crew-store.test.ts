@@ -49,8 +49,8 @@ describe('seeding', () => {
   it('seeds Elena Ruiz and Marc Dubois with hashed PIN 1234 when seeded and the store is empty', async () => {
     const crew = store(true);
     expect(await crew.list()).toEqual([
-      { id: 'AST-01', name: 'Elena Ruiz', harnessId: 'wb-01' },
-      { id: 'AST-02', name: 'Marc Dubois', harnessId: 'wb-02' },
+      { id: 'AST-01', name: 'Elena Ruiz', harnessId: 'sim-01' },
+      { id: 'AST-02', name: 'Marc Dubois', harnessId: 'sim-02' },
     ]);
     const credentials = await crew.findCredentials('AST-01');
     expect(credentials.status).toBe('ok');
@@ -217,7 +217,7 @@ describe('setHarness', () => {
     fs.failRename = true;
     expect(await crew.setHarness('AST-01', 'wb-07')).toEqual({ ok: false, reason: 'unavailable' });
     fs.failRename = false;
-    expect((await crew.list())?.[0]?.harnessId).toBe('wb-01');
+    expect((await crew.list())?.[0]?.harnessId).toBe('sim-01');
     safeStorage.available = false;
     expect(await store(false).setHarness('AST-01', 'wb-07')).toEqual({ ok: false, reason: 'unavailable' });
   });

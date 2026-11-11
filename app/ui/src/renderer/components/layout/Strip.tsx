@@ -8,7 +8,7 @@ import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { useUrgent } from '../../features/urgent/UrgentContext';
 import { gmtStamp } from '../../features/today/gmt';
 import { useSettings } from '../../settings/SettingsProvider';
-import { groundLinkValue, harnessValue, lockButton, noData, noMonitor, strip, urgentButton } from '../../strings/common';
+import { groundLinkValue, harnessValue, lockButton, noData, noMonitor, signOutButton, strip, urgentButton } from '../../strings/common';
 import { phaseText } from '../../strings/codes';
 import { BatteryIcon, GroundLinkIcon } from './icons';
 import { isNoMonitor, useSessionRecheck } from './NoMonitor';
@@ -49,7 +49,7 @@ function useCrewName(crewId: string | null): string | null {
 
 /** Always-visible top strip: who, mission day, GMT clock, phase, harness, ground link and the red Urgent button. */
 export function Strip(): React.JSX.Element {
-  const { crewId, lock } = useAuth();
+  const { crewId, lock, signOut } = useAuth();
   const name = useCrewName(crewId);
   const { data, error } = useLoad(selectStrip, { refreshMs: REFRESH_MS });
   useSessionRecheck(error);
@@ -86,6 +86,15 @@ export function Strip(): React.JSX.Element {
         }}
       >
         {lockButton}
+      </button>
+      <button
+        type="button"
+        className={styles.lock}
+        onClick={() => {
+          void signOut();
+        }}
+      >
+        {signOutButton}
       </button>
       <button
         type="button"

@@ -21,6 +21,7 @@ import { createContactsService } from './reports/contacts-service';
 import { createReportsService } from './reports/reports-service';
 import { createUrgentService } from './reports/urgent-service';
 import { createSessionsService } from './sessions/sessions-service';
+import type { ChatService } from './chat/chat-service';
 import type { RepsService } from './views/reps-service';
 import type { ViewsClient } from './views/views-client';
 import { ViewsError } from './views/views-error';
@@ -110,6 +111,33 @@ function fakeRepsService(): RepsService {
   };
 }
 
+/** Fake of the chat service: remembers what the handlers ask of it. */
+let chatCalls: unknown[][];
+let chatFailWith: Error | null;
+const CHAT_CONVERSATION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
+
+function fakeChatService(): ChatService {
+  chatCalls = [];
+  chatFailWith = null;
+  return {
+    ask: (from, input) => {
+      chatCalls.push(['ask', from, input]);
+      if (chatFailWith !== null) throw chatFailWith;
+      return SUBSCRIPTION;
+    },
+    cancel: (from, id) => {
+      chatCalls.push(['cancel', from, id]);
+    },
+    forget: (conversationId) => {
+      chatCalls.push(['forget', conversationId]);
+      return Promise.resolve();
+    },
+    stopAll: () => {
+      chatCalls.push(['stopAll']);
+    },
+  };
+}
+
 function fakeViewsClient(): ViewsClient {
   backend = { calls: [], failWith: null };
   const view = (name: string, ...args: unknown[]): Promise<never> => {
@@ -164,6 +192,7 @@ beforeEach(async () => {
     settings,
     views,
     reps: fakeRepsService(),
+    chat: fakeChatService(),
     profile: createProfileService({ auth, records: records.records, writer: records.writer, dailyContext }),
     dailyContext,
     devices: createDevicesService({ auth, records: records.records }),
@@ -204,6 +233,7 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.crewList, ['extra']],
     [IPC_CHANNELS.crewNextId, [{}]],
     [IPC_CHANNELS.authLock, [undefined]],
+    [IPC_CHANNELS.authSignOut, [undefined]],
     [IPC_CHANNELS.authCurrent, [1]],
     [IPC_CHANNELS.settingsGet, [null]],
     [IPC_CHANNELS.crewCreate, []],
@@ -240,6 +270,17 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.repsUnsubscribe, []],
     [IPC_CHANNELS.repsUnsubscribe, [{ subscriptionId: 'abc' }]],
     [IPC_CHANNELS.repsUnsubscribe, [{ subscriptionId: SUBSCRIPTION, x: 1 }]],
+    [IPC_CHANNELS.chatAsk, []],
+    [IPC_CHANNELS.chatAsk, [{ conversationId: CHAT_CONVERSATION, question: '' }]],
+    [IPC_CHANNELS.chatAsk, [{ conversationId: CHAT_CONVERSATION, question: '   ' }]],
+    [IPC_CHANNELS.chatAsk, [{ conversationId: CHAT_CONVERSATION, question: 'x'.repeat(2001) }]],
+    [IPC_CHANNELS.chatAsk, [{ conversationId: CHAT_CONVERSATION.toUpperCase(), question: 'q' }]],
+    [IPC_CHANNELS.chatAsk, [{ conversationId: CHAT_CONVERSATION, question: 'q', astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.chatAsk, [{ conversationId: CHAT_CONVERSATION, question: 'q' }, 'extra']],
+    [IPC_CHANNELS.chatCancel, [{ subscriptionId: 'abc' }]],
+    [IPC_CHANNELS.chatCancel, []],
+    [IPC_CHANNELS.chatForget, [{ conversationId: '../x' }]],
+    [IPC_CHANNELS.chatForget, [CHAT_CONVERSATION]],
     [IPC_CHANNELS.crewSetHarness, []],
     [IPC_CHANNELS.crewSetHarness, [{ harnessId: 'WB 01' }]],
     [IPC_CHANNELS.crewSetHarness, [{ harnessId: 'wb-01', crewId: 'AST-02' }]],
@@ -284,8 +325,8 @@ describe('registerIpc', () => {
 describe('crew channels', () => {
   it('lists DTOs and the next id', async () => {
     expect(await call(IPC_CHANNELS.crewList)).toEqual([
-      { id: 'AST-01', name: 'Elena Ruiz', harnessId: 'wb-01' },
-      { id: 'AST-02', name: 'Marc Dubois', harnessId: 'wb-02' },
+      { id: 'AST-01', name: 'Elena Ruiz', harnessId: 'sim-01' },
+      { id: 'AST-02', name: 'Marc Dubois', harnessId: 'sim-02' },
     ]);
     expect(await call(IPC_CHANNELS.crewNextId)).toBe('AST-03');
   });
@@ -338,6 +379,18 @@ describe('auth channels', () => {
     });
     expect(await call(IPC_CHANNELS.authLock)).toBeUndefined();
     expect(await call(IPC_CHANNELS.authCurrent)).toEqual({ crewId: 'AST-01', locked: true });
+  });
+
+  it('signs out unlocked or locked, closes the live streams and lets another member in', async () => {
+    await call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-01', pin: '1234' });
+    expect(await call(IPC_CHANNELS.authSignOut)).toBeUndefined();
+    expect(await call(IPC_CHANNELS.authCurrent)).toBeNull();
+    expect(repsCalls).toContainEqual(['closeAll']);
+    await call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-01', pin: '1234' });
+    await call(IPC_CHANNELS.authLock);
+    expect(await call(IPC_CHANNELS.authSignOut)).toBeUndefined();
+    expect(await call(IPC_CHANNELS.authCurrent)).toBeNull();
+    expect(await call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-02', pin: '1234' })).toEqual({ ok: true, crewId: 'AST-02' });
   });
 });
 
@@ -482,6 +535,47 @@ describe('reps channels', () => {
   });
 });
 
+describe('chat channels', () => {
+  const forbiddenEvent: IpcEventLike = { sender, senderFrame: null };
+  const ask = { conversationId: CHAT_CONVERSATION, question: 'How am I?' };
+
+  it('asks through the calling window and returns the subscription id', async () => {
+    expect(await call(IPC_CHANNELS.chatAsk, ask)).toBe(SUBSCRIPTION);
+    expect(chatCalls).toEqual([['ask', sender, ask]]);
+  });
+
+  it('cancels through the calling window', async () => {
+    expect(await call(IPC_CHANNELS.chatCancel, { subscriptionId: SUBSCRIPTION })).toBeUndefined();
+    expect(chatCalls).toEqual([['cancel', sender, SUBSCRIPTION]]);
+  });
+
+  it('forgets a conversation', async () => {
+    expect(await call(IPC_CHANNELS.chatForget, { conversationId: CHAT_CONVERSATION })).toBeUndefined();
+    expect(chatCalls).toEqual([['forget', CHAT_CONVERSATION]]);
+  });
+
+  it('does not reach the service from an untrusted sender', async () => {
+    await expect(ipc.invoke(IPC_CHANNELS.chatAsk, forbiddenEvent, ask)).rejects.toThrow('forbidden');
+    expect(chatCalls).toEqual([]);
+  });
+
+  it('passes "locked" through without logging it, and hides any other failure behind "unavailable"', async () => {
+    chatFailWith = new ViewsError('locked');
+    await expect(call(IPC_CHANNELS.chatAsk, ask)).rejects.toThrow(/^locked$/);
+    expect(logged).toEqual([]);
+    const bug = new Error('boom C:\\secret');
+    chatFailWith = bug;
+    await expect(call(IPC_CHANNELS.chatAsk, ask)).rejects.toThrow(/^unavailable$/);
+    expect(logged).toEqual([bug]);
+  });
+
+  it('stops every live answer when the app is locked or signed out', async () => {
+    await call(IPC_CHANNELS.authLock);
+    await call(IPC_CHANNELS.authSignOut);
+    expect(chatCalls).toEqual([['stopAll'], ['stopAll']]);
+  });
+});
+
 describe('profile, daily context, devices and harness channels', () => {
   const unlock = () => call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-01', pin: '1234' });
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -562,7 +656,7 @@ describe('session, report, urgent and contact channels', () => {
       ok: true,
       value: { sessionId: SESSION, state: 'starting' },
     });
-    expect(records.sent[0]).toMatchObject({ path: '/ui/crew/AST-01/sessions', body: { device_id: 'wb-01' } });
+    expect(records.sent[0]).toMatchObject({ path: '/ui/crew/AST-01/sessions', body: { device_id: 'sim-01' } });
   });
 
   it('sends the session commands for the unlocked astronaut', async () => {

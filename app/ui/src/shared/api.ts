@@ -217,6 +217,32 @@ export interface MedicalContactEntry {
   sessionId: string | null;
 }
 
+/**
+ * Why a chat answer ended in error: `locked` (nobody unlocked, or the agent refused the credentials), `busy` (this
+ * conversation is already answering), `invalid` (the question was refused, or the conversation was forgotten while
+ * answering), `unavailable` (agent down, slow, cut stream or answer outside the contract) or `internal` (agent bug).
+ */
+export type ChatErrorCode = 'locked' | 'busy' | 'invalid' | 'unavailable' | 'internal';
+
+/**
+ * One event of a chat answer (`contracts/agent-openapi.yaml`, `agent/chat-event`), as the renderer gets it. `text` is a
+ * piece to append; `fallback` is a summary made without the LLM that REPLACES any text already shown; `tool_call`
+ * carries only the tool name (its raw arguments never reach the renderer). Exactly one `end` or `error` comes last.
+ */
+export type ChatEvent =
+  | { kind: 'text'; delta: string }
+  | { kind: 'tool_call'; toolName: string }
+  | { kind: 'fallback'; text: string }
+  | { kind: 'notice'; code: 'mid_stream' | 'correction'; text: string }
+  | { kind: 'end' }
+  | { kind: 'error'; code: ChatErrorCode };
+
+/** What main pushes on `asclepius:chat:event`. The preload hands only `event` to the renderer. */
+export interface ChatMessage {
+  subscriptionId: string;
+  event: ChatEvent;
+}
+
 /** Pairing a harness changes only the unlocked member; `locked` when nobody is, `unavailable` when it could not be stored. */
 export type SetHarnessResult = { ok: true; member: CrewMember } | { ok: false; reason: 'locked' | 'unavailable' };
 
@@ -233,6 +259,8 @@ export interface AsclepiusApi {
     /** Signs in from the login screen, or unlocks the lock screen for the session's crew member. */
     verifyPin(input: { crewId: string; pin: string }): Promise<PinResult>;
     lock(): Promise<void>;
+    /** Ends the session (unlocked or locked): live streams and chat answers stop, and the login screen comes back. */
+    signOut(): Promise<void>;
     current(): Promise<AuthSession | null>;
   };
   settings: {
@@ -292,6 +320,17 @@ export interface AsclepiusApi {
   contacts: {
     list(): Promise<MedicalContactEntry[]>;
     logOfficerCall(input: { sessionId: string | null }): Promise<WriteResult<MedicalContactEntry>>;
+  };
+  /** Chat with the spine agent, for the unlocked astronaut only. */
+  chat: {
+    /**
+     * Asks `question` in conversation `conversationId` (a lowercase UUID the renderer makes; a new one starts a new
+     * conversation). Events arrive through `onEvent` until `end` or `error`. Returns the function that cancels the
+     * answer (closes the connection; safe to call at once, any number of times). Never retried: re-asking is the user's call.
+     */
+    ask(input: { conversationId: string; question: string }, onEvent: (event: ChatEvent) => void): () => void;
+    /** Forgets a conversation on the agent (best effort; never rejects). */
+    forget(input: { conversationId: string }): Promise<void>;
   };
   /** Live push from the backend, for the signed-in astronaut's own sessions only. */
   reps: {

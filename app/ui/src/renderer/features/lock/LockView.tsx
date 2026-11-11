@@ -23,7 +23,7 @@ const selectStrip = (data: DataSource): ReturnType<DataSource['getStrip']> => da
 /** Lock screen: only the PIN of the signed-in crew member unlocks it. Shows the time and mission day, never health data. */
 export function LockView(): React.JSX.Element {
   const api = useApi();
-  const { crewId, signIn } = useAuth();
+  const { crewId, signIn, signOut } = useAuth();
   const navigate = useNavigate();
   const { open } = useUrgent();
   const now = useNow();
@@ -76,6 +76,14 @@ export function LockView(): React.JSX.Element {
           }}
         >
           {lock.urgent}
+        </Button>
+        <Button
+          variant="quiet"
+          onClick={() => {
+            void signOut();
+          }}
+        >
+          {lock.signOut}
         </Button>
         <MockSkipLogin />
       </div>

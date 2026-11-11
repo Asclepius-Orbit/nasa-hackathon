@@ -8,6 +8,9 @@ import type { z } from 'zod';
 
 import {
   IPC_CHANNELS,
+  chatAskInputSchema,
+  chatCancelInputSchema,
+  chatForgetInputSchema,
   createCrewInputSchema,
   dailyContextFieldsSchema,
   dailyReportFieldsSchema,
@@ -27,6 +30,7 @@ import {
   verifyPinInputSchema,
 } from '../shared/ipc-schema';
 import type { AuthService } from './auth/auth-service';
+import type { ChatService } from './chat/chat-service';
 import type { DailyContextService } from './profile/daily-context-service';
 import type { DevicesService } from './profile/devices-service';
 import type { HarnessService } from './profile/harness-service';
@@ -61,6 +65,7 @@ export interface IpcServices {
   reports: ReportsService;
   urgent: UrgentService;
   contacts: ContactsService;
+  chat: ChatService;
 }
 
 class UnavailableError extends Error {
@@ -76,7 +81,7 @@ function orUnavailable<T>(value: T | null): T {
 
 export function registerIpc(
   ipcMain: IpcMainLike,
-  { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts }: IpcServices,
+  { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts, chat }: IpcServices,
   isTrustedSender: (event: IpcEventLike) => boolean,
   logError: (error: unknown) => void = console.error,
 ): void {
@@ -142,6 +147,13 @@ export function registerIpc(
     auth.lock();
     // The astronaut behind the lock screen must stop receiving live data at once.
     reps.closeAll();
+    chat.stopAll();
+  });
+  withoutInput(IPC_CHANNELS.authSignOut, () => {
+    auth.signOut();
+    // Nothing live may keep flowing to the next person at the tablet.
+    reps.closeAll();
+    chat.stopAll();
   });
   withoutInput(IPC_CHANNELS.authCurrent, () => auth.current());
 
@@ -179,4 +191,10 @@ export function registerIpc(
   withInput(IPC_CHANNELS.repsUnsubscribe, repsUnsubscribeInputSchema, ({ subscriptionId }, event) => {
     reps.unsubscribe(event.sender, subscriptionId);
   });
+  // Chat with the agent: the handlers only start, cancel and forget; events travel on `IPC_EVENT_CHANNELS.chatEvent` (see ChatService).
+  withInput(IPC_CHANNELS.chatAsk, chatAskInputSchema, (input, event) => chat.ask(event.sender, input));
+  withInput(IPC_CHANNELS.chatCancel, chatCancelInputSchema, ({ subscriptionId }, event) => {
+    chat.cancel(event.sender, subscriptionId);
+  });
+  withInput(IPC_CHANNELS.chatForget, chatForgetInputSchema, ({ conversationId }) => chat.forget(conversationId));
 }

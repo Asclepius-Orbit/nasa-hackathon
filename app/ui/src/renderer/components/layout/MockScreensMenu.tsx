@@ -26,7 +26,12 @@ export function MockScreensMenu(): React.JSX.Element | null {
           {label}
         </NavLink>
       ))}
-      <button type="button" onClick={signOut}>
+      <button
+        type="button"
+        onClick={() => {
+          void signOut();
+        }}
+      >
         {mockMenu.login}
       </button>
       <button

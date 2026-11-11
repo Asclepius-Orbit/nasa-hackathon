@@ -20,6 +20,7 @@ it.each([
   ['/session', 'session'],
   ['/stopped', 'stopped'],
   ['/history', 'history'],
+  ['/chat', 'chat'],
   ['/settings', 'settings'],
   ['/profile', 'profile'],
   ['/first-day', 'firstday'],

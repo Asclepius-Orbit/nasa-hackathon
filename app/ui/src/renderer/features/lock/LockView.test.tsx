@@ -67,6 +67,14 @@ describe('LockView', () => {
     expect(await screen.findByText(/could not reach its secure store/)).toBeInTheDocument();
   });
 
+  it('signs out from the lock screen so another member can use the tablet', async () => {
+    const { user, api } = setup();
+    await screen.findByText('status:locked');
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByText('status:signed-out')).toBeInTheDocument();
+    expect(api.calls).toContain('auth.signOut');
+  });
+
   it('keeps Urgent available while locked', async () => {
     const { user } = setup();
     await user.click(screen.getByRole('button', { name: 'Urgent symptom, works while locked' }));

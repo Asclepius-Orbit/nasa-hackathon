@@ -42,6 +42,8 @@ export interface AuthService {
   /** Starts an unlocked session without a PIN check; only for a member who just chose their PIN. */
   signIn(crewId: string): void;
   lock(): void;
+  /** Ends the session, unlocked or locked, so another member can sign in. */
+  signOut(): void;
   current(): AuthSession | null;
 }
 
@@ -129,6 +131,9 @@ export function createAuthService({ crew, hasher, stateFile, now }: AuthServiceO
     },
     lock() {
       if (session !== null) session = { ...session, locked: true };
+    },
+    signOut() {
+      session = null;
     },
     current: () => (session === null ? null : { ...session }),
   };

@@ -2,6 +2,7 @@
 import { z } from 'zod';
 
 import type {
+  ChatMessage,
   DailyContextFields,
   DailyReportFields,
   ProfileFields,
@@ -154,6 +155,35 @@ export const urgentInputSchema: z.ZodType<UrgentInput> = z.strictObject({
 });
 
 export const logOfficerCallInputSchema = z.strictObject({ sessionId: sessionIdSchema.nullable() });
+
+// --- Chat with the agent. ---
+
+const conversationIdSchema = z.uuid().refine((id) => id === id.toLowerCase());
+
+/** Same bounds as `agent/chat-request` (1..2000 chars, not blank); the agent checks again. */
+export const chatAskInputSchema = z.strictObject({
+  conversationId: conversationIdSchema,
+  question: z
+    .string()
+    .min(1)
+    .max(2000)
+    .refine((q) => q.trim().length > 0),
+});
+export const chatCancelInputSchema = z.strictObject({ subscriptionId: z.uuid() });
+export const chatForgetInputSchema = z.strictObject({ conversationId: conversationIdSchema });
+
+/** The message main pushes for a chat answer; validated before it leaves main. Text is bounded so a runaway stream cannot flood IPC. */
+export const chatMessageSchema: z.ZodType<ChatMessage> = z.strictObject({
+  subscriptionId: z.uuid(),
+  event: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('text'), delta: z.string().max(8000) }),
+    z.strictObject({ kind: z.literal('tool_call'), toolName: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/u) }),
+    z.strictObject({ kind: z.literal('fallback'), text: z.string().max(20000) }),
+    z.strictObject({ kind: z.literal('notice'), code: z.enum(['mid_stream', 'correction']), text: z.string().max(2000) }),
+    z.strictObject({ kind: z.literal('end') }),
+    z.strictObject({ kind: z.literal('error'), code: z.enum(['locked', 'busy', 'invalid', 'unavailable', 'internal']) }),
+  ]),
+});
 
 const settingsShape = {
   lengthUnit: z.enum(['mm', 'in']),

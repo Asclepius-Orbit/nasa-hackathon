@@ -6,8 +6,8 @@ App de escritorio que el astronauta usa en la tablet: el veredicto del día, el 
 ejercicio, el historial, el aviso de síntoma urgente y el resumen para Houston. Electron + React + TypeScript,
 con Vite y pnpm.
 
-Los datos son **mock por ahora**: cada pantalla lee de un `DataSource` tipado (`src/renderer/data/`) con los
-valores del mock. Conectarlo a las APIs HTTP de la app (`/ui` en 8000 y la de solo lectura en 8002) es otro trabajo.
+Cada pantalla lee de un `DataSource` tipado (`src/renderer/data/`). Por defecto es el backend (`/ui` en 8000), al que
+solo se llega a través del proceso main; el build de e2e y `VITE_MOCK_DATA=true` usan el mock de a bordo.
 
 ## Requisitos
 
@@ -77,7 +77,10 @@ Los textos viven en `src/renderer/strings/` (en inglés, un fichero por pantalla
   minutos, y el bloqueo sobrevive a reinicios; el intento se registra antes de comprobar el PIN.
 - Credenciales del backend: cada petición a `/ui` lleva el token compartido (`ASCLEPIUS_BACKEND_TOKEN`, o el fichero que indique `ASCLEPIUS_BACKEND_TOKEN_FILE`, p. ej. el `ui-token` que el backend escribe junto a su base de datos) y el astronauta desbloqueado (`X-Astronaut-Id`). Ambos se quedan en el proceso main; sin token el backend responde 401 y las pantallas muestran `unavailable`.
 - Vistas del backend: el renderer nunca habla con el backend (el CSP `connect-src 'self'` no cambia). El proceso main pide las vistas `/ui/...` solo del astronauta desbloqueado, por HTTP a loopback (`ASCLEPIUS_BACKEND_URL`, por defecto `http://127.0.0.1:8000`; otros hosts se ignoran), con timeout de 5 s, sin redirecciones y sin caché. Los errores llegan al renderer como `locked`, `not_found` o `unavailable`.
-- Registro de tripulantes: el almacén cifrado de la tripulación es dueño de la lista, los ids `AST-NN`, los nombres y los PIN. El proceso main solo comunica al backend cada id (`PUT /ui/crew/{id}`, sin cuerpo), al arrancar y al crear un miembro; si el backend está caído el miembro se crea igual y el id se reintenta en el siguiente listado. El perfil del backend se completa aparte (`PUT /ui/crew/{id}/profile`); sin él `/assess` se omite.
+- Registro de tripulantes: el almacén cifrado de la tripulación es dueño de la lista, los ids `AST-NN`, los nombres y los PIN. El proceso main solo comunica al backend cada id (`PUT /ui/crew/{id}`, sin cuerpo), al arrancar y al crear un miembro; si el backend está caído el miembro se crea igual y el id se reintenta en el siguiente listado. El perfil del backend se completa en la pantalla Perfil (abajo); sin él `/assess` se omite.
+- Escrituras al backend: el proceso main también escribe solo para el astronauta desbloqueado, con las mismas reglas que las vistas (loopback, token, `X-Astronaut-Id`, timeout de 5 s, sin redirecciones). Una escritura responde con un resultado, nunca con un rechazo: `ok`, o `invalid` con los punteros de campo del backend (422), `locked` (401/403), `conflict` (409) o `unavailable`. La UI dice "Saved" solo con `ok`.
+- Perfil y contexto diario (`/profile`, también desde Ajustes): la pantalla edita parte del perfil (fecha de nacimiento, sexo al nacer, alturas, peso, fechas de lanzamiento y aterrizaje) y el contexto de hoy (fase, gravedad, día de misión). Main conserva el resto de campos guardados. En el perfil nunca va un nombre. Si hoy (UTC) no hay contexto y el perfil tiene fecha de lanzamiento, main escribe uno al aceptarse el PIN y al guardar el perfil: la fase y el día de misión salen de las fechas (el día del lanzamiento es el 1, no hay día 0), con microgravedad en vuelo y 1 g fuera. Nunca sobrescribe un contexto guardado. Today y First day piden lo que falte.
+- Emparejado del arnés (Settings > Harness): lista los dispositivos que publicaron estado para el astronauta (`GET /ui/crew/{id}/devices`), y el `device_id` elegido se guarda solo en el almacén cifrado de la tripulación. El backend no empareja: la franja muestra el último dispositivo que informó.
 - El estado de tripulantes y de autenticación se cifra con `safeStorage` de Electron y falla cerrado si no hay
   cifrado disponible.
 - Fuses de Electron: sin `RunAsNode`, sin `NODE_OPTIONS`, sin flags de inspect, integridad del asar y carga solo
@@ -85,7 +88,6 @@ Los textos viven en `src/renderer/strings/` (en inglés, un fichero por pantalla
 - Cadena de suministro: versiones exactas, lockfile, scripts de build permitidos solo para `electron` y una
   antigüedad mínima de publicación de un día (`pnpm-workspace.yaml`).
 
-Límites conocidos, para trabajo posterior: la autorización vive en el renderer mientras los datos sean mock (los
-datos de salud reales los tendrá que servir el proceso main, comprobados contra su sesión); no hay cierre de sesión
+Límites conocidos, para trabajo posterior: no hay cierre de sesión
 ni cambio de tripulante; PIN de 4 dígitos; instalador por usuario y sin firmar; el exe empaquetado acepta
 `--remote-debugging-port`.

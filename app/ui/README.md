@@ -5,8 +5,8 @@
 Desktop app the astronaut uses on the tablet: today's verdict, the daily report, exercise sessions, history,
 the urgent-symptom alert and the summary for Houston. Electron + React + TypeScript, built with Vite and pnpm.
 
-Data is **mock for now**: every screen reads from a typed `DataSource` (`src/renderer/data/`) filled with the
-mock's values. Connecting it to the app's HTTP APIs (`/ui` on 8000, read-only on 8002) is separate work.
+Every screen reads from a typed `DataSource` (`src/renderer/data/`). By default it is the backend (`/ui` on 8000),
+reached only through the main process; the e2e build and `VITE_MOCK_DATA=true` use the on-board mock instead.
 
 ## Requirements
 
@@ -76,12 +76,14 @@ Copy lives in `src/renderer/strings/` (English, one file per screen) so other la
   minutes, persisted across restarts; the attempt is recorded before the PIN is checked.
 - Backend credentials: every `/ui` request carries the shared token (`ASCLEPIUS_BACKEND_TOKEN`, or the file named by `ASCLEPIUS_BACKEND_TOKEN_FILE`, e.g. the `ui-token` the backend writes next to its database) and the unlocked astronaut (`X-Astronaut-Id`). Both stay in the main process; without a token the backend answers 401 and the screens show `unavailable`.
 - Backend views: the renderer never talks to the backend (the CSP `connect-src 'self'` is unchanged). The main process fetches `/ui/...` views for the unlocked astronaut only, over loopback HTTP (`ASCLEPIUS_BACKEND_URL`, default `http://127.0.0.1:8000`, other hosts are ignored), with a 5 s timeout, no redirects and no cache. Errors reach the renderer as `locked`, `not_found` or `unavailable`.
-- Crew registry: the encrypted crew store owns the member list, the `AST-NN` ids, names and PINs. The main process only tells the backend each id (`PUT /ui/crew/{id}`, no body), at startup and after creating a member; while the backend is down the member is still created and the id is retried on the next listing. The backend profile is filled in separately (`PUT /ui/crew/{id}/profile`); without it `/assess` is skipped.
+- Crew registry: the encrypted crew store owns the member list, the `AST-NN` ids, names and PINs. The main process only tells the backend each id (`PUT /ui/crew/{id}`, no body), at startup and after creating a member; while the backend is down the member is still created and the id is retried on the next listing. The backend profile is filled in on the Profile screen (below); without it `/assess` is skipped.
+- Backend writes: the main process also writes for the unlocked astronaut only, with the same rules as the views (loopback, token, `X-Astronaut-Id`, 5 s timeout, no redirects). A write answers a result, never a rejection: `ok`, or `invalid` with the backend's field pointers (422), `locked` (401/403), `conflict` (409) or `unavailable`. The UI says "Saved" only on `ok`.
+- Profile and daily context (`/profile`, also from Settings): the screen edits part of the profile (date of birth, sex at birth, heights, mass, launch and landing dates) and today's context (phase, gravity, mission day). Main keeps every other stored field. No name ever goes in the profile. When today (UTC) has no context and the profile has a launch date, main writes one after the PIN is accepted and after the profile is saved: the phase and mission day come from the dates (launch day is 1, no day 0), with microgravity in flight and 1 g otherwise. It never overwrites a stored context. Today and First day ask for whatever is missing.
+- Harness pairing (Settings > Harness): it lists the devices that published a status for the astronaut (`GET /ui/crew/{id}/devices`), and the chosen `device_id` is stored only in the encrypted crew store. The backend does not pair: the strip shows the device that reported last.
 - Crew and auth state are encrypted with Electron `safeStorage` and fail closed when encryption is unavailable.
 - Electron fuses: no `RunAsNode`, no `NODE_OPTIONS`, no inspect flags, asar integrity, app loaded only from asar.
 - Supply chain: exact versions, a lockfile, build scripts allowed only for `electron`, and a one-day minimum
   release age (`pnpm-workspace.yaml`).
 
-Known limits, kept for later work: authorization lives in the renderer while the data is mock (real health data
-must be served by the main process, checked against the main session); no sign-out or crew switch; 4-digit PINs;
+Known limits, kept for later work: no sign-out or crew switch; 4-digit PINs;
 per-user, unsigned installer; the packaged exe accepts `--remote-debugging-port`.

@@ -22,6 +22,7 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
 - Every route needs the shared token and, when it is about one astronaut, that astronaut unlocked (`monitor.ui_auth`).
 """
 
+import hashlib
 import json
 import logging
 import uuid
@@ -30,7 +31,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from spine_contracts import SCHEMA_VERSION, topics, validation
@@ -261,25 +262,42 @@ def build_router(
 
     # --- profile and daily context ---------------------------------------------------------------
 
+    def context_etag(context: dict[str, Any]) -> str:
+        encoded = json.dumps(context, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        return '"' + hashlib.sha256(encoded).hexdigest() + '"'
+
     @router.put("/crew/{astronaut_id}/profile")
-    async def put_profile(astronaut_id: str, request: Request) -> dict[str, Any]:
+    async def put_profile(astronaut_id: str, request: Request, if_none_match: Annotated[str | None, Header()] = None, if_match: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+        if if_none_match not in (None, "*") or (if_none_match is not None and if_match is not None):
+            raise Problem(422, "Invalid conditional headers")
         body = await _body(request)
         _same(body, "astronaut_id", _astronaut(astronaut_id))
         profile = {"schema_version": SCHEMA_VERSION, "updated_at": clock().isoformat(), **body, "astronaut_id": astronaut_id}
         _schema_errors("domain/astronaut-profile", profile)
-        store.put_profile(profile)
+        if if_match is not None:
+            previous = store.profile(astronaut_id)
+            if previous is None or context_etag(previous) != if_match or not store.replace_profile_if_unchanged(profile, previous):
+                raise Problem(412, "profile changed", type_="conflict")
+        elif if_none_match is not None:
+            if not store.create_profile(profile):
+                raise Problem(412, "profile already exists", type_="conflict")
+        else:
+            store.put_profile(profile)
         analysis.request_assess(astronaut_id)
         return profile
 
     @router.get("/crew/{astronaut_id}/profile")
-    async def get_profile(astronaut_id: str) -> dict[str, Any]:
+    async def get_profile(astronaut_id: str, response: Response) -> dict[str, Any]:
         profile = store.profile(_astronaut(astronaut_id))
         if profile is None:
             raise Problem(404, f"no profile for {astronaut_id}", type_="not_found")
+        response.headers["ETag"] = context_etag(profile)
         return profile
 
     @router.put("/crew/{astronaut_id}/daily-context/{day}")
-    async def put_daily_context(astronaut_id: str, day: date, request: Request, if_none_match: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    async def put_daily_context(astronaut_id: str, day: date, request: Request, if_none_match: Annotated[str | None, Header()] = None, if_match: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+        if if_match is not None and if_none_match is not None:
+            raise Problem(422, "Cannot combine If-Match and If-None-Match")
         if if_none_match not in (None, "*"):
             raise Problem(422, "If-None-Match only accepts *", errors=[{"pointer": "If-None-Match", "message": "only * is accepted"}])
         body = await _body(request)
@@ -287,7 +305,11 @@ def build_router(
         _same(body, "date", day.isoformat())
         context = {"schema_version": SCHEMA_VERSION, **body, "astronaut_id": astronaut_id, "date": day.isoformat()}
         _schema_errors("domain/daily-context", context)
-        if if_none_match is None:
+        if if_match is not None:
+            previous = store.daily_context(astronaut_id, day.isoformat())
+            if previous is None or context_etag(previous) != if_match or not store.replace_daily_context_if_unchanged(context, previous):
+                raise Problem(412, "daily context changed", type_="conflict")
+        elif if_none_match is None:
             store.put_daily_context(context)
         elif not store.create_daily_context(context):
             # Only create (the UI's automatic context): a context stored meanwhile, by hand or by another client, wins.
@@ -296,10 +318,11 @@ def build_router(
         return context
 
     @router.get("/crew/{astronaut_id}/daily-context/{day}")
-    async def get_daily_context(astronaut_id: str, day: date) -> dict[str, Any]:
+    async def get_daily_context(astronaut_id: str, day: date, response: Response) -> dict[str, Any]:
         context = store.daily_context(_astronaut(astronaut_id), day.isoformat())
         if context is None:
             raise Problem(404, f"no daily context for {astronaut_id} on {day}", type_="not_found")
+        response.headers["ETag"] = context_etag(context)
         return context
 
     # --- self-reports ----------------------------------------------------------------------------

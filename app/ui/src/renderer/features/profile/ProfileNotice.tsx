@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import type { DataSource } from '../../data/DataSource';
-import { useLoad } from '../../data/useLoad';
+import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { profileNotice } from '../../strings/profile';
 import styles from './Profile.module.css';
 
@@ -18,7 +18,7 @@ const selectMissing = async (d: DataSource): Promise<{ missing: Missing }> => {
 /** Banner for Today and First day: points to the Profile screen when the profile or today's context is not stored. Renders nothing otherwise, while loading and on any failure. */
 export function ProfileNotice(): React.JSX.Element | null {
   const navigate = useNavigate();
-  const { data } = useLoad(selectMissing);
+  const { data } = useLoad(selectMissing, { refreshMs: REFRESH_MS });
   if (data?.missing == null) return null;
   const text = profileNotice[data.missing === 'profile' ? 'noProfile' : 'noContext'];
   return (

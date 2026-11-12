@@ -16,22 +16,32 @@ export class FakeBackend {
   readonly puts: { path: string; body: Record<string, unknown>; onlyCreate?: true }[] = [];
   /** Runs when a create-only PUT arrives, before the check: another writer storing in between. */
   beforeCreate: () => void = () => undefined;
+  beforeContextPut: () => void = () => undefined;
 
   readonly records: RecordsClient = {
     profile: (id) => this.read(() => this.profiles.get(id) ?? null),
+    profileVersioned: (id) => this.read(() => { const value = this.profiles.get(id); return value ? { value, etag: JSON.stringify(value) } : null; }),
     dailyContext: (id, day) => this.read(() => this.contexts.get(`${id}/${day}`) ?? null),
+    dailyContextVersioned: (id, day) => this.read(() => { const value = this.contexts.get(`${id}/${day}`); return value ? { value, etag: JSON.stringify(value) } : null; }),
     devices: () => this.read(() => this.devices),
   };
 
-  readonly writer: Pick<WriteClient, 'putProfile' | 'putDailyContext' | 'createDailyContext'> = {
-    putProfile: (id, body) => {
+  readonly writer: Pick<WriteClient, 'putProfile' | 'createProfile' | 'putDailyContext' | 'createDailyContext'> = {
+    putProfile: (id, body, etag) => {
+      if (etag !== undefined && JSON.stringify(this.profiles.get(id)) !== etag) return Promise.resolve({ ok: false, reason: 'conflict' });
       this.puts.push({ path: `${id}/profile`, body });
       if (this.writeAnswer !== null) return Promise.resolve(this.writeAnswer);
       const stored = { schema_version: '1.0.0', updated_at: '2026-11-11T12:00:00+00:00', ...body } as unknown as AstronautProfile;
       this.profiles.set(id, stored);
       return Promise.resolve({ ok: true, value: stored });
     },
-    putDailyContext: (id, day, body) => {
+    createProfile: (id, body) => {
+      if (this.profiles.has(id)) return Promise.resolve({ ok: false, reason: 'exists' });
+      return this.writer.putProfile(id, body);
+    },
+    putDailyContext: (id, day, body, etag) => {
+      this.beforeContextPut();
+      if (etag !== undefined && JSON.stringify(this.contexts.get(`${id}/${day}`)) !== etag) return Promise.resolve({ ok: false, reason: 'conflict' });
       this.puts.push({ path: `${id}/daily-context/${day}`, body });
       if (this.writeAnswer !== null) return Promise.resolve(this.writeAnswer);
       const stored = { schema_version: '1.0.0', ...body } as unknown as DailyContext;

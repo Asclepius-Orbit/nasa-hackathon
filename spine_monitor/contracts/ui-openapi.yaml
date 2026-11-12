@@ -73,6 +73,11 @@ paths:
       responses:
         '200':
           description: The stored data.
+          headers:
+            ETag:
+              description: Opaque version for a conditional update.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -93,6 +98,8 @@ paths:
       description: Replaces the whole profile. `schema_version` and `updated_at` default to the app's; `astronaut_id` comes from the path (a different one in the body is a 422). The assessment is redone.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IfNoneMatch'
       requestBody:
         required: true
         content:
@@ -110,6 +117,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/AlreadyStored'
         '422':
           $ref: '#/components/responses/Invalid'
         default:
@@ -125,6 +134,11 @@ paths:
       responses:
         '200':
           description: The stored data.
+          headers:
+            ETag:
+              description: Opaque version for a conditional update.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -144,6 +158,7 @@ paths:
       summary: Store the daily context of an astronaut on a day
       description: |
         Replaces the context of that day. `astronaut_id` and `date` come from the path (different ones in the body are a 422).
+        An `If-Match` ETag makes replacement conditional on the version read (412 if changed).
         Starting a session needs today's context; the assessment is redone.
         With `If-None-Match: *` it only creates it, in one atomic step: when a context is already stored for that day the
         answer is 412, the stored one is left as it was and nothing is reassessed.
@@ -151,6 +166,7 @@ paths:
         - $ref: '#/components/parameters/AstronautId'
         - $ref: '#/components/parameters/Day'
         - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -397,6 +413,13 @@ components:
       description: Calendar day (ISO 8601 date).
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/date'
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: ETag from the corresponding GET; update only that version.
+      schema:
+        type: string
     IfNoneMatch:
       name: If-None-Match
       in: header

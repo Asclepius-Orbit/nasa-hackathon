@@ -73,6 +73,18 @@ const STORED: DailyContext = {
 } as unknown as DailyContext;
 
 describe('createDailyContextService', () => {
+  it('re-reads after a concurrent context update and keeps the other writer’s fields', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    backend.beforeContextPut = () => {
+      backend.beforeContextPut = () => undefined;
+      backend.contexts.set(`${ID}/${TODAY}`, { ...STORED, medication: [{ name: 'changed' }] } as DailyContext);
+    };
+    const result = await service.updateToday({ phase: 'inflight', gravity_environment: 'microgravity', mission_day: 5 });
+    expect(result.ok).toBe(true);
+    expect(backend.contexts.get(`${ID}/${TODAY}`)?.medication).toEqual([{ name: 'changed' }]);
+  });
+
   it("reads today's context for the unlocked astronaut, null when none", async () => {
     const { backend, service } = build();
     expect(await service.today()).toBeNull();

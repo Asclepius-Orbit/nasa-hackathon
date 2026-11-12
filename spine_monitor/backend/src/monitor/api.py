@@ -24,7 +24,6 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
 
 import hashlib
 import json
-import hashlib
 import logging
 import uuid
 from collections.abc import Callable

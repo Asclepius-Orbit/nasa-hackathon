@@ -1,13 +1,33 @@
 services:
   mosquitto:
+    # Authenticated broker with ACLs (#96). Run `sh app/mosquitto/setup.sh` first: it writes app/.env and
+    # app/mosquitto/auth/ (both gitignored), and every compose command fails until it has run.
+    # LAN access over TLS: add -f app/docker-compose.lan.yml (see the backend README).
     image: eclipse-mosquitto:2.0.22
+    # The generated passwd and acl (and the LAN certificates, when mounted) are copied out of the read-only mounts so the
+    # broker owns them with mode 0600, whoever owns them on the host.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /mosquitto/auth
+        install -o mosquitto -g mosquitto -m 0600 /mosquitto-auth/passwd /mosquitto-auth/acl /mosquitto/auth/
+        if [ -d /mosquitto-certs ]; then
+          mkdir -p /mosquitto/certs
+          install -o mosquitto -g mosquitto -m 0600 /mosquitto-certs/ca.crt /mosquitto-certs/server.crt /mosquitto-certs/server.key /mosquitto/certs/
+        fi
+        exec mosquitto -c "$${SPINE_MQTT_CONFIG:-/mosquitto/config/mosquitto.conf}"
+    environment:
+      SPINE_MQTT_HEALTH_PASSWORD: "${SPINE_MQTT_HEALTH_PASSWORD:?run sh app/mosquitto/setup.sh}"
     ports:
       - "127.0.0.1:1883:1883"
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/auth:/mosquitto-auth:ro
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 3 > /dev/null"]
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -u spine-health -P \"$$SPINE_MQTT_HEALTH_PASSWORD\" -t '$$SYS/broker/uptime' -C 1 -W 3 > /dev/null"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -30,12 +50,16 @@ services:
     environment:
       SPINE_APP_MQTT_HOST: mosquitto
       SPINE_APP_MQTT_PORT: "1883"
+      SPINE_APP_MQTT_USERNAME: spine-app
+      SPINE_APP_MQTT_PASSWORD: "${SPINE_MQTT_APP_PASSWORD:?run sh app/mosquitto/setup.sh}"
       SPINE_APP_ENGINE_URL: http://engine:8001
       SPINE_APP_GROUND_WINDOW_ANCHOR: "2026-01-01T00:00:00Z"
       SPINE_APP_GROUND_WINDOW_PERIOD_MIN: "15"
       SPINE_APP_GROUND_WINDOW_UP_MIN: "5"
       # Shared with the Electron main process (ASCLEPIUS_BACKEND_TOKEN). Empty: generated in /data/ui-token.
       SPINE_APP_UI_TOKEN: "${SPINE_APP_UI_TOKEN:-}"
+      # Preflight sessions the baseline needs (the demo and pnpm e2e:real pass 1).
+      SPINE_APP_BASELINE_REQUIRED: "${SPINE_APP_BASELINE_REQUIRED:-3}"
     volumes:
       - backend_data:/data
     ports:
@@ -70,6 +94,35 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  agent:
+    # Chat HTTP+SSE API of the LLM agent for the desktop app (contracts/agent-openapi.yaml), profile "llm".
+    # Its MCP server runs as a subprocess on the real app data (--dataset http): read API and engine.
+    build:
+      context: ..
+      dockerfile: spine_monitor/agent/Dockerfile
+    image: spine-agent:dev
+    environment:
+      SPINE_AGENT_OLLAMA_BASE_URL: http://ollama:11434/v1
+      SPINE_AGENT_MODEL: "${SPINE_AGENT_MODEL:-qwen3.5:4b}"
+      SPINE_AGENT_MCP_ARGS: '["-m", "spine_mcp_server", "--dataset", "http"]'
+      SPINE_APP_URL: http://read-api:8002
+      SPINE_ENGINE_URL: http://engine:8001
+      # Shared with the Electron main process (ASCLEPIUS_AGENT_TOKEN). Empty: generated in /data/agent-http-token.
+      SPINE_AGENT_HTTP_TOKEN: "${SPINE_AGENT_HTTP_TOKEN:-}"
+    volumes:
+      - agent_data:/data
+    ports:
+      - "127.0.0.1:8003:8003"
+    depends_on:
+      ollama:
+        condition: service_healthy
+      read-api:
+        condition: service_started
+      engine:
+        condition: service_started
+    profiles: ["llm"]
+    restart: unless-stopped
+
   simulator:
     build:
       context: ..
@@ -79,6 +132,9 @@ services:
       SPINE_SIM_CONFIG: /app/configs/example-mission.yaml
       SPINE_SIM_MQTT_HOST: mosquitto
       SPINE_SIM_MQTT_PORT: "1883"
+      # Each simulated device connects as its own user (sim-01, sim-02...), all with the simulator password.
+      SPINE_SIM_MQTT_USERNAME: "{device_id}"
+      SPINE_SIM_MQTT_PASSWORD: "${SPINE_MQTT_SIM_PASSWORD:?run sh app/mosquitto/setup.sh}"
       SPINE_SIM_SPEED: "1"
       SPINE_SIM_START_DAY: "0"
     depends_on:
@@ -99,10 +155,16 @@ services:
     image: spine-gateway:dev
     environment:
       SPINE_GATEWAY_MQTT_HOST: mosquitto
+      SPINE_GATEWAY_ASTRONAUT_ID: "${SPINE_GATEWAY_ASTRONAUT_ID:-AST-01}"
+      SPINE_GATEWAY_DEVICE_ID: "${SPINE_GATEWAY_DEVICE_ID:-wb-01}"
+      SPINE_GATEWAY_MQTT_USERNAME: "${SPINE_GATEWAY_MQTT_USERNAME:-${SPINE_GATEWAY_DEVICE_ID:-wb-01}}"
+      SPINE_GATEWAY_MQTT_PASSWORD: "${SPINE_GATEWAY_MQTT_PASSWORD:-${SPINE_MQTT_DEVICE_PASSWORD_WB_01:-}}"
       # Port as seen inside the container: the device below is always mapped to /dev/ttyACM0.
       SPINE_GATEWAY_SERIAL_URL: "${SPINE_GATEWAY_SERIAL_URL:-/dev/ttyACM0}"
     devices:
       - "${SPINE_GATEWAY_SERIAL_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
+    group_add:
+      - "${SPINE_GATEWAY_SERIAL_GID:-20}"
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -130,6 +192,9 @@ services:
     environment:
       SPINE_GATEWAY_SERIAL_URL: socket://arduino-emulator:5000
       SPINE_GATEWAY_MQTT_HOST: mosquitto
+      SPINE_GATEWAY_DEVICE_ID: gw-demo
+      SPINE_GATEWAY_MQTT_USERNAME: gw-demo
+      SPINE_GATEWAY_MQTT_PASSWORD: "${SPINE_MQTT_SIM_PASSWORD:?run sh app/mosquitto/setup.sh}"
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -203,6 +268,10 @@ services:
       MUTATION_PACKAGES: "${MUTATION_PACKAGES:-}"
       MUTATION_MIN_SAMPLE: "${MUTATION_MIN_SAMPLE:-}"
       SPINE_REQUIRE_BROKER: "1"
+      # Broker users of the mosquitto-marked tests (app/mosquitto/acl.template).
+      SPINE_TEST_MQTT_USERNAME: spine-itest
+      SPINE_TEST_MQTT_PASSWORD: "${SPINE_MQTT_ITEST_PASSWORD:?run sh app/mosquitto/setup.sh}"
+      SPINE_TEST_MQTT_DEVICE_PASSWORD: "${SPINE_MQTT_ITEST_DEVICE_PASSWORD:?run sh app/mosquitto/setup.sh}"
     profiles: ["quality"]
 
   ui-quality:
@@ -237,5 +306,6 @@ services:
 
 volumes:
   backend_data:
+  agent_data:
   ui_node_modules:
   ollama-models:

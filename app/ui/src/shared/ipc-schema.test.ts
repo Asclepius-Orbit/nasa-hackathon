@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { IPC_CHANNELS, IPC_EVENT_CHANNELS } from './ipc-channels';
 import {
+  chatAskInputSchema,
+  chatCancelInputSchema,
+  chatForgetInputSchema,
+  chatMessageSchema,
   createCrewInputSchema,
   crewIdSchema,
   historyInputSchema,
@@ -42,6 +46,10 @@ describe('IPC_CHANNELS', () => {
       'asclepius:contacts:log-officer-call',
       'asclepius:auth:verify-pin',
       'asclepius:auth:lock',
+      'asclepius:auth:sign-out',
+      'asclepius:chat:ask',
+      'asclepius:chat:cancel',
+      'asclepius:chat:forget',
       'asclepius:auth:current',
       'asclepius:settings:get',
       'asclepius:settings:update',
@@ -60,7 +68,7 @@ describe('IPC_CHANNELS', () => {
   });
 
   it('keeps main-to-renderer event channels apart from the invoke channels', () => {
-    expect(IPC_EVENT_CHANNELS).toEqual({ repsEvent: 'asclepius:reps:event' });
+    expect(IPC_EVENT_CHANNELS).toEqual({ repsEvent: 'asclepius:reps:event', chatEvent: 'asclepius:chat:event' });
   });
 });
 
@@ -244,5 +252,52 @@ describe('repsMessageSchema', () => {
     ['a state without signal', message({ kind: 'state', state: { ...REP_STATE, signal: undefined } })],
   ])('rejects %s', (_label, input) => {
     expect(repsMessageSchema.safeParse(input).success).toBe(false);
+  });
+});
+
+describe('chat schemas', () => {
+  const CONVERSATION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
+
+  it('accepts a question of 1 to 2000 characters in a lowercase conversation', () => {
+    expect(chatAskInputSchema.safeParse({ conversationId: CONVERSATION, question: 'x' }).success).toBe(true);
+    expect(chatAskInputSchema.safeParse({ conversationId: CONVERSATION, question: 'x'.repeat(2000) }).success).toBe(true);
+  });
+
+  it.each([
+    ['an empty question', { conversationId: CONVERSATION, question: '' }],
+    ['a blank question', { conversationId: CONVERSATION, question: '   ' }],
+    ['a question over 2000', { conversationId: CONVERSATION, question: 'x'.repeat(2001) }],
+    ['an uppercase conversation', { conversationId: CONVERSATION.toUpperCase(), question: 'q' }],
+    ['an astronaut chosen by the caller', { conversationId: CONVERSATION, question: 'q', astronautId: 'AST-02' }],
+  ])('rejects %s', (_label, input) => {
+    expect(chatAskInputSchema.safeParse(input).success).toBe(false);
+  });
+
+  it('checks the cancel and forget inputs strictly', () => {
+    expect(chatCancelInputSchema.safeParse({ subscriptionId: SUBSCRIPTION }).success).toBe(true);
+    expect(chatCancelInputSchema.safeParse({ subscriptionId: 'abc' }).success).toBe(false);
+    expect(chatForgetInputSchema.safeParse({ conversationId: CONVERSATION }).success).toBe(true);
+    expect(chatForgetInputSchema.safeParse({ conversationId: CONVERSATION, x: 1 }).success).toBe(false);
+  });
+
+  it.each([
+    { kind: 'text', delta: 'Hi' },
+    { kind: 'tool_call', toolName: 'get_current_status' },
+    { kind: 'fallback', text: 'Status' },
+    { kind: 'notice', code: 'correction', text: 'Reworded' },
+    { kind: 'end' },
+    { kind: 'error', code: 'busy' },
+  ])('accepts the %j event', (event) => {
+    expect(chatMessageSchema.safeParse({ subscriptionId: SUBSCRIPTION, event }).success).toBe(true);
+  });
+
+  it.each([
+    ['tool arguments', { kind: 'tool_call', toolName: 'get_history', toolArgs: { a: 1 } }],
+    ['a tool name that is not an identifier', { kind: 'tool_call', toolName: 'Get History' }],
+    ['an unknown error code', { kind: 'error', code: 'forbidden' }],
+    ['an unknown notice code', { kind: 'notice', code: 'other', text: 'x' }],
+    ['a runaway delta', { kind: 'text', delta: 'x'.repeat(8001) }],
+  ])('rejects %s', (_label, event) => {
+    expect(chatMessageSchema.safeParse({ subscriptionId: SUBSCRIPTION, event }).success).toBe(false);
   });
 });

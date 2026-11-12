@@ -87,6 +87,14 @@ it('locks the tablet from the strip, hiding health data behind the PIN', async (
   expect(await api.auth.current()).toMatchObject({ locked: true });
 });
 
+it('signs the member out from the strip, so another member can use the tablet', async () => {
+  const api = new FakeAsclepiusApi();
+  renderInWorld(<Strip />, { api });
+  await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+  expect(api.calls).toContain('auth.signOut');
+  expect(await api.auth.current()).toBeNull();
+});
+
 it('shows an unknown ground link as Not known, never as up', async () => {
   renderInWorld(<Strip />, { data: new StripVariant({ groundLink: null }) });
   expect(await screen.findByText('Not known')).toBeInTheDocument();

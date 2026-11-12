@@ -26,6 +26,10 @@ export const IPC_CHANNELS = Object.freeze({
   contactsLogOfficerCall: 'asclepius:contacts:log-officer-call',
   authVerifyPin: 'asclepius:auth:verify-pin',
   authLock: 'asclepius:auth:lock',
+  authSignOut: 'asclepius:auth:sign-out',
+  chatAsk: 'asclepius:chat:ask',
+  chatCancel: 'asclepius:chat:cancel',
+  chatForget: 'asclepius:chat:forget',
   authCurrent: 'asclepius:auth:current',
   settingsGet: 'asclepius:settings:get',
   settingsUpdate: 'asclepius:settings:update',
@@ -44,6 +48,7 @@ export const IPC_CHANNELS = Object.freeze({
 /** Channels main pushes to the renderer (`webContents.send`). They have no handler: the renderer cannot call them. */
 export const IPC_EVENT_CHANNELS = Object.freeze({
   repsEvent: 'asclepius:reps:event',
+  chatEvent: 'asclepius:chat:event',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

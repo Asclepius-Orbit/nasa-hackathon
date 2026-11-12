@@ -27,6 +27,7 @@ from typing import Any
 
 import aiomqtt
 import pytest
+from pydantic import SecretStr
 from spine_contracts import (
     SCHEMA_VERSION,
     CalibrateCommand,
@@ -44,6 +45,8 @@ pytestmark = pytest.mark.mosquitto
 
 HOST, PORT = "127.0.0.1", 1883
 TIMEOUT_S = 25.0
+OBSERVER_AUTH = {"username": "spine-gwtest", "password": os.environ["SPINE_TEST_MQTT_PASSWORD"]} if os.getenv("SPINE_TEST_MQTT_PASSWORD") else {}
+DEVICE_PASSWORD = os.getenv("SPINE_TEST_MQTT_DEVICE_PASSWORD")
 STRETCH, EMG, IMU = "stretch_lumbar", "emg_lat_left", "imu_l3"
 ASTRONAUT = "AST-98"
 """Astronauta propio de estos tests: no se mezclan con los datos de AST-01 del broker compartido."""
@@ -117,7 +120,7 @@ class Bench:
     """Emulador + gateway + observador de un dispositivo ``itest-e2e-*``; ``async with`` lo arranca y al salir lo limpia."""
 
     def __init__(self, settings: GatewaySettings, **emulator_options: Any) -> None:
-        self.device_id = f"itest-e2e-{uuid.uuid4().hex[:6]}"
+        self.device_id = "itest-e2e"
         self.emulator_options = {"seed": 7, **emulator_options}
         self.settings = settings.model_copy(
             update={
@@ -126,6 +129,8 @@ class Bench:
                 "mqtt_host": HOST,
                 "mqtt_port": PORT,
                 "mqtt_client_id": "itest-e2e",
+                "mqtt_username": self.device_id if DEVICE_PASSWORD else None,
+                "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None,
                 "serial_reconnect_initial_s": 0.2,
             }
         )
@@ -144,7 +149,7 @@ class Bench:
     # --- ciclo de vida ---
 
     async def __aenter__(self) -> Bench:
-        self._observer = await self._stack.enter_async_context(aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}"))
+        self._observer = await self._stack.enter_async_context(aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}", **OBSERVER_AUTH))
         await self._observer.subscribe(f"{self.root}/#", qos=1)
         self._consumer = asyncio.create_task(self._consume(self._observer))
         ready: asyncio.Future[int] = asyncio.get_running_loop().create_future()
@@ -235,7 +240,7 @@ class Bench:
         """
         late: dict[str, Seen] = {}
         marker = f"{topics.ROOT}/itest-marker/{uuid.uuid4().hex}"
-        async with aiomqtt.Client(HOST, PORT, identifier=f"itest-late-{uuid.uuid4().hex[:8]}") as client:
+        async with aiomqtt.Client(HOST, PORT, identifier=f"itest-late-{uuid.uuid4().hex[:8]}", **OBSERVER_AUTH) as client:
             await client.subscribe(marker, qos=1)
             await client.subscribe(f"{self.root}/#", qos=1)
             await client.publish(marker, b"x", qos=1)

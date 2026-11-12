@@ -211,6 +211,21 @@ describe('lock screen', () => {
     expect(auth.current()).toEqual({ crewId: 'AST-01', locked: false });
   });
 
+  it('signOut() ends the session, unlocked or locked, so another member can sign in', async () => {
+    const auth = boot();
+    auth.signOut();
+    expect(auth.current()).toBeNull();
+    await auth.verifyPin(elena('1234'));
+    auth.signOut();
+    expect(auth.current()).toBeNull();
+    await auth.verifyPin(elena('1234'));
+    auth.lock();
+    auth.signOut();
+    expect(auth.current()).toBeNull();
+    expect(await auth.verifyPin(marc('1234'))).toEqual({ ok: true, crewId: 'AST-02' });
+    expect(auth.current()).toEqual({ crewId: 'AST-02', locked: false });
+  });
+
   it('does not count another member’s attempts against them while locked', async () => {
     const auth = boot();
     await auth.verifyPin(elena('1234'));

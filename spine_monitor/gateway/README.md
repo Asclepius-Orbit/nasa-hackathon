@@ -101,7 +101,7 @@ The device is mapped to `/dev/ttyACM0` inside the container; `SPINE_GATEWAY_SERI
 
 ### Notes
 
-- The local broker has no authentication and only listens on `127.0.0.1`. Exposing it on the network requires authentication first (issue #96, out of scope here).
+- Run `sh app/mosquitto/setup.sh --device AST-01:wb-01` before starting the broker. Set `SPINE_GATEWAY_MQTT_USERNAME=wb-01` and `SPINE_GATEWAY_MQTT_PASSWORD` to the generated `SPINE_MQTT_DEVICE_PASSWORD_WB_01`. For the LAN listener enable `SPINE_GATEWAY_MQTT_TLS=true` and set `SPINE_GATEWAY_MQTT_TLS_CA_FILE` to the CA certificate.
 - Observe the bus: `docker compose -f app/docker-compose.yml exec mosquitto mosquitto_sub -h 127.0.0.1 -t 'asclepius/v1/crew/AST-01/device/wb-01/#' -v` (ids of the default configuration).
 
 ## Configuration
@@ -303,5 +303,4 @@ With the module connected, measure `SIG` with a multimeter (or watch `emg` in a 
 - `rest_length_mm` and the real curve of the stretch cord (#12); today they are a placeholder and a linear approximation.
 - `calibrate` of type `imu` is not implemented.
 - A dedicated error code for "not supported": it requires changing the contract (today `invalid_command` is used).
-- Authentication and TLS of the broker (#96).
 - BLE is out of scope.

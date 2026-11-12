@@ -59,6 +59,24 @@ class Runtime:
     refresher: StaleAssessmentRefresher
 
 
+def default_mqtt_client_factory(settings: AppSettings, *, client: Callable[..., Any] = aiomqtt.Client) -> ClientFactory:
+    """The production bus client: broker, identifier, credentials and TLS from `settings`. `client` is aiomqtt.Client
+    except in tests."""
+    password = settings.mqtt_password.get_secret_value() if settings.mqtt_password is not None else None
+    tls = None
+    if settings.mqtt_tls:
+        tls = aiomqtt.TLSParameters(ca_certs=str(settings.mqtt_tls_ca_file) if settings.mqtt_tls_ca_file is not None else None)
+    return lambda: client(
+        settings.mqtt_host,
+        settings.mqtt_port,
+        identifier=settings.mqtt_client_id,
+        clean_session=False,  # persistent session: the broker keeps QoS 1 messages during an outage
+        username=settings.mqtt_username,
+        password=password,
+        tls_params=tls,
+    )
+
+
 def create_app(
     settings: AppSettings | None = None,
     *,
@@ -68,14 +86,7 @@ def create_app(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
     settings = settings or AppSettings()
-    factory = mqtt_client_factory or (
-        lambda: aiomqtt.Client(
-            settings.mqtt_host,
-            settings.mqtt_port,
-            identifier=settings.mqtt_client_id,
-            clean_session=False,  # persistent session: the broker keeps QoS 1 messages during an outage
-        )
-    )
+    factory = mqtt_client_factory or default_mqtt_client_factory(settings)
 
     store = Store(settings.db_path, backup_dir=backup_dir_of(settings))
     guard = ui_guard(ui_token_of(settings), store)
@@ -119,9 +130,7 @@ def create_app(
         debounce_s=settings.reassess_debounce_s,
     )
     retrier = ProcessingRetrier(store, analysis, clock=clock, max_attempts=settings.processing_max_attempts, tick_s=settings.processing_retry_tick_s)
-    refresher = StaleAssessmentRefresher(
-        store, analysis, clock=clock, stale_hours=settings.stale_assessment_hours, tick_s=settings.reassess_tick_s
-    )
+    refresher = StaleAssessmentRefresher(store, analysis, clock=clock, stale_hours=settings.stale_assessment_hours, tick_s=settings.reassess_tick_s)
     hub = RepHub(store, clock, no_signal_s=settings.live_no_signal_s)
     bus = Bus(factory, reconnect_min_s=settings.mqtt_reconnect_min_s, reconnect_max_s=settings.mqtt_reconnect_max_s)
     control = Control(store, bus, analysis.process_session, ack_timeout_s=settings.ack_timeout_s, clock=clock, on_session_closed=hub.finish)
@@ -191,4 +200,3 @@ def create_app(
         }
 
     return app
-

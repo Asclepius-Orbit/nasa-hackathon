@@ -79,17 +79,19 @@ it('treats an unreadable session as signed-out, never signed-in', async () => {
   });
 });
 
-it('signOut drops the local session (dev menu only: main keeps its own)', async () => {
+it('signOut ends the session through the api and shows the login state', async () => {
   const api = new FakeAsclepiusApi();
   api.session = { crewId: 'AST-01', locked: false };
   const { result } = setup(api);
   await waitFor(() => {
     expect(result.current.status).toBe('signed-in');
   });
-  act(() => {
-    result.current.signOut();
+  await act(async () => {
+    await result.current.signOut();
   });
-  expect(result.current.status).toBe('signed-out');
+  expect(result.current).toMatchObject({ status: 'signed-out', crewId: null });
+  expect(api.calls).toContain('auth.signOut');
+  expect(api.session).toBeNull();
 });
 
 it('useAuth outside a provider fails loudly', () => {

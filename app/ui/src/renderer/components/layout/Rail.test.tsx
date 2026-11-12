@@ -10,12 +10,12 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-it('is a named navigation with the five tabs in order', () => {
+it('is a named navigation with the seven tabs in order', () => {
   renderInWorld(<Rail />);
   const nav = screen.getByRole('navigation', { name: 'Sections' });
   expect(nav).toBeInTheDocument();
-  const names = screen.getAllByRole('link').slice(0, 5).map((a) => a.textContent.replace(/\s*1$/, ''));
-  expect(names).toEqual(['Today', 'Report', 'Session', 'History', 'Settings']);
+  const names = screen.getAllByRole('link').slice(0, 7).map((a) => a.textContent.replace(/\s*1$/, ''));
+  expect(names).toEqual(['Today', 'Report', 'Session', 'History', 'Ask', 'Houston', 'Settings']);
 });
 
 it('points each tab at its route and marks the current one', () => {

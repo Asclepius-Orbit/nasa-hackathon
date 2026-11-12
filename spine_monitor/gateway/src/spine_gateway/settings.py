@@ -6,9 +6,10 @@ firmware no se configura: llega en el hello del dispositivo.
 """
 
 import re
+from pathlib import Path
 from typing import Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from spine_contracts import topics
 from spine_contracts.models.common_schema import Muscle, Side
@@ -39,6 +40,10 @@ class GatewaySettings(BaseSettings):
     mqtt_host: str = "127.0.0.1"
     mqtt_port: int = Field(default=1883, ge=1, le=65535)
     mqtt_client_id: str = "spine-gateway"
+    mqtt_username: str | None = None
+    mqtt_password: SecretStr | None = None
+    mqtt_tls: bool = False
+    mqtt_tls_ca_file: Path | None = None
     # Reconexión con backoff exponencial si el broker rechaza la conexión o la corta: espera inicial (s),
     # factor por intento fallido y tope (s). Vuelve a la inicial tras conectar.
     mqtt_reconnect_initial_s: float = Field(default=1.0, gt=0)

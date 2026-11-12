@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+      - name: Broker credentials (throwaway, generated per run; app/.env and app/mosquitto/auth are gitignored)
+        run: sh app/mosquitto/setup.sh
       - name: Full mutation report (non blocking)
         shell: bash
         env:

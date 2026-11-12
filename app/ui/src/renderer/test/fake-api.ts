@@ -5,6 +5,7 @@ import type {
   AstronautProfile,
   AuthSession,
   BaselineView,
+  ChatEvent,
   CommandSent,
   CreateCrewResult,
   CrewMember,
@@ -181,6 +182,8 @@ export class FakeAsclepiusApi implements AsclepiusApi {
   reports = {
     saveDaily: (fields: DailyReportFields): Promise<WriteResult<ReportSaved>> =>
       this.act('reports.saveDaily', fields, { reportId: 'report-1', assessmentLevel: 'green', assessmentSkipped: null, exercise: null }),
+    saveOswestry: (input: { items: OdiAnswer[] }): Promise<WriteResult<ReportSaved>> =>
+      this.act('reports.saveOswestry', input, { reportId: 'report-2', assessmentLevel: null, assessmentSkipped: 'no_baseline', exercise: null }),
     addExercise: (entry: ExerciseEntry): Promise<AddExerciseResult> => {
       this.calls.push('reports.addExercise');
       this.lastArg['reports.addExercise'] = entry;
@@ -188,8 +191,6 @@ export class FakeAsclepiusApi implements AsclepiusApi {
       const forced = this.forced.get('reports.addExercise') as AddExerciseResult | undefined;
       return Promise.resolve(forced ?? { ok: true, value: DEFAULT_CONTEXT });
     },
-    saveOswestry: (input: { items: OdiAnswer[] }): Promise<WriteResult<ReportSaved>> =>
-      this.act('reports.saveOswestry', input, { reportId: 'report-2', assessmentLevel: null, assessmentSkipped: 'no_baseline', exercise: null }),
     due: (): Promise<ReportsDue> => {
       this.calls.push('reports.due');
       return Promise.resolve(this.dueValue);
@@ -272,6 +273,11 @@ export class FakeAsclepiusApi implements AsclepiusApi {
       if (this.session) this.session = { ...this.session, locked: true };
       return Promise.resolve();
     },
+    signOut: (): Promise<void> => {
+      this.calls.push('auth.signOut');
+      this.session = null;
+      return Promise.resolve();
+    },
     current: (): Promise<AuthSession | null> => {
       this.calls.push('auth.current');
       return Promise.resolve(this.session);
@@ -307,6 +313,35 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     houston: () => this.view('houston', this.viewData.houston),
     outbox: () => this.view('outbox', this.viewData.outbox),
   };
+
+  /** Questions asked through `chat.ask`, in order; tests answer them with `emitChat`. */
+  chatAsks: { conversationId: string; question: string; emit: (event: ChatEvent) => void; cancelled: boolean }[] = [];
+  /** Conversations forgotten through `chat.forget`, in order. */
+  chatForgotten: string[] = [];
+
+  chat = {
+    ask: (input: { conversationId: string; question: string }, onEvent: (event: ChatEvent) => void): (() => void) => {
+      this.calls.push('chat.ask');
+      const ask = { ...input, emit: onEvent, cancelled: false };
+      this.chatAsks.push(ask);
+      return () => {
+        if (ask.cancelled) return;
+        ask.cancelled = true;
+        this.calls.push('chat.cancel');
+      };
+    },
+    forget: (input: { conversationId: string }): Promise<void> => {
+      this.calls.push('chat.forget');
+      this.chatForgotten.push(input.conversationId);
+      return Promise.resolve();
+    },
+  };
+
+  /** Pushes an event to the last question asked (or the `index`-th), as main would; nothing reaches a cancelled one. */
+  emitChat(event: ChatEvent, index = this.chatAsks.length - 1): void {
+    const ask = this.chatAsks[index];
+    if (ask !== undefined && !ask.cancelled) ask.emit(event);
+  }
 
   private repsListeners = new Map<string, Set<(event: RepsEvent) => void>>();
 

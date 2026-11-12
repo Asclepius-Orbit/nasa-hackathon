@@ -153,6 +153,9 @@ Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic
 | `SPINE_SIM_MQTT_RECONNECT_INITIAL_S` | `1.0` | primera espera antes de reconectar con el broker |
 | `SPINE_SIM_MQTT_RECONNECT_FACTOR` | `2.0` | multiplicador de la espera tras cada intento fallido (>= 1) |
 | `SPINE_SIM_MQTT_RECONNECT_MAX_S` | `30.0` | tope de la espera (>= la inicial) |
+| `SPINE_SIM_MQTT_USERNAME` | sin fijar | usuario del broker; `{device_id}` se cambia por el id de cada dispositivo (compose: `{device_id}`, así el simulador entra como `sim-01`, `sim-02`) |
+| `SPINE_SIM_MQTT_PASSWORD` | sin fijar | contraseña del broker, la misma para todos los dispositivos del proceso; nunca se registra ni se muestra |
+| `SPINE_SIM_MQTT_TLS` / `SPINE_SIM_MQTT_TLS_CA_FILE` | `false` / sin fijar | TLS al broker (listener 8883 de la LAN) y la CA que firmó su certificado (sin ella, las CA del sistema) |
 
 ```bash
 SPINE_SIM_CONFIG=physiology/configs/example-mission.yaml SPINE_SIM_SPEED=1 SPINE_SIM_START_DAY=0 \
@@ -172,6 +175,7 @@ SPINE_SIM_CONFIG=physiology/configs/example-mission.yaml SPINE_SIM_SPEED=1 SPINE
 El servicio `simulator` está en el perfil `sim` de `app/docker-compose.yml` (necesita el broker, que arranca con él: `mosquitto` tiene un healthcheck y `simulator` lo espera con `condition: service_healthy`). Desde la raíz del repo:
 
 ```bash
+sh app/mosquitto/setup.sh   # una vez: credenciales del broker en app/.env
 docker compose -f app/docker-compose.yml --profile sim up --build
 ```
 
@@ -183,7 +187,7 @@ Ejecuta `spine-sim-gateway` con la misión de ejemplo (`SPINE_SIM_CONFIG=/app/co
 uv run pytest physiology
 ```
 
-Los tests que necesitan un broker real llevan el marcador `mosquitto` y se saltan si nada escucha en `127.0.0.1:1883` (por ejemplo, `docker run -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf` los activa). El resto de tests del gateway usan un cliente MQTT falso y tiempo virtual.
+Los tests que necesitan un broker real llevan el marcador `mosquitto` y se saltan si nada escucha en `127.0.0.1:1883`; el gate (`SPINE_REQUIRE_BROKER=1`) falla en su lugar. Corren contra el broker de compose, con usuarios y ACL (`sh app/mosquitto/setup.sh` y luego `docker compose -f app/docker-compose.yml up -d mosquitto`), y leen sus credenciales de `SPINE_TEST_MQTT_USERNAME` (por defecto `spine-itest`), `SPINE_TEST_MQTT_PASSWORD` y `SPINE_TEST_MQTT_DEVICE_PASSWORD` (el servicio `quality` las pasa desde `app/.env`; a mano: `SPINE_MQTT_ITEST_PASSWORD` y `SPINE_MQTT_ITEST_DEVICE_PASSWORD` de ese fichero). Además del gateway de punta a punta, comprueban que se rechazan los clientes anónimos y las contraseñas erróneas y que un dispositivo no puede publicar en los topics de otro ni leer sus comandos. El resto de tests del gateway usan un cliente MQTT falso y tiempo virtual.
 
 ## Límites conocidos
 

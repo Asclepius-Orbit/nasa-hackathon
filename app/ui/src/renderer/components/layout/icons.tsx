@@ -36,6 +36,15 @@ export function HistoryIcon(): React.JSX.Element {
   );
 }
 
+export function AskIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M4 5h16v11H9l-5 4z" />
+      <path d="M9 9h6M9 12h4" />
+    </svg>
+  );
+}
+
 export function SettingsIcon(): React.JSX.Element {
   return (
     <svg {...base}>

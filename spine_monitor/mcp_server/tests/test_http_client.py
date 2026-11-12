@@ -8,13 +8,12 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from mcp.client.client import Client
-from mcp.types import TextContent
 from monitor.db import Store
 from monitor.readonly import create_read_app
 from monitor.settings import AppSettings
-from spine_contracts import SCHEMA_VERSION, Explanation, History, SelfReportList, SessionList, SimulateRequest, Status
+from spine_contracts import SCHEMA_VERSION, AssessRequest, Explanation, History, SelfReportList, SessionList, SimulateRequest, SimulateResponse, Status
 from spine_mcp_server.errors import UpstreamError
-from spine_mcp_server.http_client import HttpAppReader, UnavailableAssessBase, UnavailableSimulator
+from spine_mcp_server.http_client import HttpAppReader, HttpAssessBaseSource, UnavailableSimulator
 from spine_mcp_server.mocks import EXAMPLES_DIR, ExampleAppReader, ExampleAssessBaseSource
 from spine_mcp_server.server import create_server
 
@@ -460,25 +459,103 @@ def test_unavailable_simulator_raises_501_explaining_the_missing_endpoint():
     assert "#" not in str(caught.value)
 
 
-def test_unavailable_assess_base_raises_501_explaining_the_missing_endpoint():
-    with pytest.raises(UpstreamError) as caught:
-        UnavailableAssessBase().get_base(AST)
-    assert caught.value.status == 501
-    assert caught.value.title == "Assessment base not available"
-    assert "no endpoint for this yet" in str(caught.value)
-    assert "http mode" in str(caught.value)
-    assert "#" not in str(caught.value)
+def _base_source(handler) -> HttpAssessBaseSource:
+    return HttpAssessBaseSource(BASE, client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def test_assess_base_request_and_parse():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.raw_path.decode()))
+        return httpx.Response(200, json=example("engine/assess-request"))
+
+    base = _base_source(handler).get_base(AST)
+
+    assert seen == [("GET", f"/crew/{AST}/assess-base")]
+    assert base == AssessRequest.model_validate(example("engine/assess-request"))
+
+
+def test_assess_base_escapes_the_astronaut_id():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path.decode())
+        return httpx.Response(200, json=example("engine/assess-request"))
+
+    _base_source(handler).get_base("../x?y")
+
+    assert seen == ["/crew/..%2Fx%3Fy/assess-base"]
+
+
+def test_assess_base_problem_becomes_an_upstream_error_with_the_reason():
+    error = raises(lambda: _base_source(lambda _: problem(404, detail="no_baseline")).get_base(AST))
+
+    assert (error.status, error.title, str(error)) == (404, "Not found", "Not found: no_baseline")
+
+
+def test_assess_base_invalid_body_is_a_502():
+    error = raises(lambda: _base_source(lambda _: httpx.Response(200, json={"x": 1})).get_base(AST))
+
+    assert error.status == 502
+
+
+def test_assess_base_unreachable_app_is_a_503():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    assert raises(lambda: _base_source(handler).get_base(AST)).status == 503
+
+
+def test_assess_base_source_closes_only_the_client_it_owns():
+    owned = HttpAssessBaseSource("http://127.0.0.1:1")
+    owned.close()
+    injected = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
+    HttpAssessBaseSource(BASE, client=injected).close()
+
+    assert owned._client.is_closed
+    assert not injected.is_closed
+
+
+@pytest.mark.integration
+def test_assess_base_against_the_real_app(store, app_client):
+    _populate(store)
+
+    base = HttpAssessBaseSource("http://testserver", client=app_client).get_base(AST)
+
+    assert base.astronaut_id == AST
+    assert base.as_of == NOW
+
+
+@pytest.mark.integration
+def test_assess_base_reasons_reach_the_caller_as_404(tmp_path):
+    store = Store(tmp_path / "bare.db")
+    store.put_profile(example("domain/astronaut-profile"))
+    client = TestClient(create_read_app(AppSettings(_env_file=None), store=store, clock=lambda: NOW))
+
+    error = raises(lambda: HttpAssessBaseSource("http://testserver", client=client).get_base(AST))
+    store.close()
+
+    assert (error.status, str(error)) == (404, "Not found: no_baseline")
+
+
+class _EchoSimulator:
+    def __init__(self) -> None:
+        self.requests: list[SimulateRequest] = []
+
+    def simulate(self, request: SimulateRequest) -> SimulateResponse:
+        self.requests.append(request)
+        return SimulateResponse.model_validate(example("engine/simulate-response"))
 
 
 @pytest.mark.integration
 @pytest.mark.anyio
-async def test_simulate_scenario_through_the_server_reports_the_unavailable_ports_as_a_tool_error():
-    server = create_server(ExampleAppReader(), UnavailableSimulator(), UnavailableAssessBase())
+async def test_simulate_scenario_in_http_mode_takes_the_real_base_and_reaches_the_simulator(store, app_client):
+    _populate(store)
+    simulator = _EchoSimulator()
+    server = create_server(HttpAppReader("http://testserver", client=app_client), simulator, HttpAssessBaseSource("http://testserver", client=app_client))
     async with Client(server) as client:
         result = await client.call_tool("simulate_scenario", {"astronaut_id": AST, "overrides": []})
-    assert result.is_error
-    assert isinstance(result.content[0], TextContent)
-    text = result.content[0].text
-    assert "Assessment base not available: The app API has no endpoint for this yet" in text
-    assert text.endswith("the assessment base is not available in http mode.")
-    assert "http mode" in result.content[0].text
+    assert not result.is_error
+    assert len(simulator.requests) == 1
+    assert simulator.requests[0].base.as_of == NOW

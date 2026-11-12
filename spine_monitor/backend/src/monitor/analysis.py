@@ -34,6 +34,7 @@ import httpx
 from spine_contracts import SCHEMA_VERSION, validation
 
 from monitor.analysis_retry import backoff_s
+from monitor.assess_request import build_assess_request
 from monitor.db import Store
 from monitor.engine import EngineClient, EngineError
 
@@ -193,30 +194,10 @@ class Analysis:
         # It reads the data as it is now, so a debounced reassessment still waiting would only repeat it.
         self._cancel_pending(astronaut_id)
         as_of = as_of or self._clock()
-        profile = self._store.profile(astronaut_id)
-        if profile is None:
-            return AssessOutcome(skipped="no_profile")
-        baseline = self._store.latest_baseline(astronaut_id)
-        if baseline is None:
-            return AssessOutcome(skipped="no_baseline")
-        start = as_of - self._window
-        feature_sets = self._store.feature_sets_between(astronaut_id, start, as_of)
-        if not feature_sets:
-            return AssessOutcome(skipped="no_feature_sets")
-        contexts = self._store.daily_contexts_between(astronaut_id, start.date().isoformat(), as_of.date().isoformat())
-        request: dict[str, Any] = {
-            "schema_version": SCHEMA_VERSION,
-            "astronaut_id": astronaut_id,
-            "as_of": as_of.isoformat(),
-            "profile": profile,
-            "baseline": baseline,
-            "feature_sets": feature_sets,
-            "self_reports": self._store.self_reports_between(astronaut_id, start, as_of),
-            "daily_context": contexts,
-        }
-        today = next((c for c in contexts if c["date"] == as_of.date().isoformat()), None)
-        if today is not None and "mission_day" in today:
-            request["mission_day"] = today["mission_day"]
+        built = build_assess_request(self._store, astronaut_id, as_of, self._window)
+        if built.request is None:
+            return AssessOutcome(skipped=built.skipped)
+        request = built.request
         try:
             assessment = await self._engine.assess(request)
         except EngineError as exc:

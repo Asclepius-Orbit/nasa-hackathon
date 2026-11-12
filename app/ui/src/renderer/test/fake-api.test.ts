@@ -78,4 +78,19 @@ describe('FakeAsclepiusApi honours the AsclepiusApi contract', () => {
     expect(api.repsListenerCount('s1')).toBe(0);
     expect(api.repsListenerCount('s2')).toBe(1);
   });
+
+  it('chat: records the question, delivers pushed events until cancelled, and forgets conversations', async () => {
+    const api = new FakeAsclepiusApi();
+    const seen: unknown[] = [];
+    const cancel = api.chat.ask({ conversationId: 'c1', question: 'q' }, (event) => seen.push(event));
+    api.emitChat({ kind: 'text', delta: 'a' });
+    cancel();
+    cancel();
+    api.emitChat({ kind: 'text', delta: 'b' });
+    await api.chat.forget({ conversationId: 'c1' });
+    expect(seen).toEqual([{ kind: 'text', delta: 'a' }]);
+    expect(api.calls.filter((c) => c.startsWith('chat.'))).toEqual(['chat.ask', 'chat.cancel', 'chat.forget']);
+    expect(api.chatAsks[0]).toMatchObject({ conversationId: 'c1', question: 'q', cancelled: true });
+    expect(api.chatForgotten).toEqual(['c1']);
+  });
 });

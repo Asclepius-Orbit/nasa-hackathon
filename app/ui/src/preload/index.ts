@@ -6,6 +6,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import type { AsclepiusApi } from '../shared/api';
+import { createChatBridge } from '../shared/chat-bridge';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { createRepsBridge } from '../shared/reps-bridge';
 import { viewsCall } from '../shared/views-errors';
@@ -20,6 +21,7 @@ const api: AsclepiusApi = Object.freeze({
   auth: Object.freeze({
     verifyPin: (input) => ipcRenderer.invoke(IPC_CHANNELS.authVerifyPin, input),
     lock: () => ipcRenderer.invoke(IPC_CHANNELS.authLock),
+    signOut: () => ipcRenderer.invoke(IPC_CHANNELS.authSignOut),
     current: () => ipcRenderer.invoke(IPC_CHANNELS.authCurrent),
   } satisfies AsclepiusApi['auth']),
   settings: Object.freeze({
@@ -70,6 +72,8 @@ const api: AsclepiusApi = Object.freeze({
     list: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.contactsList)),
     logOfficerCall: (input) => ipcRenderer.invoke(IPC_CHANNELS.contactsLogOfficerCall, input),
   } satisfies AsclepiusApi['contacts']),
+  // Chat with the agent, same bridge rules as the live counter below.
+  chat: Object.freeze(createChatBridge(ipcRenderer)),
   // Live push. The bridge hands the callback plain events only: never `ipcRenderer` or Electron's event object.
   reps: Object.freeze(createRepsBridge(ipcRenderer)),
 });

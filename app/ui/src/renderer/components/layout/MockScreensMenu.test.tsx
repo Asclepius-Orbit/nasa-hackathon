@@ -34,7 +34,7 @@ it('renders in development: links to the mock-only screens', () => {
   setup();
   expect(screen.getByText('Mock screens')).toBeInTheDocument();
   const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
-  expect(hrefs).toEqual(['/first-day', '/baseline', '/oswestry', '/stopped', '/houston']);
+  expect(hrefs).toEqual(['/first-day', '/baseline', '/oswestry', '/stopped']);
 });
 
 it('renders nothing outside development', () => {

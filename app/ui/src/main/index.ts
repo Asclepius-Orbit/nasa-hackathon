@@ -28,7 +28,10 @@ import { createCrewStore, crewFileSchema } from './store/crew-store';
 import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
-import { resolveBackendToken } from './views/backend-auth';
+import { AGENT_URL_ENV, resolveAgentUrl } from './chat/agent-url';
+import { createChatService } from './chat/chat-service';
+import { createChatStreamClient } from './chat/chat-stream';
+import { resolveAgentToken, resolveBackendToken } from './views/backend-auth';
 import { BACKEND_URL_ENV, resolveBackendUrl } from './views/backend-url';
 import { createRepsService } from './views/reps-service';
 import { createRecordsClient } from './views/records-client';
@@ -40,7 +43,7 @@ import { createMainWindow, hardenSession, installWebContentsGuard } from './wind
 
 const devServerUrl = import.meta.env.DEV ? process.env['ELECTRON_RENDERER_URL'] : undefined;
 const csp = import.meta.env.DEV ? devCsp() : PROD_CSP;
-const seedDemoCrew = import.meta.env.DEV || import.meta.env.MODE === 'e2e';
+const seedDemoCrew = import.meta.env.DEV || import.meta.env.MODE === 'e2e' || import.meta.env.MODE === 'e2e-real';
 const policy = createAppUrlPolicy({ devServerUrl });
 const preloadPath = join(import.meta.dirname, '../preload/index.cjs');
 const rendererRoot = join(import.meta.dirname, '../renderer');
@@ -104,20 +107,26 @@ if (!app.requestSingleInstanceLock()) {
       streams: createRepsStreamClient({ baseUrl: backendUrl, token, logError: console.error }),
       logError: console.error,
     });
+    // The spine agent (chat): same rules as the backend, with its own URL and token, both main-process configuration.
+    const agentUrl = resolveAgentUrl(process.env[AGENT_URL_ENV], () => {
+      console.error(`${AGENT_URL_ENV} ignored: only http(s) loopback URLs are accepted`);
+    });
+    const agentToken = resolveAgentToken(process.env, (path) => readFileSync(path, 'utf8'), console.error);
+    const chat = createChatService({
+      auth,
+      chat: createChatStreamClient({ baseUrl: agentUrl, token: agentToken, logError: console.error }),
+      logError: console.error,
+    });
     const records = createRecordsClient({ baseUrl: backendUrl, token });
     const writer = createWriteClient({ baseUrl: backendUrl, token, logError: console.error });
     const dailyContext = createDailyContextService({ auth, records, writer, now: Date.now, logError: console.error });
     const refreshDailyContext = createDailyContextRefresh(auth, dailyContext);
     const dailyContextTimer = setInterval(() => { void refreshDailyContext(); }, 30_000);
-    // Also wake at the UTC day boundary, instead of waiting for the next retry tick.
     let midnightTimer: ReturnType<typeof setTimeout>;
     const scheduleMidnight = (): void => {
       const now = Date.now();
       const next = (Math.floor(now / 86_400_000) + 1) * 86_400_000;
-      midnightTimer = setTimeout(() => {
-        void refreshDailyContext();
-        scheduleMidnight();
-      }, next - now);
+      midnightTimer = setTimeout(() => { void refreshDailyContext(); scheduleMidnight(); }, next - now);
     };
     scheduleMidnight();
     app.once('before-quit', () => { clearInterval(dailyContextTimer); clearTimeout(midnightTimer); });
@@ -130,7 +139,7 @@ if (!app.requestSingleInstanceLock()) {
     const contacts = createContactsService({ auth, records, writer });
     registerIpc(
       ipcMain,
-      { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts },
+      { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts, chat },
       createSenderGuard(policy),
     );
 

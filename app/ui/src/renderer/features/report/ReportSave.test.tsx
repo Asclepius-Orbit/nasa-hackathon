@@ -195,7 +195,7 @@ describe('the outcome of saving', () => {
 });
 
 describe('the exercise that the report could not store', () => {
-  const SAVED = { reportId: 'r', assessmentLevel: null, assessmentSkipped: null } as const;
+  const SAVED = { reportId: 'r', assessmentLevel: null, assessmentSkipped: null, exercise: null } as const;
   const retry = (): HTMLElement => screen.getByRole('button', { name: 'Retry exercise' });
   const withExercise = async (): Promise<void> => {
     await minimal();

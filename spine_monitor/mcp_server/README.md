@@ -38,13 +38,13 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 - `start` and `end` are RFC 3339 timestamps with a UTC offset. `limit` is 1 to 500.
 - `compare_periods` reads both periods with `limit` 500 and computes the comparison in the server. Deltas are B minus A.
 - `overrides` is an optional list (default empty) of changes with `feature_id`, `mode` (`set`, `add` or `scale`) and `value`; empty or omitted means no changes, so the current trajectory is projected as it is. `project_days` is 1 to 365.
-- `simulate_scenario` is hypothetical only and never changes real data. In `--dataset http` it returns a 501 tool error until the assessment base is available ([#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26)).
+- `simulate_scenario` is hypothetical only and never changes real data. In `--dataset http` its base is the assessment request the app would send to the engine now (`GET /crew/{astronaut_id}/assess-base`, `as_of` = the app's clock, last 14 days of data); if the app cannot build it (no profile, no baseline or no feature sets in the window) the tool returns a 404 error naming the reason.
 
 ## Datasets
 
 `python -m spine_mcp_server` serves a **demo dataset** by default: the last 14 days of astronaut `AST-01`, generated relative to the clock so the data always ends "now". It is green for the first 8 days and amber for the last 6, with a rising risk score (0.18 to 0.62), one assessment per day, an exercise session every 2 days plus a few spine checks, a daily self-report (pain NRS from 2 to 5) and one weekly ODI report. `explain_assessment` works for every assessment in that history, `compare_periods` has data in both weeks, and `simulate_scenario` answers what-if questions with a simple linear model on lumbar elongation (an approximation, not the engine). `AST-01` is the only astronaut; any other id returns a "not found" tool error.
 
-To read the real app instead, use `--dataset http`. It calls the app read API at `SPINE_APP_URL` (default `http://127.0.0.1:8002`) and configures the simulator to call the engine directly at `SPINE_ENGINE_URL` (default `http://127.0.0.1:8001`). The assessment base is not yet available over HTTP, so simulation remains blocked by [#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26).
+To read the real app instead, use `--dataset http`. It calls the app read API at `SPINE_APP_URL` (default `http://127.0.0.1:8002`) and configures the simulator to call the engine directly at `SPINE_ENGINE_URL` (default `http://127.0.0.1:8001`). The assessment base comes from the app read API (`/crew/{astronaut_id}/assess-base`).
 
 ```bash
 SPINE_APP_URL=http://127.0.0.1:8002 uv run python -m spine_mcp_server --dataset http
@@ -73,7 +73,6 @@ In `--dataset http`, failures from the app API map as follows:
 | Response body that does not match the contract | 502, `App API returned an invalid response` |
 | No response within 10 seconds | 504, `App API timeout` |
 | Connection failure | 503, `App API unavailable` |
-| `simulate_scenario` (assessment base unavailable) | 501, `Assessment base not available` |
 
 The simulator applies the same mappings to engine errors, identifying the engine as the upstream service.
 
@@ -87,5 +86,4 @@ The simulator applies the same mappings to engine errors, identifying the engine
 
 ## Out of scope for now
 
-- The assessment base over HTTP remains unavailable ([#26](https://github.com/Asclepius-Orbit/nasa-hackathon/issues/26)), so `simulate_scenario` returns 501 before calling the engine.
 - The demo stays the default dataset until the engine is real.

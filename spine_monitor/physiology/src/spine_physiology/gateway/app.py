@@ -915,6 +915,12 @@ async def _serve(
             group.create_task(_connection(gateway, member, settings, client_factory=client_factory, sleep=sleep))
 
 
+def _tls_params(settings: GatewaySettings) -> aiomqtt.TLSParameters | None:
+    if not settings.mqtt_tls:
+        return None
+    return aiomqtt.TLSParameters(ca_certs=str(settings.mqtt_tls_ca_file) if settings.mqtt_tls_ca_file is not None else None)
+
+
 async def _connection(
     gateway: FakeGateway,
     member: CrewMember,
@@ -927,11 +933,20 @@ async def _connection(
     o la corta (MqttError), espera con backoff exponencial (`mqtt_reconnect_*`, de vuelta a la inicial tras
     conectar) y lo intenta de nuevo sobre el mismo gateway. Solo acaba al cancelarse (o por otro error)."""
     identifier = f"{settings.mqtt_client_id}-{member.device_id}"
+    username = settings.mqtt_username.replace("{device_id}", member.device_id) if settings.mqtt_username is not None else None
+    password = settings.mqtt_password.get_secret_value() if settings.mqtt_password is not None else None
+    tls = _tls_params(settings)
     delay = settings.mqtt_reconnect_initial_s
     while True:
         try:
             async with client_factory(
-                hostname=settings.mqtt_host, port=settings.mqtt_port, identifier=identifier, will=gateway.last_will(member.astronaut_id)
+                hostname=settings.mqtt_host,
+                port=settings.mqtt_port,
+                identifier=identifier,
+                will=gateway.last_will(member.astronaut_id),
+                username=username,
+                password=password,
+                tls_params=tls,
             ) as client:
                 _log.info("%s: connected to %s:%d as %s", member.astronaut_id, settings.mqtt_host, settings.mqtt_port, identifier)
                 delay = settings.mqtt_reconnect_initial_s

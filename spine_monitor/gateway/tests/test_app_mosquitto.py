@@ -16,6 +16,7 @@ from typing import Any
 
 import aiomqtt
 import pytest
+from pydantic import SecretStr
 from spine_contracts import topics, validation
 from spine_gateway import app
 from spine_gateway.assembler import SAMPLES_PER_BATCH
@@ -27,6 +28,8 @@ pytestmark = pytest.mark.mosquitto
 
 HOST, PORT = "127.0.0.1", 1883
 TIMEOUT_S = 20.0
+OBSERVER_AUTH = {"username": "spine-gwtest", "password": os.environ["SPINE_TEST_MQTT_PASSWORD"]} if os.getenv("SPINE_TEST_MQTT_PASSWORD") else {}
+DEVICE_PASSWORD = os.getenv("SPINE_TEST_MQTT_DEVICE_PASSWORD")
 FIRMWARE_PERIOD_S = 0.1
 SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"
 SAMPLE: dict[FrameKind, Any] = {FrameKind.EMG: 300, FrameKind.IMU: (0, 0, 8192, 0, 0, 0), FrameKind.CORD: 512}
@@ -75,7 +78,7 @@ async def _scenario(settings: GatewaySettings, source: Any) -> None:
         }  # fmt: skip
         return json.dumps(body).encode()
 
-    async with aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}") as observer:
+    async with aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}", **OBSERVER_AUTH) as observer:
         root = f"{topics.ROOT}/crew/{a}/device/{d}"
         for topic in (status_topic, clock_topic, ack_topic, f"{root}/stream/+", f"{root}/calibration/+"):
             await observer.subscribe(topic, qos=1)
@@ -133,8 +136,17 @@ async def _scenario(settings: GatewaySettings, source: Any) -> None:
 
 def test_gateway_against_a_real_broker(settings: GatewaySettings, fakes) -> None:
     _require_broker()
-    device_id = f"itest-gw-{uuid.uuid4().hex[:6]}"
-    custom = settings.model_copy(update={"device_id": device_id, "mqtt_host": HOST, "mqtt_port": PORT, "mqtt_client_id": "itest"})
+    device_id = "itest-gw"
+    custom = settings.model_copy(
+        update={
+            "device_id": device_id,
+            "mqtt_host": HOST,
+            "mqtt_port": PORT,
+            "mqtt_client_id": "itest",
+            "mqtt_username": device_id if DEVICE_PASSWORD else None,
+            "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None,
+        }
+    )
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho necesita add_reader
     asyncio.run(_scenario(custom, fakes.FakeLineSource()), loop_factory=loop_factory)
 
@@ -180,7 +192,7 @@ async def _main_scenario(settings: GatewaySettings) -> None:
     a, d = custom.astronaut_id, custom.device_id
     status_topic, clock_topic = topics.status(a, d), topics.clock(a, d)
     received: list[tuple[str, dict[str, Any]]] = []
-    async with aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}") as observer:
+    async with aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}", **OBSERVER_AUTH) as observer:
         await observer.subscribe(status_topic, qos=1)
         await observer.subscribe(clock_topic, qos=1)
 
@@ -220,7 +232,16 @@ async def _main_scenario(settings: GatewaySettings) -> None:
 
 def test_main_reads_the_arduino_from_the_serial_url_and_publishes_to_the_broker(settings: GatewaySettings) -> None:
     _require_broker()
-    device_id = f"itest-gw-{uuid.uuid4().hex[:6]}"
-    custom = settings.model_copy(update={"device_id": device_id, "mqtt_host": HOST, "mqtt_port": PORT, "mqtt_client_id": "itest"})
+    device_id = "itest-gw"
+    custom = settings.model_copy(
+        update={
+            "device_id": device_id,
+            "mqtt_host": HOST,
+            "mqtt_port": PORT,
+            "mqtt_client_id": "itest",
+            "mqtt_username": device_id if DEVICE_PASSWORD else None,
+            "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None,
+        }
+    )
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     asyncio.run(_main_scenario(custom), loop_factory=loop_factory)

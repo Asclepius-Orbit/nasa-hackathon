@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/agent/chat-event.schema.json",
+  "title": "ChatEvent",
+  "description": "The `data:` of one server-sent event of the answer stream of POST /chat (agent-openapi.yaml). The SSE `event:` name always equals `type`. A stream is (text | tool_call)* followed by: on success, an optional notice `correction` and `end`; when the model fails, an optional notice `mid_stream`, one `fallback` and `end`; when the server cannot go on, `error`. Exactly one `end` or `error` closes every stream and nothing follows it.",
+  "oneOf": [
+    { "$ref": "#/$defs/text" },
+    { "$ref": "#/$defs/tool_call" },
+    { "$ref": "#/$defs/fallback" },
+    { "$ref": "#/$defs/notice" },
+    { "$ref": "#/$defs/end" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "text": {
+      "title": "ChatTextEvent",
+      "description": "A piece of the answer, to append to the text shown so far (streamed as the model writes it).",
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "type": { "const": "text" },
+        "delta": { "type": "string", "minLength": 1 }
+      },
+      "required": ["schema_version", "type", "delta"],
+      "additionalProperties": false
+    },
+    "tool_call": {
+      "title": "ChatToolCallEvent",
+      "description": "The model called one of the read-only MCP tools (for display, e.g. a 'reading your status' line). The arguments are the model's, as it sent them.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "type": { "const": "tool_call" },
+        "tool_name": { "type": "string", "minLength": 1 },
+        "tool_args": { "type": "object" }
+      },
+      "required": ["schema_version", "type", "tool_name", "tool_args"],
+      "additionalProperties": false
+    },
+    "fallback": {
+      "title": "ChatFallbackEvent",
+      "description": "The model failed or could not be reached: a deterministic summary of the current status built without the LLM (English plain text, several lines). It replaces any text streamed before it.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "type": { "const": "fallback" },
+        "text": { "type": "string", "minLength": 1 }
+      },
+      "required": ["schema_version", "type", "text"],
+      "additionalProperties": false
+    },
+    "notice": {
+      "title": "ChatNoticeEvent",
+      "description": "A warning about the answer. `mid_stream`: the model failed after streaming some text, which must be discarded (a `fallback` follows). `correction`: the answer streamed contained wording that sounds like a diagnosis; keep the text and show the notice next to it (`end` follows). `text` is an English rendering; the UI may write its own words from `code`.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "type": { "const": "notice" },
+        "code": { "title": "ChatNoticeCode", "enum": ["mid_stream", "correction"] },
+        "text": { "type": "string", "minLength": 1 }
+      },
+      "required": ["schema_version", "type", "code", "text"],
+      "additionalProperties": false
+    },
+    "end": {
+      "title": "ChatEndEvent",
+      "description": "The answer is complete. The turn joined the conversation history unless a `fallback` was sent.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "type": { "const": "end" }
+      },
+      "required": ["schema_version", "type"],
+      "additionalProperties": false
+    },
+    "error": {
+      "title": "ChatErrorEvent",
+      "description": "The stream ends without a complete answer; the turn is not in the history. `unavailable`: the agent cannot reach what it needs (the MCP tool server) or is shutting down; retrying later may work. `invalid`: the conversation was forgotten (DELETE) while answering. `internal`: a bug in the agent. `busy` is not sent by this version once the stream is open (a busy conversation is refused with 409 before it); it is in the enum so that a client treats it like that 409. `message` is English, for logs.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "type": { "const": "error" },
+        "code": { "title": "ChatErrorCode", "enum": ["busy", "unavailable", "invalid", "internal"] },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "required": ["schema_version", "type", "code", "message"],
+      "additionalProperties": false
+    }
+  }
+}

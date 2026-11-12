@@ -53,7 +53,7 @@ test('renderer has no Node: no require, no process', async () => {
   expect(await page.evaluate(() => typeof process)).toBe('undefined');
 });
 
-test('bridge exposes exactly the crew, auth, settings, views, profile, daily context, devices, sessions, reports, urgent, contacts and reps functions', async () => {
+test('bridge exposes exactly the crew, auth, settings, views, profile, daily context, devices, sessions, reports, urgent, contacts, chat and reps functions', async () => {
   const shape = await page.evaluate(() => {
     const api = (globalThis as unknown as RendererGlobals).asclepius as unknown as Record<string, Record<string, unknown>>;
     return Object.fromEntries(
@@ -67,7 +67,8 @@ test('bridge exposes exactly the crew, auth, settings, views, profile, daily con
   });
   expect(shape).toEqual({
     crew: ['create:function', 'list:function', 'nextId:function', 'setHarness:function'],
-    auth: ['current:function', 'lock:function', 'verifyPin:function'],
+    auth: ['current:function', 'lock:function', 'signOut:function', 'verifyPin:function'],
+    chat: ['ask:function', 'forget:function'],
     settings: ['get:function', 'update:function'],
     views: [
       'baseline:function',
@@ -83,7 +84,7 @@ test('bridge exposes exactly the crew, auth, settings, views, profile, daily con
     dailyContext: ['today:function', 'updateToday:function'],
     devices: ['list:function'],
     sessions: ['calibrateMvc:function', 'markArtifact:function', 'reprocess:function', 'start:function', 'stop:function'],
-    reports: ['due:function', 'saveDaily:function', 'saveOswestry:function'],
+    reports: ['addExercise:function', 'due:function', 'saveDaily:function', 'saveOswestry:function'],
     urgent: ['send:function'],
     contacts: ['list:function', 'logOfficerCall:function'],
     reps: ['subscribe:function'],
@@ -111,7 +112,7 @@ test('bridge round-trips to the main process (dev seeds, sign-in, lock)', async 
     const prefs = await settings.get();
     return { first: members[0], nextId, signIn, session, prefKeys: Object.keys(prefs).sort() };
   });
-  expect(result.first).toEqual({ id: 'AST-01', name: 'Elena Ruiz', harnessId: 'wb-01' });
+  expect(result.first).toEqual({ id: 'AST-01', name: 'Elena Ruiz', harnessId: 'sim-01' });
   expect(result.nextId).toMatch(/^AST-\d{2}$/);
   expect(result.signIn).toEqual({ ok: true, crewId: 'AST-01' });
   expect(result.session).toEqual({ crewId: 'AST-01', locked: true });

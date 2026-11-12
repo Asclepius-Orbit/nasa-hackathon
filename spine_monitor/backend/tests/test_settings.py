@@ -1,13 +1,16 @@
 """AppSettings: the bounds of the UI view settings are validated at load time, not on every request."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
+import aiomqtt
 import pytest
 from monitor.api import MAX_HISTORY_DAYS
 from monitor.ground.link import GroundWindows
+from monitor.main import default_mqtt_client_factory
 from monitor.settings import AppSettings
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 
 def settings(**kwargs: Any) -> AppSettings:
@@ -131,3 +134,53 @@ def test_raw_chunks_are_kept_thirty_days_by_default() -> None:
 def test_null_in_the_environment_keeps_raw_chunks_forever(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPINE_APP_CHUNK_RETENTION_DAYS", "null")
     assert settings().chunk_retention_days is None
+
+
+# --- MQTT credentials and TLS (#96) ---------------------------------------------------------------------------------
+
+
+def test_mqtt_credentials_and_tls_are_off_by_default() -> None:
+    s = settings()
+    assert (s.mqtt_username, s.mqtt_password, s.mqtt_tls, s.mqtt_tls_ca_file) == (None, None, False, None)
+
+
+def test_mqtt_credentials_come_from_the_environment_and_the_password_is_never_shown(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPINE_APP_MQTT_USERNAME", "spine-app")
+    monkeypatch.setenv("SPINE_APP_MQTT_PASSWORD", "s3cret-value")
+    monkeypatch.setenv("SPINE_APP_MQTT_TLS", "true")
+    monkeypatch.setenv("SPINE_APP_MQTT_TLS_CA_FILE", "/certs/ca.crt")
+    s = settings()
+    assert s.mqtt_username == "spine-app" and s.mqtt_tls and s.mqtt_tls_ca_file == Path("/certs/ca.crt")
+    assert s.mqtt_password is not None and s.mqtt_password.get_secret_value() == "s3cret-value"
+    assert "s3cret-value" not in repr(s) and "s3cret-value" not in str(s)
+
+
+class RecordingClient:
+    """Stands in for aiomqtt.Client: keeps the arguments the factory built it with."""
+
+    def __init__(self, hostname: str, port: int, **kwargs: Any) -> None:
+        self.hostname, self.port, self.kwargs = hostname, port, kwargs
+
+
+def test_the_mqtt_client_gets_no_credentials_or_tls_when_none_are_set() -> None:
+    client = default_mqtt_client_factory(settings(mqtt_host="broker", mqtt_port=1884), client=RecordingClient)()
+    assert isinstance(client, RecordingClient)
+    assert (client.hostname, client.port) == ("broker", 1884)
+    assert client.kwargs["identifier"] == "spine-app" and client.kwargs["clean_session"] is False
+    assert (client.kwargs["username"], client.kwargs["password"], client.kwargs["tls_params"]) == (None, None, None)
+
+
+def test_the_mqtt_client_gets_the_credentials_and_the_tls_ca() -> None:
+    s = settings(mqtt_username="spine-app", mqtt_password=SecretStr("pw"), mqtt_tls=True, mqtt_tls_ca_file=Path("/certs/ca.crt"))
+    client = default_mqtt_client_factory(s, client=RecordingClient)()
+    assert isinstance(client, RecordingClient)
+    assert (client.kwargs["username"], client.kwargs["password"]) == ("spine-app", "pw")
+    tls = client.kwargs["tls_params"]
+    assert isinstance(tls, aiomqtt.TLSParameters) and tls.ca_certs == str(Path("/certs/ca.crt"))
+
+
+def test_tls_without_a_ca_file_uses_the_system_cas() -> None:
+    client = default_mqtt_client_factory(settings(mqtt_tls=True), client=RecordingClient)()
+    assert isinstance(client, RecordingClient)
+    tls = client.kwargs["tls_params"]
+    assert isinstance(tls, aiomqtt.TLSParameters) and tls.ca_certs is None

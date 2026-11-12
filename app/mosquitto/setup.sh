@@ -1,0 +1,204 @@
+#!/bin/sh
+# Generates the broker credentials: random passwords in app/.env and, from them, app/mosquitto/auth/passwd
+# (hashed with mosquitto_passwd inside the eclipse-mosquitto image, so the host only needs docker) and
+# app/mosquitto/auth/acl (from acl.template). All three are gitignored; nothing secret is ever committed.
+#
+#   sh app/mosquitto/setup.sh                      # creates what is missing, keeps the existing passwords
+#   sh app/mosquitto/setup.sh --force              # rotates every password
+#   sh app/mosquitto/setup.sh --device AST-03:wb-01   # registers a real device (astronaut:device, or just device)
+#
+# Then (re)start the broker: docker compose -f app/docker-compose.yml up -d --force-recreate mosquitto
+#
+# Users: spine-app (backend), spine-health (healthcheck), spine-itest (integration tests), one per simulated device
+# (SPINE_MQTT_SIM_DEVICES, sharing SPINE_MQTT_SIM_PASSWORD), one per test device (itest-*, sharing
+# SPINE_MQTT_ITEST_DEVICE_PASSWORD) and one per real device (SPINE_MQTT_DEVICES, each with its own
+# SPINE_MQTT_DEVICE_PASSWORD_<ID>). Every device user is named after its device id and only reaches its own topics.
+set -eu
+
+IMAGE=eclipse-mosquitto:2.0.22
+# Devices of spine_monitor/physiology/configs/example-mission.yaml and of physiology/tests/test_gateway_mosquitto.py.
+DEFAULT_SIM_DEVICES="AST-01:sim-01 AST-02:sim-02"
+DEMO_DEVICES="AST-01:gw-demo"
+ITEST_DEVICES="AST-01:itest-01 AST-02:itest-02 AST-01:itest-gw AST-98:itest-e2e"
+
+here=$(cd "$(dirname "$0")" && pwd)
+env_file="$(dirname "$here")/.env"
+auth_dir="$here/auth"
+
+usage() {
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    exit "${1:-0}"
+}
+
+force=0
+new_devices=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --force) force=1 ;;
+        --device)
+            [ $# -ge 2 ] || usage 2
+            new_devices="$new_devices $2"
+            shift
+            ;;
+        -h | --help) usage 0 ;;
+        *) echo "unknown argument: $1" >&2; usage 2 ;;
+    esac
+    shift
+done
+
+# Value of NAME in app/.env (surrounding double quotes removed), empty if absent.
+env_get() {
+    [ -f "$env_file" ] || return 0
+    sed -n "s/^$1=//p" "$env_file" | tail -n 1 | sed 's/^"\(.*\)"$/\1/'
+}
+
+random_password() {
+    if command -v openssl > /dev/null 2>&1; then
+        openssl rand -hex 24
+    else
+        od -An -N24 -tx1 /dev/urandom | tr -d ' \n'
+    fi
+}
+
+# Keeps the password of NAME unless --force or missing.
+password_for() {
+    current=$(env_get "$1")
+    if [ "$force" = 1 ] || [ -z "$current" ]; then
+        random_password
+    else
+        printf '%s' "$current"
+    fi
+}
+
+# "AST-01:sim-01" -> checks both ids against spine_contracts.topics (an id can never carry /, +, # or spaces).
+check_device() {
+    case "$1" in
+        *:*) astronaut=${1%%:*}; device=${1#*:} ;;
+        *) astronaut=+; device=$1 ;;
+    esac
+    if [ "$astronaut" != + ] && ! printf '%s' "$astronaut" | grep -Eq '^AST-[0-9]{2,3}$'; then
+        echo "invalid astronaut id in '$1' (AST-NN)" >&2
+        exit 2
+    fi
+    if ! printf '%s' "$device" | grep -Eq '^[a-z0-9][a-z0-9_-]{1,31}$'; then
+        echo "invalid device id in '$1' ([a-z0-9][a-z0-9_-]{1,31})" >&2
+        exit 2
+    fi
+}
+
+# wb-01 -> SPINE_MQTT_DEVICE_PASSWORD_WB_01
+device_var() {
+    printf 'SPINE_MQTT_DEVICE_PASSWORD_%s' "$(printf '%s' "$1" | tr 'a-z-' 'A-Z_')"
+}
+
+command -v docker > /dev/null 2>&1 || { echo "docker is needed (mosquitto_passwd runs in $IMAGE)" >&2; exit 1; }
+
+sim_devices=$(env_get SPINE_MQTT_SIM_DEVICES)
+sim_devices=${sim_devices:-$DEFAULT_SIM_DEVICES}
+devices=$(env_get SPINE_MQTT_DEVICES)
+for entry in $new_devices; do
+    check_device "$entry"
+    case " $devices " in
+        *" $entry "*) ;;
+        *) devices="${devices:+$devices }$entry" ;;
+    esac
+done
+for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do
+    check_device "$entry"
+done
+
+# MQTT usernames are global, including the service accounts. Reusing one would
+# replace its password and combine its ACL grants with those of the device.
+seen_users=" spine-app spine-health spine-itest spine-gwtest "
+seen_vars=" "
+for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do
+    device=${entry#*:}
+    case "$seen_users" in
+        *" $device "*) echo "duplicate or reserved MQTT user: $device" >&2; exit 2 ;;
+    esac
+    seen_users="$seen_users$device "
+done
+# Real device passwords use normalized environment names: '-' and '_' collide.
+for entry in $devices; do
+    var=$(device_var "${entry#*:}")
+    case "$seen_vars" in
+        *" $var "*) echo "device password variable collision: $var" >&2; exit 2 ;;
+    esac
+    seen_vars="$seen_vars$var "
+done
+
+app_pw=$(password_for SPINE_MQTT_APP_PASSWORD)
+health_pw=$(password_for SPINE_MQTT_HEALTH_PASSWORD)
+sim_pw=$(password_for SPINE_MQTT_SIM_PASSWORD)
+itest_pw=$(password_for SPINE_MQTT_ITEST_PASSWORD)
+itest_device_pw=$(password_for SPINE_MQTT_ITEST_DEVICE_PASSWORD)
+
+umask 077
+mkdir -p "$auth_dir"
+tmp_env="$env_file.tmp.$$"
+users="$auth_dir/users.tmp.$$"
+trap 'rm -f "$tmp_env" "$users" "$auth_dir/passwd.tmp" "$auth_dir/acl.tmp"' EXIT
+
+# app/.env: the lines of other tools are kept, every SPINE_MQTT_* line is rewritten.
+{
+    if [ -f "$env_file" ]; then
+        grep -v '^SPINE_MQTT_' "$env_file" | grep -v '^# MQTT credentials generated by' || true
+    fi
+    echo "# MQTT credentials generated by app/mosquitto/setup.sh (never commit them; --force rotates them)."
+    echo "SPINE_MQTT_APP_PASSWORD=$app_pw"
+    echo "SPINE_MQTT_HEALTH_PASSWORD=$health_pw"
+    echo "SPINE_MQTT_SIM_DEVICES=\"$sim_devices\""
+    echo "SPINE_MQTT_SIM_PASSWORD=$sim_pw"
+    echo "SPINE_MQTT_ITEST_PASSWORD=$itest_pw"
+    echo "SPINE_MQTT_ITEST_DEVICE_PASSWORD=$itest_device_pw"
+    echo "SPINE_MQTT_DEVICES=\"$devices\""
+    for entry in $devices; do
+        var=$(device_var "${entry#*:}")
+        echo "$var=$(password_for "$var")"
+    done
+} > "$tmp_env"
+
+# "user password" lines for mosquitto_passwd (passed on stdin, never on a command line).
+{
+    echo "spine-app $app_pw"
+    echo "spine-health $health_pw"
+    echo "spine-itest $itest_pw"
+    echo "spine-gwtest $itest_pw"
+    for entry in $sim_devices; do echo "${entry#*:} $sim_pw"; done
+    for entry in $DEMO_DEVICES; do echo "${entry#*:} $sim_pw"; done
+    for entry in $ITEST_DEVICES; do echo "${entry#*:} $itest_device_pw"; done
+    for entry in $devices; do
+        var=$(device_var "${entry#*:}")
+        echo "${entry#*:} $(sed -n "s/^$var=//p" "$tmp_env")"
+    done
+} > "$users"
+
+MSYS_NO_PATHCONV=1 docker run --rm -i "$IMAGE" sh -c '
+    umask 077
+    : > /tmp/passwd
+    while read -r user password; do mosquitto_passwd -b /tmp/passwd "$user" "$password" || exit 1; done
+    cat /tmp/passwd
+' < "$users" > "$auth_dir/passwd.tmp"
+[ -s "$auth_dir/passwd.tmp" ] || { echo "mosquitto_passwd produced no password file" >&2; exit 1; }
+
+# ACL: the template with one acl-device.template block per device user in place of @DEVICES@.
+{
+    sed '/^@DEVICES@$/,$d' "$here/acl.template"
+    for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do
+        case "$entry" in
+            *:*) astronaut=${entry%%:*} ;;
+            *) astronaut=+ ;;
+        esac
+        sed -e "s/@ASTRONAUT@/$astronaut/g" -e "s/@DEVICE@/${entry#*:}/g" "$here/acl-device.template"
+        echo
+    done
+} > "$auth_dir/acl.tmp"
+
+mv "$tmp_env" "$env_file"
+mv "$auth_dir/passwd.tmp" "$auth_dir/passwd"
+mv "$auth_dir/acl.tmp" "$auth_dir/acl"
+chmod 600 "$env_file" "$auth_dir/passwd" "$auth_dir/acl"
+
+echo "MQTT credentials in $env_file; password file and ACL in $auth_dir."
+echo "Device users: $(for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do printf '%s ' "${entry#*:}"; done)"
+echo "Restart the broker to load them: docker compose -f app/docker-compose.yml up -d --force-recreate mosquitto"

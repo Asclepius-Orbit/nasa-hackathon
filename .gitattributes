@@ -1,3 +1,5 @@
 *.sh text eol=lf
 Dockerfile text eol=lf
 app/ui/src/contracts/*.ts text eol=lf
+app/mosquitto/*.template text eol=lf
+app/mosquitto/config/*.conf text eol=lf

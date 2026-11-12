@@ -24,6 +24,7 @@ import contextlib
 import json
 import logging
 import signal
+import ssl
 import uuid
 from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Sequence
@@ -718,10 +719,17 @@ class Gateway:
         """Conecta con su Last Will y atiende la conexión; si el broker la rechaza o la corta, backoff y otra vez."""
         s = self._settings
         identifier = f"{s.mqtt_client_id}-{s.device_id}"
+        options: dict[str, Any] = {}
+        if s.mqtt_username:
+            options["username"] = s.mqtt_username
+        if s.mqtt_password is not None:
+            options["password"] = s.mqtt_password.get_secret_value()
+        if s.mqtt_tls:
+            options["tls_context"] = ssl.create_default_context(cafile=str(s.mqtt_tls_ca_file) if s.mqtt_tls_ca_file else None)
         delay = s.mqtt_reconnect_initial_s
         while True:
             try:
-                async with client_factory(hostname=s.mqtt_host, port=s.mqtt_port, identifier=identifier, will=self.last_will()) as client:
+                async with client_factory(hostname=s.mqtt_host, port=s.mqtt_port, identifier=identifier, will=self.last_will(), **options) as client:
                     _log.info("connected to %s:%d as %s", s.mqtt_host, s.mqtt_port, identifier)
                     delay = s.mqtt_reconnect_initial_s
                     await self._serve_connection(client)

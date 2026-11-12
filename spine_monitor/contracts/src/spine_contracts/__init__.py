@@ -18,6 +18,8 @@ from spine_contracts.messages import (
     self_report_adapter,
     stream_chunk_adapter,
 )
+from spine_contracts.models.agent.chat_event_schema import ChatEvent
+from spine_contracts.models.agent.chat_request_schema import ChatRequest
 from spine_contracts.models.app.assessment_list_schema import AssessmentList
 from spine_contracts.models.app.error_schema import AppErrorResponse
 from spine_contracts.models.app.explanation_schema import Explanation
@@ -110,6 +112,8 @@ __all__ = [
     "BasedOn",
     "CalibrateCommand",
     "Calibration",
+    "ChatEvent",
+    "ChatRequest",
     "ClockSync",
     "Command",
     "CommandAck",

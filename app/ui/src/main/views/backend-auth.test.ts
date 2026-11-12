@@ -25,6 +25,23 @@ describe('backend token', () => {
   });
 });
 
+describe('agent token', () => {
+  it('reads its own variable and file, apart from the backend token', async () => {
+    const { resolveAgentToken } = await import('./backend-auth');
+    const log = (): void => undefined;
+    expect(resolveAgentToken({ ASCLEPIUS_AGENT_TOKEN: ' a ', ASCLEPIUS_BACKEND_TOKEN: 'b' }, noFile, log)).toBe('a');
+    expect(resolveAgentToken({ ASCLEPIUS_AGENT_TOKEN_FILE: '/f' }, () => 'from-file\n', log)).toBe('from-file');
+    expect(resolveAgentToken({ ASCLEPIUS_BACKEND_TOKEN: 'b' }, noFile, log)).toBeNull();
+    const errors: string[] = [];
+    expect(
+      resolveAgentToken({ ASCLEPIUS_AGENT_TOKEN_FILE: '/x' }, noFile, (m) => {
+        errors.push(m);
+      }),
+    ).toBeNull();
+    expect(errors).toEqual(['ASCLEPIUS_AGENT_TOKEN_FILE: the token file cannot be read']);
+  });
+});
+
 describe('views client credentials', () => {
   it('sends the token and the astronaut it asks for', async () => {
     const { createViewsClient } = await import('./views-client');

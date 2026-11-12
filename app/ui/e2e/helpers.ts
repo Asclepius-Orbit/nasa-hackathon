@@ -12,10 +12,16 @@ export interface Launched {
   close: () => Promise<void>;
 }
 
-/** Launches the built app (out/) on a fresh --user-data-dir: default settings, dev crew seeds, no lockout state. */
-export async function launch(): Promise<Launched> {
+/**
+ * Launches the built app (out/) on a fresh --user-data-dir: default settings, dev crew seeds, no lockout state.
+ * `env` is added to the process environment (the real-mode spec passes the backend token and URL this way).
+ */
+export async function launch(env: Readonly<Record<string, string>> = {}): Promise<Launched> {
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'asclepius-e2e-'));
-  const app = await electron.launch({ args: ['.', `--user-data-dir=${userDataDir}`] });
+  const app = await electron.launch({
+    args: ['.', `--user-data-dir=${userDataDir}`],
+    env: { ...process.env, ...env } as Record<string, string>,
+  });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   return {

@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.14.8, <3.15"
 
 [manifest]
@@ -2004,18 +2004,24 @@ name = "spine-agent"
 version = "0.1.0"
 source = { editable = "agent" }
 dependencies = [
+    { name = "fastapi" },
     { name = "mcp" },
     { name = "pydantic-ai-slim", extra = ["mcp", "openai"] },
     { name = "pydantic-settings" },
+    { name = "spine-contracts" },
     { name = "spine-mcp-server" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", specifier = ">=0.162.0" },
     { name = "mcp", specifier = ">=2.3.0" },
     { name = "pydantic-ai-slim", extras = ["mcp", "openai"], specifier = ">=2.66.0" },
     { name = "pydantic-settings", specifier = ">=2.16.1" },
+    { name = "spine-contracts", editable = "contracts" },
     { name = "spine-mcp-server", editable = "mcp_server" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
 [[package]]

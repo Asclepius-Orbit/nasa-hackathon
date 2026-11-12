@@ -1,0 +1,182 @@
+openapi: 3.1.0
+info:
+  title: Spine LLM agent chat API
+  version: 1.0.0
+  license:
+    name: GNU General Public License v3.0
+  description: |
+    Local HTTP API of the spine LLM agent (`spine_monitor/agent`, console script `spine-agent-http`), through which
+    the Electron main process of the desktop app asks questions and streams the answers as server-sent events. It is
+    a process of its own, separate from the app backend, listening on loopback only (127.0.0.1:8003).
+
+    One answer at a time per conversation. The client generates the `conversation_id` (a UUID): a new id starts a
+    new conversation, the same id continues it. The agent keeps each conversation's history in memory only: a
+    bounded number of conversations (the least recently used idle one is forgotten first), an idle conversation is
+    forgotten after a while, and all of them on restart. A forgotten id simply starts over. A conversation belongs
+    to the astronaut of its first question.
+
+    To cancel an answer, the client closes the connection: the agent stops the model run and the turn is not kept in
+    the history. To forget a conversation, DELETE it.
+
+    Every request but /health carries `Authorization: Bearer <token>` (the agent token, shared with the Electron main
+    process like the backend's UI token) and `X-Astronaut-Id` (the unlocked astronaut): 401 without a valid token,
+    403 without the header, when the body names another astronaut, or when the conversation belongs to another one.
+    Errors before the stream opens are RFC 9457 problem details with the `app/error` schema; branch on the status
+    (the body type is `invalid_request` for all of them). Once the stream is open (200), every problem is an SSE
+    event (`fallback` when the model fails, `error` otherwise).
+security: []
+servers:
+  - url: http://127.0.0.1:8003
+    description: Local LLM agent process
+paths:
+  /health:
+    get:
+      operationId: agentHealth
+      summary: Liveness probe
+      description: Answers while the process is up; it does not call the model.
+      responses:
+        '200':
+          description: The agent is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: ok
+                required: [status]
+                additionalProperties: false
+  /chat:
+    post:
+      operationId: askAgent
+      summary: Ask a question and stream the answer
+      description: >-
+        Validates the request, then answers 200 with an event stream. The model runs on the CPU: the first token can
+        take a minute (median 27 s, p90 61 s); the stream sends keepalive comments meanwhile. A second question to a
+        conversation that is still answering is refused with 409.
+      parameters:
+        - $ref: '#/components/parameters/AstronautHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/agent/chat-request.schema.json'
+      responses:
+        '200':
+          description: |
+            `text/event-stream` (UTF-8), one event per frame: `event: <type>`, one `data: <JSON>` line with a
+            `ChatEvent` (`schemas/v1/agent/chat-event.schema.json`, also in `x-sse-data`), and a blank line. The
+            event name equals the `type` of the data. Events:
+
+            - `event: text`: `{"type": "text", "delta": "..."}`, a piece of the answer to append.
+            - `event: tool_call`: `{"type": "tool_call", "tool_name": "...", "tool_args": {...}}`, the model read data with a tool.
+            - `event: fallback`: `{"type": "fallback", "text": "..."}`, the model failed: a summary built without the LLM that replaces any streamed text.
+            - `event: notice`: `{"type": "notice", "code": "mid_stream" | "correction", "text": "..."}`.
+            - `event: end`: `{"type": "end"}`, the answer is complete.
+            - `event: error`: `{"type": "error", "code": "busy" | "unavailable" | "invalid" | "internal", "message": "..."}`.
+
+            Every data also carries `schema_version`. Order: (text | tool_call)*, then `notice` `correction`? and
+            `end` on success; `notice` `mid_stream`? (only when text was streamed), `fallback` and `end` when the
+            model fails or is down (the fallback path works without the LLM); or `error`. Exactly one `end` or
+            `error` is the last event; the server then closes the stream. A stream that ends without either was
+            cut (the agent stopped): treat it like `error` `unavailable`.
+
+            While nothing else is sent (waiting for the first token, or for a tool), a comment line `: ping`
+            followed by a blank line is sent every 15 s; clients ignore it.
+          headers:
+            Cache-Control:
+              description: Always `no-cache`.
+              schema:
+                type: string
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              x-sse-data:
+                $ref: 'schemas/v1/agent/chat-event.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Busy'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '503':
+          $ref: '#/components/responses/Full'
+        default:
+          $ref: '#/components/responses/Error'
+  /chat/{conversation_id}:
+    delete:
+      operationId: forgetConversation
+      summary: Forget a conversation
+      description: >-
+        Drops the history of the conversation. Idempotent: 204 also for an id the agent does not know (never seen,
+        or already forgotten). An answer still streaming is cancelled and its stream ends with `error` `invalid`.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/AstronautHeader'
+      responses:
+        '204':
+          description: Forgotten (or unknown).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  parameters:
+    ConversationId:
+      name: conversation_id
+      in: path
+      required: true
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/uuid'
+    AstronautHeader:
+      name: X-Astronaut-Id
+      in: header
+      required: true
+      description: The astronaut unlocked in the UI.
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/astronaut_id'
+  responses:
+    Unauthorized:
+      description: "No valid agent token (problem details, status 401, with the header `WWW-Authenticate: Bearer`)."
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Forbidden:
+      description: No `X-Astronaut-Id`, a body that names another astronaut than the header, or a conversation that belongs to another astronaut (problem details, status 403).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Busy:
+      description: The conversation is still answering a question (problem details, status 409). Wait for its `end`/`error`, or close that stream first.
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Invalid:
+      description: The body is not JSON or does not conform to its schema, or a malformed path parameter (problem details, status 422, type `invalid_request`, with `errors[].pointer` into the body).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Full:
+      description: A new conversation cannot be opened because every conversation slot is answering a question (problem details, status 503). Retry later.
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    Error:
+      description: Problem details (internal error).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'

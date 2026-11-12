@@ -15,8 +15,8 @@ export interface AuthApi {
   lock: () => Promise<void>;
   /** Re-reads the session from main (for example after a view answered `locked`): the gate then sends the user to the lock or login screen. */
   refresh: () => void;
-  /** Drops the local session only (used by the dev Mock screens menu); main keeps its own. */
-  signOut: () => void;
+  /** Ends the session in main (stopping live data), then shows the login screen. */
+  signOut: () => Promise<void>;
 }
 
 interface AuthState {
@@ -77,9 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     );
   }, [api]);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
+    await api.auth.signOut();
     setState({ status: 'signed-out', crewId: null });
-  }, []);
+  }, [api]);
 
   const value = useMemo<AuthApi>(() => ({ ...state, signIn, lock, refresh, signOut }), [state, signIn, lock, refresh, signOut]);
   return <AuthContext value={value}>{children}</AuthContext>;

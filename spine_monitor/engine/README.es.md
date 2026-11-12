@@ -10,6 +10,7 @@ Desde el workspace `spine_monitor`:
 
 ```bash
 uv run spine-engine                      # http://127.0.0.1:8001
+sh ../app/mosquitto/setup.sh             # una vez: credenciales del broker en app/.env
 docker compose -f ../app/docker-compose.yml up --build engine
 ```
 

@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 from spine_contracts import topics
 from spine_gateway.protocol import FrameKind
 
@@ -28,6 +29,21 @@ def command(kind: str, n: int, **fields: Any) -> dict[str, Any]:
 
 def start(n: int) -> dict[str, Any]:
     return command("start_session", n, session_id=SESSION, session_type="spine_check", protocol_id="spine_length_rest_v1")
+
+
+def test_mqtt_credentials_and_tls_reach_each_connection(harness) -> None:
+    async def scenario() -> None:
+        async with harness(mqtt_username="wb-01", mqtt_password=SecretStr("secret"), mqtt_tls=True) as h:
+            await h.boot()
+            assert h.connections.attempts[0]["username"] == "wb-01"
+            assert h.connections.attempts[0]["password"] == "secret"
+            assert h.connections.attempts[0]["tls_context"].check_hostname
+            await h.disconnect()
+            await h.run_device(1.1)
+            assert h.connections.attempts[1]["username"] == "wb-01"
+            assert h.connections.attempts[1]["password"] == "secret"
+
+    go(scenario())
 
 
 def calibrate_stretch(n: int) -> dict[str, Any]:

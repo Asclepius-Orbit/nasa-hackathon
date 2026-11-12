@@ -7,7 +7,8 @@ ejercicio, el historial, el aviso de síntoma urgente y el resumen para Houston.
 con Vite y pnpm.
 
 Cada pantalla lee de un `DataSource` tipado (`src/renderer/data/`). Por defecto es el backend (`/ui` en 8000), al que
-solo se llega a través del proceso main; el build de e2e y `VITE_MOCK_DATA=true` usan el mock de a bordo.
+solo se llega a través del proceso main (modo real). El build `e2e` y `VITE_MOCK_DATA=true` usan el mock de a bordo;
+`pnpm start` sin esa variable es modo real y necesita el stack de abajo.
 
 ## Requisitos
 
@@ -25,9 +26,39 @@ pnpm start          # desde la raíz del repo: pnpm -C app/ui start
 `pnpm start` instala lo que falte (con el lockfile congelado), descarga el binario de Electron si hace falta y
 abre la app en modo desarrollo con recarga en caliente.
 
-En desarrollo (y solo en la build de e2e) existen dos tripulantes de demo: **Elena Ruiz** y **Marc Dubois**,
+En desarrollo (y solo en las builds de e2e) existen dos tripulantes de demo: **Elena Ruiz** y **Marc Dubois**,
 PIN **1234**. El menú "Mock screens" y "Mock: skip login or lock" también son solo de desarrollo. Una build de
-producción arranca sin tripulantes: el primero se da de alta con "New crew member".
+producción arranca sin tripulantes: el primero se da de alta con "New crew member". Los arneses de los tripulantes de
+demo son los del simulador (`sim-01` y `sim-02`, como en `spine_monitor/physiology/configs/example-mission.yaml`).
+**Sign out** (en la franja superior y en la pantalla de bloqueo) cierra la sesión y vuelve al login, para que otro
+tripulante use la tablet; también detiene el contador de repeticiones en vivo y cualquier chat abierto.
+
+## Ejecutar la demo completa
+
+Simulador, Mosquitto, engine, backend y la app en modo real, desde la raíz del repo (Docker, y `sh` de Git Bash en
+Windows):
+
+```bash
+sh app/mosquitto/setup.sh                                          # una vez: credenciales del broker en app/.env
+export SPINE_APP_UI_TOKEN=$(openssl rand -hex 24)                  # token compartido de la API /ui (o vacío, ver abajo)
+export SPINE_APP_BASELINE_REQUIRED=1                               # opcional: una sesión preflight completa la baseline (por defecto 3)
+docker compose -f app/docker-compose.yml --profile sim up -d --build
+curl http://127.0.0.1:8000/health                                  # espera "mqtt_connected": true
+ASCLEPIUS_BACKEND_TOKEN=$SPINE_APP_UI_TOKEN pnpm -C app/ui start   # modo real: sin VITE_MOCK_DATA
+```
+
+Sin `SPINE_APP_UI_TOKEN` el backend genera un token en su volumen; pásalo a la app con `ASCLEPIUS_BACKEND_TOKEN_FILE`
+(una copia de `/data/ui-token`, por ejemplo con `docker compose cp backend:/data/ui-token .`). El token llega a la app
+por el entorno del proceso, igual en Windows y en Linux. Entra como Elena Ruiz (PIN 1234), guarda el perfil con una
+fecha de lanzamiento posterior a hoy (así hoy es preflight), guarda el informe diario e inicia la sesión
+"Spine length check": el arnés simulado responde y emite durante unos 2 minutos. Para parar todo:
+`docker compose -f app/docker-compose.yml --profile sim down`.
+
+`pnpm e2e:real` hace todo esto sin supervisión y lo comprueba (solo en local, no en CI): ejecuta `setup.sh`, levanta
+el stack en su propio proyecto de Compose (`asclepius-e2e`, que se descarta con `down -v` al acabar), espera al
+backend y al arnés simulado, compila con `--mode e2e-real` (fuente de datos real, tripulación de demo), ejecuta
+`e2e/real.spec.ts` y siempre baja el stack (`E2E_REAL_KEEP=1` lo conserva). Necesita Docker, `sh` y los puertos
+1883, 8000 y 8001 libres.
 
 ## Scripts
 
@@ -39,6 +70,7 @@ producción arranca sin tripulantes: el primero se da de alta con "New crew memb
 | `pnpm dist` | Instalador de Windows (NSIS, sin firmar) en `release/` |
 | `pnpm test` / `pnpm test:cov` | Tests unitarios y de componentes con Vitest (cobertura ≥ 90 % de líneas, ramas, funciones y sentencias) |
 | `pnpm e2e` | Compila en modo `e2e` y ejecuta los flujos de Playwright contra la app real |
+| `pnpm e2e:real` | La demo completa sin supervisión: levanta el stack de Docker (simulador, broker, engine, backend), compila en modo `e2e-real` y ejecuta `e2e/real.spec.ts` en modo real (solo local) |
 | `pnpm e2e:packaged` | Empaqueta la app (`--dir`) y comprueba que el exe empaquetado muestra el login |
 | `pnpm lint` / `pnpm typecheck` | ESLint (estricto, sin warnings) y `tsc -b` |
 | `pnpm gen:types` / `pnpm check:types` | Regenera / comprueba `src/contracts/v1.ts` a partir de los JSON Schema |
@@ -48,6 +80,7 @@ producción arranca sin tripulantes: el primero se da de alta con "New crew memb
 El mismo gate se ejecuta en Docker y en CI:
 
 ```bash
+sh app/mosquitto/setup.sh   # una vez: credenciales del broker en app/.env
 docker compose -f app/docker-compose.yml --profile quality run --rm ui-quality
 ```
 
@@ -85,6 +118,7 @@ Los textos viven en `src/renderer/strings/` (en inglés, un fichero por pantalla
 - Autoinformes: el informe diario y el Oswestry se guardan con `POST self-reports` (tipos `daily` y `weekly_odi`), y el ejercicio del día se añade al contexto diario de hoy. Los seis ítems del Oswestry son provisionales, pendientes de validar por Aguado (#48). "Saved" sale solo con `ok`.
 - Síntoma urgente: un informe `red_flag`. Con alguien desbloqueado se envía por esa persona. Desde el login o el bloqueo se envía sin PIN para el tripulante elegido en el diálogo: es la única escritura permitida así, por ser una emergencia, y no se lee nada. Solo muestra Queued si se guardó.
 - Pantalla Stopped: la repetición en la que se registró la parada, el enlace con tierra, la llamada al oficial médico (`POST contacts`, que también va en el resumen para Houston) y los contactos registrados. No hay encuesta tras la parada: los síntomas van por Urgent y el dolor por el informe diario.
+- Pantalla Ask (chat con el agente de columna): `POST /chat` como flujo server-sent, solo desde el proceso main. La URL del agente es `ASCLEPIUS_AGENT_URL` (solo loopback, por defecto `http://127.0.0.1:8003`) y su token `ASCLEPIUS_AGENT_TOKEN` o el fichero `ASCLEPIUS_AGENT_TOKEN_FILE`; ninguno llega al renderer. El astronauta es el desbloqueado aquí, nunca un argumento; los argumentos de las tools del modelo se descartan en main (solo se muestra el nombre de la tool). No hay reintento: una respuesta fallida la repite el usuario. Las primeras palabras pueden tardar hasta un minuto en CPU (se admiten hasta 120 s de silencio). El asistente no diagnostica y la pantalla lo dice; un `fallback` se muestra como "Summary without the assistant". Bloquear o cerrar sesión corta las respuestas en curso; "New conversation" olvida la anterior en el agente. En modo de datos mock una respuesta de ejemplo guionizada sustituye al agente.
 - El estado de tripulantes y de autenticación se cifra con `safeStorage` de Electron y falla cerrado si no hay
   cifrado disponible.
 - Fuses de Electron: sin `RunAsNode`, sin `NODE_OPTIONS`, sin flags de inspect, integridad del asar y carga solo
@@ -92,6 +126,5 @@ Los textos viven en `src/renderer/strings/` (en inglés, un fichero por pantalla
 - Cadena de suministro: versiones exactas, lockfile, scripts de build permitidos solo para `electron` y una
   antigüedad mínima de publicación de un día (`pnpm-workspace.yaml`).
 
-Límites conocidos, para trabajo posterior: no hay cierre de sesión
-ni cambio de tripulante; PIN de 4 dígitos; instalador por usuario y sin firmar; el exe empaquetado acepta
+Límites conocidos, para trabajo posterior: PIN de 4 dígitos; instalador por usuario y sin firmar; el exe empaquetado acepta
 `--remote-debugging-port`.

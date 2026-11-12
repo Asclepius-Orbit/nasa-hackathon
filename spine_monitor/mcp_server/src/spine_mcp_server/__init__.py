@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from mcp.server.mcpserver import MCPServer
 
 from spine_mcp_server.demo_data import build_demo_app_reader, build_demo_assess_base, build_demo_simulator
-from spine_mcp_server.http_client import HttpAppReader, HttpSimulator, UnavailableAssessBase
+from spine_mcp_server.http_client import HttpAppReader, HttpAssessBaseSource, HttpSimulator
 from spine_mcp_server.mocks import ExampleAppReader, ExampleAssessBaseSource, ExampleSimulator
 from spine_mcp_server.server import create_server
 
@@ -38,7 +38,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default="demo",
         help="demo: 14 días de AST-01 relativos al reloj (por defecto); examples: la foto única de los ejemplos de los contratos; "
         f"http: la API de lectura de la app en {APP_URL_ENV} (por defecto {DEFAULT_APP_URL}) y el motor en {ENGINE_URL_ENV} "
-        f"(por defecto {DEFAULT_ENGINE_URL}); la base de simulación aún no está disponible.",
+        f"(por defecto {DEFAULT_ENGINE_URL}).",
     )
     parser.add_argument("--now", type=_aware_iso, default=None, help="Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z).")
     return parser.parse_args(argv)
@@ -50,10 +50,11 @@ def build_server(argv: Sequence[str] | None = None) -> MCPServer:
     if args.dataset == "examples":
         return create_server(ExampleAppReader(), ExampleSimulator(), ExampleAssessBaseSource())
     if args.dataset == "http":
+        app_url = os.environ.get(APP_URL_ENV, "").strip() or DEFAULT_APP_URL
         return create_server(
-            HttpAppReader(os.environ.get(APP_URL_ENV, "").strip() or DEFAULT_APP_URL),
+            HttpAppReader(app_url),
             HttpSimulator(os.environ.get(ENGINE_URL_ENV, "").strip() or DEFAULT_ENGINE_URL),
-            UnavailableAssessBase(),
+            HttpAssessBaseSource(app_url),
         )
     now = args.now or datetime.now(UTC)
     return create_server(build_demo_app_reader(now), build_demo_simulator(now), build_demo_assess_base(now))

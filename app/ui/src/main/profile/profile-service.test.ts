@@ -74,22 +74,22 @@ describe('createProfileService', () => {
     const service = createProfileService({
       auth: { current: () => UNLOCKED },
       records: {
-        profile: async () => stored,
-        profileVersioned: async () => ({ value: stored, etag: String(calls) }),
+        profile: () => Promise.resolve(stored),
+        profileVersioned: () => Promise.resolve({ value: stored, etag: String(calls) }),
       },
       writer: {
-        putProfile: async (_id, body) => {
+        putProfile: (_id, body) => {
           calls += 1;
           if (calls === 1) {
             stored = { ...stored, spine_history: { prior_back_pain: false } } as AstronautProfile;
-            return { ok: false, reason: 'conflict' };
+            return Promise.resolve({ ok: false, reason: 'conflict' });
           }
           expect(body['spine_history']).toEqual({ prior_back_pain: false });
-          return { ok: true, value: stored };
+          return Promise.resolve({ ok: true, value: stored });
         },
-        createProfile: async () => ({ ok: false, reason: 'conflict' }),
+        createProfile: () => Promise.resolve({ ok: false, reason: 'conflict' }),
       },
-      dailyContext: { ensureToday: async () => undefined },
+      dailyContext: { ensureToday: () => Promise.resolve() },
     });
     expect((await service.update(FIELDS)).ok).toBe(true);
     expect(calls).toBe(2);
@@ -99,12 +99,12 @@ describe('createProfileService', () => {
     let attempts = 0;
     const service = createProfileService({
       auth: { current: () => UNLOCKED },
-      records: { profile: async () => STORED, profileVersioned: async () => ({ value: STORED, etag: 'v1' }) },
+      records: { profile: () => Promise.resolve(STORED), profileVersioned: () => Promise.resolve({ value: STORED, etag: 'v1' }) },
       writer: {
-        putProfile: async () => { attempts += 1; return { ok: false, reason: 'conflict' }; },
-        createProfile: async () => ({ ok: false, reason: 'conflict' }),
+        putProfile: () => { attempts += 1; return Promise.resolve({ ok: false, reason: 'conflict' }); },
+        createProfile: () => Promise.resolve({ ok: false, reason: 'conflict' }),
       },
-      dailyContext: { ensureToday: async () => { throw new Error('must not run'); } },
+      dailyContext: { ensureToday: () => Promise.reject(new Error('must not run')) },
     });
     expect(await service.update(FIELDS)).toEqual({ ok: false, reason: 'conflict' });
     expect(attempts).toBe(3);

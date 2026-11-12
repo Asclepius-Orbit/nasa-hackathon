@@ -137,7 +137,16 @@ async def _scenario(settings: GatewaySettings, source: Any) -> None:
 def test_gateway_against_a_real_broker(settings: GatewaySettings, fakes) -> None:
     _require_broker()
     device_id = "itest-gw"
-    custom = settings.model_copy(update={"device_id": device_id, "mqtt_host": HOST, "mqtt_port": PORT, "mqtt_client_id": "itest", "mqtt_username": device_id if DEVICE_PASSWORD else None, "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None})
+    custom = settings.model_copy(
+        update={
+            "device_id": device_id,
+            "mqtt_host": HOST,
+            "mqtt_port": PORT,
+            "mqtt_client_id": "itest",
+            "mqtt_username": device_id if DEVICE_PASSWORD else None,
+            "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None,
+        }
+    )
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho necesita add_reader
     asyncio.run(_scenario(custom, fakes.FakeLineSource()), loop_factory=loop_factory)
 
@@ -224,6 +233,15 @@ async def _main_scenario(settings: GatewaySettings) -> None:
 def test_main_reads_the_arduino_from_the_serial_url_and_publishes_to_the_broker(settings: GatewaySettings) -> None:
     _require_broker()
     device_id = "itest-gw"
-    custom = settings.model_copy(update={"device_id": device_id, "mqtt_host": HOST, "mqtt_port": PORT, "mqtt_client_id": "itest", "mqtt_username": device_id if DEVICE_PASSWORD else None, "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None})
+    custom = settings.model_copy(
+        update={
+            "device_id": device_id,
+            "mqtt_host": HOST,
+            "mqtt_port": PORT,
+            "mqtt_client_id": "itest",
+            "mqtt_username": device_id if DEVICE_PASSWORD else None,
+            "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None,
+        }
+    )
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     asyncio.run(_main_scenario(custom), loop_factory=loop_factory)

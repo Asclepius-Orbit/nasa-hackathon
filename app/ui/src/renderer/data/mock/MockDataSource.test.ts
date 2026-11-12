@@ -225,6 +225,7 @@ describe('reports in memory', () => {
     const source: DataSource = data;
     expect(await source.saveDailyReport(fields)).toMatchObject({ ok: true });
     expect(await source.saveOswestry([{ item_id: 'pain_intensity', score: 1 }])).toMatchObject({ ok: true });
+    expect(await source.addExercise({ modality: 'ared', duration_min: 30 })).toEqual({ ok: false, reason: 'no_context' });
     expect(source.sendsUrgentReports).toBe(true);
     await expect(source.sendUrgentReport('AST-01', ['leg_weakness'])).resolves.toBeUndefined();
   });

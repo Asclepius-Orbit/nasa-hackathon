@@ -7,7 +7,14 @@
  * between its read and its write (the write is create-only, so the backend refuses it then), and never fails: it is
  * best effort, run after sign-in and after a profile update.
  */
-import type { AstronautProfile, DailyContext, DailyContextFields, DailyReportFields, WriteResult } from '../../shared/api';
+import type {
+  AddExerciseResult,
+  AstronautProfile,
+  DailyContext,
+  DailyContextFields,
+  ExerciseEntry,
+  WriteResult,
+} from '../../shared/api';
 import type { AuthService } from '../auth/auth-service';
 import type { RecordsClient } from '../views/records-client';
 import type { WriteClient } from '../views/write-client';
@@ -19,14 +26,13 @@ export interface DailyContextService {
   /** Writes today's context derived from the profile when none is stored. Resolves once done; never rejects. */
   ensureToday(astronautId: string): Promise<void>;
   /**
-   * Appends an exercise to today's stored context (`exercise[]`); nothing when today has none. Best effort like
-   * `ensureToday`: failures are only logged.
+   * Appends an exercise to today's stored context (`exercise[]`); `no_context` and nothing written when today has
+   * none. Never rejects: a failed read or write is logged and answered as a failure, so the caller can offer a retry.
    */
-  addExercise(astronautId: string, entry: ExerciseEntry): Promise<void>;
+  addExercise(astronautId: string, entry: ExerciseEntry): Promise<AddExerciseResult>;
 }
 
-/** One general exercise of the day (`domain/daily-context` `exercise[]`). */
-export type ExerciseEntry = NonNullable<DailyReportFields['exercise']>;
+export type { ExerciseEntry };
 
 export interface DailyContextServiceOptions {
   auth: Pick<AuthService, 'current'>;
@@ -121,13 +127,14 @@ export function createDailyContextService({
       const day = utcDay(now());
       try {
         const stored = await records.dailyContext(astronautId, day);
-        if (stored === null) return;
+        if (stored === null) return { ok: false, reason: 'no_context' };
         const { schema_version: _version, ...kept } = stored;
         const previous = Array.isArray(kept['exercise']) ? (kept['exercise'] as unknown[]) : [];
         const result = await writer.putDailyContext(astronautId, day, { ...kept, exercise: [...previous, entry] });
         if (!result.ok) logError(`daily context: exercise not added to ${day} (${result.reason})`);
+        return result;
       } catch (error) {
-        logError(error);
+        return readFailure(error, logError);
       }
     },
   };

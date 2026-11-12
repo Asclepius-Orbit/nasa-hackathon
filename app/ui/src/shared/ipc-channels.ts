@@ -19,6 +19,7 @@ export const IPC_CHANNELS = Object.freeze({
   sessionsReprocess: 'asclepius:sessions:reprocess',
   reportsSaveDaily: 'asclepius:reports:save-daily',
   reportsSaveOswestry: 'asclepius:reports:save-oswestry',
+  reportsAddExercise: 'asclepius:reports:add-exercise',
   reportsDue: 'asclepius:reports:due',
   urgentSend: 'asclepius:urgent:send',
   contactsList: 'asclepius:contacts:list',

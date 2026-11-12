@@ -92,7 +92,7 @@ describe('with the backend (real mode)', () => {
     api.reports.saveOswestry = () =>
       new Promise((resolve) => {
         release = () => {
-          resolve({ ok: true, value: { reportId: 'r', assessmentLevel: null, assessmentSkipped: null } });
+          resolve({ ok: true, value: { reportId: 'r', assessmentLevel: null, assessmentSkipped: null, exercise: null } });
         };
       });
     await answerAll();

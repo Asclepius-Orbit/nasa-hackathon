@@ -37,7 +37,7 @@ describe('createUrgentService', () => {
     const { backend, service } = build({ crewId: 'AST-02', locked: false });
     expect(await service.send(INPUT)).toEqual({
       ok: true,
-      value: { reportId: REPORT, assessmentLevel: 'red', assessmentSkipped: null },
+      value: { reportId: REPORT, assessmentLevel: 'red', assessmentSkipped: null, exercise: null },
     });
     expect(backend.sent).toEqual([
       expectedRequest('AST-02', { red_flags: ['leg_weakness'], other_symptoms: ['very_severe_pain'] }),

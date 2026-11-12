@@ -1,4 +1,6 @@
 import type {
+  AddExerciseResult,
+  ExerciseEntry,
   AsclepiusApi,
   AstronautProfile,
   CommandSent,
@@ -187,6 +189,10 @@ export class RealDataSource implements DataSource {
 
   saveOswestry(answers: readonly OdiAnswer[]): Promise<WriteResult<ReportSaved>> {
     return this.account.reports.saveOswestry({ items: [...answers] });
+  }
+
+  addExercise(entry: ExerciseEntry): Promise<AddExerciseResult> {
+    return this.account.reports.addExercise(entry);
   }
 
   /** The summary and the link from `/houston`, the queue from `/outbox`; if either fails the screen fails, never half of it. */

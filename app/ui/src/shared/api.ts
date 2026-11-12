@@ -190,7 +190,19 @@ export interface ReportSaved {
   reportId: string;
   assessmentLevel: 'green' | 'amber' | 'red' | null;
   assessmentSkipped: string | null;
+  /**
+   * What became of the exercise of a daily report, which is stored apart from the report (in today's daily context):
+   * `stored`, `no_context` (today has no daily context to put it in), `not_stored` (any other failure; the report is
+   * stored anyway) or `null` (nothing to store). `reports.addExercise` retries it.
+   */
+  exercise: 'stored' | 'not_stored' | 'no_context' | null;
 }
+
+/** One exercise of the day, as the daily report carries it. */
+export type ExerciseEntry = NonNullable<DailyReportFields['exercise']>;
+
+/** Outcome of adding an exercise to today's daily context: a `WriteResult`, or `no_context` (nothing was written). */
+export type AddExerciseResult = WriteResult<DailyContext> | { ok: false; reason: 'no_context' };
 
 /** Self-reports due today (`GET self-reports/due`). */
 export interface ReportsDue {
@@ -282,6 +294,8 @@ export interface AsclepiusApi {
   reports: {
     saveDaily(fields: DailyReportFields): Promise<WriteResult<ReportSaved>>;
     saveOswestry(input: { items: OdiAnswer[] }): Promise<WriteResult<ReportSaved>>;
+    /** Retries the exercise a daily report could not store; always today's context of the unlocked astronaut. */
+    addExercise(entry: ExerciseEntry): Promise<AddExerciseResult>;
     due(): Promise<ReportsDue>;
   };
   /** The urgent symptom report: also without a PIN, from login or lock (see `UrgentInput`). */

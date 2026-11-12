@@ -8,7 +8,8 @@ import { useLoad } from '../../data/useLoad';
 import { report as copy } from '../../strings/report';
 import styles from './Form.module.css';
 import { PickRow } from './PickRow';
-import { buildDailyReport, exerciseNeedsMinutes, REPORT_POINTERS } from './report-fields';
+import type { ExerciseEntry, ReportSaved } from '../../../shared/api';
+import { buildDailyReport, exerciseNeedsMinutes, REPORT_POINTERS, sleepNeedsHours } from './report-fields';
 import { SaveBar } from './SaveBar';
 import { useFormSave } from './useFormSave';
 import { NO_SYMPTOM_ANSWER, SymptomQuestion, type SymptomAnswer } from './SymptomQuestion';
@@ -25,9 +26,29 @@ export function ReportView(): React.JSX.Element {
   const [sleepQuality, setSleepQuality] = useState<number | null>(null);
   const [device, setDevice] = useState<number | null>(null);
   const [minutes, setMinutes] = useState<number | null>(null);
+  const [askedHours, setAskedHours] = useState(false);
+  const [leftOver, setLeftOver] = useState<{ entry: ExerciseEntry; why: 'not_stored' | 'no_context'; retrying: boolean } | null>(null);
   const source = useData();
   const save = useFormSave(REPORT_POINTERS, copy.failure);
   const fieldError = (pointer: (typeof REPORT_POINTERS)[number]): string | undefined => save.state.errors.byPointer[pointer];
+  const hoursError = askedHours && sleepNeedsHours({ sleepHours, sleepQuality }) ? copy.sleepHours.needed : undefined;
+
+  const keepExercise = (entry: ExerciseEntry | null, exercise: ReportSaved['exercise']): void => {
+    setLeftOver(entry === null || exercise === 'stored' || exercise === null ? null : { entry, why: exercise, retrying: false });
+  };
+  const retryExercise = (): void => {
+    if (leftOver === null) return;
+    const { entry } = leftOver;
+    setLeftOver({ ...leftOver, retrying: true });
+    source.addExercise(entry).then(
+      (result) => {
+        keepExercise(entry, result.ok ? 'stored' : result.reason === 'no_context' ? 'no_context' : 'not_stored');
+      },
+      () => {
+        keepExercise(entry, 'not_stored');
+      },
+    );
+  };
 
   const missing = ([
     pain === null ? copy.left.pain : null,
@@ -118,7 +139,7 @@ export function ReportView(): React.JSX.Element {
               selected={sleepHours}
               onSelect={setSleepHours}
             />
-            <FieldError message={fieldError('/sleep/hours')} />
+            <FieldError message={hoursError ?? fieldError('/sleep/hours')} />
           </div>
 
           <div className={styles.q}>
@@ -152,10 +173,29 @@ export function ReportView(): React.JSX.Element {
             problem={{ failure: save.state.failure, errors: save.state.errors, fixMarked: copy.fixMarked }}
             onSave={() => {
               if (pain === null || stiffness === null) return;
+              setAskedHours(true);
+              if (sleepNeedsHours({ sleepHours, sleepQuality })) return;
               const fields = buildDailyReport(form, { pain, stiffness, where, symptoms, sleepHours, sleepQuality, device, minutes });
-              save.run(() => source.saveDailyReport(fields));
+              setLeftOver(null);
+              save.run(async () => {
+                const result = await source.saveDailyReport(fields);
+                if (result.ok) keepExercise(fields.exercise, result.value.exercise);
+                return result;
+              });
             }}
-            savedMessage={save.state.status === 'saved' ? copy.saved : null}
+            savedMessage={save.state.status === 'saved' && leftOver === null ? copy.saved : null}
+            partial={
+              save.state.status === 'saved' && leftOver !== null
+                ? {
+                    title: copy.exerciseNotSaved.title,
+                    message: leftOver.why === 'no_context' ? copy.exerciseNotSaved.noContext : copy.exerciseNotSaved.notStored,
+                    retryLabel: copy.exerciseNotSaved.retry,
+                    retryBusyLabel: copy.exerciseNotSaved.retrying,
+                    retrying: leftOver.retrying,
+                    onRetry: retryExercise,
+                  }
+                : undefined
+            }
           />
         </>
       )}

@@ -60,6 +60,7 @@ const api: AsclepiusApi = Object.freeze({
   reports: Object.freeze({
     saveDaily: (fields) => ipcRenderer.invoke(IPC_CHANNELS.reportsSaveDaily, fields),
     saveOswestry: (input) => ipcRenderer.invoke(IPC_CHANNELS.reportsSaveOswestry, input),
+    addExercise: (entry) => ipcRenderer.invoke(IPC_CHANNELS.reportsAddExercise, entry),
     due: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.reportsDue)),
   } satisfies AsclepiusApi['reports']),
   urgent: Object.freeze({

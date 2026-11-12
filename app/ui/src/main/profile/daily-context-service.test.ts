@@ -214,21 +214,28 @@ describe('addExercise', () => {
     expect(backend.puts[0]?.body['exercise']).toEqual([ENTRY]);
   });
 
-  it('writes nothing when today has no context', async () => {
+  it('answers that the exercise is stored, with the context it left', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    const result = await service.addExercise(ID, ENTRY);
+    expect(result).toMatchObject({ ok: true, value: { exercise: [{ kind: 'treadmill' }, ENTRY] } });
+  });
+
+  it('writes nothing and answers no_context when today has none', async () => {
     const { backend, service, logged } = build();
-    await service.addExercise(ID, ENTRY);
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'no_context' });
     expect(backend.puts).toEqual([]);
     expect(logged).toEqual([]);
   });
 
-  it('only logs a failed read or a refused write, never rejects', async () => {
+  it('answers a failed read or a refused write as a failure, logs it and never rejects', async () => {
     const { backend, service, logged } = build();
     backend.readFailure = new ViewsError('unavailable');
-    await service.addExercise(ID, ENTRY);
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'unavailable' });
     backend.readFailure = null;
     backend.contexts.set(`${ID}/${TODAY}`, STORED);
-    backend.writeAnswer = { ok: false, reason: 'unavailable' };
-    await service.addExercise(ID, ENTRY);
+    backend.writeAnswer = { ok: false, reason: 'conflict' };
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'conflict' });
     expect(logged).toHaveLength(2);
   });
 });

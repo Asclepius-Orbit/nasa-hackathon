@@ -1,4 +1,6 @@
 import type {
+  AddExerciseResult,
+  ExerciseEntry,
   AstronautProfile,
   CommandSent,
   DailyContext,
@@ -72,6 +74,8 @@ export interface DataSource {
   saveDailyReport(fields: DailyReportFields): Promise<WriteResult<ReportSaved>>;
   /** Stores the weekly Oswestry answers (`score` = option index, 0-5); only `ok: true` means saved. */
   saveOswestry(answers: readonly OdiAnswer[]): Promise<WriteResult<ReportSaved>>;
+  /** Retries the exercise a saved daily report could not put in today's context (`ReportSaved.exercise`). */
+  addExercise(entry: ExerciseEntry): Promise<AddExerciseResult>;
   /** True when `sendUrgentReport` really records and delivers; the Urgent dialog may then promise queueing. */
   readonly sendsUrgentReports: boolean;
   /** Sends the urgent symptom report for `crewId`. Rejects when it was not recorded: the caller must then say so and never show it as queued or sent. */

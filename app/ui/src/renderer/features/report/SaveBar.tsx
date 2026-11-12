@@ -16,10 +16,12 @@ export interface SaveBarProps {
   busyLabel?: string;
   /** Why nothing was saved: a general `failure`, the `errors` that matched no question, and `fixMarked` when some did. */
   problem?: { failure: string | null; errors: FormErrors; fixMarked: string };
+  /** The report is stored but a part of it is not: what is missing and a way to try that part again. */
+  partial?: undefined | { title: string; message: string; retryLabel: string; retryBusyLabel: string; retrying: boolean; onRetry: () => void };
 }
 
 /** Sticky bottom bar of the forms: the Save button, what is still missing, why a save failed, and the confirmation. */
-export function SaveBar({ label, canSave, note, onSave, savedMessage, busy = false, busyLabel = label, problem }: SaveBarProps): React.JSX.Element {
+export function SaveBar({ label, canSave, note, onSave, savedMessage, busy = false, busyLabel = label, problem, partial }: SaveBarProps): React.JSX.Element {
   const marked = problem !== undefined && Object.keys(problem.errors.byPointer).length > 0;
   const general = problem?.errors.general ?? [];
   const failure = problem === undefined ? null : (problem.failure ?? (marked ? problem.fixMarked : null));
@@ -37,6 +39,20 @@ export function SaveBar({ label, canSave, note, onSave, savedMessage, busy = fal
               {line}
             </span>
           ))}
+        </Alert>
+      )}
+      {partial !== undefined && (
+        <Alert
+          variant="warning"
+          role="status"
+          title={partial.title}
+          action={
+            <Button disabled={partial.retrying} onClick={partial.onRetry}>
+              {partial.retrying ? partial.retryBusyLabel : partial.retryLabel}
+            </Button>
+          }
+        >
+          {partial.message}
         </Alert>
       )}
       {savedMessage !== null && (

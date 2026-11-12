@@ -51,6 +51,11 @@ export function exerciseNeedsMinutes(form: ReportFormData, a: Pick<DailyReportAn
   return kind !== undefined && kind in MODALITY && a.minutes === null;
 }
 
+/** A sleep quality is answered without the hours: the report needs the hours to store it, so the form asks for them first. */
+export function sleepNeedsHours(a: Pick<DailyReportAnswers, 'sleepHours' | 'sleepQuality'>): boolean {
+  return a.sleepQuality !== null && a.sleepHours === null;
+}
+
 /** Body pointers the backend can refuse, each shown by the question that holds it. */
 export const REPORT_POINTERS = ['/pain_nrs', '/stiffness_nrs', '/pain_locations', '/sleep/hours', '/sleep/quality_nrs', '/red_flags'] as const;
 

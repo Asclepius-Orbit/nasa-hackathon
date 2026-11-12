@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type {
   DailyContextFields,
   DailyReportFields,
+  ExerciseEntry,
   ProfileFields,
   RepsMessage,
   RepStateView,
@@ -133,6 +134,11 @@ export const stopInputSchema: z.ZodType<StopInput> = z.discriminatedUnion('reaso
 export const markArtifactInputSchema = z.strictObject({ sessionId: sessionIdSchema, repIndex: repIndexSchema });
 export const sessionOnlyInputSchema = z.strictObject({ sessionId: sessionIdSchema });
 
+export const exerciseEntrySchema: z.ZodType<ExerciseEntry> = z.strictObject({
+  modality: z.enum(['ared', 'cevis', 't2', 'other']),
+  duration_min: finite,
+});
+
 export const dailyReportFieldsSchema: z.ZodType<DailyReportFields> = z.strictObject({
   pain_nrs: z.int(),
   stiffness_nrs: z.int(),
@@ -140,7 +146,7 @@ export const dailyReportFieldsSchema: z.ZodType<DailyReportFields> = z.strictObj
   sleep_hours: finite.nullable(),
   sleep_quality_nrs: z.int().nullable(),
   red_flags: z.array(codeSchema).max(16),
-  exercise: z.strictObject({ modality: z.enum(['ared', 'cevis', 't2', 'other']), duration_min: finite }).nullable(),
+  exercise: exerciseEntrySchema.nullable(),
 });
 
 export const oswestryInputSchema = z.strictObject({

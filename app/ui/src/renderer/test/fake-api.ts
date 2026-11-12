@@ -1,4 +1,6 @@
 import type {
+  AddExerciseResult,
+  ExerciseEntry,
   AsclepiusApi,
   AstronautProfile,
   AuthSession,
@@ -178,9 +180,16 @@ export class FakeAsclepiusApi implements AsclepiusApi {
 
   reports = {
     saveDaily: (fields: DailyReportFields): Promise<WriteResult<ReportSaved>> =>
-      this.act('reports.saveDaily', fields, { reportId: 'report-1', assessmentLevel: 'green', assessmentSkipped: null }),
+      this.act('reports.saveDaily', fields, { reportId: 'report-1', assessmentLevel: 'green', assessmentSkipped: null, exercise: null }),
+    addExercise: (entry: ExerciseEntry): Promise<AddExerciseResult> => {
+      this.calls.push('reports.addExercise');
+      this.lastArg['reports.addExercise'] = entry;
+      if (this.rejecting.has('reports.addExercise')) return Promise.reject(new Error('bridge down'));
+      const forced = this.forced.get('reports.addExercise') as AddExerciseResult | undefined;
+      return Promise.resolve(forced ?? { ok: true, value: DEFAULT_CONTEXT });
+    },
     saveOswestry: (input: { items: OdiAnswer[] }): Promise<WriteResult<ReportSaved>> =>
-      this.act('reports.saveOswestry', input, { reportId: 'report-2', assessmentLevel: null, assessmentSkipped: 'no_baseline' }),
+      this.act('reports.saveOswestry', input, { reportId: 'report-2', assessmentLevel: null, assessmentSkipped: 'no_baseline', exercise: null }),
     due: (): Promise<ReportsDue> => {
       this.calls.push('reports.due');
       return Promise.resolve(this.dueValue);
@@ -189,7 +198,7 @@ export class FakeAsclepiusApi implements AsclepiusApi {
 
   urgent = {
     send: (input: UrgentInput): Promise<WriteResult<ReportSaved>> =>
-      this.act('urgent.send', input, { reportId: 'urgent-1', assessmentLevel: 'red', assessmentSkipped: null }),
+      this.act('urgent.send', input, { reportId: 'urgent-1', assessmentLevel: 'red', assessmentSkipped: null, exercise: null }),
   };
 
   contacts = {

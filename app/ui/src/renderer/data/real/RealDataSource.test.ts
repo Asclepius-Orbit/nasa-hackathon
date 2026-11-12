@@ -449,6 +449,14 @@ describe('reports and urgent', () => {
     expect(await data.saveDailyReport(fields)).toEqual({ ok: false, reason: 'invalid', fields: [{ pointer: '/pain_nrs', message: 'too high' }] });
   });
 
+  it('retries the exercise through the bridge and passes its answer on', async () => {
+    const entry = { modality: 'ared', duration_min: 30 } as const;
+    expect(await data.addExercise(entry)).toMatchObject({ ok: true });
+    expect(api.lastArg['reports.addExercise']).toEqual(entry);
+    api.forced.set('reports.addExercise', { ok: false, reason: 'no_context' });
+    expect(await data.addExercise(entry)).toEqual({ ok: false, reason: 'no_context' });
+  });
+
   it('sends urgent reports for real: red flags apart from the other symptoms, for the given crew member', async () => {
     expect(data.sendsUrgentReports).toBe(true);
     await data.sendUrgentReport('AST-02', ['leg_weakness', 'other', 'very_severe_pain', 'saddle_numbness']);

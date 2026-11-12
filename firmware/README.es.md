@@ -29,6 +29,8 @@ firmware/
 
 Los tres electrodos del EMG (2 diferenciales + referencia) van al módulo, no al Arduino.
 
+Colocación (protocolo estandarizado de jalón al pecho): el MPU-6050 va en T9 y el cordón elástico va de C3 a S1 (~650 mm en reposo, PENDIENTE medición Aguado con ohmímetro). El protocolo declara dos módulos EMG (dorsal ancho izquierdo y derecho), pero el hardware actual tiene un solo canal EMG (A0) y el gateway publica uno (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) hasta que Polfer confirme el hardware (#13). El formato de trama serie no cambia. Nota permanente de electrodos: ver el protocolo en los contratos.
+
 ### Alimentación del módulo EMG (a confirmar)
 
 Los pines del módulo son `+Vs`, `GND`, `-Vs` y `SIG`. Es muy probable que el módulo necesite

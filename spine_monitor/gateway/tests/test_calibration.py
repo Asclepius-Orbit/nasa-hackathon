@@ -91,15 +91,15 @@ def test_stretch_calibration(settings: GatewaySettings) -> None:
         "source": "device",
         "calibration_type": "stretch",
         "rest_resistance_ohm": 5000.0,
-        "rest_length_mm": 100.0,
+        "rest_length_mm": 650.0,
         "curve": {
             "model": "piecewise_linear",
             "points": [
-                {"resistance_ohm": 5000.0, "length_mm": 100.0},
-                {"resistance_ohm": 6250.0, "length_mm": 125.0},
-                {"resistance_ohm": 7500.0, "length_mm": 150.0},
-                {"resistance_ohm": 8750.0, "length_mm": 175.0},
-                {"resistance_ohm": 10000.0, "length_mm": 200.0},
+                {"resistance_ohm": 5000.0, "length_mm": 650.0},
+                {"resistance_ohm": 6250.0, "length_mm": 812.5},
+                {"resistance_ohm": 7500.0, "length_mm": 975.0},
+                {"resistance_ohm": 8750.0, "length_mm": 1137.5},
+                {"resistance_ohm": 10000.0, "length_mm": 1300.0},
             ],
         },
     }

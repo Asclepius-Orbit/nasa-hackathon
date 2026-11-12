@@ -63,12 +63,12 @@ def test_start_session_streams_every_frame_of_its_streams_with_its_session_id(ha
             session = session_chunks(h)
             # Un chunk por lote y stream, a su frecuencia nativa: EMG incluido (sin stream_ids = los tres).
             assert {(c["stream_id"], c["sample_rate_hz"], c["n_samples"]) for c in session} == {
-                ("emg_lat_left", 1000.0, 100), ("imu_l3", 100.0, 10), ("stretch_lumbar", 20.0, 2),
+                ("emg_lat_left", 1000.0, 100), ("imu_t9", 100.0, 10), ("stretch_spine", 20.0, 2),
             }  # fmt: skip
             assert len(session) == 15
             status = h.client.payloads("status")[-1]
             assert {s["stream_id"]: (s["state"], s.get("sample_rate_hz")) for s in status["streams"]} == {
-                "emg_lat_left": ("active", 1000.0), "imu_l3": ("active", 100.0), "stretch_lumbar": ("active", 20.0),
+                "emg_lat_left": ("active", 1000.0), "imu_t9": ("active", 100.0), "stretch_spine": ("active", 20.0),
             }  # fmt: skip
 
     go(scenario())
@@ -78,12 +78,12 @@ def test_a_session_of_some_streams_leaves_the_rest_in_background(harness) -> Non
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            await h.send(start(1, stream_ids=["imu_l3"]))
+            await h.send(start(1, stream_ids=["imu_t9"]))
             await h.run_device(2.0)
             session = session_chunks(h)
-            assert {c["stream_id"] for c in session} == {"imu_l3"} and len(session) == 20
+            assert {c["stream_id"] for c in session} == {"imu_t9"} and len(session) == 20
             background = [c for c in h.client.payloads("stream") if c["session_id"] != SESSION]
-            assert {c["stream_id"] for c in background} == {"stretch_lumbar"} and all(c["sample_rate_hz"] == 10.0 for c in background)
+            assert {c["stream_id"] for c in background} == {"stretch_spine"} and all(c["sample_rate_hz"] == 10.0 for c in background)
             status = h.client.payloads("status")[-1]
             assert {s["stream_id"]: s["state"] for s in status["streams"]}["emg_lat_left"] == "disabled"
 
@@ -96,7 +96,7 @@ def test_an_empty_stream_list_means_every_stream(harness) -> None:
             await h.boot()
             await h.send(start(1, stream_ids=[]))
             await h.run_device(0.1)
-            assert {c["stream_id"] for c in session_chunks(h)} == {"emg_lat_left", "imu_l3", "stretch_lumbar"}
+            assert {c["stream_id"] for c in session_chunks(h)} == {"emg_lat_left", "imu_t9", "stretch_spine"}
 
     go(scenario())
 
@@ -116,7 +116,7 @@ def test_stop_completes_the_start_then_the_stop_and_background_resumes_with_cont
             # Fondo -> sesión -> fondo con el mismo stream_id y el seq seguido (la ventana parcial no consume seq).
             for stream_id, numbers in seqs([c for c in chunks if c["stream_id"] != "emg_lat_left"]).items():
                 assert numbers == list(range(len(numbers))), stream_id
-            assert [c["session_id"] == SESSION for c in chunks if c["stream_id"] == "imu_l3"] == [False] * 2 + [True] * 10 + [False] * 2
+            assert [c["session_id"] == SESSION for c in chunks if c["stream_id"] == "imu_t9"] == [False] * 2 + [True] * 10 + [False] * 2
             assert h.client.payloads("status")[-1]["streams"][0]["state"] == "disabled"  # EMG fuera de sesión
 
     go(scenario())
@@ -127,11 +127,11 @@ def test_starting_and_ending_a_session_restarts_the_background_windows(harness) 
         async with harness() as h:
             await h.boot()
             await h.run_device(1.5)  # ventana de fondo del cordón a medias (lotes de 1100 a 1500 ms)
-            await h.send(start(1, stream_ids=["imu_l3"]))  # el cordón sigue de fondo, pero su ventana empieza de cero
+            await h.send(start(1, stream_ids=["imu_t9"]))  # el cordón sigue de fondo, pero su ventana empieza de cero
             await h.run_device(1.5)
             await h.send(stop(2))
             await h.run_device(1.0)
-            cord = [c["t0_device_ms"] for c in h.client.payloads("stream") if c["stream_id"] == "stretch_lumbar"]
+            cord = [c["t0_device_ms"] for c in h.client.payloads("stream") if c["stream_id"] == "stretch_spine"]
             assert cord == [100, 1600, 3100]
 
     go(scenario())
@@ -207,7 +207,7 @@ def test_start_session_rejections(harness) -> None:
             assert h.client.acks(cid(1))[0]["error"] == {"code": "device_offline", "message": "the device is not connected"}
             assert h.client.acks(cid(2))[0]["error"]["code"] == "device_offline"
             await h.boot()
-            await h.send(start(3, stream_ids=["imu_l3", "nope_a", "nope_b"]))
+            await h.send(start(3, stream_ids=["imu_t9", "nope_a", "nope_b"]))
             assert h.client.acks(cid(3))[0]["error"] == {"code": "unknown_stream", "message": "unknown streams: nope_a, nope_b"}
             await h.send(start(4))
             await h.send(start(5, OTHER))

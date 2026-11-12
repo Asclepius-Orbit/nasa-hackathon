@@ -69,8 +69,8 @@ def test_health(device_known: bool, states: list[StreamState], expected: Health)
 def test_device_status_reports_the_streams_of_the_usb_serial_link(settings: GatewaySettings) -> None:
     streams = [
         StreamReport("emg_lat_left", "emg", StreamState.ACTIVE, 1000.0, 12),
-        StreamReport("imu_l3", "imu", StreamState.STALLED, 10.0, None),
-        StreamReport("stretch_lumbar", "stretch", StreamState.DISABLED, None, None),
+        StreamReport("imu_t9", "imu", StreamState.STALLED, 10.0, None),
+        StreamReport("stretch_spine", "stretch", StreamState.DISABLED, None, None),
     ]
     payload = status.device_status(settings, at=T0, health=Health.DEGRADED, boot_id=7, uptime_ms=1234, firmware_version="fw-1.2.3", streams=streams)
     assert payload == {
@@ -86,8 +86,8 @@ def test_device_status_reports_the_streams_of_the_usb_serial_link(settings: Gate
         "link": {"type": "usb_serial"},
         "streams": [
             {"stream_id": "emg_lat_left", "stream_kind": "emg", "state": "active", "sample_rate_hz": 1000.0, "last_seq": 12},
-            {"stream_id": "imu_l3", "stream_kind": "imu", "state": "stalled", "sample_rate_hz": 10.0},
-            {"stream_id": "stretch_lumbar", "stream_kind": "stretch", "state": "disabled"},
+            {"stream_id": "imu_t9", "stream_kind": "imu", "state": "stalled", "sample_rate_hz": 10.0},
+            {"stream_id": "stretch_spine", "stream_kind": "stretch", "state": "disabled"},
         ],
     }
     assert validation.errors("telemetry/device-status", payload) == []

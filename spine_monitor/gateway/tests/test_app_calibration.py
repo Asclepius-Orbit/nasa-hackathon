@@ -44,7 +44,7 @@ def test_stretch_calibration_is_published_retained_before_its_completed_ack_and_
         async with harness() as h:
             await h.boot()
             await h.run_device(1.0)
-            await h.send(calibrate(1, "stretch", ["stretch_lumbar"], duration_s=2))
+            await h.send(calibrate(1, "stretch", ["stretch_spine"], duration_s=2))
             assert [a["status"] for a in acks(h, 1)] == ["accepted"]
             await h.run_device(1.9)
             assert h.client.on("calibration") == []
@@ -53,7 +53,7 @@ def test_stretch_calibration_is_published_retained_before_its_completed_ack_and_
             await h.run_device(0.2)
             relevant = [p for p in h.client.published if p.channel in ("calibration", "ack")]
             calibration, completed = relevant[-2:]
-            assert calibration.topic == topics.calibration(AST, DEV, "stretch_lumbar") and calibration.retain
+            assert calibration.topic == topics.calibration(AST, DEV, "stretch_spine") and calibration.retain
             body = calibration.payload
             assert body["calibration_id"] == FIRST_ID and body["calibration_type"] == "stretch" and body["session_id"] == SESSION
             assert body["rest_resistance_ohm"] == pytest.approx(10000 * 512 / (1023 - 512))
@@ -62,7 +62,7 @@ def test_stretch_calibration_is_published_retained_before_its_completed_ack_and_
             await h.run_device(1.0)
             cord = h.client.payloads("stream")[-1]
             assert cord["stream_kind"] == "stretch" and cord["calibration_id"] == FIRST_ID
-            assert cord["data"]["length_mm"] == pytest.approx([100.0] * 10)  # en reposo: la longitud de reposo
+            assert cord["data"]["length_mm"] == pytest.approx([650.0] * 10)  # en reposo: la longitud de reposo
 
     go(scenario())
 
@@ -89,7 +89,7 @@ def test_calibrate_without_duration_uses_the_default(harness) -> None:
     async def scenario() -> None:
         async with harness(calibration_default_duration_s=3.0) as h:
             await h.boot()
-            await h.send(calibrate(1, "stretch", ["stretch_lumbar"]))
+            await h.send(calibrate(1, "stretch", ["stretch_spine"]))
             await h.run_device(2.9)
             assert [a["status"] for a in acks(h, 1)] == ["accepted"]
             await h.run_device(0.2)
@@ -102,7 +102,7 @@ def test_calibrate_without_duration_uses_the_default(harness) -> None:
     ("calibration_type", "stream_id", "kind", "value", "message"),
     [
         ("emg_mvc", "emg_lat_left", FrameKind.EMG, 0, "flat_signal: the maximum RMS is 0 mV"),
-        ("stretch", "stretch_lumbar", FrameKind.CORD, 0, "rest_resistance_not_computable: mean 0.0 counts is at an ADC rail"),
+        ("stretch", "stretch_spine", FrameKind.CORD, 0, "rest_resistance_not_computable: mean 0.0 counts is at an ADC rail"),
     ],
 )
 def test_a_calibration_that_cannot_be_computed_fails(harness, calibration_type: str, stream_id: str, kind: FrameKind, value: int, message: str) -> None:
@@ -125,7 +125,7 @@ def test_a_calibration_without_data_times_out_five_seconds_after_its_duration(ha
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            await h.send(calibrate(1, "stretch", ["stretch_lumbar"], duration_s=2))
+            await h.send(calibrate(1, "stretch", ["stretch_spine"], duration_s=2))
             await h.run_device(6.9, kinds=(FrameKind.EMG, FrameKind.IMU))
             assert [a["status"] for a in acks(h, 1)] == ["accepted"]
             await h.run_device(0.1, kinds=(FrameKind.EMG, FrameKind.IMU))
@@ -143,7 +143,7 @@ def test_a_completed_calibration_cancels_its_timeout(harness) -> None:
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            await h.send(calibrate(1, "stretch", ["stretch_lumbar"], duration_s=1))
+            await h.send(calibrate(1, "stretch", ["stretch_spine"], duration_s=1))
             sleeping = h.time.pending()
             await h.run_device(1.1)
             assert h.time.pending() == sleeping - 1
@@ -156,21 +156,21 @@ def test_a_completed_calibration_cancels_its_timeout(harness) -> None:
 def test_calibrate_rejections(harness) -> None:
     async def scenario() -> None:
         async with harness() as h:
-            await h.send(calibrate(1, "stretch", ["stretch_lumbar"]))
+            await h.send(calibrate(1, "stretch", ["stretch_spine"]))
             await h.boot()
-            await h.send(calibrate(2, "imu", ["imu_l3"]))
-            await h.send(calibrate(3, "stretch", ["stretch_lumbar", "nope_a"]))
-            await h.send(calibrate(4, "stretch", ["imu_l3"]))
-            await h.send(calibrate(5, "emg_mvc", ["stretch_lumbar"]))
-            await h.send(calibrate(6, "stretch", ["stretch_lumbar"]))
+            await h.send(calibrate(2, "imu", ["imu_t9"]))
+            await h.send(calibrate(3, "stretch", ["stretch_spine", "nope_a"]))
+            await h.send(calibrate(4, "stretch", ["imu_t9"]))
+            await h.send(calibrate(5, "emg_mvc", ["stretch_spine"]))
+            await h.send(calibrate(6, "stretch", ["stretch_spine"]))
             await h.send(calibrate(7, "emg_mvc", ["emg_lat_left"]))
             errors = {n: acks(h, n)[0].get("error") for n in range(1, 8)}
             assert errors == {
                 1: {"code": "device_offline", "message": "the device is not connected"},
                 2: {"code": "invalid_command", "message": "imu calibration is not supported by this gateway"},
                 3: {"code": "unknown_stream", "message": "unknown streams: nope_a"},
-                4: {"code": "unknown_stream", "message": "not stretch streams: imu_l3"},
-                5: {"code": "unknown_stream", "message": "not emg_mvc streams: stretch_lumbar"},
+                4: {"code": "unknown_stream", "message": "not stretch streams: imu_t9"},
+                5: {"code": "unknown_stream", "message": "not emg_mvc streams: stretch_spine"},
                 6: None,
                 7: {"code": "busy", "message": f"calibration {cid(6)} is already running on this device"},
             }
@@ -184,7 +184,7 @@ def test_calibrate_is_rejected_while_the_link_is_down_even_during_a_session(harn
             await h.boot()
             await h.send(start(1))
             await h.link_down()
-            await h.send(calibrate(2, "stretch", ["stretch_lumbar"]))
+            await h.send(calibrate(2, "stretch", ["stretch_spine"]))
             assert acks(h, 2)[0]["error"]["code"] == "device_offline"
 
     go(scenario())

@@ -47,7 +47,7 @@ def test_mqtt_credentials_and_tls_reach_each_connection(harness) -> None:
 
 
 def calibrate_stretch(n: int) -> dict[str, Any]:
-    return command("calibrate", n, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], duration_s=1)
+    return command("calibrate", n, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"], duration_s=1)
 
 
 def test_a_dropped_connection_reconnects_reannounces_and_the_session_goes_on(harness, fakes) -> None:
@@ -80,9 +80,9 @@ def test_a_dropped_connection_reconnects_reannounces_and_the_session_goes_on(har
             await h.run_device(1.0)
             assert len(second.on("calibration")) == 1
             # last_seq solo cuenta lo publicado: el hueco de la desconexión no aparece como publicado.
-            published = max(c["seq"] for c in first.payloads("stream") + second.payloads("stream") if c["stream_id"] == "imu_l3")
+            published = max(c["seq"] for c in first.payloads("stream") + second.payloads("stream") if c["stream_id"] == "imu_t9")
             status = second.payloads("status")[0]
-            assert {s["stream_id"]: s.get("last_seq") for s in status["streams"]}["imu_l3"] < published
+            assert {s["stream_id"]: s.get("last_seq") for s in status["streams"]}["imu_t9"] < published
 
     go(scenario())
 
@@ -121,10 +121,10 @@ def test_a_failed_publish_drops_the_connection_and_reconnects(harness, fakes) ->
             assert len(h.connections.attempts) == 1
             await h.run_device(1.0)  # backoff de 1 s y conexión nueva
             assert len(h.connections.attempts) == 2 and h.client is not first
-            imu = [c["seq"] for c in first.payloads("stream") + h.client.payloads("stream") if c["stream_id"] == "imu_l3"]
+            imu = [c["seq"] for c in first.payloads("stream") + h.client.payloads("stream") if c["stream_id"] == "imu_t9"]
             assert imu == [0, 1, 2, 4]  # el 3 se perdió
             status = h.client.payloads("status")[0]
-            assert {s["stream_id"]: s.get("last_seq") for s in status["streams"]}["imu_l3"] == 2
+            assert {s["stream_id"]: s.get("last_seq") for s in status["streams"]}["imu_t9"] == 2
 
     go(scenario())
 

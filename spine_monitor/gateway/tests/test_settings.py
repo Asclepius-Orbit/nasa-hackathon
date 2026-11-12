@@ -25,11 +25,11 @@ def test_defaults() -> None:
     assert (s.mqtt_reconnect_initial_s, s.mqtt_reconnect_factor, s.mqtt_reconnect_max_s) == (1.0, 2.0, 30.0)
     assert (s.serial_reconnect_initial_s, s.serial_reconnect_factor, s.serial_reconnect_max_s) == (1.0, 2.0, 10.0)
     assert (s.status_interval_s, s.clock_sync_interval_s) == (30.0, 60.0)
-    assert (s.emg_stream_id, s.imu_stream_id, s.stretch_stream_id) == ("emg_lat_left", "imu_l3", "stretch_lumbar")
+    assert (s.emg_stream_id, s.imu_stream_id, s.stretch_stream_id) == ("emg_lat_left", "imu_t9", "stretch_spine")
     assert (s.emg_muscle.value, s.emg_side.value) == ("latissimus_dorsi", "left")
     assert (s.adc_bits, s.vref_v, s.emg_input_pin, s.stretch_input_pin) == (10, 5.0, "A0", "A1")
     assert (s.stretch_series_resistor_ohm, s.imu_accel_range_g, s.imu_gyro_range_dps, s.imu_dlpf_hz) == (10000.0, 4, 500, 44)
-    assert (s.emg_gain, s.stretch_rest_length_mm, s.emg_mvc_window_ms) == (1.0, 100.0, 250)
+    assert (s.emg_gain, s.stretch_rest_length_mm, s.emg_mvc_window_ms) == (1.0, 650.0, 250)
     assert s.emg_signal_kind is SignalKind.ENVELOPE
 
 

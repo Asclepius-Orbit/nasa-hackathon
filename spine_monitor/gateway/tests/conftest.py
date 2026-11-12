@@ -33,8 +33,8 @@ def settings() -> GatewaySettings:
         astronaut_id="AST-01",
         device_id="wb-01",
         emg_stream_id="emg_lat_left",
-        imu_stream_id="imu_l3",
-        stretch_stream_id="stretch_lumbar",
+        imu_stream_id="imu_t9",
+        stretch_stream_id="stretch_spine",
         emg_muscle=Muscle.LATISSIMUS_DORSI,
         emg_side=Side.LEFT,
         adc_bits=10,
@@ -46,7 +46,7 @@ def settings() -> GatewaySettings:
         imu_gyro_range_dps=500,
         imu_dlpf_hz=44,
         emg_gain=1.0,
-        stretch_rest_length_mm=100.0,
+        stretch_rest_length_mm=650.0,
         emg_mvc_window_ms=250,
     )
 

@@ -29,6 +29,8 @@ firmware/
 
 The three EMG electrodes (2 differential + reference) go to the module, not to the Arduino.
 
+Placement (standardised lat pulldown protocol): the MPU-6050 goes at T9 and the stretch cord runs C3 -> S1 (~650 mm at rest, PENDING Aguado's ohmmeter measurement). The protocol declares two EMG modules (left and right latissimus dorsi), but the current hardware has a single EMG channel (A0) and the gateway publishes one (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) until Polfer confirms the hardware (#13). The serial frame format is unchanged. Standing electrode note: see the protocol in the contracts.
+
 ### EMG module power supply (to be confirmed)
 
 The module pins are `+Vs`, `GND`, `-Vs` and `SIG`. The module very probably needs a

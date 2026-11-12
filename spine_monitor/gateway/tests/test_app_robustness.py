@@ -204,7 +204,7 @@ def test_an_error_inside_a_timer_task_does_not_stop_the_gateway(harness) -> None
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            calibrate = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], duration_s=1)
+            calibrate = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"], duration_s=1)
             await h.send(calibrate)
             h.client.fault = lambda topic: RuntimeError("boom") if topic.endswith("/ack") else None
             await h.run_device(6.5, kinds=(FrameKind.IMU,))  # vence el plazo y su ack failed revienta
@@ -242,7 +242,7 @@ def test_an_accepted_ack_that_cannot_leave_changes_nothing(harness) -> None:
             assert h.client is not gone and h.client.acks(payload["command_id"]) == []
 
         other = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02"
-        calibrate = command("calibrate", 3, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], duration_s=60)
+        calibrate = command("calibrate", 3, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"], duration_s=60)
         async with harness() as h:
             await h.boot()
             await lost_ack(start(1))

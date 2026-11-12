@@ -155,12 +155,16 @@ services:
     image: spine-gateway:dev
     environment:
       SPINE_GATEWAY_MQTT_HOST: mosquitto
-      SPINE_GATEWAY_MQTT_USERNAME: "${SPINE_GATEWAY_MQTT_USERNAME:-wb-01}"
+      SPINE_GATEWAY_ASTRONAUT_ID: "${SPINE_GATEWAY_ASTRONAUT_ID:-AST-01}"
+      SPINE_GATEWAY_DEVICE_ID: "${SPINE_GATEWAY_DEVICE_ID:-wb-01}"
+      SPINE_GATEWAY_MQTT_USERNAME: "${SPINE_GATEWAY_MQTT_USERNAME:-${SPINE_GATEWAY_DEVICE_ID:-wb-01}}"
       SPINE_GATEWAY_MQTT_PASSWORD: "${SPINE_GATEWAY_MQTT_PASSWORD:-${SPINE_MQTT_DEVICE_PASSWORD_WB_01:-}}"
       # Port as seen inside the container: the device below is always mapped to /dev/ttyACM0.
       SPINE_GATEWAY_SERIAL_URL: "${SPINE_GATEWAY_SERIAL_URL:-/dev/ttyACM0}"
     devices:
       - "${SPINE_GATEWAY_SERIAL_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
+    group_add:
+      - "${SPINE_GATEWAY_SERIAL_GID:-20}"
     depends_on:
       mosquitto:
         condition: service_healthy

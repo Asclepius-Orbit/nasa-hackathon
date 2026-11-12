@@ -98,11 +98,14 @@ describe('with the backend (real mode)', () => {
     await answerAll();
     await userEvent.click(screen.getByRole('button', { name: 'Save questionnaire' }));
     expect(screen.getByRole('button', { name: 'Saving' })).toBeDisabled();
+    expect(within(screen.getByRole('radiogroup', { name: 'Pain intensity' })).getAllByRole('radio')[1]).toBeDisabled();
     expect(screen.queryByText('Questionnaire saved.')).not.toBeInTheDocument();
     act(() => {
       release();
     });
     expect(await screen.findByText('Questionnaire saved.')).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Pain intensity' })).getAllByRole('radio')[1] as HTMLElement);
+    expect(screen.queryByText('Questionnaire saved.')).not.toBeInTheDocument();
   });
 
   it('a refusal lists the backend messages and does not say saved; the answers stay', async () => {

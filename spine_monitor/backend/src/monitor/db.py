@@ -699,6 +699,18 @@ class Store:
             (profile["astronaut_id"], utc_key(profile["updated_at"]), _dumps(profile)),
         )
 
+    def create_profile(self, profile: dict[str, Any]) -> bool:
+        return self._db.execute(
+            "INSERT INTO profiles VALUES (?, ?, ?) ON CONFLICT (astronaut_id) DO NOTHING",
+            (profile["astronaut_id"], utc_key(profile["updated_at"]), _dumps(profile)),
+        ).rowcount == 1
+
+    def replace_profile_if_unchanged(self, profile: dict[str, Any], expected: dict[str, Any]) -> bool:
+        return self._db.execute(
+            "UPDATE profiles SET updated_at = ?, payload = ? WHERE astronaut_id = ? AND payload = ?",
+            (utc_key(profile["updated_at"]), _dumps(profile), profile["astronaut_id"], _dumps(expected)),
+        ).rowcount == 1
+
     def profile(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM profiles WHERE astronaut_id = ?", astronaut_id)
 
@@ -741,6 +753,13 @@ class Store:
             "INSERT OR REPLACE INTO daily_context VALUES (?, ?, ?)",
             (context["astronaut_id"], context["date"], _dumps(context)),
         )
+
+    def replace_daily_context_if_unchanged(self, context: dict[str, Any], expected: dict[str, Any]) -> bool:
+        """Replace only the exact version read by the caller, atomically."""
+        return self._db.execute(
+            "UPDATE daily_context SET payload = ? WHERE astronaut_id = ? AND date = ? AND payload = ?",
+            (_dumps(context), context["astronaut_id"], context["date"], _dumps(expected)),
+        ).rowcount == 1
 
     def create_daily_context(self, context: dict[str, Any]) -> bool:
         """Stores the context only when none is stored for that astronaut and day, in one statement. False when one was."""

@@ -26,7 +26,7 @@ export type WriteFetch = (
   init: {
     method: WriteMethod;
     /** `content-type` and `body` only when the request has a body. */
-    headers: { accept: string; 'content-type'?: string; 'if-none-match'?: '*' } & AuthHeaders;
+    headers: { accept: string; 'content-type'?: string; 'if-none-match'?: '*'; 'if-match'?: string } & AuthHeaders;
     body?: string;
     redirect: 'error';
     signal: AbortSignal;
@@ -50,8 +50,9 @@ export type CreateResult<T> = WriteResult<T> | { ok: false; reason: 'exists' };
 
 export interface WriteClient {
   send<T>(request: WriteRequest<T>): Promise<WriteResult<T>>;
-  putProfile(astronautId: string, body: Record<string, unknown>): Promise<WriteResult<AstronautProfile>>;
-  putDailyContext(astronautId: string, day: string, body: Record<string, unknown>): Promise<WriteResult<DailyContext>>;
+  putProfile(astronautId: string, body: Record<string, unknown>, etag?: string): Promise<WriteResult<AstronautProfile>>;
+  putDailyContext(astronautId: string, day: string, body: Record<string, unknown>, etag?: string): Promise<WriteResult<DailyContext>>;
+  createProfile(astronautId: string, body: Record<string, unknown>): Promise<CreateResult<AstronautProfile>>;
   /** Stores the day's context only when none is stored yet; never replaces one. */
   createDailyContext(astronautId: string, day: string, body: Record<string, unknown>): Promise<CreateResult<DailyContext>>;
 }
@@ -107,6 +108,7 @@ export function createWriteClient({
   async function exchange<T, E = never>(
     { method, path, astronautId, body, schema }: WriteRequest<T>,
     onlyCreate?: { exists: E },
+    etag?: string,
   ): Promise<WriteResult<T> | E> {
     try {
       const content = body === undefined ? {} : { body: JSON.stringify(body) };
@@ -116,6 +118,7 @@ export function createWriteClient({
           accept: 'application/json',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
           ...(onlyCreate === undefined ? {} : { 'if-none-match': '*' as const }),
+          ...(etag === undefined ? {} : { 'if-match': etag }),
           ...authHeaders(token, astronautId),
         },
         ...content,
@@ -124,6 +127,7 @@ export function createWriteClient({
       });
       const { status } = response;
       if (status === 412 && onlyCreate !== undefined) return onlyCreate.exists;
+      if (status === 412) return { ok: false, reason: 'conflict' };
       if (status === 401 || status === 403) return { ok: false, reason: 'locked' };
       if (status === 409) return { ok: false, reason: 'conflict' };
       if (status === 422) return { ok: false, reason: 'invalid', fields: fieldsOf(await response.json().catch(() => null)) };
@@ -149,15 +153,9 @@ export function createWriteClient({
 
   return {
     send,
-    putProfile: (id, body) =>
-      send({
-        method: 'PUT',
-        path: `/ui/crew/${encodeURIComponent(id)}/profile`,
-        astronautId: id,
-        body,
-        schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile>,
-      }),
-    putDailyContext: (id, day, body) => send(dailyContextRequest(id, day, body)),
+    putProfile: (id, body, etag) => exchange({ method: 'PUT', path: `/ui/crew/${encodeURIComponent(id)}/profile`, astronautId: id, body, schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile> }, undefined, etag),
+    createProfile: (id, body) => exchange({ method: 'PUT', path: `/ui/crew/${encodeURIComponent(id)}/profile`, astronautId: id, body, schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile> }, { exists: { ok: false, reason: 'exists' } as const }),
+    putDailyContext: (id, day, body, etag) => exchange(dailyContextRequest(id, day, body), undefined, etag),
     createDailyContext: (id, day, body) =>
       exchange(dailyContextRequest(id, day, body), { exists: { ok: false, reason: 'exists' } as const }),
   };

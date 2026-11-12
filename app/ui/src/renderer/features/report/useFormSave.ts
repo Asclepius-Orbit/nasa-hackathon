@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import type { WriteResult } from '../../../shared/api';
 import { NO_ERRORS, sortFieldErrors, type FormErrors } from '../profile/fields';
@@ -21,20 +21,28 @@ const IDLE: FormSaveState = { status: 'idle', errors: NO_ERRORS, failure: null }
 export function useFormSave(
   known: readonly string[],
   failures: Readonly<Record<'unavailable' | 'locked' | 'conflict' | 'invalid', string>>,
-): { state: FormSaveState; run: (send: () => Promise<WriteResult<unknown>>) => void } {
+): { state: FormSaveState; run: (send: () => Promise<WriteResult<unknown>>) => void; changed: () => void } {
   const [state, setState] = useState<FormSaveState>(IDLE);
+  const inFlight = useRef(false);
   const run = (send: () => Promise<WriteResult<unknown>>): void => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setState({ ...IDLE, status: 'saving' });
-    send().then(
+    Promise.resolve().then(send).then(
       (result) => {
+        inFlight.current = false;
         if (result.ok) setState({ ...IDLE, status: 'saved' });
         else if (result.reason === 'invalid') setState({ ...IDLE, errors: sortFieldErrors(toKnownPointers(result.fields, known), known), failure: result.fields.length === 0 ? failures.invalid : null });
         else setState({ ...IDLE, failure: failures[result.reason] });
       },
       () => {
+        inFlight.current = false;
         setState({ ...IDLE, failure: failures.unavailable });
       },
     );
   };
-  return { state, run };
+  const changed = (): void => {
+    setState((previous) => previous.status === 'saved' ? IDLE : previous);
+  };
+  return { state, run, changed };
 }

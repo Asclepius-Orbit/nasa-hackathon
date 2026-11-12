@@ -36,7 +36,7 @@ export type { ExerciseEntry };
 
 export interface DailyContextServiceOptions {
   auth: Pick<AuthService, 'current'>;
-  records: Pick<RecordsClient, 'profile' | 'dailyContext'>;
+  records: Pick<RecordsClient, 'profile' | 'dailyContext' | 'dailyContextVersioned'>;
   writer: Pick<WriteClient, 'putDailyContext' | 'createDailyContext'>;
   now: () => number;
   logError?: (error: unknown) => void;
@@ -97,15 +97,24 @@ export function createDailyContextService({
       const id = unlockedId(auth);
       if (id === null) return { ok: false, reason: 'locked' };
       const day = utcDay(now());
-      let stored: DailyContext | null;
       try {
-        stored = await records.dailyContext(id, day);
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const current = await records.dailyContextVersioned(id, day);
+          const { schema_version: _version, mission_day: _missionDay, ...kept } = current?.value ?? {};
+          const body = contextBody(id, day, kept, fields);
+          if (current === null) {
+            const created = await writer.createDailyContext(id, day, body);
+            if (!created.ok && created.reason === 'exists') continue;
+            return created;
+          }
+          const result = await writer.putDailyContext(id, day, body, current.etag);
+          if (!result.ok && result.reason === 'conflict') continue;
+          return result;
+        }
+        return { ok: false, reason: 'conflict' };
       } catch (error) {
         return readFailure(error, logError);
       }
-      // The backend sets the contract version; a cleared mission day must not survive from the stored one.
-      const { schema_version: _version, mission_day: _missionDay, ...kept } = stored ?? {};
-      return writer.putDailyContext(id, day, contextBody(id, day, kept, fields));
     },
 
     async ensureToday(astronautId) {
@@ -126,13 +135,18 @@ export function createDailyContextService({
     async addExercise(astronautId, entry) {
       const day = utcDay(now());
       try {
-        const stored = await records.dailyContext(astronautId, day);
-        if (stored === null) return { ok: false, reason: 'no_context' };
-        const { schema_version: _version, ...kept } = stored;
-        const previous = Array.isArray(kept['exercise']) ? (kept['exercise'] as unknown[]) : [];
-        const result = await writer.putDailyContext(astronautId, day, { ...kept, exercise: [...previous, entry] });
-        if (!result.ok) logError(`daily context: exercise not added to ${day} (${result.reason})`);
-        return result;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const current = await records.dailyContextVersioned(astronautId, day);
+          if (current === null) return { ok: false, reason: 'no_context' };
+          const { schema_version: _version, ...kept } = current.value;
+          const previous = Array.isArray(kept['exercise']) ? (kept['exercise'] as unknown[]) : [];
+          const result = await writer.putDailyContext(astronautId, day, { ...kept, exercise: [...previous, entry] }, current.etag);
+          if (!result.ok && result.reason === 'conflict') continue;
+          if (!result.ok) logError(`daily context: exercise not added to ${day} (${result.reason})`);
+          return result;
+        }
+        logError(`daily context: exercise not added to ${day} (conflict)`);
+        return { ok: false, reason: 'conflict' };
       } catch (error) {
         return readFailure(error, logError);
       }

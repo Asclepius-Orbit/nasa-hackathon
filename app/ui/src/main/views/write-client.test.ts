@@ -55,6 +55,12 @@ function build(respond: () => Promise<Response> | Response, token: string | null
 }
 
 describe('createWriteClient requests', () => {
+  it('sends an ETag and reports a stale context as a conflict', async () => {
+    const { client, calls } = build(() => problem(412));
+    expect(await client.putDailyContext(ASTRONAUT, DAY, { phase: 'inflight' }, '"v1"')).toEqual({ ok: false, reason: 'conflict' });
+    expect(calls[0]?.init.headers['if-match']).toBe('"v1"');
+  });
+
   it('PUTs the profile as JSON to the loopback backend with the credentials, refusing redirects', async () => {
     const { client, calls } = build(() => json(PROFILE));
     expect(await client.putProfile(ASTRONAUT, { astronaut_id: ASTRONAUT })).toEqual({ ok: true, value: PROFILE });

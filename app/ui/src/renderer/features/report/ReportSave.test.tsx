@@ -127,12 +127,15 @@ describe('the outcome of saving', () => {
     await minimal();
     await userEvent.click(save());
     expect(screen.getByRole('button', { name: 'Saving' })).toBeDisabled();
+    expect(within(screen.getByRole('radiogroup', { name: PAIN })).getByRole('radio', { name: '4' })).toBeDisabled();
     expect(screen.queryByText(/Daily report saved\./)).not.toBeInTheDocument();
     act(() => {
       release();
     });
     expect(await screen.findByText('Daily report saved. A new assessment is running.')).toBeInTheDocument();
     expect(save()).toBeEnabled();
+    await choose(PAIN, '4');
+    expect(screen.queryByText(/Daily report saved\./)).not.toBeInTheDocument();
   });
 
   it('a refusal on a field shows its message by that question and does not say saved', async () => {

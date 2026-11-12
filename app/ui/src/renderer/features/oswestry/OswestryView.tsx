@@ -55,7 +55,7 @@ export function OswestryView(): React.JSX.Element {
       {data === null && error === null && <p role="status">{copy.loading}</p>}
       {data !== null && (
         <>
-          <div>
+          <fieldset disabled={save.state.status === 'saving'} onChangeCapture={save.changed} onClickCapture={save.changed} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
             {items.map((item) => (
               <Item
                 key={item.id}
@@ -66,7 +66,7 @@ export function OswestryView(): React.JSX.Element {
                 }}
               />
             ))}
-          </div>
+          </fieldset>
           <SaveBar
             label={copy.save}
             canSave={left === 0}

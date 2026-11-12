@@ -206,6 +206,20 @@ describe('addExercise', () => {
     ]);
   });
 
+  it('retries against a concurrent context edit without losing either change', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    backend.beforeContextPut = () => {
+      backend.beforeContextPut = () => undefined;
+      backend.contexts.set(`${ID}/${TODAY}`, { ...STORED, mission_day: 42 });
+    };
+    expect(await service.addExercise(ID, ENTRY)).toMatchObject({ ok: true });
+    expect(backend.contexts.get(`${ID}/${TODAY}`)).toMatchObject({
+      mission_day: 42,
+      exercise: [{ kind: 'treadmill' }, ENTRY],
+    });
+  });
+
   it('starts the list when the context has no exercise yet', async () => {
     const { backend, service } = build();
     const { exercise: _exercise, ...without } = STORED as unknown as Record<string, unknown>;

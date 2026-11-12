@@ -72,6 +72,7 @@ export function ReportView(): React.JSX.Element {
       {form === null && error === null && <p role="status">{copy.loading}</p>}
       {form !== null && (
         <>
+          <fieldset disabled={save.state.status === 'saving'} onChangeCapture={save.changed} onClickCapture={save.changed} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div className={styles.q}>
             <p className={styles.legend}>{copy.pain.question}</p>
             <Scale label={copy.pain.question} value={pain} onChange={setPain} lowLabel={copy.pain.low} highLabel={copy.pain.high} />
@@ -164,6 +165,7 @@ export function ReportView(): React.JSX.Element {
             <PickRow label={copy.exercise.duration} options={form.exerciseMinutes} selected={minutes} onSelect={setMinutes} />
           </div>
 
+          </fieldset>
           <SaveBar
             label={copy.save}
             canSave={missing.length === 0}
@@ -185,7 +187,7 @@ export function ReportView(): React.JSX.Element {
             }}
             savedMessage={save.state.status === 'saved' && leftOver === null ? copy.saved : null}
             partial={
-              save.state.status === 'saved' && leftOver !== null
+              leftOver !== null
                 ? {
                     title: copy.exerciseNotSaved.title,
                     message: leftOver.why === 'no_context' ? copy.exerciseNotSaved.noContext : copy.exerciseNotSaved.notStored,

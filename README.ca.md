@@ -6,6 +6,16 @@
 
 `spine_monitor/` és un workspace d'uv: un sol `.venv` i un sol `uv.lock` per a tots els paquets. Treballa sempre des de `spine_monitor/` (`uv sync --all-packages`, `uv run pytest`). A PyCharm, obre la carpeta `spine_monitor/` i tria com a intèrpret el seu `.venv`.
 
+## Gateway del wearable
+
+El gateway real del wearable (`spine_monitor/gateway`) llegeix l'Arduino per USB sèrie i publica al bus MQTT v1; el sketch és a `firmware/`. Una demo sense hardware executa el gateway contra un emulador de l'Arduino:
+
+```bash
+docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
+```
+
+El context de build és l'arrel del repo: si Docker no pot llegir-lo per carpetes il·legibles (restes de directoris temporals a Windows), elimina-les o construeix des d'un clon net. Encara no s'ha provat amb una placa real. Vegeu [`spine_monitor/gateway/README.ca.md`](spine_monitor/gateway/README.ca.md) (execució, configuració, cablejat i prova amb la placa) i [`firmware/README.ca.md`](firmware/README.ca.md) (sketch i protocol sèrie).
+
 ## Skills de Claude Code per a pull requests
 
 Dues skills del projecte a `.claude/skills/` porten la revisió de PRs amb subagents:

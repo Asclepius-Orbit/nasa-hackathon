@@ -69,7 +69,7 @@ THRESHOLD="${MUTATION_THRESHOLD:-80}"
 MIN_SAMPLE="${MUTATION_MIN_SAMPLE:-10}"
 STAGE="${MUTATION_STAGE:-/tmp/mutation}"
 # physiology last: it has by far the most mutants and the slowest tests.
-PACKAGES="${MUTATION_PACKAGES:-contracts engine backend mcp_server agent physiology}"
+PACKAGES="${MUTATION_PACKAGES:-contracts engine backend mcp_server agent physiology gateway}"
 ROOT="$(pwd)"
 NAMES=""
 # TOML literal string (single quotes): the backslashes reach mutmut untouched.

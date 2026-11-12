@@ -23,6 +23,9 @@ export const crewFileSchema = z.strictObject({ version: z.literal(1), members: z
 export type CrewRecord = z.infer<typeof crewRecordSchema>;
 export type CrewFile = z.infer<typeof crewFileSchema>;
 
+/** `unknown`: no member with that id. */
+export type SetHarnessStoreResult = { ok: true; member: CrewMember } | { ok: false; reason: 'unknown' | 'unavailable' };
+
 export type Credentials = { status: 'ok'; pinHash: string } | { status: 'unknown' } | { status: 'unavailable' };
 
 export interface CrewStore {
@@ -30,6 +33,8 @@ export interface CrewStore {
   nextId(): Promise<string | null>;
   create(input: { name: string; pin: string }): Promise<CreateCrewResult>;
   findCredentials(crewId: string): Promise<Credentials>;
+  /** Pairs (`harnessId` = a `device_id`) or unpairs (`null`) a member's harness. */
+  setHarness(crewId: string, harnessId: string | null): Promise<SetHarnessStoreResult>;
 }
 
 /** Members written into an empty store, all with the same PIN (see demo-crew.ts). */
@@ -119,6 +124,17 @@ export function createCrewStore({ file, hasher, seed }: CrewStoreOptions): CrewS
         if (current === null) return { status: 'unavailable' };
         const record = current.find((m) => m.id === crewId);
         return record === undefined ? { status: 'unknown' } : { status: 'ok', pinHash: record.pinHash };
+      }),
+
+    setHarness: (crewId, harnessId) =>
+      serial(async (): Promise<SetHarnessStoreResult> => {
+        const current = await load();
+        if (current === null) return { ok: false, reason: 'unavailable' };
+        const record = current.find((m) => m.id === crewId);
+        if (record === undefined) return { ok: false, reason: 'unknown' };
+        const updated: CrewRecord = { ...record, harnessId };
+        if (!(await persist(current.map((m) => (m.id === crewId ? updated : m))))) return { ok: false, reason: 'unavailable' };
+        return { ok: true, member: toMember(updated) };
       }),
   };
 }

@@ -20,6 +20,7 @@ import {
   spine,
   today as copy,
 } from '../../strings/today';
+import { ProfileNotice } from '../profile/ProfileNotice';
 import { useUrgent } from '../urgent/UrgentContext';
 import { gmtClock, gmtDay, isSameGmtDay, minutesSince } from './gmt';
 import { SpineFigure } from './SpineFigure';
@@ -210,6 +211,7 @@ export function TodayView(): React.JSX.Element {
         <div className={styles.today}>
           <SpineFigure lumbarLengthMm={data.lumbarLengthMm} measuredNote={measuredNote(data, now)} />
           <div>
+            <ProfileNotice />
             <Verdict today={data} liveRep={liveRep} />
             <Toggles />
             <Why today={data} />

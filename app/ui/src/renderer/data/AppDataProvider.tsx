@@ -26,6 +26,6 @@ export function AppDataProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const api = useApi();
-  const value = useMemo(() => source ?? (mock ? new MockDataSource() : new RealDataSource(api.views, api.reps)), [source, mock, api]);
+  const value = useMemo(() => source ?? (mock ? new MockDataSource() : new RealDataSource(api.views, api.reps, api)), [source, mock, api]);
   return <DataProvider source={value}>{children}</DataProvider>;
 }

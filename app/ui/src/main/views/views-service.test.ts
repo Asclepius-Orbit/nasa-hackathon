@@ -19,7 +19,11 @@ function fakeClient(): { client: ViewsClient; calls: string[] } {
     return Promise.resolve({ name } as never);
   };
   const client: ViewsClient = {
-    strip: (id) => view('strip', id),
+    // The backend answers with the latest device to report when no device_id is asked for.
+    strip: async (id, deviceId) => {
+      await view('strip', id, ...(deviceId === undefined ? [] : [deviceId]));
+      return { name: 'strip', harness: { device_id: 'latest-01' } } as never;
+    },
     today: (id) => view('today', id),
     history: (id, range) => view('history', id, range),
     baseline: (id) => view('baseline', id),
@@ -64,7 +68,7 @@ describe('createViewsService', () => {
     await service.houston();
     await service.outbox();
     expect(calls).toEqual([
-      'strip:"AST-01"',
+      'strip:"AST-01","wb-01"',
       'today:"AST-01"',
       'history:"AST-01",{"from":"2026-11-01"}',
       'baseline:"AST-01"',
@@ -78,6 +82,24 @@ describe('createViewsService', () => {
     const { service, calls } = build({ crewId: 'AST-02', locked: false });
     await service.strip();
     expect(calls).toEqual(['strip:"AST-02"']);
+  });
+
+  describe('strip', () => {
+    it('asks for the paired harness of the unlocked member, not for the latest device to report', async () => {
+      const { service, calls } = build(UNLOCKED);
+      expect(await service.strip()).toEqual({ name: 'strip', harness: { device_id: 'latest-01' } });
+      expect(calls).toEqual(['strip:"AST-01","wb-01"']);
+    });
+
+    it.each<[string, AuthSession, CrewMember[] | null]>([
+      ['has no harness paired', { crewId: 'AST-02', locked: false }, MEMBERS],
+      ['is not in the crew store', { crewId: 'AST-09', locked: false }, MEMBERS],
+      ['cannot be looked up because the crew store is unreadable', UNLOCKED, null],
+    ])('shows no harness when the member %s, whatever device reported last', async (_label, session, members) => {
+      const { service, calls } = build(session, members);
+      expect(await service.strip()).toEqual({ name: 'strip', harness: null });
+      expect(calls).toEqual([`strip:"${session.crewId}"`]);
+    });
   });
 
   it.each<[string, AuthSession | null]>([

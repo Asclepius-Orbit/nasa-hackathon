@@ -9,13 +9,20 @@ import type { z } from 'zod';
 import {
   IPC_CHANNELS,
   createCrewInputSchema,
+  dailyContextFieldsSchema,
   historyInputSchema,
+  profileFieldsSchema,
   repsUnsubscribeInputSchema,
   sessionInputSchema,
+  setHarnessInputSchema,
   settingsPatchSchema,
   verifyPinInputSchema,
 } from '../shared/ipc-schema';
 import type { AuthService } from './auth/auth-service';
+import type { DailyContextService } from './profile/daily-context-service';
+import type { DevicesService } from './profile/devices-service';
+import type { HarnessService } from './profile/harness-service';
+import type { ProfileService } from './profile/profile-service';
 import type { IpcEventLike } from './security/app-url';
 import type { CrewStore } from './store/crew-store';
 import type { SettingsStore } from './store/settings-store';
@@ -34,6 +41,10 @@ export interface IpcServices {
   settings: SettingsStore;
   views: ViewsService;
   reps: RepsService;
+  profile: ProfileService;
+  dailyContext: DailyContextService;
+  devices: DevicesService;
+  harness: HarnessService;
 }
 
 class UnavailableError extends Error {
@@ -49,7 +60,7 @@ function orUnavailable<T>(value: T | null): T {
 
 export function registerIpc(
   ipcMain: IpcMainLike,
-  { crew, auth, settings, views, reps }: IpcServices,
+  { crew, auth, settings, views, reps, profile, dailyContext, devices, harness }: IpcServices,
   isTrustedSender: (event: IpcEventLike) => boolean,
   logError: (error: unknown) => void = console.error,
 ): void {
@@ -103,7 +114,14 @@ export function registerIpc(
     return result;
   });
 
-  withInput(IPC_CHANNELS.authVerifyPin, verifyPinInputSchema, (input) => auth.verifyPin(input));
+  withInput(IPC_CHANNELS.crewSetHarness, setHarnessInputSchema, (input) => harness.setHarness(input));
+
+  withInput(IPC_CHANNELS.authVerifyPin, verifyPinInputSchema, async (input) => {
+    const result = await auth.verifyPin(input);
+    // Fill in today's daily context from the profile if missing; best effort, the PIN answer does not wait for it.
+    if (result.ok) void dailyContext.ensureToday(result.crewId);
+    return result;
+  });
   withoutInput(IPC_CHANNELS.authLock, () => {
     auth.lock();
     // The astronaut behind the lock screen must stop receiving live data at once.
@@ -122,6 +140,12 @@ export function registerIpc(
   withoutInput(IPC_CHANNELS.viewsHouston, () => views.houston());
   withoutInput(IPC_CHANNELS.viewsOutbox, () => views.outbox());
   withInput(IPC_CHANNELS.viewsSession, sessionInputSchema, ({ sessionId }) => views.session(sessionId));
+  // Reads reject like the views; writes resolve with a WriteResult (a backend refusal is an answer, not an error).
+  withoutInput(IPC_CHANNELS.profileGet, () => profile.get());
+  withInput(IPC_CHANNELS.profileUpdate, profileFieldsSchema, (fields) => profile.update(fields));
+  withoutInput(IPC_CHANNELS.dailyContextToday, () => dailyContext.today());
+  withInput(IPC_CHANNELS.dailyContextUpdateToday, dailyContextFieldsSchema, (fields) => dailyContext.updateToday(fields));
+  withoutInput(IPC_CHANNELS.devicesList, () => devices.list());
   // Live push: the handlers only start and stop it; events travel on `IPC_EVENT_CHANNELS.repsEvent` (see RepsService).
   withInput(IPC_CHANNELS.repsSubscribe, sessionInputSchema, ({ sessionId }, event) => reps.subscribe(event.sender, sessionId));
   withInput(IPC_CHANNELS.repsUnsubscribe, repsUnsubscribeInputSchema, ({ subscriptionId }, event) => {

@@ -6,9 +6,8 @@ App d'escriptori que l'astronauta fa servir a la tauleta: el veredicte del dia, 
 d'exercici, l'historial, l'avís de símptoma urgent i el resum per a Houston. Electron + React + TypeScript, amb
 Vite i pnpm.
 
-Les dades són **mock de moment**: cada pantalla llegeix d'un `DataSource` tipat (`src/renderer/data/`) amb els
-valors del mock. Connectar-lo a les API HTTP de l'app (`/ui` al 8000 i la de només lectura al 8002) és una altra
-feina.
+Cada pantalla llegeix d'un `DataSource` tipat (`src/renderer/data/`). Per defecte és el backend (`/ui` al 8000), on
+només s'arriba a través del procés main; el build d'e2e i `VITE_MOCK_DATA=true` fan servir el mock de bord.
 
 ## Requisits
 
@@ -78,7 +77,10 @@ Els textos viuen a `src/renderer/strings/` (en anglès, un fitxer per pantalla) 
   i el bloqueig sobreviu als reinicis; l'intent es registra abans de comprovar el PIN.
 - Credencials del backend: cada petició a `/ui` porta el token compartit (`ASCLEPIUS_BACKEND_TOKEN`, o el fitxer que indiqui `ASCLEPIUS_BACKEND_TOKEN_FILE`, p. ex. el `ui-token` que el backend escriu al costat de la seva base de dades) i l'astronauta desbloquejat (`X-Astronaut-Id`). Tots dos es queden al procés main; sense token el backend respon 401 i les pantalles mostren `unavailable`.
 - Vistes del backend: el renderer mai parla amb el backend (el CSP `connect-src 'self'` no canvia). El procés main demana les vistes `/ui/...` només de l'astronauta desbloquejat, per HTTP a loopback (`ASCLEPIUS_BACKEND_URL`, per defecte `http://127.0.0.1:8000`; altres hosts s'ignoren), amb timeout de 5 s, sense redireccions i sense cau. Els errors arriben al renderer com `locked`, `not_found` o `unavailable`.
-- Registre de tripulants: el magatzem xifrat de la tripulació és amo de la llista, els ids `AST-NN`, els noms i els PIN. El procés main només comunica al backend cada id (`PUT /ui/crew/{id}`, sense cos), en arrencar i en crear un membre; si el backend està caigut el membre es crea igualment i l'id es reintenta en el llistat següent. El perfil del backend es completa a part (`PUT /ui/crew/{id}/profile`); sense ell `/assess` s'omet.
+- Registre de tripulants: el magatzem xifrat de la tripulació és amo de la llista, els ids `AST-NN`, els noms i els PIN. El procés main només comunica al backend cada id (`PUT /ui/crew/{id}`, sense cos), en arrencar i en crear un membre; si el backend està caigut el membre es crea igualment i l'id es reintenta en el llistat següent. El perfil del backend es completa a la pantalla Perfil (a sota); sense ell `/assess` s'omet.
+- Escriptures al backend: el procés main també escriu només per a l'astronauta desbloquejat, amb les mateixes regles que les vistes (loopback, token, `X-Astronaut-Id`, timeout de 5 s, sense redireccions). Una escriptura respon amb un resultat, mai amb un rebuig: `ok`, o `invalid` amb els punters de camp del backend (422), `locked` (401/403), `conflict` (409) o `unavailable`. La UI diu "Saved" només amb `ok`.
+- Perfil i context diari (`/profile`, també des d'Ajustos): la pantalla edita part del perfil (data de naixement, sexe en néixer, alçades, pes, dates d'enlairament i aterratge) i el context d'avui (fase, gravetat, dia de missió). Main conserva la resta de camps desats. Al perfil mai hi va un nom. Si avui (UTC) no hi ha context i el perfil té data d'enlairament, main n'escriu un quan s'accepta el PIN i en desar el perfil: la fase i el dia de missió surten de les dates (el dia de l'enlairament és l'1, no hi ha dia 0), amb microgravetat en vol i 1 g fora. Mai sobreescriu un context desat. Today i First day demanen el que falti.
+- Aparellament de l'arnès (Settings > Harness): llista els dispositius que han publicat estat per a l'astronauta (`GET /ui/crew/{id}/devices`), i el `device_id` triat es desa només al magatzem xifrat de la tripulació. El backend no aparella: la franja mostra l'últim dispositiu que ha informat.
 - L'estat de tripulants i d'autenticació es xifra amb `safeStorage` d'Electron i falla tancat si no hi ha xifratge
   disponible.
 - Fuses d'Electron: sense `RunAsNode`, sense `NODE_OPTIONS`, sense flags d'inspect, integritat de l'asar i càrrega
@@ -86,7 +88,6 @@ Els textos viuen a `src/renderer/strings/` (en anglès, un fitxer per pantalla) 
 - Cadena de subministrament: versions exactes, lockfile, scripts de build permesos només per a `electron` i una
   antiguitat mínima de publicació d'un dia (`pnpm-workspace.yaml`).
 
-Límits coneguts, per a feina posterior: l'autorització viu al renderer mentre les dades siguin mock (les dades de
-salut reals les haurà de servir el procés main, comprovades contra la seva sessió); no hi ha tancament de sessió ni
+Límits coneguts, per a feina posterior: no hi ha tancament de sessió ni
 canvi de tripulant; PIN de 4 dígits; instal·lador per usuari i sense signar; l'exe empaquetat accepta
 `--remote-debugging-port`.

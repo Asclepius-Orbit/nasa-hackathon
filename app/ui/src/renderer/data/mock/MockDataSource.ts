@@ -1,3 +1,4 @@
+import type { AstronautProfile, DailyContext, DailyContextFields, DeviceStatus, ProfileFields, WriteResult } from '../../../shared/api';
 import { realScheduler, type Scheduler } from '../../clock/scheduler';
 import type { DataSource } from '../DataSource';
 import { CATALOG, REPORT_FORM } from '../form-data';
@@ -43,6 +44,8 @@ export class MockDataSource implements DataSource {
   private reps: RepState = { rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' };
   private stoppedAtRep: number | null = null;
   private contacts: ContactEntry[] = [];
+  private profile: AstronautProfile | null = null;
+  private context: DailyContext | null = null;
 
   constructor(options: MockDataSourceOptions = {}) {
     this.now = options.now ?? (() => new Date());
@@ -61,6 +64,55 @@ export class MockDataSource implements DataSource {
       lastContactMinAgo: 4,
       reportsDue: 1,
     });
+  }
+
+  getProfile(): Promise<AstronautProfile | null> {
+    return Promise.resolve(this.profile);
+  }
+
+  saveProfile(fields: ProfileFields): Promise<WriteResult<AstronautProfile>> {
+    const { height_standing_cm, height_sitting_cm, body_mass_kg, ...rest } = fields;
+    const value: AstronautProfile = {
+      schema_version: '1.0.0',
+      astronaut_id: 'AST-01',
+      updated_at: this.now().toISOString(),
+      ...rest,
+      anthropometry: { height_standing_cm, body_mass_kg, ...(height_sitting_cm === null ? {} : { height_sitting_cm }) },
+    };
+    this.profile = value;
+    return Promise.resolve({ ok: true, value });
+  }
+
+  getTodayContext(): Promise<DailyContext | null> {
+    return Promise.resolve(this.context);
+  }
+
+  saveTodayContext(fields: DailyContextFields): Promise<WriteResult<DailyContext>> {
+    const { mission_day, ...rest } = fields;
+    const value: DailyContext = {
+      schema_version: '1.0.0',
+      astronaut_id: 'AST-01',
+      date: this.now().toISOString().slice(0, 10),
+      ...rest,
+      ...(mission_day === null ? {} : { mission_day }),
+    };
+    this.context = value;
+    return Promise.resolve({ ok: true, value });
+  }
+
+  listDevices(): Promise<DeviceStatus[]> {
+    const at = this.now().getTime();
+    const device = (id: string, status: DeviceStatus['status'], battery: number, minutesAgo: number): DeviceStatus => ({
+      schema_version: '1.0.0',
+      astronaut_id: 'AST-01',
+      device_id: id,
+      timestamp: new Date(at - minutesAgo * MS_PER_MINUTE).toISOString(),
+      status,
+      source: 'device',
+      battery_pct: battery,
+      link: { type: 'ble', rssi_dbm: -62 },
+    });
+    return Promise.resolve([device('wb-01', 'degraded', 64, 1), device('wb-02', 'ok', 91, 3)]);
   }
 
   getToday(): Promise<TodayData> {

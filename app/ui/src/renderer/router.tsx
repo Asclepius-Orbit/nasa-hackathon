@@ -9,6 +9,7 @@ import { HoustonView } from './features/houston/HoustonView';
 import { LockView } from './features/lock/LockView';
 import { LoginView } from './features/login/LoginView';
 import { OswestryView } from './features/oswestry/OswestryView';
+import { ProfileView } from './features/profile/ProfileView';
 import { ReportView } from './features/report/ReportView';
 import { SessionView } from './features/session/SessionView';
 import { SettingsView } from './features/settings/SettingsView';
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
           { path: '/stopped', element: <StoppedView /> },
           { path: '/history', element: <HistoryView /> },
           { path: '/settings', element: <SettingsView /> },
+          { path: '/profile', element: <ProfileView /> },
           { path: '/first-day', element: <FirstDayView /> },
           { path: '/baseline', element: <BaselineView /> },
           { path: '/oswestry', element: <OswestryView /> },

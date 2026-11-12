@@ -13,6 +13,7 @@ function fakeStore(members: CrewMember[]): CrewStore {
     nextId: () => Promise.resolve('AST-04'),
     create: () => Promise.resolve({ ok: true, member: MEMBER }),
     findCredentials: () => Promise.resolve({ status: 'unknown' }),
+    setHarness: (id, harnessId) => Promise.resolve({ ok: true, member: { ...MEMBER, id, harnessId } }),
   };
 }
 
@@ -58,5 +59,13 @@ describe('crew registry', () => {
     await settle();
 
     expect(calls.map((c) => c.url)).toEqual([`${BASE}/ui/crew/AST-03`, `${BASE}/ui/crew/AST-03`]);
+  });
+
+  it('passes harness pairing through to the store, without contacting the backend', async () => {
+    const { calls, fetch } = backend(() => true);
+    const crew = withCrewRegistry(fakeStore([]), createCrewRegistry({ baseUrl: BASE, fetch }));
+    expect(await crew.setHarness('AST-03', 'wb-07')).toEqual({ ok: true, member: { ...MEMBER, harnessId: 'wb-07' } });
+    await settle();
+    expect(calls).toEqual([]);
   });
 });

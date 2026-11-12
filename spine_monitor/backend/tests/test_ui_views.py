@@ -105,7 +105,12 @@ async def test_view_routes_cover_exactly_the_paths_and_methods_of_ui_openapi(har
     def views(paths: dict[str, Any]) -> set[tuple[str, str]]:
         read = {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith(("/view", "/reps", "/houston", "/outbox", "/contacts")) for m in item}
         # The contacts are written on the same path (POST), outside this read-only contract; the crew list is GET /ui/crew.
-        return {(p, m) for p, m in read if m == "get" or not p.endswith("/contacts")} | {(p, m) for p, item in paths.items() if p == "/ui/crew" for m in item}
+        crew_data = {(p, m) for p, item in paths.items() if p.endswith(("/profile", "/devices", "/daily-context/{day}")) for m in item}
+        return (
+            {(p, m) for p, m in read if m == "get" or not p.endswith("/contacts")}
+            | {(p, m) for p, item in paths.items() if p == "/ui/crew" for m in item}
+            | crew_data
+        )
 
     assert views(served) == {(p, m) for p, item in contract["paths"].items() for m in item}
 
@@ -158,6 +163,33 @@ async def test_strip_an_old_device_status_is_listed_as_stale_not_null(harness):
 
     assert harness_view is not None
     assert (harness_view["stale"], harness_view["last_seen_at"], harness_view["device_id"]) == (True, "2026-11-13T09:00:00Z", "wb-01")
+
+
+async def test_strip_with_device_id_shows_the_paired_device_not_the_latest(harness):
+    paired = harness.example("telemetry/device-status.degraded") | {"device_id": "wb-01", "timestamp": "2026-11-13T09:30:00Z"}
+    latest = harness.example("telemetry/device-status.degraded") | {"device_id": "sim-01", "timestamp": "2026-11-13T09:55:00Z"}
+    harness.store.put_device_status(paired)
+    harness.store.put_device_status(latest)
+
+    unpaired = (await get(harness, url("strip"), "app/ui-strip"))["harness"]
+    pinned = (await get(harness, url("strip"), "app/ui-strip", device_id="wb-01"))["harness"]
+
+    assert unpaired["device_id"] == "sim-01"
+    assert (pinned["device_id"], pinned["last_seen_at"]) == ("wb-01", "2026-11-13T09:30:00Z")
+
+
+async def test_strip_with_a_device_id_that_never_reported_has_no_harness(harness):
+    harness.store.put_device_status(harness.example("telemetry/device-status.degraded"))
+
+    assert (await get(harness, url("strip"), "app/ui-strip", device_id="ghost-01"))["harness"] is None
+
+
+@pytest.mark.parametrize("bad", ["", "X", "UPPER", "-bad", "a" * 40])
+async def test_strip_rejects_an_invalid_device_id(harness, bad):
+    response = await harness.http.get(url("strip"), params={"device_id": bad})
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/problem+json")
 
 
 async def test_strip_rejects_a_bad_astronaut_id(harness):

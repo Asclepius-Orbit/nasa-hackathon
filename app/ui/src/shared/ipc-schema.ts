@@ -1,7 +1,7 @@
 /** Zod schemas for every IPC input. The main process validates each call with these; the renderer is untrusted. */
 import { z } from 'zod';
 
-import type { RepsMessage, RepStateView, Settings, ViewRange } from './api';
+import type { DailyContextFields, ProfileFields, RepsMessage, RepStateView, Settings, ViewRange } from './api';
 
 export { IPC_CHANNELS, IPC_EVENT_CHANNELS, type IpcChannel } from './ipc-channels';
 
@@ -76,6 +76,33 @@ export const repsMessageSchema: z.ZodType<RepsMessage> = z.strictObject({
     z.strictObject({ kind: z.literal('lost') }),
     z.strictObject({ kind: z.literal('error'), code: z.enum(['locked', 'not_found', 'unavailable', 'no_reps']) }),
   ]),
+});
+
+/** `device_id` of the contract (`common.schema.json`). */
+export const DEVICE_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{1,31}$/u;
+
+export const setHarnessInputSchema = z.strictObject({ harnessId: z.string().regex(DEVICE_ID_PATTERN).nullable() });
+
+/**
+ * Shapes only: the ranges and enums are the backend's (it answers 422 with a pointer), so they live in one place.
+ * Dates must be real calendar days and numbers finite, so nothing malformed leaves main.
+ */
+const finite = z.number().refine(Number.isFinite);
+
+export const profileFieldsSchema: z.ZodType<ProfileFields> = z.strictObject({
+  date_of_birth: isoDateSchema,
+  sex_at_birth: z.enum(['female', 'male', 'intersex', 'undisclosed']),
+  launch_date: isoDateSchema.nullable(),
+  landing_date: isoDateSchema.nullable(),
+  height_standing_cm: finite,
+  height_sitting_cm: finite.nullable(),
+  body_mass_kg: finite,
+});
+
+export const dailyContextFieldsSchema: z.ZodType<DailyContextFields> = z.strictObject({
+  phase: z.enum(['preflight', 'inflight', 'postflight']),
+  gravity_environment: z.enum(['earth_1g', 'microgravity', 'moon_0_16g', 'mars_0_38g']),
+  mission_day: z.int().nullable(),
 });
 
 const settingsShape = {

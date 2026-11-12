@@ -95,7 +95,7 @@ describe('Stop: pain when the stop cannot be recorded', () => {
         <Route path="/session" element={<SessionView />} />
         <Route path="/stopped" element={<Where />} />
       </Routes>,
-      { api, data: new RealDataSource(api.views, api.reps), route: '/session' },
+      { api, data: new RealDataSource(api.views, api.reps, api), route: '/session' },
     );
     await user.click(await screen.findByRole('button', { name: /Stop: pain/ }));
     expect(await screen.findByText(/The stop was not recorded\./)).toBeInTheDocument();
@@ -219,7 +219,7 @@ function realSetup(options: { today?: TodayView; session?: SessionPayload; today
     <Routes>
       <Route path="/session" element={<SessionView />} />
     </Routes>,
-    { api, data: new RealDataSource(api.views, api.reps), route: '/session' },
+    { api, data: new RealDataSource(api.views, api.reps, api), route: '/session' },
   );
 }
 

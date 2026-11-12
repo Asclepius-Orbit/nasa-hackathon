@@ -51,7 +51,7 @@ it('uses the singular when the reference is built from one session', async () =>
 const realBaseline = (view: BaselinePayload | null): void => {
   const api = new FakeAsclepiusApi();
   if (view) api.viewData.baseline = view;
-  renderInWorld(<BaselineView />, { api, data: new RealDataSource(api.views, api.reps), route: '/baseline' });
+  renderInWorld(<BaselineView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/baseline' });
 };
 
 it('shows the backend example with the session dates', async () => {

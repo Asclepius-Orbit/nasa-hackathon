@@ -247,3 +247,39 @@ describe('subscribeReps', () => {
     expect(states[0]).toMatchObject({ rep: 5 });
   });
 });
+
+describe('profile, daily context and devices', () => {
+  const fields = {
+    date_of_birth: '1990-01-02',
+    sex_at_birth: 'male',
+    launch_date: '2026-08-20',
+    landing_date: null,
+    height_standing_cm: 180,
+    height_sitting_cm: 92,
+    body_mass_kg: 80,
+  } as const;
+
+  it('starts with no profile and no context', async () => {
+    expect(await data.getProfile()).toBeNull();
+    expect(await data.getTodayContext()).toBeNull();
+  });
+
+  it('keeps what is saved, in the contract shape', async () => {
+    const saved = await data.saveProfile(fields);
+    expect(saved).toMatchObject({ ok: true, value: { date_of_birth: '1990-01-02', anthropometry: { height_standing_cm: 180, height_sitting_cm: 92, body_mass_kg: 80 } } });
+    expect(await data.getProfile()).toMatchObject({ sex_at_birth: 'male', launch_date: '2026-08-20' });
+    const noSitting = await data.saveProfile({ ...fields, height_sitting_cm: null });
+    expect(noSitting.ok && 'height_sitting_cm' in noSitting.value.anthropometry).toBe(false);
+    await data.saveTodayContext({ phase: 'inflight', gravity_environment: 'microgravity', mission_day: 87 });
+    expect(await data.getTodayContext()).toMatchObject({ date: '2026-11-05', phase: 'inflight', mission_day: 87 });
+    await data.saveTodayContext({ phase: 'preflight', gravity_environment: 'earth_1g', mission_day: null });
+    expect(await data.getTodayContext()).not.toHaveProperty('mission_day');
+  });
+
+  it('lists two harnesses, one of them degraded', async () => {
+    const devices = await data.listDevices();
+    expect(devices.map((d) => d.device_id)).toEqual(['wb-01', 'wb-02']);
+    expect(devices.some((d) => d.status === 'degraded')).toBe(true);
+    expect(devices.every((d) => typeof d.battery_pct === 'number')).toBe(true);
+  });
+});

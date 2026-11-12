@@ -1,4 +1,4 @@
-import type { AsclepiusApi } from '../../../shared/api';
+import type { AsclepiusApi, AstronautProfile, DailyContext, DailyContextFields, DeviceStatus, ProfileFields, WriteResult } from '../../../shared/api';
 import type { DataSource } from '../DataSource';
 import { CATALOG, REPORT_FORM } from '../form-data';
 import type {
@@ -37,6 +37,7 @@ export class RealDataSource implements DataSource {
   constructor(
     private readonly views: AsclepiusApi['views'],
     private readonly reps: AsclepiusApi['reps'],
+    private readonly account: Pick<AsclepiusApi, 'profile' | 'dailyContext' | 'devices'>,
   ) {}
 
   async getStrip(): Promise<StripData> {
@@ -64,6 +65,28 @@ export class RealDataSource implements DataSource {
     const running = toToday(await this.views.today()).sessionInProgress;
     if (running === null) return null;
     return toSession(await this.views.session(running.sessionId));
+  }
+
+  // --- Profile, today's context and devices: straight through the bridge. ---
+
+  getProfile(): Promise<AstronautProfile | null> {
+    return this.account.profile.get();
+  }
+
+  saveProfile(fields: ProfileFields): Promise<WriteResult<AstronautProfile>> {
+    return this.account.profile.update(fields);
+  }
+
+  getTodayContext(): Promise<DailyContext | null> {
+    return this.account.dailyContext.today();
+  }
+
+  saveTodayContext(fields: DailyContextFields): Promise<WriteResult<DailyContext>> {
+    return this.account.dailyContext.updateToday(fields);
+  }
+
+  listDevices(): Promise<DeviceStatus[]> {
+    return this.account.devices.list();
   }
 
   // --- Static choices of the forms (not crew data). ---

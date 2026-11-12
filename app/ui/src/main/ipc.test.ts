@@ -12,6 +12,11 @@ import { DEMO_CREW } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
 import { FakeClock, FakeSafeStorage, FlakyFs, makeTempDir } from './store/test-fakes';
+import { createDailyContextService } from './profile/daily-context-service';
+import { createDevicesService } from './profile/devices-service';
+import { createHarnessService } from './profile/harness-service';
+import { createProfileService } from './profile/profile-service';
+import { FakeBackend } from './profile/test-fakes';
 import type { RepsService } from './views/reps-service';
 import type { ViewsClient } from './views/views-client';
 import { ViewsError } from './views/views-error';
@@ -33,6 +38,16 @@ class FakeIpcMain implements IpcMainLike {
   }
 }
 
+const PROFILE_FIELDS = {
+  date_of_birth: '1985-04-02',
+  sex_at_birth: 'female',
+  launch_date: '2026-11-01',
+  landing_date: null,
+  height_standing_cm: 171,
+  height_sitting_cm: null,
+  body_mass_kg: 61.5,
+};
+const CONTEXT_FIELDS = { phase: 'inflight', gravity_environment: 'microgravity', mission_day: 5 };
 const SESSION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const APP_URL = 'app://asclepius/index.html';
 const SUBSCRIPTION = '0b9c3d4e-1f2a-4b5c-8d6e-7f8091a2b3c4';
@@ -61,6 +76,9 @@ let backend: { calls: unknown[][]; failWith: Error | null };
 /** Fake of the repetition service: remembers what the handlers ask of it. */
 let repsCalls: unknown[][];
 let repsFailWith: Error | null;
+/** Fake backend of the profile, daily context and devices; and the astronauts `ensureToday` ran for. */
+let records: FakeBackend;
+let ensured: string[];
 
 function fakeRepsService(): RepsService {
   repsCalls = [];
@@ -116,7 +134,28 @@ beforeEach(async () => {
   });
   const settings = createSettingsStore({ path: join(dir, 'settings.json'), fs });
   const views = createViewsService({ auth, crew, client: fakeViewsClient() });
-  services = { crew, auth, settings, views, reps: fakeRepsService() };
+  records = new FakeBackend();
+  ensured = [];
+  const clock = new FakeClock();
+  const dailyContextService = createDailyContextService({ auth, records: records.records, writer: records.writer, now: clock.now });
+  const dailyContext = {
+    ...dailyContextService,
+    ensureToday: (id: string) => {
+      ensured.push(id);
+      return dailyContextService.ensureToday(id);
+    },
+  };
+  services = {
+    crew,
+    auth,
+    settings,
+    views,
+    reps: fakeRepsService(),
+    profile: createProfileService({ auth, records: records.records, writer: records.writer, dailyContext }),
+    dailyContext,
+    devices: createDevicesService({ auth, records: records.records }),
+    harness: createHarnessService({ auth, crew }),
+  };
   ipc = new FakeIpcMain();
   logged = [];
   const policy = createAppUrlPolicy({});
@@ -184,6 +223,19 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.repsUnsubscribe, []],
     [IPC_CHANNELS.repsUnsubscribe, [{ subscriptionId: 'abc' }]],
     [IPC_CHANNELS.repsUnsubscribe, [{ subscriptionId: SUBSCRIPTION, x: 1 }]],
+    [IPC_CHANNELS.crewSetHarness, []],
+    [IPC_CHANNELS.crewSetHarness, [{ harnessId: 'WB 01' }]],
+    [IPC_CHANNELS.crewSetHarness, [{ harnessId: 'wb-01', crewId: 'AST-02' }]],
+    [IPC_CHANNELS.profileGet, ['AST-02']],
+    [IPC_CHANNELS.profileUpdate, [{ ...PROFILE_FIELDS, date_of_birth: '1985-02-30' }]],
+    [IPC_CHANNELS.profileUpdate, [{ ...PROFILE_FIELDS, body_mass_kg: Number.POSITIVE_INFINITY }]],
+    [IPC_CHANNELS.profileUpdate, [{ ...PROFILE_FIELDS, astronaut_id: 'AST-02' }]],
+    [IPC_CHANNELS.profileUpdate, [{ ...PROFILE_FIELDS, name: 'Elena' }]],
+    [IPC_CHANNELS.dailyContextToday, [{ day: '2026-11-05' }]],
+    [IPC_CHANNELS.dailyContextUpdateToday, [{ ...CONTEXT_FIELDS, mission_day: 1.5 }]],
+    [IPC_CHANNELS.dailyContextUpdateToday, [{ ...CONTEXT_FIELDS, phase: 'orbit' }]],
+    [IPC_CHANNELS.dailyContextUpdateToday, [{ ...CONTEXT_FIELDS, date: '2026-11-01' }]],
+    [IPC_CHANNELS.devicesList, ['AST-02']],
   ])('rejects invalid input on %s %j without echoing it', async (channel, args) => {
     await expect(call(channel, ...args)).rejects.toThrow(/^invalid input$/);
     expect(repsCalls).toEqual([]);
@@ -388,5 +440,74 @@ describe('reps channels', () => {
   it('stops every live stream when the app is locked', async () => {
     await call(IPC_CHANNELS.authLock);
     expect(repsCalls).toEqual([['closeAll']]);
+  });
+});
+
+describe('profile, daily context, devices and harness channels', () => {
+  const unlock = () => call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-01', pin: '1234' });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("derives today's daily context after a successful sign-in, not after a wrong PIN", async () => {
+    await call(IPC_CHANNELS.authVerifyPin, { crewId: 'AST-01', pin: '0000' });
+    expect(ensured).toEqual([]);
+    await unlock();
+    expect(ensured).toEqual(['AST-01']);
+  });
+
+  it('reads and writes the unlocked astronaut profile', async () => {
+    await unlock();
+    expect(await call(IPC_CHANNELS.profileGet)).toBeNull();
+    const result = await call(IPC_CHANNELS.profileUpdate, PROFILE_FIELDS);
+    expect(result).toMatchObject({ ok: true, value: { astronaut_id: 'AST-01', launch_date: '2026-11-01' } });
+    await settle();
+    // The profile update derived today's context (FakeClock is 2026-11-05: mission day 5).
+    expect(await call(IPC_CHANNELS.dailyContextToday)).toMatchObject({ phase: 'inflight', mission_day: 5 });
+    expect(await call(IPC_CHANNELS.profileGet)).toMatchObject({ astronaut_id: 'AST-01' });
+  });
+
+  it("writes today's daily context and lists devices", async () => {
+    await unlock();
+    expect(await call(IPC_CHANNELS.dailyContextUpdateToday, CONTEXT_FIELDS)).toMatchObject({
+      ok: true,
+      value: { astronaut_id: 'AST-01', date: '2026-11-05', mission_day: 5 },
+    });
+    records.devices = [{ device_id: 'wb-01' } as never];
+    expect(await call(IPC_CHANNELS.devicesList)).toEqual([{ device_id: 'wb-01' }]);
+  });
+
+  it('returns a refused write as a result, not a rejection', async () => {
+    await unlock();
+    records.writeAnswer = { ok: false, reason: 'invalid', fields: [{ pointer: '/date_of_birth', message: 'x' }] };
+    expect(await call(IPC_CHANNELS.profileUpdate, PROFILE_FIELDS)).toEqual(records.writeAnswer);
+  });
+
+  it.each([IPC_CHANNELS.profileGet, IPC_CHANNELS.dailyContextToday, IPC_CHANNELS.devicesList])(
+    'rejects %s with "locked" when nobody is unlocked',
+    async (channel) => {
+      await expect(call(channel)).rejects.toThrow(/^locked$/);
+    },
+  );
+
+  it('answers the writes with locked when nobody is unlocked', async () => {
+    expect(await call(IPC_CHANNELS.profileUpdate, PROFILE_FIELDS)).toEqual({ ok: false, reason: 'locked' });
+    expect(await call(IPC_CHANNELS.dailyContextUpdateToday, CONTEXT_FIELDS)).toEqual({ ok: false, reason: 'locked' });
+    expect(await call(IPC_CHANNELS.crewSetHarness, { harnessId: 'wb-07' })).toEqual({ ok: false, reason: 'locked' });
+    expect(records.puts).toEqual([]);
+  });
+
+  it('turns a read failure into "unavailable"', async () => {
+    await unlock();
+    records.readFailure = new ViewsError('unavailable', { cause: new Error('down') });
+    await expect(call(IPC_CHANNELS.devicesList)).rejects.toThrow(/^unavailable$/);
+  });
+
+  it('pairs and unpairs the unlocked member harness', async () => {
+    await unlock();
+    expect(await call(IPC_CHANNELS.crewSetHarness, { harnessId: 'wb-07' })).toEqual({
+      ok: true,
+      member: { id: 'AST-01', name: 'Elena Ruiz', harnessId: 'wb-07' },
+    });
+    expect(await call(IPC_CHANNELS.crewSetHarness, { harnessId: null })).toMatchObject({ ok: true, member: { harnessId: null } });
+    expect(await call(IPC_CHANNELS.crewList)).toContainEqual({ id: 'AST-01', name: 'Elena Ruiz', harnessId: null });
   });
 });

@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocation } from 'react-router';
 import { expect, it } from 'vitest';
@@ -54,13 +54,33 @@ it('says so when the checklist cannot be loaded', async () => {
 it('shows the backend checklist, and nothing under it when there is nothing left to do', async () => {
   const api = new FakeAsclepiusApi();
   api.viewData.firstDay = { ...example<FirstDayResult>('ui-first-day'), todo: [], crewFirstName: 'Marc' };
-  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps), route: '/first-day' });
+  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/first-day' });
   expect(await screen.findByRole('heading', { level: 1, name: 'Welcome, Marc' })).toBeInTheDocument();
   expect(screen.queryAllByRole('listitem')).toHaveLength(0);
 });
 
 it('says there is no connection to the monitor when the backend is down', async () => {
   const api = new FakeAsclepiusApi();
-  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps), route: '/first-day' });
+  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/first-day' });
   expect(await screen.findByTestId('no-monitor')).toBeInTheDocument();
+});
+
+it('points to the profile when none is stored', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.firstDay = { ...example<FirstDayResult>('ui-first-day'), crewFirstName: 'Marc' };
+  api.profileValue = null;
+  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/first-day' });
+  expect(await screen.findByText('Add your profile so your assessments can start')).toBeInTheDocument();
+});
+
+it('shows no profile notice when reading the profile is rejected', async () => {
+  const api = new FakeAsclepiusApi();
+  api.viewData.firstDay = { ...example<FirstDayResult>('ui-first-day'), crewFirstName: 'Marc' };
+  api.readErrors = { profile: 'unavailable' };
+  renderInWorld(<FirstDayView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/first-day' });
+  await screen.findByRole('heading', { level: 1, name: 'Welcome, Marc' });
+  await waitFor(() => {
+    expect(api.calls).toContain('profile.get');
+  });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });

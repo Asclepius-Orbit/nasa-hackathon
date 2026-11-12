@@ -10,7 +10,7 @@ let api: FakeAsclepiusApi;
 let data: RealDataSource;
 beforeEach(() => {
   api = new FakeAsclepiusApi();
-  data = new RealDataSource(api.views, api.reps);
+  data = new RealDataSource(api.views, api.reps, api);
 });
 
 describe('getStrip', () => {
@@ -412,5 +412,52 @@ describe('subscribeReps', () => {
     expect(api.repsListenerCount(SID)).toBe(1);
     stop();
     expect(api.repsListenerCount(SID)).toBe(0);
+  });
+});
+
+describe('profile, daily context and devices', () => {
+  const fields = {
+    date_of_birth: '1990-01-02',
+    sex_at_birth: 'male',
+    launch_date: null,
+    landing_date: null,
+    height_standing_cm: 180,
+    height_sitting_cm: null,
+    body_mass_kg: 80,
+  } as const;
+
+  it('reads the profile and today\'s context from the bridge, null when none is stored', async () => {
+    expect(await data.getProfile()).toEqual(api.profileValue);
+    expect(await data.getTodayContext()).toEqual(api.contextValue);
+    api.profileValue = null;
+    api.contextValue = null;
+    expect(await data.getProfile()).toBeNull();
+    expect(await data.getTodayContext()).toBeNull();
+  });
+
+  it('passes a rejection of the bridge on', async () => {
+    api.readErrors = { profile: 'locked', context: 'unavailable', devices: 'not_found' };
+    await expect(data.getProfile()).rejects.toThrow('locked');
+    await expect(data.getTodayContext()).rejects.toThrow('unavailable');
+    await expect(data.listDevices()).rejects.toThrow('not_found');
+  });
+
+  it('sends the fields untouched and returns the write result, failures included', async () => {
+    const saved = await data.saveProfile(fields);
+    expect(saved.ok).toBe(true);
+    expect(api.lastProfileFields).toEqual(fields);
+    api.profileWrite = { ok: false, reason: 'invalid', fields: [{ pointer: '/date_of_birth', message: 'bad' }] };
+    expect(await data.saveProfile(fields)).toEqual(api.profileWrite);
+    const context = { phase: 'preflight', gravity_environment: 'earth_1g', mission_day: null } as const;
+    expect((await data.saveTodayContext(context)).ok).toBe(true);
+    expect(api.lastContextFields).toEqual(context);
+    api.contextWrite = { ok: false, reason: 'conflict' };
+    expect(await data.saveTodayContext(context)).toEqual({ ok: false, reason: 'conflict' });
+  });
+
+  it('lists the devices the bridge saw', async () => {
+    expect(await data.listDevices()).toEqual([]);
+    api.devicesValue = [{ schema_version: '1.0.0', astronaut_id: 'AST-01', device_id: 'wb-09', timestamp: '2026-11-13T10:03:00Z', status: 'ok', source: 'device' }];
+    expect((await data.listDevices()).map((d) => d.device_id)).toEqual(['wb-09']);
   });
 });

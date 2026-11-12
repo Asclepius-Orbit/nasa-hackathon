@@ -204,7 +204,7 @@ it.each([
 ] as const)('in real mode never claims saved, queued, sent or alerted, and says Not recorded (link %s)', async (_name, link) => {
   const api = new FakeAsclepiusApi();
   api.viewData.strip = { ...(api.viewData.strip as object), ground_link: link } as never;
-  renderInWorld(<Opener />, { api, withRouter: false, data: new RealDataSource(api.views, api.reps) });
+  renderInWorld(<Opener />, { api, withRouter: false, data: new RealDataSource(api.views, api.reps, api) });
   const dialog = await openDialog();
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Leg weakness' }));
   expect(dialog).not.toHaveTextContent(/alerted|queue|saved on board|goes to the flight surgeon/i);

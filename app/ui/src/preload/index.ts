@@ -15,6 +15,7 @@ const api: AsclepiusApi = Object.freeze({
     list: () => ipcRenderer.invoke(IPC_CHANNELS.crewList),
     nextId: () => ipcRenderer.invoke(IPC_CHANNELS.crewNextId),
     create: (input) => ipcRenderer.invoke(IPC_CHANNELS.crewCreate, input),
+    setHarness: (input) => ipcRenderer.invoke(IPC_CHANNELS.crewSetHarness, input),
   } satisfies AsclepiusApi['crew']),
   auth: Object.freeze({
     verifyPin: (input) => ipcRenderer.invoke(IPC_CHANNELS.authVerifyPin, input),
@@ -37,6 +38,18 @@ const api: AsclepiusApi = Object.freeze({
     houston: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsHouston)),
     outbox: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsOutbox)),
   } satisfies AsclepiusApi['views']),
+  // Reads reject with a ViewsErrorCode; writes resolve with a WriteResult (never reject for a backend refusal).
+  profile: Object.freeze({
+    get: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.profileGet)),
+    update: (fields) => ipcRenderer.invoke(IPC_CHANNELS.profileUpdate, fields),
+  } satisfies AsclepiusApi['profile']),
+  dailyContext: Object.freeze({
+    today: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.dailyContextToday)),
+    updateToday: (fields) => ipcRenderer.invoke(IPC_CHANNELS.dailyContextUpdateToday, fields),
+  } satisfies AsclepiusApi['dailyContext']),
+  devices: Object.freeze({
+    list: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.devicesList)),
+  } satisfies AsclepiusApi['devices']),
   // Live push. The bridge hands the callback plain events only: never `ipcRenderer` or Electron's event object.
   reps: Object.freeze(createRepsBridge(ipcRenderer)),
 });

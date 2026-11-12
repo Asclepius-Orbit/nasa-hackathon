@@ -10,7 +10,6 @@ const LINKS = [
   { to: '/baseline', label: mockMenu.baseline },
   { to: '/oswestry', label: mockMenu.oswestry },
   { to: '/stopped', label: mockMenu.stopped },
-  { to: '/houston', label: mockMenu.houston },
 ] as const;
 
 /** Development-only shortcuts to screens that real navigation does not reach yet, plus the offline toggle. Renders nothing in production. */

@@ -6,13 +6,13 @@ import { expect, test } from '@playwright/test';
 import { launch, signInAs, type Launched } from './helpers';
 
 const SESSION_MS = 120_000; // `spine_length_rest_v1` in spine_monitor/physiology/configs/example-mission.yaml
-const token = process.env['ASCLEPIUS_BACKEND_TOKEN'];
+const tokenFile = process.env['ASCLEPIUS_BACKEND_TOKEN_FILE'];
 
 let ctx: Launched;
 
 test.beforeAll(async () => {
-  if (!token) throw new Error('Run this through `pnpm e2e:real`: it starts the stack and sets ASCLEPIUS_BACKEND_TOKEN.');
-  ctx = await launch({ ASCLEPIUS_BACKEND_TOKEN: token });
+  if (!tokenFile) throw new Error('Run this through `pnpm e2e:real`: it starts the stack and sets ASCLEPIUS_BACKEND_TOKEN_FILE.');
+  ctx = await launch({ ASCLEPIUS_BACKEND_TOKEN: '', ASCLEPIUS_BACKEND_TOKEN_FILE: tokenFile });
 });
 test.afterAll(async () => {
   await ctx.close();
@@ -77,17 +77,27 @@ test('login, profile, report, a spine-length session, the assessment and the Hou
   await expect(page.getByRole('status').filter({ hasText: 'Finish sent. The session is being saved.' })).toBeVisible({ timeout: 30_000 });
   await expect(stopPain).toBeHidden({ timeout: 120_000 });
 
-  // Today: an assessment level (or "No data" when the engine has nothing to assess yet).
+  // Today: the completed session must produce an assessment, not merely a placeholder.
   await page.getByRole('link', { name: 'Today' }).click();
   const level = page.locator('#today-title');
-  await expect(level).toHaveText(/^(Green|Amber|Red|No data)$/, { timeout: 180_000 });
+  await expect(level).toHaveText(/^(Green|Amber|Red)$/, { timeout: 180_000 });
 
   // Houston: the day's summary with the session, and its outbox entry: Queued, or already Sent when the simulated ground
-  // window is open (hash router: no link to this screen in real navigation yet).
-  await page.evaluate(() => {
-    (globalThis as unknown as { location: { hash: string } }).location.hash = '#/houston';
-  });
+  // window is open.
+  await page.getByRole('link', { name: 'Houston' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'What goes to Houston' })).toBeVisible();
   await expect(page.getByText('spine length check, complete')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('list', { name: 'Outbox' }).getByRole('listitem').first()).toHaveText(/summary.*(Queued|Sent)/, { timeout: 60_000 });
+
+  // The spine check has no repetitions. Start a counted exercise and observe the live counter advance.
+  await page.getByRole('link', { name: 'Session' }).click();
+  await page.getByRole('radiogroup', { name: 'Choose the session' }).getByText('Standing lat pulldown with band').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await expect(page.getByRole('heading', { name: 'Standing lat pulldown with band' })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Do the reps' }).click();
+  const liveCount = page.locator('[data-live="true"] span').first();
+  await expect(liveCount).toBeVisible({ timeout: 60_000 });
+  const firstCount = Number.parseInt((await liveCount.innerText()).trim(), 10);
+  expect(Number.isFinite(firstCount)).toBe(true);
+  await expect.poll(async () => Number.parseInt((await liveCount.innerText()).trim(), 10), { timeout: 90_000 }).toBeGreaterThan(firstCount);
 });

@@ -27,6 +27,7 @@ export const nav = {
   session: 'Session',
   history: 'History',
   ask: 'Ask',
+  houston: 'Houston',
   settings: 'Settings',
 } as const;
 

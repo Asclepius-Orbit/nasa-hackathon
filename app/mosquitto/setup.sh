@@ -106,6 +106,26 @@ for entry in $sim_devices $ITEST_DEVICES $devices; do
     check_device "$entry"
 done
 
+# MQTT usernames are global, including the service accounts. Reusing one would
+# replace its password and combine its ACL grants with those of the device.
+seen_users=" spine-app spine-health spine-itest "
+seen_vars=" "
+for entry in $sim_devices $ITEST_DEVICES $devices; do
+    device=${entry#*:}
+    case "$seen_users" in
+        *" $device "*) echo "duplicate or reserved MQTT user: $device" >&2; exit 2 ;;
+    esac
+    seen_users="$seen_users$device "
+done
+# Real device passwords use normalized environment names: '-' and '_' collide.
+for entry in $devices; do
+    var=$(device_var "${entry#*:}")
+    case "$seen_vars" in
+        *" $var "*) echo "device password variable collision: $var" >&2; exit 2 ;;
+    esac
+    seen_vars="$seen_vars$var "
+done
+
 app_pw=$(password_for SPINE_MQTT_APP_PASSWORD)
 health_pw=$(password_for SPINE_MQTT_HEALTH_PASSWORD)
 sim_pw=$(password_for SPINE_MQTT_SIM_PASSWORD)

@@ -11,6 +11,8 @@
  */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 const uiDir = path.resolve(import.meta.dirname, '..');
@@ -21,10 +23,14 @@ const ASTRONAUT = 'AST-01';
 const READY_TIMEOUT_MS = 180_000;
 
 const token = randomBytes(24).toString('hex');
+const tokenDir = await mkdtemp(path.join(os.tmpdir(), 'asclepius-e2e-'));
+const tokenFile = path.join(tokenDir, 'backend-token');
+await writeFile(tokenFile, token, { mode: 0o600 });
 const env = {
   ...process.env,
   SPINE_APP_UI_TOKEN: token,
-  ASCLEPIUS_BACKEND_TOKEN: token,
+  ASCLEPIUS_BACKEND_TOKEN: '',
+  ASCLEPIUS_BACKEND_TOKEN_FILE: tokenFile,
   // One preflight baseline session is enough for the demo (the default plan asks for three).
   SPINE_APP_BASELINE_REQUIRED: '1',
 };
@@ -84,6 +90,7 @@ try {
       console.error(`could not take the stack down: ${error.message}`);
     });
   }
+  await rm(tokenDir, { recursive: true, force: true });
 }
 if (failure !== null) {
   console.error(failure.message);

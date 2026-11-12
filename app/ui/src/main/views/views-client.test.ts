@@ -108,6 +108,19 @@ describe('createViewsClient requests', () => {
     expect(calls[1]?.url).toBe(`${BASE}/ui/sessions/a%2Fb%3Fc/view`);
   });
 
+  it('asks for one device of the strip with a percent-encoded device_id query', async () => {
+    const { fetch, calls } = fakeFetch(() => json(BODIES.strip));
+    const client = createViewsClient({ baseUrl: BASE, fetch });
+    await client.strip(ASTRONAUT, 'wb-01');
+    await client.strip(ASTRONAUT, 'a&b=1#c');
+    await client.strip(ASTRONAUT);
+    expect(calls.map((call) => call.url)).toEqual([
+      `${BASE}/ui/crew/${ASTRONAUT}/views/strip?device_id=wb-01`,
+      `${BASE}/ui/crew/${ASTRONAUT}/views/strip?device_id=a%26b%3D1%23c`,
+      `${BASE}/ui/crew/${ASTRONAUT}/views/strip`,
+    ]);
+  });
+
   it('refuses a base URL that is not loopback', () => {
     expect(() => createViewsClient({ baseUrl: 'http://example.com:8000' })).toThrow(/loopback/);
     expect(() => createViewsClient({ baseUrl: 'http://127.0.0.1.evil.com' })).toThrow(/loopback/);

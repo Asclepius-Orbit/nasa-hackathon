@@ -70,6 +70,16 @@ async def test_refused_puts_do_not_reassess(harness):
     assert len(assessments(harness)) == before
 
 
+async def test_conditional_put_over_a_stored_context_does_not_reassess(harness):
+    before = await assessed_astronaut(harness)  # its setup stored today's context
+    url, body = context(harness)
+
+    assert (await harness.http.put(url, json=body, headers={"If-None-Match": "*"})).status_code == 412
+    await harness.settle()
+
+    assert len(assessments(harness)) == before
+
+
 async def test_profile_and_context_in_a_burst_make_one_assessment(harness):
     before = await assessed_astronaut(harness)
     url, body = context(harness, exercise=[{"modality": "ared", "duration_min": 45}])

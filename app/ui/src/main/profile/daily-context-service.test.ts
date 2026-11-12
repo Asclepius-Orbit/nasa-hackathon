@@ -73,6 +73,18 @@ const STORED: DailyContext = {
 } as unknown as DailyContext;
 
 describe('createDailyContextService', () => {
+  it('re-reads after a concurrent context update and keeps the other writer’s fields', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    backend.beforeContextPut = () => {
+      backend.beforeContextPut = () => undefined;
+      backend.contexts.set(`${ID}/${TODAY}`, { ...STORED, medication: [{ name: 'changed' }] } as DailyContext);
+    };
+    const result = await service.updateToday({ phase: 'inflight', gravity_environment: 'microgravity', mission_day: 5 });
+    expect(result.ok).toBe(true);
+    expect(backend.contexts.get(`${ID}/${TODAY}`)?.medication).toEqual([{ name: 'changed' }]);
+  });
+
   it("reads today's context for the unlocked astronaut, null when none", async () => {
     const { backend, service } = build();
     expect(await service.today()).toBeNull();
@@ -150,8 +162,19 @@ describe('ensureToday', () => {
       {
         path: `${ID}/daily-context/${TODAY}`,
         body: { astronaut_id: ID, date: TODAY, phase: 'inflight', gravity_environment: 'microgravity', mission_day: 11 },
+        onlyCreate: true,
       },
     ]);
+  });
+
+  it('leaves alone a context stored between its read and its write: the 412 is neither logged nor retried', async () => {
+    const { backend, service, logged } = build();
+    backend.profiles.set(ID, profile('2026-11-01'));
+    backend.beforeCreate = () => backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    await expect(service.ensureToday(ID)).resolves.toBeUndefined();
+    expect(backend.contexts.get(`${ID}/${TODAY}`)).toEqual(STORED);
+    expect(backend.puts).toHaveLength(1);
+    expect(logged).toEqual([]);
   });
 
   it('never overwrites an existing context', async () => {
@@ -195,6 +218,20 @@ describe('addExercise', () => {
     ]);
   });
 
+  it('retries against a concurrent context edit without losing either change', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    backend.beforeContextPut = () => {
+      backend.beforeContextPut = () => undefined;
+      backend.contexts.set(`${ID}/${TODAY}`, { ...STORED, mission_day: 42 });
+    };
+    expect(await service.addExercise(ID, ENTRY)).toMatchObject({ ok: true });
+    expect(backend.contexts.get(`${ID}/${TODAY}`)).toMatchObject({
+      mission_day: 42,
+      exercise: [{ kind: 'treadmill' }, ENTRY],
+    });
+  });
+
   it('starts the list when the context has no exercise yet', async () => {
     const { backend, service } = build();
     const { exercise: _exercise, ...without } = STORED as unknown as Record<string, unknown>;
@@ -203,21 +240,28 @@ describe('addExercise', () => {
     expect(backend.puts[0]?.body['exercise']).toEqual([ENTRY]);
   });
 
-  it('writes nothing when today has no context', async () => {
+  it('answers that the exercise is stored, with the context it left', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    const result = await service.addExercise(ID, ENTRY);
+    expect(result).toMatchObject({ ok: true, value: { exercise: [{ kind: 'treadmill' }, ENTRY] } });
+  });
+
+  it('writes nothing and answers no_context when today has none', async () => {
     const { backend, service, logged } = build();
-    await service.addExercise(ID, ENTRY);
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'no_context' });
     expect(backend.puts).toEqual([]);
     expect(logged).toEqual([]);
   });
 
-  it('only logs a failed read or a refused write, never rejects', async () => {
+  it('answers a failed read or a refused write as a failure, logs it and never rejects', async () => {
     const { backend, service, logged } = build();
     backend.readFailure = new ViewsError('unavailable');
-    await service.addExercise(ID, ENTRY);
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'unavailable' });
     backend.readFailure = null;
     backend.contexts.set(`${ID}/${TODAY}`, STORED);
-    backend.writeAnswer = { ok: false, reason: 'unavailable' };
-    await service.addExercise(ID, ENTRY);
+    backend.writeAnswer = { ok: false, reason: 'conflict' };
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'conflict' });
     expect(logged).toHaveLength(2);
   });
 });

@@ -19,6 +19,7 @@ const reportSavedSchema: z.ZodType<ReportSaved> = z
     reportId: report.report_id,
     assessmentLevel: assessment?.level ?? null,
     assessmentSkipped: skipped,
+    exercise: null,
   }));
 
 export type PostSelfReport = (

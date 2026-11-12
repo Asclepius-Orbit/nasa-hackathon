@@ -190,7 +190,11 @@ export interface ReportSaved {
   reportId: string;
   assessmentLevel: 'green' | 'amber' | 'red' | null;
   assessmentSkipped: string | null;
+  exercise: 'stored' | 'not_stored' | 'no_context' | null;
 }
+
+export type ExerciseEntry = NonNullable<DailyReportFields['exercise']>;
+export type AddExerciseResult = WriteResult<DailyContext> | { ok: false; reason: 'no_context' };
 
 /** Self-reports due today (`GET self-reports/due`). */
 export interface ReportsDue {
@@ -310,6 +314,7 @@ export interface AsclepiusApi {
   reports: {
     saveDaily(fields: DailyReportFields): Promise<WriteResult<ReportSaved>>;
     saveOswestry(input: { items: OdiAnswer[] }): Promise<WriteResult<ReportSaved>>;
+    addExercise(entry: ExerciseEntry): Promise<AddExerciseResult>;
     due(): Promise<ReportsDue>;
   };
   /** The urgent symptom report: also without a PIN, from login or lock (see `UrgentInput`). */

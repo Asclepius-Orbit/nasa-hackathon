@@ -8,7 +8,7 @@
 import type { AstronautProfile, ProfileFields, WriteResult } from '../../shared/api';
 import type { AuthService } from '../auth/auth-service';
 import type { RecordsClient } from '../views/records-client';
-import type { WriteClient } from '../views/write-client';
+import type { CreateResult, WriteClient } from '../views/write-client';
 import type { DailyContextService } from './daily-context-service';
 import { readFailure, requireUnlocked, unlockedId } from './unlocked';
 
@@ -19,8 +19,11 @@ export interface ProfileService {
 
 export interface ProfileServiceOptions {
   auth: Pick<AuthService, 'current'>;
-  records: Pick<RecordsClient, 'profile'>;
-  writer: Pick<WriteClient, 'putProfile'>;
+  records: Pick<RecordsClient, 'profile'> & { profileVersioned(id: string): Promise<{ value: AstronautProfile; etag: string } | null> };
+  writer: Pick<WriteClient, 'putProfile'> & {
+    putProfile(id: string, body: Record<string, unknown>, etag?: string): Promise<WriteResult<AstronautProfile>>;
+    createProfile(id: string, body: Record<string, unknown>): Promise<CreateResult<AstronautProfile>>;
+  };
   dailyContext: Pick<DailyContextService, 'ensureToday'>;
   logError?: (error: unknown) => void;
 }
@@ -56,15 +59,22 @@ export function createProfileService({
     async update(fields) {
       const id = unlockedId(auth);
       if (id === null) return { ok: false, reason: 'locked' };
-      let stored: AstronautProfile | null;
-      try {
-        stored = await records.profile(id);
-      } catch (error) {
-        return readFailure(error, logError);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        let stored: { value: AstronautProfile; etag: string } | null;
+        try {
+          stored = await records.profileVersioned(id);
+        } catch (error) {
+          return readFailure(error, logError);
+        }
+        const body = profileBody(id, stored?.value ?? null, fields);
+        const result = stored === null ? await writer.createProfile(id, body) : await writer.putProfile(id, body, stored.etag);
+        if (result.ok) {
+          void dailyContext.ensureToday(id);
+          return result;
+        }
+        if (result.reason !== 'conflict' && result.reason !== 'exists') return result;
       }
-      const result = await writer.putProfile(id, profileBody(id, stored, fields));
-      if (result.ok) void dailyContext.ensureToday(id);
-      return result;
+      return { ok: false, reason: 'conflict' };
     },
   };
 }

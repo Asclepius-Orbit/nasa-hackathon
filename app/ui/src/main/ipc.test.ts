@@ -310,6 +310,9 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.reportsSaveDaily, [{ ...DAILY_FIELDS, exercise: { modality: 'yoga', duration_min: 10 } }]],
     [IPC_CHANNELS.reportsSaveOswestry, [{ items: [] }]],
     [IPC_CHANNELS.reportsSaveOswestry, [{ items: [{ item_id: 'lifting', score: 2.5 }] }]],
+    [IPC_CHANNELS.reportsAddExercise, [{ modality: 'ared', duration_min: 10, astronaut_id: 'AST-02' }]],
+    [IPC_CHANNELS.reportsAddExercise, [{ modality: 'yoga', duration_min: 10 }]],
+    [IPC_CHANNELS.reportsAddExercise, ['AST-02']],
     [IPC_CHANNELS.reportsDue, ['AST-02']],
     [IPC_CHANNELS.urgentSend, [{ red_flags: ['leg_weakness'], other_symptoms: [] }]],
     [IPC_CHANNELS.urgentSend, [{ crewId: 'AST-1', red_flags: [], other_symptoms: [] }]],
@@ -680,7 +683,7 @@ describe('session, report, urgent and contact channels', () => {
   it('saves the reports and reads what is due', async () => {
     await unlock();
     records.sendAnswer = { report: { report_id: OTHER }, assessment: null, assessment_skipped: 'no_profile' };
-    const saved = { ok: true, value: { reportId: OTHER, assessmentLevel: null, assessmentSkipped: 'no_profile' } };
+    const saved = { ok: true, value: { reportId: OTHER, assessmentLevel: null, assessmentSkipped: 'no_profile', exercise: null } };
     expect(await call(IPC_CHANNELS.reportsSaveDaily, DAILY_FIELDS)).toEqual(saved);
     expect(await call(IPC_CHANNELS.reportsSaveOswestry, { items: [{ item_id: 'lifting', score: 2 }] })).toEqual(saved);
     expect(await call(IPC_CHANNELS.reportsDue)).toEqual(records.due);

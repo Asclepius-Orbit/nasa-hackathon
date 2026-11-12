@@ -7,6 +7,9 @@
  * body passes the minimum shape check is `ok`; 401/403 `locked`; 422 `invalid` with the field pointers; 409
  * `conflict`; anything else (other status, network error, timeout, redirect, bad body) `unavailable`, with the cause
  * logged here. Of the backend's text only the 422 pointers and messages are forwarded.
+ *
+ * `createDailyContext` is the create-only PUT (`If-None-Match: *`): the backend stores it only when that day has no
+ * context yet, atomically, and answers 412 otherwise, which is `exists` (not a failure, not logged).
  */
 import { z } from 'zod';
 
@@ -23,7 +26,7 @@ export type WriteFetch = (
   init: {
     method: WriteMethod;
     /** `content-type` and `body` only when the request has a body. */
-    headers: { accept: string; 'content-type'?: string } & AuthHeaders;
+    headers: { accept: string; 'content-type'?: string; 'if-none-match'?: '*'; 'if-match'?: string } & AuthHeaders;
     body?: string;
     redirect: 'error';
     signal: AbortSignal;
@@ -42,10 +45,16 @@ export interface WriteRequest<T> {
   schema: z.ZodType<T>;
 }
 
+/** Outcome of a create-only write: a `WriteResult`, or `exists` when something was already stored (412). */
+export type CreateResult<T> = WriteResult<T> | { ok: false; reason: 'exists' };
+
 export interface WriteClient {
   send<T>(request: WriteRequest<T>): Promise<WriteResult<T>>;
-  putProfile(astronautId: string, body: Record<string, unknown>): Promise<WriteResult<AstronautProfile>>;
-  putDailyContext(astronautId: string, day: string, body: Record<string, unknown>): Promise<WriteResult<DailyContext>>;
+  putProfile(astronautId: string, body: Record<string, unknown>, etag?: string): Promise<WriteResult<AstronautProfile>>;
+  putDailyContext(astronautId: string, day: string, body: Record<string, unknown>, etag?: string): Promise<WriteResult<DailyContext>>;
+  createProfile(astronautId: string, body: Record<string, unknown>): Promise<CreateResult<AstronautProfile>>;
+  /** Stores the day's context only when none is stored yet; never replaces one. */
+  createDailyContext(astronautId: string, day: string, body: Record<string, unknown>): Promise<CreateResult<DailyContext>>;
 }
 
 export interface WriteClientOptions {
@@ -95,7 +104,12 @@ export function createWriteClient({
   if (origin === null) throw new Error('backend URL must be an http(s) loopback origin');
   const base: string = origin;
 
-  async function send<T>({ method, path, astronautId, body, schema }: WriteRequest<T>): Promise<WriteResult<T>> {
+  /** One write; with `onlyCreate` it is sent with `If-None-Match: *` and a 412 answers `onlyCreate.exists`. */
+  async function exchange<T, E = never>(
+    { method, path, astronautId, body, schema }: WriteRequest<T>,
+    onlyCreate?: { exists: E },
+    etag?: string,
+  ): Promise<WriteResult<T> | E> {
     try {
       const content = body === undefined ? {} : { body: JSON.stringify(body) };
       const response = await doFetch(`${base}${path}`, {
@@ -103,6 +117,8 @@ export function createWriteClient({
         headers: {
           accept: 'application/json',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...(onlyCreate === undefined ? {} : { 'if-none-match': '*' as const }),
+          ...(etag === undefined ? {} : { 'if-match': etag }),
           ...authHeaders(token, astronautId),
         },
         ...content,
@@ -110,6 +126,8 @@ export function createWriteClient({
         signal: AbortSignal.timeout(timeoutMs),
       });
       const { status } = response;
+      if (status === 412 && onlyCreate !== undefined) return onlyCreate.exists;
+      if (status === 412 && etag !== undefined) return { ok: false, reason: 'conflict' };
       if (status === 401 || status === 403) return { ok: false, reason: 'locked' };
       if (status === 409) return { ok: false, reason: 'conflict' };
       if (status === 422) return { ok: false, reason: 'invalid', fields: fieldsOf(await response.json().catch(() => null)) };
@@ -124,23 +142,31 @@ export function createWriteClient({
     }
   }
 
+  const send = <T>(request: WriteRequest<T>): Promise<WriteResult<T>> => exchange(request);
+  const dailyContextRequest = (id: string, day: string, body: Record<string, unknown>): WriteRequest<DailyContext> => ({
+    method: 'PUT',
+    path: `/ui/crew/${encodeURIComponent(id)}/daily-context/${encodeURIComponent(day)}`,
+    astronautId: id,
+    body,
+    schema: dailyContextSchema(id, day) as unknown as z.ZodType<DailyContext>,
+  });
+
   return {
     send,
-    putProfile: (id, body) =>
-      send({
+    putProfile: (id, body, etag) =>
+      exchange({
         method: 'PUT',
         path: `/ui/crew/${encodeURIComponent(id)}/profile`,
         astronautId: id,
         body,
         schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile>,
-      }),
-    putDailyContext: (id, day, body) =>
-      send({
-        method: 'PUT',
-        path: `/ui/crew/${encodeURIComponent(id)}/daily-context/${encodeURIComponent(day)}`,
-        astronautId: id,
-        body,
-        schema: dailyContextSchema(id, day) as unknown as z.ZodType<DailyContext>,
-      }),
+      }, undefined, etag),
+    createProfile: (id, body) => exchange({
+      method: 'PUT', path: `/ui/crew/${encodeURIComponent(id)}/profile`, astronautId: id, body,
+      schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile>,
+    }, { exists: { ok: false, reason: 'exists' } as const }),
+    putDailyContext: (id, day, body, etag) => exchange(dailyContextRequest(id, day, body), undefined, etag),
+    createDailyContext: (id, day, body) =>
+      exchange(dailyContextRequest(id, day, body), { exists: { ok: false, reason: 'exists' } as const }),
   };
 }

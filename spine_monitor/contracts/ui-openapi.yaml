@@ -105,6 +105,11 @@ paths:
       responses:
         '200':
           description: The stored data.
+          headers:
+            ETag:
+              description: Opaque version for a conditional update.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -125,6 +130,8 @@ paths:
       description: Replaces the whole profile. `schema_version` and `updated_at` default to the app's; `astronaut_id` comes from the path (a different one in the body is a 422). The assessment is redone.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IfNoneMatch'
       requestBody:
         required: true
         content:
@@ -142,6 +149,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/AlreadyStored'
         '422':
           $ref: '#/components/responses/Invalid'
         default:
@@ -157,6 +166,11 @@ paths:
       responses:
         '200':
           description: The stored data.
+          headers:
+            ETag:
+              description: Opaque version for a conditional update.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -174,10 +188,17 @@ paths:
     put:
       operationId: putDailyContext
       summary: Store the daily context of an astronaut on a day
-      description: Replaces the context of that day. `astronaut_id` and `date` come from the path (different ones in the body are a 422). Starting a session needs today's context; the assessment is redone.
+      description: |
+        Replaces the context of that day. `astronaut_id` and `date` come from the path (different ones in the body are a 422).
+        An `If-Match` ETag makes replacement conditional on the version read (412 if changed).
+        Starting a session needs today's context; the assessment is redone.
+        With `If-None-Match: *` it only creates it, in one atomic step: when a context is already stored for that day the
+        answer is 412, the stored one is left as it was and nothing is reassessed.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
         - $ref: '#/components/parameters/Day'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -195,6 +216,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/AlreadyStored'
         '422':
           $ref: '#/components/responses/Invalid'
         default:
@@ -537,9 +560,10 @@ paths:
     get:
       operationId: getStripView
       summary: Always-visible strip
-      description: Mission day and phase, paired harness, ground link and reports still due today.
+      description: Mission day and phase, paired harness, ground link and reports still due today. Without `device_id` the harness is the astronaut's device with the latest status (null when none, or when it is offline). With `device_id` the harness describes that device, whatever the others report, from its last status (`stale` and offline computed as without it), or null when that device has never reported for the astronaut. A `device_id` that is not a device id is a 422.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
           description: The strip view.
@@ -767,6 +791,28 @@ components:
       description: Calendar day (ISO 8601 date).
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/date'
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: ETag from the corresponding GET; update only that version.
+      schema:
+        type: string
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: '`*` stores the body only when nothing is stored yet (412 otherwise). Any other value is a 422.'
+      schema:
+        type: string
+        const: '*'
+    DeviceId:
+      name: device_id
+      in: query
+      required: false
+      description: Device to describe (the one paired in the app). Omitted, the device that reported last.
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/device_id'
     FromDate:
       name: from
       in: query
@@ -802,6 +848,12 @@ components:
             $ref: 'schemas/v1/app/error.schema.json'
     Invalid:
       description: The body does not conform to its schema, or names another astronaut or day than the path (problem details, type `invalid_request`, with `errors[].pointer` into the body).
+      content:
+        application/problem+json:
+          schema:
+            $ref: 'schemas/v1/app/error.schema.json'
+    AlreadyStored:
+      description: 'The create-only condition failed or the If-Match version changed; the stored record was left untouched (problem details).'
       content:
         application/problem+json:
           schema:

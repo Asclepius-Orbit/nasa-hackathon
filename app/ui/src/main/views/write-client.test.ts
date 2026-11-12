@@ -55,6 +55,24 @@ function build(respond: () => Promise<Response> | Response, token: string | null
 }
 
 describe('createWriteClient requests', () => {
+  it('sends an ETag and reports a stale context as a conflict', async () => {
+    const { client, calls } = build(() => problem(412));
+    expect(await client.putDailyContext(ASTRONAUT, DAY, { phase: 'inflight' }, '"v1"')).toEqual({ ok: false, reason: 'conflict' });
+    expect(calls[0]?.init.headers['if-match']).toBe('"v1"');
+  });
+
+  it('sends If-Match for a conditional profile update and reports a stale version as conflict', async () => {
+    const { client, calls } = build(() => problem(412));
+    expect(await client.putProfile(ASTRONAUT, {}, '"version"')).toEqual({ ok: false, reason: 'conflict' });
+    expect(calls[0]?.init.headers['if-match']).toBe('"version"');
+  });
+
+  it('creates a profile only when absent', async () => {
+    const { client, calls } = build(() => problem(412));
+    expect(await client.createProfile(ASTRONAUT, {})).toEqual({ ok: false, reason: 'exists' });
+    expect(calls[0]?.init.headers['if-none-match']).toBe('*');
+  });
+
   it('PUTs the profile as JSON to the loopback backend with the credentials, refusing redirects', async () => {
     const { client, calls } = build(() => json(PROFILE));
     expect(await client.putProfile(ASTRONAUT, { astronaut_id: ASTRONAUT })).toEqual({ ok: true, value: PROFILE });
@@ -77,6 +95,21 @@ describe('createWriteClient requests', () => {
     const { client, calls } = build(() => json(CONTEXT));
     expect(await client.putDailyContext(ASTRONAUT, DAY, { phase: 'inflight' })).toEqual({ ok: true, value: CONTEXT });
     expect(calls[0]?.url).toBe(`${BASE}/ui/crew/${ASTRONAUT}/daily-context/${DAY}`);
+    expect(calls[0]?.init.headers).not.toHaveProperty('if-none-match');
+  });
+
+  it('creates the daily context of one day only when none is stored, with If-None-Match: *', async () => {
+    const { client, calls } = build(() => json(CONTEXT));
+    expect(await client.createDailyContext(ASTRONAUT, DAY, { phase: 'inflight' })).toEqual({ ok: true, value: CONTEXT });
+    expect(calls[0]?.url).toBe(`${BASE}/ui/crew/${ASTRONAUT}/daily-context/${DAY}`);
+    expect(calls[0]?.init.method).toBe('PUT');
+    expect(calls[0]?.init.headers).toEqual({
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'if-none-match': '*',
+      authorization: 'Bearer tok',
+      'x-astronaut-id': ASTRONAUT,
+    });
   });
 
   it('sends no authorization header without a token and encodes the path', async () => {
@@ -104,6 +137,7 @@ describe('createWriteClient status mapping', () => {
     [401, 'locked'],
     [403, 'locked'],
     [409, 'conflict'],
+    [412, 'unavailable'],
     [500, 'unavailable'],
     [503, 'unavailable'],
     [404, 'unavailable'],
@@ -111,6 +145,20 @@ describe('createWriteClient status mapping', () => {
   ])('%i is %s', async (status, reason) => {
     const { client } = build(() => problem(status));
     expect(await client.putProfile(ASTRONAUT, {})).toEqual({ ok: false, reason });
+  });
+
+  it('412 to a create is exists, and is not logged as a failure', async () => {
+    const { client, logged } = build(() => problem(412));
+    expect(await client.createDailyContext(ASTRONAUT, DAY, {})).toEqual({ ok: false, reason: 'exists' });
+    expect(logged).toEqual([]);
+  });
+
+  it.each([
+    [409, 'conflict'],
+    [500, 'unavailable'],
+  ])('a create answered %i is %s', async (status, reason) => {
+    const { client } = build(() => problem(status));
+    expect(await client.createDailyContext(ASTRONAUT, DAY, {})).toEqual({ ok: false, reason });
   });
 
   it('422 carries only the pointer and message of each well-formed field error', async () => {

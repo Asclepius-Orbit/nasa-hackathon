@@ -12,6 +12,7 @@ import { authStateSchema, createAuthService } from './auth/auth-service';
 import { createPinHasher } from './auth/pin';
 import { registerIpc } from './ipc';
 import { createDailyContextService } from './profile/daily-context-service';
+import { createDailyContextRefresh } from './profile/daily-context-refresh';
 import { createDevicesService } from './profile/devices-service';
 import { createHarnessService } from './profile/harness-service';
 import { createProfileService } from './profile/profile-service';
@@ -119,6 +120,16 @@ if (!app.requestSingleInstanceLock()) {
     const records = createRecordsClient({ baseUrl: backendUrl, token });
     const writer = createWriteClient({ baseUrl: backendUrl, token, logError: console.error });
     const dailyContext = createDailyContextService({ auth, records, writer, now: Date.now, logError: console.error });
+    const refreshDailyContext = createDailyContextRefresh(auth, dailyContext);
+    const dailyContextTimer = setInterval(() => { void refreshDailyContext(); }, 30_000);
+    let midnightTimer: ReturnType<typeof setTimeout>;
+    const scheduleMidnight = (): void => {
+      const now = Date.now();
+      const next = (Math.floor(now / 86_400_000) + 1) * 86_400_000;
+      midnightTimer = setTimeout(() => { void refreshDailyContext(); scheduleMidnight(); }, next - now);
+    };
+    scheduleMidnight();
+    app.once('before-quit', () => { clearInterval(dailyContextTimer); clearTimeout(midnightTimer); });
     const profile = createProfileService({ auth, records, writer, dailyContext, logError: console.error });
     const devices = createDevicesService({ auth, records });
     const harness = createHarnessService({ auth, crew });

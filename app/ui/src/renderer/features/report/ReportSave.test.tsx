@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { DailyReportFields } from '../../../shared/api';
 import { RealDataSource } from '../../data/real/RealDataSource';
-import { FakeAsclepiusApi } from '../../test/fake-api';
+import { DEFAULT_CONTEXT, FakeAsclepiusApi } from '../../test/fake-api';
 import { renderInWorld } from '../../test/providers';
 import { ReportView } from './ReportView';
 
@@ -121,18 +121,21 @@ describe('the outcome of saving', () => {
     api.reports.saveDaily = () =>
       new Promise((resolve) => {
         release = () => {
-          resolve({ ok: true, value: { reportId: 'r', assessmentLevel: null, assessmentSkipped: null } });
+          resolve({ ok: true, value: { reportId: 'r', assessmentLevel: null, assessmentSkipped: null, exercise: null } });
         };
       });
     await minimal();
     await userEvent.click(save());
     expect(screen.getByRole('button', { name: 'Saving' })).toBeDisabled();
+    expect(within(screen.getByRole('radiogroup', { name: PAIN })).getByRole('radio', { name: '4' })).toBeDisabled();
     expect(screen.queryByText(/Daily report saved\./)).not.toBeInTheDocument();
     act(() => {
       release();
     });
     expect(await screen.findByText('Daily report saved. A new assessment is running.')).toBeInTheDocument();
     expect(save()).toBeEnabled();
+    await choose(PAIN, '4');
+    expect(screen.queryByText(/Daily report saved\./)).not.toBeInTheDocument();
   });
 
   it('a refusal on a field shows its message by that question and does not say saved', async () => {
@@ -188,5 +191,81 @@ describe('the outcome of saving', () => {
     await minimal();
     await userEvent.click(save());
     expect(await screen.findByRole('alert')).toHaveTextContent('The monitor did not answer. Nothing was saved');
+  });
+});
+
+describe('the exercise that the report could not store', () => {
+  const SAVED = { reportId: 'r', assessmentLevel: null, assessmentSkipped: null, exercise: null } as const;
+  const retry = (): HTMLElement => screen.getByRole('button', { name: 'Retry exercise' });
+  const withExercise = async (): Promise<void> => {
+    await minimal();
+    await press('Exercise device', 'CEVIS');
+    await press('Exercise duration', '45 min');
+    await userEvent.click(save());
+  };
+
+  it('says the report was saved but the exercise was not, and the retry saves it and then says all is saved', async () => {
+    const api = await setup();
+    api.forced.set('reports.saveDaily', { ok: true, value: { ...SAVED, exercise: 'not_stored' } });
+    await withExercise();
+    expect(await screen.findByText(/Daily report saved, but your exercise was not/)).toBeInTheDocument();
+    expect(screen.queryByText('Daily report saved. A new assessment is running.')).not.toBeInTheDocument();
+    let release: () => void = () => undefined;
+    api.reports.addExercise = () =>
+      new Promise((resolve) => {
+        release = () => {
+          resolve({ ok: true, value: DEFAULT_CONTEXT });
+        };
+      });
+    await userEvent.click(retry());
+    expect(screen.getByRole('button', { name: 'Retrying' })).toBeDisabled();
+    act(() => {
+      release();
+    });
+    expect(await screen.findByText('Daily report saved. A new assessment is running.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry exercise' })).not.toBeInTheDocument();
+  });
+
+  it('sends the exercise that was filled in when retrying, and keeps offering the retry while it fails', async () => {
+    const api = await setup();
+    api.forced.set('reports.saveDaily', { ok: true, value: { ...SAVED, exercise: 'not_stored' } });
+    api.forced.set('reports.addExercise', { ok: false, reason: 'unavailable' });
+    await withExercise();
+    await userEvent.click(await screen.findByRole('button', { name: 'Retry exercise' }));
+    expect(api.lastArg['reports.addExercise']).toEqual({ modality: 'cevis', duration_min: 45 });
+    expect(await screen.findByText(/Daily report saved, but your exercise was not/)).toBeInTheDocument();
+    expect(retry()).toBeEnabled();
+  });
+
+  it("tells to set today's context in Profile when there is none", async () => {
+    const api = await setup();
+    api.forced.set('reports.saveDaily', { ok: true, value: { ...SAVED, exercise: 'no_context' } });
+    await withExercise();
+    expect(await screen.findByText(/no context for today. Set today's context in Profile/)).toBeInTheDocument();
+    expect(retry()).toBeEnabled();
+  });
+
+  it('shows no retry when the exercise was stored or there was none', async () => {
+    const api = await setup();
+    api.forced.set('reports.saveDaily', { ok: true, value: { ...SAVED, exercise: 'stored' } });
+    await withExercise();
+    expect(await screen.findByText('Daily report saved. A new assessment is running.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry exercise' })).not.toBeInTheDocument();
+  });
+});
+
+describe('the sleep quality without hours', () => {
+  it('does not send, and asks for the hours on that question, until they are given', async () => {
+    const api = await setup();
+    await minimal();
+    await choose(QUALITY, '6');
+    await userEvent.click(save());
+    expect(await screen.findByText('Say how long you slept to save how well you slept.')).toBeInTheDocument();
+    expect(api.calls).not.toContain('reports.saveDaily');
+    await press('How long did you sleep?', '7 h');
+    expect(screen.queryByText('Say how long you slept to save how well you slept.')).not.toBeInTheDocument();
+    await userEvent.click(save());
+    expect(await screen.findByText('Daily report saved. A new assessment is running.')).toBeInTheDocument();
+    expect(sent(api)).toMatchObject({ sleep_hours: 7, sleep_quality_nrs: 6 });
   });
 });

@@ -185,3 +185,31 @@ def test_has_the_keys_of_the_contract_examples(name: str) -> None:
     view = strip([])
     assert set(view) == set(sample)
     assert set(view["mission"]) == set(sample["mission"])
+
+
+def test_a_device_id_describes_that_device_not_the_latest_one() -> None:
+    paired = status("wb-01", timestamp="2026-11-13T09:30:00Z", battery_pct=80)
+    latest = status("sim-01", timestamp="2026-11-13T09:59:00Z", battery_pct=10)
+    view = build_strip(AST, PROFILE, [paired, latest], None, None, NOW, 7, STALE_DEVICE_HOURS, None, None, device_id="wb-01")
+
+    assert view["harness"] is not None
+    assert (view["harness"]["device_id"], view["harness"]["battery_pct"], view["harness"]["last_seen_at"]) == ("wb-01", 80, "2026-11-13T09:30:00Z")
+    assert view["harness"]["stale"] is True  # 30 minutes old against a 15-minute threshold: the same rule as without device_id
+
+
+def test_a_device_id_that_never_reported_is_null_even_if_others_did() -> None:
+    view = build_strip(AST, PROFILE, [status("sim-01")], None, None, NOW, 7, STALE_DEVICE_HOURS, None, None, device_id="wb-01")
+
+    assert view["harness"] is None
+
+
+def test_a_device_id_of_another_astronaut_is_not_used() -> None:
+    other = status("wb-01") | {"astronaut_id": "AST-02"}
+
+    assert build_strip(AST, PROFILE, [other], None, None, NOW, 7, STALE_DEVICE_HOURS, None, None, device_id="wb-01")["harness"] is None
+
+
+def test_an_offline_paired_device_is_null() -> None:
+    view = build_strip(AST, PROFILE, [status("wb-01", state="offline")], None, None, NOW, 7, STALE_DEVICE_HOURS, None, None, device_id="wb-01")
+
+    assert view["harness"] is None

@@ -15,7 +15,9 @@ import { dailyContextSchema, profileSchema } from './write-client';
 
 export interface RecordsClient {
   profile(astronautId: string): Promise<AstronautProfile | null>;
+  profileVersioned(astronautId: string): Promise<{ value: AstronautProfile; etag: string } | null>;
   dailyContext(astronautId: string, day: string): Promise<DailyContext | null>;
+  dailyContextVersioned(astronautId: string, day: string): Promise<{ value: DailyContext; etag: string } | null>;
   devices(astronautId: string): Promise<DeviceStatus[]>;
   /**
    * Streams declared in a session (`GET /ui/sessions/{id}`, the raw session: the session view carries no stream kinds);
@@ -76,7 +78,7 @@ export function createRecordsClient({
   if (origin === null) throw new Error('backend URL must be an http(s) loopback origin');
   const base: string = origin;
 
-  async function get<T>(path: string, schema: z.ZodType, astronautId: string): Promise<T | null> {
+  async function get<T>(path: string, schema: z.ZodType, astronautId: string, onEtag?: (etag: string | null) => void): Promise<T | null> {
     let body: unknown;
     try {
       const response = await doFetch(`${base}${path}`, {
@@ -88,6 +90,7 @@ export function createRecordsClient({
       if (response.status === 404) return null;
       if (response.status === 401 || response.status === 403) throw new ViewsError('locked');
       if (response.status !== 200) throw new ViewsError('unavailable');
+      if (onEtag !== undefined) onEtag(response.headers.get('etag'));
       body = await response.json();
     } catch (error) {
       if (error instanceof ViewsError) throw error;
@@ -98,11 +101,21 @@ export function createRecordsClient({
     return body as T;
   }
 
+  async function versioned<T>(path: string, schema: z.ZodType<T>, id: string): Promise<{ value: T; etag: string } | null> {
+    const metadata: { etag: string | null } = { etag: null };
+    const value = await get<T>(path, schema, id, (header) => { metadata.etag = header; });
+    if (value === null) return null;
+    if (metadata.etag === null) throw new ViewsError('unavailable');
+    return { value, etag: metadata.etag };
+  }
+
   const crewPath = (id: string, rest: string): string => `/ui/crew/${encodeURIComponent(id)}/${rest}`;
 
   return {
     profile: (id) => get(crewPath(id, 'profile'), profileSchema(id), id),
+    profileVersioned: (id) => versioned(crewPath(id, 'profile'), profileSchema(id) as unknown as z.ZodType<AstronautProfile>, id),
     dailyContext: (id, day) => get(crewPath(id, `daily-context/${encodeURIComponent(day)}`), dailyContextSchema(id, day), id),
+    dailyContextVersioned: (id, day) => versioned(crewPath(id, `daily-context/${encodeURIComponent(day)}`), dailyContextSchema(id, day) as unknown as z.ZodType<DailyContext>, id),
     devices: async (id) => (await get<DeviceStatus[]>(crewPath(id, 'devices'), devicesSchema(id), id)) ?? [],
     async sessionStreams(id, sessionId) {
       const body = await get<RawSession>(`/ui/sessions/${encodeURIComponent(sessionId)}`, rawSessionSchema(id), id);

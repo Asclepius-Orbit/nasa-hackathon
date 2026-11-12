@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
+import type { AstronautProfile, DailyContext, WriteResult } from '../../../shared/api';
 import { RealDataSource } from '../../data/real/RealDataSource';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import { renderInWorld } from '../../test/providers';
@@ -154,5 +155,70 @@ describe('ProfileView', () => {
     setup(api);
     expect(await screen.findByTestId('no-monitor')).toBeInTheDocument();
     expect(screen.queryByLabelText('Date of birth')).not.toBeInTheDocument();
+  });
+
+  describe('while a save is pending', () => {
+    /** A write the test answers by hand, so the in-flight state can be inspected. */
+    function hold<T>(): { promise: Promise<WriteResult<T>>; resolve: (value: WriteResult<T>) => void } {
+      let resolve!: (value: WriteResult<T>) => void;
+      const promise = new Promise<WriteResult<T>>((r) => {
+        resolve = r;
+      });
+      return { promise, resolve };
+    }
+
+    it('locks the profile fields and refuses a second send until the answer arrives, then shows Saved', async () => {
+      const api = new FakeAsclepiusApi();
+      const pending = hold<AstronautProfile>();
+      api.profile.update = (): Promise<WriteResult<AstronautProfile>> => {
+        api.calls.push('profile.update');
+        return pending.promise;
+      };
+      const user = userEvent.setup();
+      setup(api);
+      const mass = await screen.findByLabelText('Body mass (kg)');
+      await user.click(within(profilePanel()).getByRole('button', { name: 'Save profile' }));
+      expect(await within(profilePanel()).findByRole('button', { name: 'Saving…' })).toBeDisabled();
+      expect(mass).toBeDisabled();
+      expect(screen.getByLabelText('Date of birth')).toBeDisabled();
+      expect(within(profilePanel()).getByRole('button', { name: 'Male' })).toBeDisabled();
+      await user.type(mass, '9');
+      await user.click(within(profilePanel()).getByRole('button', { name: 'Saving…' }));
+      expect(mass).toHaveValue('64.5');
+      expect(api.calls.filter((c) => c === 'profile.update')).toHaveLength(1);
+      expect(within(contextPanel()).getByLabelText('Mission day, optional')).toBeEnabled();
+
+      pending.resolve({ ok: true, value: api.profileValue as AstronautProfile });
+      expect(await within(profilePanel()).findByText('Saved')).toBeInTheDocument();
+      expect(mass).toBeEnabled();
+      expect(within(profilePanel()).getByRole('button', { name: 'Save profile' })).toBeEnabled();
+    });
+
+    it('locks the context fields and refuses a second send until the answer arrives, then shows Saved', async () => {
+      const api = new FakeAsclepiusApi();
+      const pending = hold<DailyContext>();
+      api.dailyContext.updateToday = (): Promise<WriteResult<DailyContext>> => {
+        api.calls.push('dailyContext.updateToday');
+        return pending.promise;
+      };
+      const user = userEvent.setup();
+      setup(api);
+      const day = await screen.findByLabelText('Mission day, optional');
+      await user.click(within(contextPanel()).getByRole('button', { name: 'Save context' }));
+      expect(await within(contextPanel()).findByRole('button', { name: 'Saving…' })).toBeDisabled();
+      expect(day).toBeDisabled();
+      expect(within(contextPanel()).getByRole('button', { name: 'Preflight' })).toBeDisabled();
+      expect(within(contextPanel()).getByRole('button', { name: 'Earth gravity (1 g)' })).toBeDisabled();
+      await user.type(day, '9');
+      await user.click(within(contextPanel()).getByRole('button', { name: 'Saving…' }));
+      expect(day).toHaveValue('78');
+      expect(api.calls.filter((c) => c === 'dailyContext.updateToday')).toHaveLength(1);
+      expect(screen.getByLabelText('Body mass (kg)')).toBeEnabled();
+
+      pending.resolve({ ok: true, value: api.contextValue as DailyContext });
+      expect(await within(contextPanel()).findByText('Saved')).toBeInTheDocument();
+      expect(day).toBeEnabled();
+      expect(within(contextPanel()).getByRole('button', { name: 'Save context' })).toBeEnabled();
+    });
   });
 });

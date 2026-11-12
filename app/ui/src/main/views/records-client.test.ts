@@ -54,6 +54,19 @@ const reads: [string, (c: RecordsClient) => Promise<unknown>, string, unknown][]
 ];
 
 describe('createRecordsClient', () => {
+  it('returns the opaque ETag with a versioned context and rejects a missing ETag', async () => {
+    const { client } = build(() => new Response(JSON.stringify(CONTEXT), { headers: { ETag: '"v1"' } }));
+    expect(await client.dailyContextVersioned(ASTRONAUT, DAY)).toEqual({ value: CONTEXT, etag: '"v1"' });
+    const without = build(() => json(CONTEXT)).client;
+    expect(await codeOf(without.dailyContextVersioned(ASTRONAUT, DAY))).toBe('unavailable');
+  });
+
+  it('returns the version of a profile and refuses a response without one', async () => {
+    const withTag = build(() => new Response(JSON.stringify(PROFILE), { headers: { etag: '"v1"' } }));
+    expect(await withTag.client.profileVersioned(ASTRONAUT)).toEqual({ value: PROFILE, etag: '"v1"' });
+    expect(await codeOf(build(() => json(PROFILE)).client.profileVersioned(ASTRONAUT))).toBe('unavailable');
+  });
+
   it.each(reads)('GETs the %s with the credentials and returns the body', async (_label, read, path, body) => {
     const { client, calls } = build(() => json(body));
     expect(await read(client)).toEqual(body);

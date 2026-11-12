@@ -39,6 +39,7 @@ describe('IPC_CHANNELS', () => {
       'asclepius:sessions:reprocess',
       'asclepius:reports:save-daily',
       'asclepius:reports:save-oswestry',
+      'asclepius:reports:add-exercise',
       'asclepius:reports:due',
       'asclepius:urgent:send',
       'asclepius:contacts:list',

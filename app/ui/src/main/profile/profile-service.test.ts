@@ -38,8 +38,24 @@ function build(session: AuthSession | null = UNLOCKED) {
   const logged: unknown[] = [];
   const service = createProfileService({
     auth: { current: () => session },
-    records: backend.records,
-    writer: backend.writer,
+    records: {
+      ...backend.records,
+      profileVersioned: async (id) => {
+        const value = await backend.records.profile(id);
+        return value === null ? null : { value, etag: JSON.stringify(value) };
+      },
+    },
+    writer: {
+      ...backend.writer,
+      putProfile: async (id, body, etag) => {
+        if (etag !== JSON.stringify(backend.profiles.get(id))) return { ok: false, reason: 'conflict' };
+        return backend.writer.putProfile(id, body);
+      },
+      createProfile: async (id, body) => {
+        if (backend.profiles.has(id)) return { ok: false, reason: 'conflict' };
+        return backend.writer.putProfile(id, body);
+      },
+    },
     dailyContext: {
       ensureToday: (id) => {
         ensured.push(id);
@@ -52,6 +68,48 @@ function build(session: AuthSession | null = UNLOCKED) {
 }
 
 describe('createProfileService', () => {
+  it('re-reads after a concurrent update and preserves the other writer’s unedited fields', async () => {
+    let stored = STORED;
+    let calls = 0;
+    const service = createProfileService({
+      auth: { current: () => UNLOCKED },
+      records: {
+        profile: () => Promise.resolve(stored),
+        profileVersioned: () => Promise.resolve({ value: stored, etag: String(calls) }),
+      },
+      writer: {
+        putProfile: (_id, body) => {
+          calls += 1;
+          if (calls === 1) {
+            stored = { ...stored, spine_history: { prior_back_pain: false } } as AstronautProfile;
+            return Promise.resolve({ ok: false, reason: 'conflict' });
+          }
+          expect(body['spine_history']).toEqual({ prior_back_pain: false });
+          return Promise.resolve({ ok: true, value: stored });
+        },
+        createProfile: () => Promise.resolve({ ok: false, reason: 'conflict' }),
+      },
+      dailyContext: { ensureToday: () => Promise.resolve() },
+    });
+    expect((await service.update(FIELDS)).ok).toBe(true);
+    expect(calls).toBe(2);
+  });
+
+  it('returns conflict after bounded retries when another writer keeps changing the profile', async () => {
+    let attempts = 0;
+    const service = createProfileService({
+      auth: { current: () => UNLOCKED },
+      records: { profile: () => Promise.resolve(STORED), profileVersioned: () => Promise.resolve({ value: STORED, etag: 'v1' }) },
+      writer: {
+        putProfile: () => { attempts += 1; return Promise.resolve({ ok: false, reason: 'conflict' }); },
+        createProfile: () => Promise.resolve({ ok: false, reason: 'conflict' }),
+      },
+      dailyContext: { ensureToday: () => Promise.reject(new Error('must not run')) },
+    });
+    expect(await service.update(FIELDS)).toEqual({ ok: false, reason: 'conflict' });
+    expect(attempts).toBe(3);
+  });
+
   it('reads the unlocked astronaut profile, null when none', async () => {
     const { backend, service } = build();
     expect(await service.get()).toBeNull();

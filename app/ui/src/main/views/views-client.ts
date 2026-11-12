@@ -36,7 +36,8 @@ export type ViewFetch = (
 ) => Promise<Response>;
 
 export interface ViewsClient {
-  strip(astronautId: string): Promise<StripView>;
+  /** With `deviceId` the harness is that device (the one paired in the app); without it, the latest device to report. */
+  strip(astronautId: string, deviceId?: string): Promise<StripView>;
   today(astronautId: string): Promise<TodayView>;
   history(astronautId: string, range: ViewRange): Promise<HistoryView>;
   baseline(astronautId: string): Promise<BaselineView>;
@@ -123,7 +124,10 @@ export function createViewsClient({
     `/ui/crew/${encodeURIComponent(astronautId)}/views/${name}`;
 
   return {
-    strip: (id) => get(crewPath(id, 'strip'), SCHEMAS.strip(id), id),
+    strip(id, deviceId) {
+      const suffix = deviceId === undefined ? '' : `?${new URLSearchParams({ device_id: deviceId }).toString()}`;
+      return get(`${crewPath(id, 'strip')}${suffix}`, SCHEMAS.strip(id), id);
+    },
     today: (id) => get(crewPath(id, 'today'), SCHEMAS.today(), id),
     history(id, { from, to }) {
       const query = new URLSearchParams();

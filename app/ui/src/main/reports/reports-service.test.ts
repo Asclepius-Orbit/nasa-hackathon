@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AuthSession, DailyReportFields } from '../../shared/api';
+import type { AddExerciseResult, AuthSession, DailyReportFields } from '../../shared/api';
 import type { ExerciseEntry } from '../profile/daily-context-service';
 import { FakeBackend } from '../profile/test-fakes';
 import { ViewsError } from '../views/views-error';
@@ -32,6 +32,8 @@ const saved = (assessment: unknown = { level: 'amber' }, skipped: string | null 
 function build(session: AuthSession | null = UNLOCKED) {
   const backend = new FakeBackend();
   const exercises: [string, ExerciseEntry][] = [];
+  const stored: AddExerciseResult = { ok: true, value: { schema_version: '1.0.0' } as never };
+  const context: { answer: AddExerciseResult } = { answer: stored };
   let next = 0;
   const service = createReportsService({
     auth: { current: () => session },
@@ -40,21 +42,39 @@ function build(session: AuthSession | null = UNLOCKED) {
     dailyContext: {
       addExercise: (id, entry) => {
         exercises.push([id, entry]);
-        return Promise.resolve();
+        return Promise.resolve(context.answer);
       },
     },
     newId: () => `00000000-0000-4000-8000-00000000000${String(++next)}`,
   });
   backend.sendAnswer = saved();
-  return { backend, service, exercises };
+  return { backend, service, exercises, context };
 }
+
+describe('createReportsService addExercise', () => {
+  const ENTRY = { modality: 'cevis', duration_min: 30 } as const;
+
+  it("retries the exercise on the unlocked astronaut's context and answers what happened", async () => {
+    const { service, exercises, context } = build();
+    expect(await service.addExercise(ENTRY)).toEqual(context.answer);
+    expect(exercises).toEqual([[ID, ENTRY]]);
+    context.answer = { ok: false, reason: 'no_context' };
+    expect(await service.addExercise(ENTRY)).toEqual({ ok: false, reason: 'no_context' });
+  });
+
+  it('answers locked with nothing written when nobody is unlocked', async () => {
+    const { service, exercises } = build(null);
+    expect(await service.addExercise(ENTRY)).toEqual({ ok: false, reason: 'locked' });
+    expect(exercises).toEqual([]);
+  });
+});
 
 describe('createReportsService saveDaily', () => {
   it('POSTs the daily report with a fresh id and answers the assessment it led to', async () => {
     const { backend, service } = build();
     expect(await service.saveDaily(FIELDS)).toEqual({
       ok: true,
-      value: { reportId: REPORT, assessmentLevel: 'amber', assessmentSkipped: null },
+      value: { reportId: REPORT, assessmentLevel: 'amber', assessmentSkipped: null, exercise: null },
     });
     expect(backend.sent).toEqual([
       {
@@ -98,7 +118,7 @@ describe('createReportsService saveDaily', () => {
     backend.sendAnswer = saved(null, 'no_profile');
     expect(await service.saveDaily(FIELDS)).toEqual({
       ok: true,
-      value: { reportId: REPORT, assessmentLevel: null, assessmentSkipped: 'no_profile' },
+      value: { reportId: REPORT, assessmentLevel: null, assessmentSkipped: 'no_profile', exercise: null },
     });
   });
 
@@ -106,6 +126,17 @@ describe('createReportsService saveDaily', () => {
     const { service, exercises } = build();
     await service.saveDaily({ ...FIELDS, exercise: { modality: 'ared', duration_min: 45 } });
     expect(exercises).toEqual([[ID, { modality: 'ared', duration_min: 45 }]]);
+  });
+
+  it('says whether the exercise was stored, and keeps the report ok when it was not', async () => {
+    const { service, context } = build();
+    const withExercise = { ...FIELDS, exercise: { modality: 'ared', duration_min: 45 } } as const;
+    expect(await service.saveDaily(FIELDS)).toMatchObject({ ok: true, value: { exercise: null } });
+    expect(await service.saveDaily(withExercise)).toMatchObject({ ok: true, value: { exercise: 'stored' } });
+    context.answer = { ok: false, reason: 'no_context' };
+    expect(await service.saveDaily(withExercise)).toMatchObject({ ok: true, value: { exercise: 'no_context' } });
+    context.answer = { ok: false, reason: 'unavailable' };
+    expect(await service.saveDaily(withExercise)).toMatchObject({ ok: true, value: { exercise: 'not_stored' } });
   });
 
   it('adds no exercise when there is none or the report was refused', async () => {

@@ -14,6 +14,7 @@ import {
   createCrewInputSchema,
   dailyContextFieldsSchema,
   dailyReportFieldsSchema,
+  exerciseEntrySchema,
   historyInputSchema,
   logOfficerCallInputSchema,
   markArtifactInputSchema,
@@ -181,6 +182,7 @@ export function registerIpc(
   withInput(IPC_CHANNELS.sessionsReprocess, sessionOnlyInputSchema, (input) => sessions.reprocess(input));
   withInput(IPC_CHANNELS.reportsSaveDaily, dailyReportFieldsSchema, (fields) => reports.saveDaily(fields));
   withInput(IPC_CHANNELS.reportsSaveOswestry, oswestryInputSchema, (input) => reports.saveOswestry(input));
+  withInput(IPC_CHANNELS.reportsAddExercise, exerciseEntrySchema, (entry) => reports.addExercise(entry));
   withoutInput(IPC_CHANNELS.reportsDue, () => reports.due());
   // The one write allowed without a PIN (see UrgentService); its schema still requires a well-formed crew id.
   withInput(IPC_CHANNELS.urgentSend, urgentInputSchema, (input) => urgent.send(input));

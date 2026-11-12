@@ -3,10 +3,18 @@
  * (medication, exercise, countermeasures...) as stored; when the current one cannot be read nothing is written.
  *
  * `ensureToday` fills in a missing day from the profile's launch and landing dates, with the backend's rules
- * (`spine_monitor/backend/src/monitor/views/mission.py`). It never overwrites a stored context and never fails: it is
+ * (`spine_monitor/backend/src/monitor/views/mission.py`). It never overwrites a stored context, not even one saved
+ * between its read and its write (the write is create-only, so the backend refuses it then), and never fails: it is
  * best effort, run after sign-in and after a profile update.
  */
-import type { AstronautProfile, DailyContext, DailyContextFields, DailyReportFields, WriteResult } from '../../shared/api';
+import type {
+  AddExerciseResult,
+  AstronautProfile,
+  DailyContext,
+  DailyContextFields,
+  ExerciseEntry,
+  WriteResult,
+} from '../../shared/api';
 import type { AuthService } from '../auth/auth-service';
 import type { RecordsClient } from '../views/records-client';
 import type { WriteClient } from '../views/write-client';
@@ -18,19 +26,18 @@ export interface DailyContextService {
   /** Writes today's context derived from the profile when none is stored. Resolves once done; never rejects. */
   ensureToday(astronautId: string): Promise<void>;
   /**
-   * Appends an exercise to today's stored context (`exercise[]`); nothing when today has none. Best effort like
-   * `ensureToday`: failures are only logged.
+   * Appends an exercise to today's stored context (`exercise[]`); `no_context` and nothing written when today has
+   * none. Never rejects: a failed read or write is logged and answered as a failure, so the caller can offer a retry.
    */
-  addExercise(astronautId: string, entry: ExerciseEntry): Promise<void>;
+  addExercise(astronautId: string, entry: ExerciseEntry): Promise<AddExerciseResult>;
 }
 
-/** One general exercise of the day (`domain/daily-context` `exercise[]`). */
-export type ExerciseEntry = NonNullable<DailyReportFields['exercise']>;
+export type { ExerciseEntry };
 
 export interface DailyContextServiceOptions {
   auth: Pick<AuthService, 'current'>;
-  records: Pick<RecordsClient, 'profile' | 'dailyContext'>;
-  writer: Pick<WriteClient, 'putDailyContext'>;
+  records: Pick<RecordsClient, 'profile' | 'dailyContext' | 'dailyContextVersioned'>;
+  writer: Pick<WriteClient, 'putDailyContext' | 'createDailyContext'>;
   now: () => number;
   logError?: (error: unknown) => void;
 }
@@ -90,15 +97,24 @@ export function createDailyContextService({
       const id = unlockedId(auth);
       if (id === null) return { ok: false, reason: 'locked' };
       const day = utcDay(now());
-      let stored: DailyContext | null;
       try {
-        stored = await records.dailyContext(id, day);
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const current = await records.dailyContextVersioned(id, day);
+          const { schema_version: _version, mission_day: _missionDay, ...kept } = current?.value ?? {};
+          const body = contextBody(id, day, kept, fields);
+          if (current === null) {
+            const created = await writer.createDailyContext(id, day, body);
+            if (!created.ok && created.reason === 'exists') continue;
+            return created;
+          }
+          const result = await writer.putDailyContext(id, day, body, current.etag);
+          if (!result.ok && result.reason === 'conflict') continue;
+          return result;
+        }
+        return { ok: false, reason: 'conflict' };
       } catch (error) {
         return readFailure(error, logError);
       }
-      // The backend sets the contract version; a cleared mission day must not survive from the stored one.
-      const { schema_version: _version, mission_day: _missionDay, ...kept } = stored ?? {};
-      return writer.putDailyContext(id, day, contextBody(id, day, kept, fields));
     },
 
     async ensureToday(astronautId) {
@@ -108,8 +124,9 @@ export function createDailyContextService({
         const profile = await records.profile(astronautId);
         const derived = profile === null ? null : deriveDailyContext(profile, day);
         if (derived === null) return;
-        const result = await writer.putDailyContext(astronautId, day, contextBody(astronautId, day, {}, derived));
-        if (!result.ok) logError(`daily context: ${day} not stored automatically (${result.reason})`);
+        const result = await writer.createDailyContext(astronautId, day, contextBody(astronautId, day, {}, derived));
+        // `exists`: one was stored meanwhile (by hand or by another client); it wins and there is nothing to do.
+        if (!result.ok && result.reason !== 'exists') logError(`daily context: ${day} not stored automatically (${result.reason})`);
       } catch (error) {
         logError(error);
       }
@@ -118,14 +135,20 @@ export function createDailyContextService({
     async addExercise(astronautId, entry) {
       const day = utcDay(now());
       try {
-        const stored = await records.dailyContext(astronautId, day);
-        if (stored === null) return;
-        const { schema_version: _version, ...kept } = stored;
-        const previous = Array.isArray(kept['exercise']) ? (kept['exercise'] as unknown[]) : [];
-        const result = await writer.putDailyContext(astronautId, day, { ...kept, exercise: [...previous, entry] });
-        if (!result.ok) logError(`daily context: exercise not added to ${day} (${result.reason})`);
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const current = await records.dailyContextVersioned(astronautId, day);
+          if (current === null) return { ok: false, reason: 'no_context' };
+          const { schema_version: _version, ...kept } = current.value;
+          const previous = Array.isArray(kept['exercise']) ? (kept['exercise'] as unknown[]) : [];
+          const result = await writer.putDailyContext(astronautId, day, { ...kept, exercise: [...previous, entry] }, current.etag);
+          if (!result.ok && result.reason === 'conflict') continue;
+          if (!result.ok) logError(`daily context: exercise not added to ${day} (${result.reason})`);
+          return result;
+        }
+        logError(`daily context: exercise not added to ${day} (conflict)`);
+        return { ok: false, reason: 'conflict' };
       } catch (error) {
-        logError(error);
+        return readFailure(error, logError);
       }
     },
   };

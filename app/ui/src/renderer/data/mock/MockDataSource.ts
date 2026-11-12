@@ -1,4 +1,5 @@
 import type {
+  AddExerciseResult,
   AstronautProfile,
   CommandSent,
   DailyContext,
@@ -192,11 +193,15 @@ export class MockDataSource implements DataSource {
   }
 
   saveDailyReport(): Promise<WriteResult<ReportSaved>> {
-    return Promise.resolve({ ok: true, value: { reportId: 'mock-report', assessmentLevel: null, assessmentSkipped: 'mock' } });
+    return Promise.resolve({ ok: true, value: { reportId: 'mock-report', assessmentLevel: null, assessmentSkipped: 'mock', exercise: null } });
   }
 
   saveOswestry(): Promise<WriteResult<ReportSaved>> {
-    return Promise.resolve({ ok: true, value: { reportId: 'mock-report', assessmentLevel: null, assessmentSkipped: 'mock' } });
+    return Promise.resolve({ ok: true, value: { reportId: 'mock-report', assessmentLevel: null, assessmentSkipped: 'mock', exercise: null } });
+  }
+
+  addExercise(): Promise<AddExerciseResult> {
+    return Promise.resolve({ ok: false, reason: 'no_context' });
   }
 
   getStopped(): Promise<StoppedData> {

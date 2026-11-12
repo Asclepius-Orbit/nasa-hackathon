@@ -84,7 +84,7 @@ test('bridge exposes exactly the crew, auth, settings, views, profile, daily con
     dailyContext: ['today:function', 'updateToday:function'],
     devices: ['list:function'],
     sessions: ['calibrateMvc:function', 'markArtifact:function', 'reprocess:function', 'start:function', 'stop:function'],
-    reports: ['due:function', 'saveDaily:function', 'saveOswestry:function'],
+    reports: ['addExercise:function', 'due:function', 'saveDaily:function', 'saveOswestry:function'],
     urgent: ['send:function'],
     contacts: ['list:function', 'logOfficerCall:function'],
     reps: ['subscribe:function'],

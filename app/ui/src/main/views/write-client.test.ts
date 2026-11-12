@@ -61,6 +61,18 @@ describe('createWriteClient requests', () => {
     expect(calls[0]?.init.headers['if-match']).toBe('"v1"');
   });
 
+  it('sends If-Match for a conditional profile update and reports a stale version as conflict', async () => {
+    const { client, calls } = build(() => problem(412));
+    expect(await client.putProfile(ASTRONAUT, {}, '"version"')).toEqual({ ok: false, reason: 'conflict' });
+    expect(calls[0]?.init.headers['if-match']).toBe('"version"');
+  });
+
+  it('creates a profile only when absent', async () => {
+    const { client, calls } = build(() => problem(412));
+    expect(await client.createProfile(ASTRONAUT, {})).toEqual({ ok: false, reason: 'exists' });
+    expect(calls[0]?.init.headers['if-none-match']).toBe('*');
+  });
+
   it('PUTs the profile as JSON to the loopback backend with the credentials, refusing redirects', async () => {
     const { client, calls } = build(() => json(PROFILE));
     expect(await client.putProfile(ASTRONAUT, { astronaut_id: ASTRONAUT })).toEqual({ ok: true, value: PROFILE });

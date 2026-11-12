@@ -127,7 +127,7 @@ export function createWriteClient({
       });
       const { status } = response;
       if (status === 412 && onlyCreate !== undefined) return onlyCreate.exists;
-      if (status === 412) return { ok: false, reason: 'conflict' };
+      if (status === 412 && etag !== undefined) return { ok: false, reason: 'conflict' };
       if (status === 401 || status === 403) return { ok: false, reason: 'locked' };
       if (status === 409) return { ok: false, reason: 'conflict' };
       if (status === 422) return { ok: false, reason: 'invalid', fields: fieldsOf(await response.json().catch(() => null)) };
@@ -153,8 +153,18 @@ export function createWriteClient({
 
   return {
     send,
-    putProfile: (id, body, etag) => exchange({ method: 'PUT', path: `/ui/crew/${encodeURIComponent(id)}/profile`, astronautId: id, body, schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile> }, undefined, etag),
-    createProfile: (id, body) => exchange({ method: 'PUT', path: `/ui/crew/${encodeURIComponent(id)}/profile`, astronautId: id, body, schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile> }, { exists: { ok: false, reason: 'exists' } as const }),
+    putProfile: (id, body, etag) =>
+      exchange({
+        method: 'PUT',
+        path: `/ui/crew/${encodeURIComponent(id)}/profile`,
+        astronautId: id,
+        body,
+        schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile>,
+      }, undefined, etag),
+    createProfile: (id, body) => exchange({
+      method: 'PUT', path: `/ui/crew/${encodeURIComponent(id)}/profile`, astronautId: id, body,
+      schema: profileSchema(id) as unknown as z.ZodType<AstronautProfile>,
+    }, { exists: { ok: false, reason: 'exists' } as const }),
     putDailyContext: (id, day, body, etag) => exchange(dailyContextRequest(id, day, body), undefined, etag),
     createDailyContext: (id, day, body) =>
       exchange(dailyContextRequest(id, day, body), { exists: { ok: false, reason: 'exists' } as const }),

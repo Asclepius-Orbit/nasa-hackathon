@@ -22,6 +22,7 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
 - Every route needs the shared token and, when it is about one astronaut, that astronaut unlocked (`monitor.ui_auth`).
 """
 
+import hashlib
 import json
 import hashlib
 import logging
@@ -268,7 +269,9 @@ def build_router(
 
     @router.put("/crew/{astronaut_id}/profile")
     async def put_profile(
-        astronaut_id: str, request: Request, if_none_match: Annotated[str | None, Header()] = None,
+        astronaut_id: str,
+        request: Request,
+        if_none_match: Annotated[str | None, Header()] = None,
         if_match: Annotated[str | None, Header()] = None,
     ) -> dict[str, Any]:
         if if_none_match not in (None, "*") or (if_none_match is not None and if_match is not None):
@@ -299,7 +302,10 @@ def build_router(
 
     @router.put("/crew/{astronaut_id}/daily-context/{day}")
     async def put_daily_context(
-        astronaut_id: str, day: date, request: Request, if_none_match: Annotated[str | None, Header()] = None,
+        astronaut_id: str,
+        day: date,
+        request: Request,
+        if_none_match: Annotated[str | None, Header()] = None,
         if_match: Annotated[str | None, Header()] = None,
     ) -> dict[str, Any]:
         if if_match is not None and if_none_match is not None:

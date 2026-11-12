@@ -102,11 +102,11 @@ export function createRecordsClient({
   }
 
   async function versioned<T>(path: string, schema: z.ZodType<T>, id: string): Promise<{ value: T; etag: string } | null> {
-    const headers: { etag: string | null } = { etag: null };
-    const value = await get<T>(path, schema, id, (header) => { headers.etag = header; });
+    const metadata: { etag: string | null } = { etag: null };
+    const value = await get<T>(path, schema, id, (header) => { metadata.etag = header; });
     if (value === null) return null;
-    if (headers.etag === null) throw new ViewsError('unavailable');
-    return { value, etag: headers.etag };
+    if (metadata.etag === null) throw new ViewsError('unavailable');
+    return { value, etag: metadata.etag };
   }
 
   const crewPath = (id: string, rest: string): string => `/ui/crew/${encodeURIComponent(id)}/${rest}`;

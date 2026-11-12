@@ -101,21 +101,21 @@ export function createRecordsClient({
     return body as T;
   }
 
-  async function versioned<T>(path: string, schema: z.ZodType, id: string): Promise<{ value: T; etag: string } | null> {
-    let etag: string | null = null;
-    const value = await get<T>(path, schema, id, (header) => { etag = header; });
+  async function versioned<T>(path: string, schema: z.ZodType<T>, id: string): Promise<{ value: T; etag: string } | null> {
+    const headers: { etag: string | null } = { etag: null };
+    const value = await get<T>(path, schema, id, (header) => { headers.etag = header; });
     if (value === null) return null;
-    if (etag === null) throw new ViewsError('unavailable');
-    return { value, etag };
+    if (headers.etag === null) throw new ViewsError('unavailable');
+    return { value, etag: headers.etag };
   }
 
   const crewPath = (id: string, rest: string): string => `/ui/crew/${encodeURIComponent(id)}/${rest}`;
 
   return {
     profile: (id) => get(crewPath(id, 'profile'), profileSchema(id), id),
-    profileVersioned: (id) => versioned(crewPath(id, 'profile'), profileSchema(id), id),
+    profileVersioned: (id) => versioned(crewPath(id, 'profile'), profileSchema(id) as unknown as z.ZodType<AstronautProfile>, id),
     dailyContext: (id, day) => get(crewPath(id, `daily-context/${encodeURIComponent(day)}`), dailyContextSchema(id, day), id),
-    dailyContextVersioned: (id, day) => versioned(crewPath(id, `daily-context/${encodeURIComponent(day)}`), dailyContextSchema(id, day), id),
+    dailyContextVersioned: (id, day) => versioned(crewPath(id, `daily-context/${encodeURIComponent(day)}`), dailyContextSchema(id, day) as unknown as z.ZodType<DailyContext>, id),
     devices: async (id) => (await get<DeviceStatus[]>(crewPath(id, 'devices'), devicesSchema(id), id)) ?? [],
     async sessionStreams(id, sessionId) {
       const body = await get<RawSession>(`/ui/sessions/${encodeURIComponent(sessionId)}`, rawSessionSchema(id), id);

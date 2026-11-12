@@ -267,7 +267,10 @@ def build_router(
         return '"' + hashlib.sha256(encoded).hexdigest() + '"'
 
     @router.put("/crew/{astronaut_id}/profile")
-    async def put_profile(astronaut_id: str, request: Request, if_none_match: Annotated[str | None, Header()] = None, if_match: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    async def put_profile(
+        astronaut_id: str, request: Request, if_none_match: Annotated[str | None, Header()] = None,
+        if_match: Annotated[str | None, Header()] = None,
+    ) -> dict[str, Any]:
         if if_none_match not in (None, "*") or (if_none_match is not None and if_match is not None):
             raise Problem(422, "Invalid conditional headers")
         body = await _body(request)
@@ -295,7 +298,10 @@ def build_router(
         return profile
 
     @router.put("/crew/{astronaut_id}/daily-context/{day}")
-    async def put_daily_context(astronaut_id: str, day: date, request: Request, if_none_match: Annotated[str | None, Header()] = None, if_match: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    async def put_daily_context(
+        astronaut_id: str, day: date, request: Request, if_none_match: Annotated[str | None, Header()] = None,
+        if_match: Annotated[str | None, Header()] = None,
+    ) -> dict[str, Any]:
         if if_match is not None and if_none_match is not None:
             raise Problem(422, "Cannot combine If-Match and If-None-Match")
         if if_none_match not in (None, "*"):

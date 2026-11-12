@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Stepper } from '../../components/ui/Stepper';
 import type { DataSource } from '../../data/DataSource';
+import type { SessionState } from '../../data/types';
 import { useData } from '../../data/DataContext';
 import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { LoadFailure } from '../../components/layout/NoMonitor';
 import { protocolTitle } from '../../strings/codes';
 import { gmtClock, minutesBetween } from '../today/gmt';
-import { session as copy, voiceUndo } from '../../strings/session';
-import { CalibrateStage, CheckStage, FinishStage, FitStage, RepsStage, STAGE_IDS, type StageId } from './Stages';
+import { actionText, session as copy, voiceUndo } from '../../strings/session';
+import { CalibrateStage, CheckStage, FinishStage, FitStage, RepsStage, STAGE_IDS, type StageAction, type StageId } from './Stages';
+import { isProtocolId, StartSession, useStarter } from './StartSession';
+import { currentRep, useLiveReps } from './useLiveReps';
+import { useSessionActions } from './useSessionActions';
 import styles from './SessionView.module.css';
 import { VoiceUndoAlert, useVoiceUndo } from './VoiceUndo';
 
@@ -22,9 +26,22 @@ function isStageId(value: string | null): value is StageId {
   return STAGE_IDS.some((id) => id === value);
 }
 
+/** States in which the session is finished or failed: nothing more can be done to it but start another. */
+const OVER: readonly SessionState[] = ['rejected', 'ended', 'processed', 'processing_failed'];
+
 export function SessionView(): React.JSX.Element {
-  const { data: loaded, error } = useLoad(selectSession, { refreshMs: REFRESH_MS });
+  // Reading the session again (after an action) is a new `select`: `useLoad` reloads when it changes.
+  const [version, setVersion] = useState(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` only exists to make a new function and so a new read
+  const select = useMemo(() => (d: DataSource) => selectSession(d), [version]);
+  const reload = (): void => {
+    setVersion((v) => v + 1);
+  };
+  const { data: loaded, error } = useLoad(select, { refreshMs: REFRESH_MS });
   const session = loaded === null ? undefined : loaded.session;
+  const reps = useLiveReps(session?.sessionId ?? null, session?.totalReps != null);
+  const starter = useStarter(reload);
+  const actions = useSessionActions(reload);
   const data = useData();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -35,8 +52,9 @@ export function SessionView(): React.JSX.Element {
   // The "after stop" screen is only for a stop that was recorded. If recording fails the crew stays here and is told so,
   // never shown a screen that says the session was saved as stopped for pain when it was not.
   const stopForPain = (): void => {
+    if (!session) return;
     setStopFailed(false);
-    data.stopSessionForPain().then(
+    data.stopSessionForPain(session.sessionId, currentRep(reps)).then(
       () => {
         void navigate('/stopped');
       },
@@ -52,6 +70,9 @@ export function SessionView(): React.JSX.Element {
   const index = STAGE_IDS.indexOf(viewing);
   const previous = index > 0 ? STAGE_IDS[index - 1] : undefined;
   const following = index < STAGE_IDS.length - 1 ? STAGE_IDS[index + 1] : undefined;
+  const running = session?.state === 'running';
+  const active = session?.state === 'starting' || running;
+  const action: StageAction = { enabled: running, busy: actions.busy };
 
   return (
     <section aria-labelledby="session-title" data-testid="session-view">
@@ -62,6 +83,7 @@ export function SessionView(): React.JSX.Element {
           <h1 id="session-title">{copy.title}</h1>
           <p role="status">{copy.none}</p>
           <p className={styles.lede}>{copy.noneHint}</p>
+          <StartSession starter={starter} />
         </>
       )}
       {session && (
@@ -83,11 +105,61 @@ export function SessionView(): React.JSX.Element {
               )}
               <p className={styles.lede}>{copy.lede}</p>
             </div>
-            <button type="button" className={styles.stopPain} onClick={stopForPain}>
-              {copy.stopPain}
-              <small>{copy.stopPainHint}</small>
-            </button>
+            {active && (
+              <button type="button" className={styles.stopPain} onClick={stopForPain}>
+                {copy.stopPain}
+                <small>{copy.stopPainHint}</small>
+              </button>
+            )}
           </div>
+          {session.state === 'starting' && (
+            <p role="status" className={styles.state}>
+              {copy.starting}
+            </p>
+          )}
+          {session.state === 'rejected' && (
+            <Alert
+              title={copy.rejected.title}
+              action={
+                isProtocolId(session.protocolId) ? (
+                  <Button
+                    variant="quiet"
+                    disabled={starter.busy}
+                    onClick={() => {
+                      if (isProtocolId(session.protocolId)) starter.start(session.protocolId);
+                    }}
+                  >
+                    {copy.rejected.retry}
+                  </Button>
+                ) : undefined
+              }
+            >
+              {copy.rejected.body}
+            </Alert>
+          )}
+          {session.state === 'processing_failed' && (
+            <Alert
+              title={copy.failed.title}
+              action={
+                <Button
+                  variant="quiet"
+                  disabled={actions.busy}
+                  onClick={() => {
+                    actions.run(() => data.reprocessSession(session.sessionId), actionText.reprocessing, actionText.notFailed);
+                  }}
+                >
+                  {copy.failed.reprocess}
+                </Button>
+              }
+            >
+              {copy.failed.body}
+            </Alert>
+          )}
+          {actions.notice !== null && (
+            <Alert variant={actions.notice.kind === 'ok' ? 'info' : 'urgent'} role={actions.notice.kind === 'ok' ? 'status' : 'alert'}>
+              {actions.notice.text}
+            </Alert>
+          )}
           {stopFailed && (
             <Alert
               title={copy.stopNotRecorded.title}
@@ -111,9 +183,34 @@ export function SessionView(): React.JSX.Element {
             <div>
               {viewing === 'fit' && <FitStage session={session} />}
               {viewing === 'check' && <CheckStage session={session} />}
-              {viewing === 'mvc' && <CalibrateStage session={session} />}
-              {viewing === 'reps' && <RepsStage session={session} />}
-              {viewing === 'finish' && <FinishStage session={session} />}
+              {viewing === 'mvc' && (
+                <CalibrateStage
+                  session={session}
+                  action={action}
+                  onCalibrate={() => {
+                    actions.run(() => data.calibrateMvc(session.sessionId), actionText.calibrated);
+                  }}
+                />
+              )}
+              {viewing === 'reps' && (
+                <RepsStage
+                  session={session}
+                  update={reps}
+                  action={action}
+                  onArtifact={() => {
+                    actions.run(() => data.markArtifact(session.sessionId, currentRep(reps)), actionText.artefact);
+                  }}
+                />
+              )}
+              {viewing === 'finish' && (
+                <FinishStage
+                  session={session}
+                  action={action}
+                  onFinish={() => {
+                    actions.run(() => data.finishSession(session.sessionId), actionText.finished);
+                  }}
+                />
+              )}
               <div className={styles.actions}>
                 {previous && (
                   <Button
@@ -138,7 +235,13 @@ export function SessionView(): React.JSX.Element {
               </div>
             </div>
           </div>
-          {import.meta.env.DEV && (
+          {OVER.includes(session.state) && (
+            <>
+              <h2 className={styles.another}>{copy.anotherTitle}</h2>
+              <StartSession starter={starter} />
+            </>
+          )}
+          {import.meta.env.DEV && active && (
             <div className={styles.minor}>
               <Button variant="quiet" onClick={undo.start}>
                 {voiceUndo.mockTrigger}

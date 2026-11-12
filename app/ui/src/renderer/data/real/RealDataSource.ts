@@ -1,6 +1,22 @@
-import type { AsclepiusApi, AstronautProfile, DailyContext, DailyContextFields, DeviceStatus, ProfileFields, WriteResult } from '../../../shared/api';
+import type {
+  AddExerciseResult,
+  ExerciseEntry,
+  AsclepiusApi,
+  AstronautProfile,
+  CommandSent,
+  DailyContext,
+  DailyContextFields,
+  DailyReportFields,
+  DeviceStatus,
+  OdiAnswer,
+  ProfileFields,
+  ProtocolId,
+  ReportSaved,
+  StartSessionResult,
+  WriteResult,
+} from '../../../shared/api';
 import type { DataSource } from '../DataSource';
-import { CATALOG, REPORT_FORM } from '../form-data';
+import { CATALOG, ODI, REPORT_FORM } from '../form-data';
 import type {
   BaselineData,
   ContactEntry,
@@ -17,28 +33,36 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { toBaseline, toFirstDay, toHistory, toHouston, toEndedRepState, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
+import { toBaseline, toContactEntry, toFirstDay, toGroundLink, toHistory, toHouston, toEndedRepState, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
 
-/** Rejection of a view whose backend does not exist yet: `not_built`, so the screen says so instead of "no connection". */
-const notBuilt = (): Promise<never> => Promise.reject(new Error('not_built'));
-/** Rejection of an action that cannot be recorded: callers treat any rejection as "not recorded". */
-const unavailable = (): Promise<never> => Promise.reject(new Error('unavailable'));
+/** The contract red-flag codes; the other urgent choices travel as `other_symptoms`. */
+const RED_FLAG_CODES: ReadonlySet<string> = new Set(CATALOG.flags.map((flag) => flag.code));
+
+/** An action the backend did not take: callers treat any rejection as "not recorded". The message is why. */
+function refused(result: { ok: false; reason: string }): Promise<never> {
+  return Promise.reject(new Error(result.reason));
+}
 
 /**
  * DataSource on the backend views (`window.asclepius.views`). A view that cannot be had rejects with the bridge error
  * (`locked`, `not_found`, `unavailable`): nothing is cached and nothing is invented.
  *
- * The Stop screen, Oswestry, stop for pain and the call log are NOT on the backend yet (issue #63). The two views
- * reject `not_built` and the two actions `unavailable`, rather than answer with the mock: no invented health data or false "recorded"
- * in real mode. Each of those issues replaces its methods here. The report form and the symptom catalogue are static
- * choices of the UI, not crew data, so they are served from `form-data`.
+ * Writes go through the bridge and only an `ok` result counts: a stop, an urgent report or a logged call that the backend
+ * did not take rejects, so the caller says "not recorded" and nothing is invented. The report form, the symptom catalogue
+ * and the Oswestry items are static choices of the UI, not crew data, so they are served from `form-data`.
+ *
+ * It remembers (in memory only) the last session it started or showed and the pain stop it sent, so that a session that
+ * Today no longer lists as in progress (ended, rejected, failed) still shows, and the Stopped screen knows its rep.
  */
 export class RealDataSource implements DataSource {
   constructor(
     private readonly views: AsclepiusApi['views'],
     private readonly reps: AsclepiusApi['reps'],
-    private readonly account: Pick<AsclepiusApi, 'profile' | 'dailyContext' | 'devices'>,
+    private readonly account: Pick<AsclepiusApi, 'profile' | 'dailyContext' | 'devices' | 'sessions' | 'reports' | 'urgent' | 'contacts'>,
   ) {}
+
+  private lastSessionId: string | null = null;
+  private painStop: { sessionId: string; rep: number | null } | null = null;
 
   async getStrip(): Promise<StripData> {
     return toStrip(await this.views.strip());
@@ -60,11 +84,20 @@ export class RealDataSource implements DataSource {
     return toBaseline(await this.views.baseline());
   }
 
-  /** The session today reports in progress; `null` when there is none. */
+  /** The session Today reports in progress, else the last one started or shown; `null` when there is none. */
   async getSession(): Promise<SessionData | null> {
     const running = toToday(await this.views.today()).sessionInProgress;
-    if (running === null) return null;
-    return toSession(await this.views.session(running.sessionId));
+    const sessionId = running?.sessionId ?? this.lastSessionId;
+    if (sessionId === null) return null;
+    try {
+      const session = toSession(await this.views.session(sessionId));
+      this.lastSessionId = sessionId;
+      return session;
+    } catch (error) {
+      // The backend no longer knows the remembered session: there is none to show. Anything else is a failure to read.
+      if (running === null && error instanceof Error && error.message === 'not_found') return null;
+      throw error;
+    }
   }
 
   // --- Profile, today's context and devices: straight through the bridge. ---
@@ -99,14 +132,67 @@ export class RealDataSource implements DataSource {
     return Promise.resolve(CATALOG);
   }
 
-  // --- Not on the backend yet (#61 to #63): not_built / unavailable, never the mock. ---
-
-  getStopped(): Promise<StoppedData> {
-    return notBuilt();
-  }
+  // --- Static choices of the UI: the Oswestry items. ---
 
   getOswestry(): Promise<OswestryData> {
-    return notBuilt();
+    return Promise.resolve(ODI);
+  }
+
+  /** Where the session stopped (remembered from the pain stop sent), the ground link of the strip and the logged contacts. */
+  async getStopped(): Promise<StoppedData> {
+    const [strip, contacts] = await Promise.all([this.views.strip(), this.account.contacts.list()]);
+    return {
+      sessionId: this.painStop?.sessionId ?? null,
+      rep: this.painStop?.rep ?? null,
+      groundLink: toGroundLink(strip.ground_link),
+      contacts: contacts.map(toContactEntry),
+    };
+  }
+
+  // --- Sessions. ---
+
+  async startSession(protocolId: ProtocolId): Promise<StartSessionResult> {
+    const result = await this.account.sessions.start({ protocolId });
+    if (result.ok) this.lastSessionId = result.value.sessionId;
+    return result;
+  }
+
+  async stopSessionForPain(sessionId: string, repIndex: number | null): Promise<void> {
+    const result = await this.account.sessions.stop({ sessionId, reason: 'aborted_pain', repIndex });
+    if (!result.ok) return refused(result);
+    this.lastSessionId = sessionId;
+    this.painStop = { sessionId, rep: repIndex };
+    return undefined;
+  }
+
+  finishSession(sessionId: string): Promise<WriteResult<CommandSent>> {
+    return this.account.sessions.stop({ sessionId, reason: 'completed' });
+  }
+
+  markArtifact(sessionId: string, repIndex: number | null): Promise<WriteResult<CommandSent>> {
+    return this.account.sessions.markArtifact({ sessionId, repIndex });
+  }
+
+  calibrateMvc(sessionId: string): Promise<WriteResult<CommandSent>> {
+    return this.account.sessions.calibrateMvc({ sessionId });
+  }
+
+  reprocessSession(sessionId: string): Promise<WriteResult<{ sessionId: string }>> {
+    return this.account.sessions.reprocess({ sessionId });
+  }
+
+  // --- Reports, urgent report and the officer call. ---
+
+  saveDailyReport(fields: DailyReportFields): Promise<WriteResult<ReportSaved>> {
+    return this.account.reports.saveDaily(fields);
+  }
+
+  saveOswestry(answers: readonly OdiAnswer[]): Promise<WriteResult<ReportSaved>> {
+    return this.account.reports.saveOswestry({ items: [...answers] });
+  }
+
+  addExercise(entry: ExerciseEntry): Promise<AddExerciseResult> {
+    return this.account.reports.addExercise(entry);
   }
 
   /** The summary and the link from `/houston`, the queue from `/outbox`; if either fails the screen fails, never half of it. */
@@ -153,19 +239,20 @@ export class RealDataSource implements DataSource {
     return stop;
   }
 
-  /** Not recorded anywhere yet: the caller must say so and must not behave as if the stop was saved. */
-  stopSessionForPain(): Promise<void> {
-    return unavailable();
+  readonly sendsUrgentReports = true;
+
+  async sendUrgentReport(crewId: string, codes: readonly string[]): Promise<void> {
+    const result = await this.account.urgent.send({
+      crewId,
+      red_flags: codes.filter((code) => RED_FLAG_CODES.has(code)),
+      other_symptoms: codes.filter((code) => !RED_FLAG_CODES.has(code)),
+    });
+    if (!result.ok) return refused(result);
+    return undefined;
   }
 
-  readonly sendsUrgentReports = false;
-
-  /** There is no outbox for urgent reports yet (#63): `not_built`, so nothing is shown as saved, queued or sent. */
-  sendUrgentReport(): Promise<void> {
-    return notBuilt();
-  }
-
-  logCrewMedicalOfficerCall(): Promise<ContactEntry> {
-    return unavailable();
+  async logCrewMedicalOfficerCall(sessionId: string | null): Promise<ContactEntry> {
+    const result = await this.account.contacts.logOfficerCall({ sessionId });
+    return result.ok ? toContactEntry(result.value) : refused(result);
   }
 }

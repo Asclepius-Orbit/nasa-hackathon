@@ -316,30 +316,165 @@ describe('getHouston', () => {
   });
 });
 
-describe('what #61 to #63 still own', () => {
-  it('serves the static form data of the UI: the symptom catalogue and the report form', async () => {
+describe('static form data', () => {
+  it('serves the symptom catalogue, the report form and the Oswestry items (UI choices, not crew data)', async () => {
     expect((await data.getCatalog()).flags).toHaveLength(8);
     expect((await data.getReportForm()).painRegions.length).toBeGreaterThan(0);
-  });
-
-  it.each([
-    ['getStopped', () => data.getStopped()],
-    ['getOswestry', () => data.getOswestry()],
-  ])('%s rejects not_built (not "unavailable": the monitor is fine, the feature is not connected yet)', async (_name, call) => {
-    await expect(call()).rejects.toThrow(/^not_built$/);
-  });
-
-  it.each([
-    ['stopSessionForPain', () => data.stopSessionForPain()],
-    ['logCrewMedicalOfficerCall', () => data.logCrewMedicalOfficerCall()],
-  ])('%s rejects unavailable: the mock never records for the backend', async (_name, call) => {
-    await expect(call()).rejects.toThrow(/^unavailable$/);
-  });
-
-  it('does not touch the bridge for them', async () => {
-    await data.getStopped().catch(() => undefined);
-    await data.stopSessionForPain().catch(() => undefined);
+    const { items } = await data.getOswestry();
+    expect(items).toHaveLength(6);
+    expect(items[0]?.id).toBe('pain_intensity');
     expect(api.calls).toEqual([]);
+  });
+});
+
+describe('sessions', () => {
+  const SID = '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01';
+
+  it('starts a protocol through the bridge and passes the result on', async () => {
+    expect(await data.startSession('lat_pulldown_standing_v1')).toEqual({ ok: true, value: { sessionId: 'started-session', state: 'starting' } });
+    expect(api.lastArg['sessions.start']).toEqual({ protocolId: 'lat_pulldown_standing_v1' });
+    api.forced.set('sessions.start', { ok: false, reason: 'no_harness' });
+    expect(await data.startSession('spine_length_rest_v1')).toEqual({ ok: false, reason: 'no_harness' });
+  });
+
+  it('after a start, getSession follows that session even when Today lists none in progress', async () => {
+    api.viewData.today = example<TodayView>('ui-today');
+    api.viewData.sessions = { 'started-session': { ...example<SessionView>('ui-session'), session_id: 'started-session', state: 'starting' } };
+    expect(await data.getSession()).toBeNull();
+    await data.startSession('lat_pulldown_standing_v1');
+    expect(await data.getSession()).toMatchObject({ sessionId: 'started-session', state: 'starting' });
+  });
+
+  it('remembers the session Today showed, so it is still shown once it is ended or failed', async () => {
+    api.viewData.today = example<TodayView>('ui-today.nodata');
+    api.viewData.sessions = { [SID]: example<SessionView>('ui-session') };
+    expect(await data.getSession()).toMatchObject({ sessionId: SID });
+    api.viewData.today = example<TodayView>('ui-today');
+    api.viewData.sessions = { [SID]: { ...example<SessionView>('ui-session'), state: 'processing_failed' } };
+    expect(await data.getSession()).toMatchObject({ sessionId: SID, state: 'processing_failed' });
+  });
+
+  it('answers null when the remembered session is gone for the backend (not_found)', async () => {
+    api.viewData.today = example<TodayView>('ui-today');
+    await data.startSession('lat_pulldown_standing_v1');
+    api.viewErrors.session = 'not_found';
+    expect(await data.getSession()).toBeNull();
+  });
+
+  it('fails the session read for any other error, never answering null for it', async () => {
+    api.viewData.today = example<TodayView>('ui-today');
+    await data.startSession('lat_pulldown_standing_v1');
+    api.viewErrors.session = 'unavailable';
+    await expect(data.getSession()).rejects.toThrow('unavailable');
+  });
+
+  it('stops for pain with the rep and remembers it for the Stopped screen', async () => {
+    await data.stopSessionForPain(SID, 4);
+    expect(api.lastArg['sessions.stop']).toEqual({ sessionId: SID, reason: 'aborted_pain', repIndex: 4 });
+    api.viewData.strip = example<StripView>('ui-strip');
+    expect(await data.getStopped()).toMatchObject({ sessionId: SID, rep: 4, groundLink: { state: 'down', backInMin: 12 } });
+  });
+
+  it.each(['locked', 'invalid', 'conflict', 'unavailable'] as const)('rejects a stop the backend refused (%s): nothing is recorded', async (reason) => {
+    api.forced.set('sessions.stop', reason === 'invalid' ? { ok: false, reason, fields: [] } : { ok: false, reason });
+    await expect(data.stopSessionForPain(SID, 4)).rejects.toThrow(reason);
+    api.viewData.strip = example<StripView>('ui-strip');
+    expect(await data.getStopped()).toMatchObject({ sessionId: null, rep: null });
+  });
+
+  it('rejects a stop when the bridge itself fails', async () => {
+    api.rejecting.add('sessions.stop');
+    await expect(data.stopSessionForPain(SID, null)).rejects.toThrow('bridge down');
+  });
+
+  it('keeps the rep unknown (null) when the counter had none, never inventing one', async () => {
+    await data.stopSessionForPain(SID, null);
+    api.viewData.strip = example<StripView>('ui-strip');
+    expect((await data.getStopped()).rep).toBeNull();
+  });
+
+  it('finishes with reason completed; marks an artefact and calibrates; reprocesses', async () => {
+    expect(await data.finishSession(SID)).toMatchObject({ ok: true });
+    expect(api.lastArg['sessions.stop']).toEqual({ sessionId: SID, reason: 'completed' });
+    await data.markArtifact(SID, 3);
+    expect(api.lastArg['sessions.markArtifact']).toEqual({ sessionId: SID, repIndex: 3 });
+    await data.calibrateMvc(SID);
+    expect(api.lastArg['sessions.calibrateMvc']).toEqual({ sessionId: SID });
+    expect(await data.reprocessSession(SID)).toEqual({ ok: true, value: { sessionId: SID } });
+    api.forced.set('sessions.reprocess', { ok: false, reason: 'conflict' });
+    expect(await data.reprocessSession(SID)).toEqual({ ok: false, reason: 'conflict' });
+  });
+});
+
+describe('Stopped screen data', () => {
+  it('lists the logged contacts of the backend as GMT lines and takes the ground link from the strip', async () => {
+    api.viewData.strip = example<StripView>('ui-strip.unpaired');
+    api.contactsValue = [{ contactId: 'c1', at: '2026-11-05T13:52:00Z', sessionId: null }];
+    const stopped = await data.getStopped();
+    expect(stopped).toEqual({
+      sessionId: null,
+      rep: null,
+      groundLink: { state: 'up' },
+      contacts: [{ atGmt: '13:52', text: '13:52 GMT: call to the crew medical officer logged.' }],
+    });
+    expect(stopped).not.toHaveProperty('crewMedicalOfficerOnBoard');
+  });
+
+  it('keeps an unknown ground link null and fails when a part cannot be read', async () => {
+    api.viewData.strip = { ...example<StripView>('ui-strip'), ground_link: null };
+    expect((await data.getStopped()).groundLink).toBeNull();
+    api.viewErrors.strip = 'unavailable';
+    await expect(data.getStopped()).rejects.toThrow('unavailable');
+  });
+
+  it('logs a call with the given session and returns its entry; a refusal rejects', async () => {
+    const entry = await data.logCrewMedicalOfficerCall('S-1');
+    expect(api.lastArg['contacts.logOfficerCall']).toEqual({ sessionId: 'S-1' });
+    expect(entry).toEqual({ atGmt: '13:52', text: '13:52 GMT: call to the crew medical officer logged.' });
+    api.forced.set('contacts.logOfficerCall', { ok: false, reason: 'unavailable' });
+    await expect(data.logCrewMedicalOfficerCall(null)).rejects.toThrow('unavailable');
+  });
+});
+
+describe('reports and urgent', () => {
+  const fields = { pain_nrs: 3, stiffness_nrs: 2, pain_locations: [], sleep_hours: null, sleep_quality_nrs: null, red_flags: [], exercise: null };
+
+  it('saves the daily report and the Oswestry answers through the bridge', async () => {
+    expect(await data.saveDailyReport(fields)).toMatchObject({ ok: true });
+    expect(api.lastArg['reports.saveDaily']).toEqual(fields);
+    const items = [{ item_id: 'pain_intensity', score: 2 }];
+    expect(await data.saveOswestry(items)).toMatchObject({ ok: true });
+    expect(api.lastArg['reports.saveOswestry']).toEqual({ items });
+    api.forced.set('reports.saveDaily', { ok: false, reason: 'invalid', fields: [{ pointer: '/pain_nrs', message: 'too high' }] });
+    expect(await data.saveDailyReport(fields)).toEqual({ ok: false, reason: 'invalid', fields: [{ pointer: '/pain_nrs', message: 'too high' }] });
+  });
+
+  it('retries the exercise through the bridge and passes its answer on', async () => {
+    const entry = { modality: 'ared', duration_min: 30 } as const;
+    expect(await data.addExercise(entry)).toMatchObject({ ok: true });
+    expect(api.lastArg['reports.addExercise']).toEqual(entry);
+    api.forced.set('reports.addExercise', { ok: false, reason: 'no_context' });
+    expect(await data.addExercise(entry)).toEqual({ ok: false, reason: 'no_context' });
+  });
+
+  it('sends urgent reports for real: red flags apart from the other symptoms, for the given crew member', async () => {
+    expect(data.sendsUrgentReports).toBe(true);
+    await data.sendUrgentReport('AST-02', ['leg_weakness', 'other', 'very_severe_pain', 'saddle_numbness']);
+    expect(api.lastArg['urgent.send']).toEqual({
+      crewId: 'AST-02',
+      red_flags: ['leg_weakness', 'saddle_numbness'],
+      other_symptoms: ['other', 'very_severe_pain'],
+    });
+  });
+
+  it.each(['locked', 'conflict', 'unavailable'] as const)('rejects an urgent report the backend refused (%s)', async (reason) => {
+    api.forced.set('urgent.send', { ok: false, reason });
+    await expect(data.sendUrgentReport('AST-01', ['leg_weakness'])).rejects.toThrow(reason);
+  });
+
+  it('rejects an urgent report refused as invalid', async () => {
+    api.forced.set('urgent.send', { ok: false, reason: 'invalid', fields: [] });
+    await expect(data.sendUrgentReport('AST-01', ['leg_weakness'])).rejects.toThrow('invalid');
   });
 });
 

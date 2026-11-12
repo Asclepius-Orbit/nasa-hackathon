@@ -1,7 +1,18 @@
 /** Zod schemas for every IPC input. The main process validates each call with these; the renderer is untrusted. */
 import { z } from 'zod';
 
-import type { DailyContextFields, ProfileFields, RepsMessage, RepStateView, Settings, ViewRange } from './api';
+import type {
+  DailyContextFields,
+  DailyReportFields,
+  ExerciseEntry,
+  ProfileFields,
+  RepsMessage,
+  RepStateView,
+  Settings,
+  StopInput,
+  UrgentInput,
+  ViewRange,
+} from './api';
 
 export { IPC_CHANNELS, IPC_EVENT_CHANNELS, type IpcChannel } from './ipc-channels';
 
@@ -104,6 +115,51 @@ export const dailyContextFieldsSchema: z.ZodType<DailyContextFields> = z.strictO
   gravity_environment: z.enum(['earth_1g', 'microgravity', 'moon_0_16g', 'mars_0_38g']),
   mission_day: z.int().nullable(),
 });
+
+// --- Session commands, self-reports, urgent and contacts: shapes and codes; ranges stay the backend's (422). ---
+
+const sessionIdSchema = z.uuid().refine((id) => id === id.toLowerCase());
+const repIndexSchema = z.int().min(1).nullable();
+const codeSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/u);
+
+export const startSessionInputSchema = z.strictObject({
+  protocolId: z.enum(['lat_pulldown_standing_v1', 'spine_length_rest_v1']),
+});
+
+export const stopInputSchema: z.ZodType<StopInput> = z.discriminatedUnion('reason', [
+  z.strictObject({ sessionId: sessionIdSchema, reason: z.enum(['completed', 'aborted_by_user', 'aborted_other']) }),
+  z.strictObject({ sessionId: sessionIdSchema, reason: z.literal('aborted_pain'), repIndex: repIndexSchema }),
+]);
+
+export const markArtifactInputSchema = z.strictObject({ sessionId: sessionIdSchema, repIndex: repIndexSchema });
+export const sessionOnlyInputSchema = z.strictObject({ sessionId: sessionIdSchema });
+
+export const exerciseEntrySchema: z.ZodType<ExerciseEntry> = z.strictObject({
+  modality: z.enum(['ared', 'cevis', 't2', 'other']),
+  duration_min: finite,
+});
+
+export const dailyReportFieldsSchema: z.ZodType<DailyReportFields> = z.strictObject({
+  pain_nrs: z.int(),
+  stiffness_nrs: z.int(),
+  pain_locations: z.array(z.strictObject({ region: codeSchema, side: codeSchema.nullable() })).max(16),
+  sleep_hours: finite.nullable(),
+  sleep_quality_nrs: z.int().nullable(),
+  red_flags: z.array(codeSchema).max(16),
+  exercise: exerciseEntrySchema.nullable(),
+});
+
+export const oswestryInputSchema = z.strictObject({
+  items: z.array(z.strictObject({ item_id: codeSchema, score: z.int() })).min(1).max(10),
+});
+
+export const urgentInputSchema: z.ZodType<UrgentInput> = z.strictObject({
+  crewId: crewIdSchema,
+  red_flags: z.array(codeSchema).max(16),
+  other_symptoms: z.array(codeSchema).max(4),
+});
+
+export const logOfficerCallInputSchema = z.strictObject({ sessionId: sessionIdSchema.nullable() });
 
 const settingsShape = {
   lengthUnit: z.enum(['mm', 'in']),

@@ -54,6 +54,13 @@ const reads: [string, (c: RecordsClient) => Promise<unknown>, string, unknown][]
 ];
 
 describe('createRecordsClient', () => {
+  it('returns the opaque ETag with a versioned context and rejects a missing ETag', async () => {
+    const { client } = build(() => new Response(JSON.stringify(CONTEXT), { headers: { ETag: '"v1"' } }));
+    expect(await client.dailyContextVersioned(ASTRONAUT, DAY)).toEqual({ value: CONTEXT, etag: '"v1"' });
+    const without = build(() => json(CONTEXT)).client;
+    expect(await codeOf(without.dailyContextVersioned(ASTRONAUT, DAY))).toBe('unavailable');
+  });
+
   it('returns the version of a profile and refuses a response without one', async () => {
     const withTag = build(() => new Response(JSON.stringify(PROFILE), { headers: { etag: '"v1"' } }));
     expect(await withTag.client.profileVersioned(ASTRONAUT)).toEqual({ value: PROFILE, etag: '"v1"' });
@@ -107,6 +114,90 @@ describe('createRecordsClient', () => {
   ])('rejects a %s as unavailable', async (_label, read, response) => {
     const { client } = build(() => response);
     expect(await codeOf(read(client))).toBe('unavailable');
+  });
+
+  describe('session streams, reports due and contacts', () => {
+    const SESSION = '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01';
+    const RAW_SESSION = {
+      session: {
+        session_id: SESSION,
+        astronaut_id: ASTRONAUT,
+        streams: [
+          { stream_id: 'emg_lat_left', stream_kind: 'emg', placement: { muscle: 'latissimus_dorsi', side: 'left' }, sample_rate_hz: 1000 },
+          { stream_id: 'imu_l3', stream_kind: 'imu', placement: { spine_level: 'l3' }, sample_rate_hz: 100 },
+        ],
+      },
+      state: 'running',
+      error: null,
+      feature_set: null,
+    };
+    const DUE = {
+      date: DAY,
+      daily_due: true,
+      weekly_odi_due: false,
+      red_flag_available: true,
+      last_daily_at: null,
+      last_weekly_odi_at: '2026-11-08T09:00:00+00:00',
+    };
+    const CONTACTS = {
+      schema_version: '1.0.0',
+      astronaut_id: ASTRONAUT,
+      contacts: [
+        { schema_version: '1.0.0', contact_id: 'c0a7c7e0-0000-4000-8000-000000000001', astronaut_id: ASTRONAUT, at: '2026-11-11T10:00:00Z', contact: 'crew_medical_officer', session_id: SESSION },
+        { schema_version: '1.0.0', contact_id: 'c0a7c7e0-0000-4000-8000-000000000002', astronaut_id: ASTRONAUT, at: '2026-11-11T11:00:00Z', contact: 'crew_medical_officer' },
+      ],
+    };
+
+    it("GETs a session's declared streams (id and kind)", async () => {
+      const { client, calls } = build(() => json(RAW_SESSION));
+      expect(await client.sessionStreams(ASTRONAUT, SESSION)).toEqual([
+        { streamId: 'emg_lat_left', kind: 'emg' },
+        { streamId: 'imu_l3', kind: 'imu' },
+      ]);
+      expect(calls[0]?.url).toBe(`${BASE}/ui/sessions/${SESSION}`);
+      expect(calls[0]?.init.headers).toMatchObject({ 'x-astronaut-id': ASTRONAUT });
+    });
+
+    it('answers null for an unknown session', async () => {
+      const { client } = build(() => json({}, 404));
+      expect(await client.sessionStreams(ASTRONAUT, SESSION)).toBeNull();
+    });
+
+    it("maps which self-reports are due", async () => {
+      const { client, calls } = build(() => json(DUE));
+      expect(await client.reportsDue(ASTRONAUT)).toEqual({
+        dailyDue: true,
+        weeklyOdiDue: false,
+        lastDailyAt: null,
+        lastWeeklyOdiAt: '2026-11-08T09:00:00+00:00',
+      });
+      expect(calls[0]?.url).toBe(`${BASE}/ui/crew/${ASTRONAUT}/self-reports/due`);
+    });
+
+    it('maps the medical contacts, a missing session as null', async () => {
+      const { client, calls } = build(() => json(CONTACTS));
+      expect(await client.contacts(ASTRONAUT)).toEqual([
+        { contactId: 'c0a7c7e0-0000-4000-8000-000000000001', at: '2026-11-11T10:00:00Z', sessionId: SESSION },
+        { contactId: 'c0a7c7e0-0000-4000-8000-000000000002', at: '2026-11-11T11:00:00Z', sessionId: null },
+      ]);
+      expect(calls[0]?.url).toBe(`${BASE}/ui/crew/${ASTRONAUT}/contacts`);
+    });
+
+    it('answers no contacts for 404 and rejects a due that is not stored as unavailable', async () => {
+      const { client } = build(() => json({}, 404));
+      expect(await client.contacts(ASTRONAUT)).toEqual([]);
+      expect(await codeOf(client.reportsDue(ASTRONAUT))).toBe('unavailable');
+    });
+
+    it.each([
+      ['session of another astronaut', (c: RecordsClient) => c.sessionStreams(ASTRONAUT, SESSION), { session: { ...RAW_SESSION.session, astronaut_id: 'AST-02' } }],
+      ['session without streams', (c: RecordsClient) => c.sessionStreams(ASTRONAUT, SESSION), { session: { astronaut_id: ASTRONAUT } }],
+      ['due without flags', (c: RecordsClient) => c.reportsDue(ASTRONAUT), { date: DAY }],
+      ['contacts of another astronaut', (c: RecordsClient) => c.contacts(ASTRONAUT), { ...CONTACTS, astronaut_id: 'AST-02' }],
+    ])('rejects a %s as unavailable', async (_label, read, body) => {
+      const { client } = build(() => json(body));
+      expect(await codeOf(read(client))).toBe('unavailable');
+    });
   });
 
   it('refuses a non-loopback backend', () => {

@@ -164,6 +164,24 @@ UI_CREW_DATA = {
     "/ui/crew/{astronaut_id}/daily-context/{day}": {"get": "domain/daily-context", "put": "domain/daily-context"},
 }
 DEVICES_PATH = "/ui/crew/{astronaut_id}/devices"
+# Actions the UI posts: path -> status of success. Session commands answer 202 at once (the harness acks later).
+UI_ACTIONS = {
+    "/ui/crew/{astronaut_id}/sessions": "202",
+    "/ui/sessions/{session_id}/stop": "202",
+    "/ui/sessions/{session_id}/events": "202",
+    "/ui/sessions/{session_id}/calibrations": "202",
+    "/ui/sessions/{session_id}/reprocess": "202",
+    "/ui/crew/{astronaut_id}/self-reports": "201",
+    "/ui/crew/{astronaut_id}/contacts": "201",
+}
+SESSION_COMMANDS = [
+    "/ui/crew/{astronaut_id}/sessions",
+    "/ui/sessions/{session_id}/stop",
+    "/ui/sessions/{session_id}/events",
+    "/ui/sessions/{session_id}/calibrations",
+]
+DUE_PATH = "/ui/crew/{astronaut_id}/self-reports/due"
+SESSION_PATH = "/ui/sessions/{session_id}"
 
 
 def test_ui_openapi_is_openapi_3_1():
@@ -171,12 +189,42 @@ def test_ui_openapi_is_openapi_3_1():
 
 
 def test_ui_openapi_paths_are_the_view_and_crew_data_endpoints():
-    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH, DEVICES_PATH} | set(UI_CREW_DATA)
+    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH, DEVICES_PATH, DUE_PATH, SESSION_PATH} | set(UI_CREW_DATA) | set(UI_ACTIONS)
 
 
-def test_ui_openapi_writes_only_the_profile_and_the_daily_context():
+def test_ui_openapi_writes_only_the_crew_data_and_the_actions():
     writes = {(path, method) for path, item in load("ui-openapi.yaml")["paths"].items() for method in item if method != "get"}
-    assert writes == {(path, "put") for path in UI_CREW_DATA}
+    assert writes == {(path, "put") for path in UI_CREW_DATA} | {(path, "post") for path in UI_ACTIONS}
+
+
+@pytest.mark.parametrize("path", sorted(UI_ACTIONS))
+def test_ui_actions_document_their_success_and_refusals(path):
+    post = load("ui-openapi.yaml")["paths"][path]["post"]
+    assert UI_ACTIONS[path] in post["responses"]
+    assert {"401", "403", "422"} <= set(post["responses"]), path
+    if path in SESSION_COMMANDS:
+        assert {"409", "503"} <= set(post["responses"]), path
+    if not path.endswith("/reprocess"):
+        assert post["requestBody"]["required"] is True
+
+
+def test_ui_raw_session_carries_the_domain_session_and_its_state():
+    answer = load("ui-openapi.yaml")["paths"][SESSION_PATH]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert answer["properties"]["session"] == {"$ref": "schemas/v1/domain/session.schema.json"}
+    assert set(answer["required"]) == {"session", "state", "error", "feature_set"}
+
+
+def test_ui_reprocess_refuses_a_session_that_did_not_fail():
+    post = load("ui-openapi.yaml")["paths"]["/ui/sessions/{session_id}/reprocess"]["post"]
+    assert {"404", "409"} <= set(post["responses"])
+    assert "requestBody" not in post
+
+
+def test_ui_self_report_and_contact_bodies_are_the_domain_schemas():
+    paths = load("ui-openapi.yaml")["paths"]
+    body = lambda path: paths[path]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]  # noqa: E731
+    assert body("/ui/crew/{astronaut_id}/self-reports") == "schemas/v1/domain/self-report.schema.json"
+    assert body("/ui/crew/{astronaut_id}/contacts") == "schemas/v1/domain/medical-contact.schema.json"
 
 
 @pytest.mark.parametrize("path", sorted(UI_CREW_DATA))
@@ -248,15 +296,17 @@ def test_ui_errors_are_problem_details_with_the_app_error_schema():
         assert list(response["content"]) == ["application/problem+json"], name
         assert response["content"]["application/problem+json"]["schema"] == {"$ref": "schemas/v1/app/error.schema.json"}, name
     for path, item in document["paths"].items():
-        responses = item["get"]["responses"]
-        assert {"200", "422"} <= set(responses), path
-        assert all(responses[code]["$ref"].startswith("#/components/responses/") for code in responses if code != "200"), path
+        for method, operation in item.items():
+            responses = operation["responses"]
+            success = {code for code in responses if code.startswith("2")}
+            assert len(success) == 1 and "422" in responses, (method, path)
+            assert all(responses[code]["$ref"].startswith("#/components/responses/") for code in responses if code not in success), (method, path)
 
 
 def test_ui_only_the_session_view_answers_404():
     """The crew views answer 200 with `nodata`/nulls for an astronaut without data; only an unknown session is a 404."""
     paths = load("ui-openapi.yaml")["paths"]
-    for path in [*UI_VIEWS, REPS_PATH, DEVICES_PATH]:
+    for path in [*UI_VIEWS, REPS_PATH, DEVICES_PATH, DUE_PATH, SESSION_PATH]:
         assert ("404" in paths[path]["get"]["responses"]) == (path.startswith("/ui/sessions/")), path
 
 

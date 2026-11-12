@@ -1,5 +1,5 @@
 import { redFlagLabels } from '../strings/codes';
-import type { ReportFormData, SymptomCatalog } from './types';
+import type { OswestryData, ReportFormData, SymptomCatalog } from './types';
 
 /**
  * Static data of the report forms: the choices the UI offers, not health data of the crew. Both data sources serve it
@@ -62,5 +62,55 @@ export const REPORT_FORM: ReportFormData = {
     { value: 45, label: '45 min' },
     { value: 60, label: '60 min' },
     { value: 90, label: '90 min or more' },
+  ],
+};
+
+/** Provisional reduced Oswestry item set (pending validation by Aguado), statements scored 0-5. Item ids follow the contract ODI sections. A UI choice like the report form, served in both modes. */
+export const ODI: OswestryData = {
+  items: [
+    {
+      id: 'pain_intensity',
+      title: 'Pain intensity',
+      options: ['No pain', 'Very mild', 'Moderate', 'Fairly severe', 'Very severe', 'Worst imaginable'],
+    },
+    {
+      id: 'personal_care',
+      title: 'Personal care',
+      options: [
+        'Normal, no extra pain',
+        'Normal, but painful',
+        'Slow and careful',
+        'Need some help',
+        'Need help every day',
+        'Cannot manage',
+      ],
+    },
+    {
+      id: 'lifting',
+      title: 'Lifting and pulling',
+      options: [
+        'Heavy loads, no pain',
+        'Heavy loads, with pain',
+        'Only if well placed',
+        'Light to medium only',
+        'Very light only',
+        'Cannot lift anything',
+      ],
+    },
+    {
+      id: 'sleeping',
+      title: 'Sleeping',
+      options: ['Never disturbed', 'Sometimes disturbed', 'Under 6 h', 'Under 4 h', 'Under 2 h', 'Cannot sleep'],
+    },
+    {
+      id: 'working',
+      title: 'Working',
+      options: ['Full workload', 'Full, with pain', 'Most tasks', 'Some tasks', 'Very few tasks', 'Cannot work'],
+    },
+    {
+      id: 'exercise_countermeasures',
+      title: 'Exercise and countermeasures',
+      options: ['As planned', 'As planned, with pain', 'Shortened', 'Much shortened', 'Barely', 'Cannot do them'],
+    },
   ],
 };

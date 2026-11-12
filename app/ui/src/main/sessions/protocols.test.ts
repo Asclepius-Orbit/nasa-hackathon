@@ -1,0 +1,42 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { PROTOCOLS } from './protocols';
+
+const CONTRACTS = join(import.meta.dirname, '../../../../../spine_monitor/contracts');
+const readJson = (path: string): Record<string, unknown> =>
+  JSON.parse(readFileSync(join(CONTRACTS, path), 'utf8')) as Record<string, unknown>;
+
+interface CatalogEntry {
+  protocol_id: string;
+  band: { color: string; nominal_kg: number } | null;
+  total_reps: number | null;
+}
+
+describe('PROTOCOLS', () => {
+  const catalog = (readJson('catalog/protocol-catalog.json')['entries'] as CatalogEntry[]);
+
+  it('has exactly the protocols of the catalog', () => {
+    expect(Object.keys(PROTOCOLS).sort()).toEqual(catalog.map((e) => e.protocol_id).sort());
+  });
+
+  it.each(catalog)('matches the catalog band and reps of $protocol_id', (entry) => {
+    const protocol = PROTOCOLS[entry.protocol_id as keyof typeof PROTOCOLS];
+    expect(protocol.load_declared ?? null).toEqual(
+      entry.band === null ? null : { type: 'elastic_band', nominal_kg: entry.band.nominal_kg, band_id: entry.band.color },
+    );
+    expect(protocol.planned_reps ?? null).toBe(entry.total_reps);
+  });
+
+  it.each([
+    ['lat_pulldown_standing_v1', 'examples/valid/domain/session.exercise.json'],
+    ['spine_length_rest_v1', 'examples/valid/domain/session.spine-check.json'],
+  ] as const)('declares the streams and session type of the contract example for %s', (protocolId, example) => {
+    const session = readJson(example);
+    const streams = (session['streams'] as Record<string, unknown>[]).map(({ calibration_id: _id, ...stream }) => stream);
+    expect(PROTOCOLS[protocolId].streams).toEqual(streams);
+    expect(PROTOCOLS[protocolId].session_type).toBe(session['session_type']);
+  });
+});

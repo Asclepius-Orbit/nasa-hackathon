@@ -41,24 +41,30 @@ function ClockIcon(): React.JSX.Element {
   );
 }
 
-/** Crew names, only mounted when nobody is signed in (login or lock screen). */
-function CrewPicker(): React.JSX.Element | null {
+/** The crew members to choose from, read only when nobody is unlocked. `null` while loading; empty when none could be read. */
+function useCrewChoices(enabled: boolean): CrewMember[] | null {
   const api = useApi();
-  const [crew, setCrew] = useState<CrewMember[]>([]);
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [crew, setCrew] = useState<CrewMember[] | null>(null);
   useEffect(() => {
+    if (!enabled) return undefined;
     let live = true;
     api.crew.list().then(
       (list) => {
         if (live) setCrew(list);
       },
-      () => undefined,
+      () => {
+        if (live) setCrew([]);
+      },
     );
     return () => {
       live = false;
     };
-  }, [api]);
-  if (crew.length === 0) return null;
+  }, [api, enabled]);
+  return crew;
+}
+
+/** Crew names, only shown when nobody is unlocked (login or lock screen): the report is sent for the one chosen, without a PIN. */
+function CrewPicker({ crew, chosen, onChoose }: { crew: readonly CrewMember[]; chosen: string | null; onChoose: (id: string) => void }): React.JSX.Element {
   return (
     <div role="group" aria-label={copy.forGroup} className={styles.crew}>
       <span className={styles.crewLabel}>{copy.forLabel}</span>
@@ -69,7 +75,7 @@ function CrewPicker(): React.JSX.Element | null {
           aria-pressed={chosen === member.id}
           className={pick.pick}
           onClick={() => {
-            setChosen(member.id);
+            onChoose(member.id);
           }}
         >
           {member.name}
@@ -81,13 +87,18 @@ function CrewPicker(): React.JSX.Element | null {
 
 function Panel(): React.JSX.Element {
   const { close, preselected } = useUrgent();
-  const { status } = useAuth();
+  const { status, crewId } = useAuth();
   const { offline } = useOffline();
   const catalog = useLoad(selectCatalog).data;
   const strip = useLoad(selectStrip).data;
   const [selected, setSelected] = useState<Code[]>([...preselected]);
   const data = useData();
   const [sent, setSent] = useState(false);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const nobodyUnlocked = status === 'signed-out' || status === 'locked';
+  const crew = useCrewChoices(nobodyUnlocked);
+  // Signed in: the report is for that member. Otherwise it is for the one picked here.
+  const target = status === 'signed-in' ? crewId : chosen;
   const [notRecorded, setNotRecorded] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [opener] = useState(() => document.activeElement);
@@ -147,7 +158,8 @@ function Panel(): React.JSX.Element {
         onKeyDown={onKeyDown}
       >
         <h2 id="urgent-title">{copy.title}</h2>
-        {(status === 'signed-out' || status === 'locked') && <CrewPicker />}
+        {nobodyUnlocked && crew !== null && crew.length > 0 && <CrewPicker crew={crew} chosen={chosen} onChoose={setChosen} />}
+        {nobodyUnlocked && crew !== null && crew.length === 0 && <p className={styles.notRecorded}>{copy.noCrew}</p>}
         <p className={styles.intro}>{data.sendsUrgentReports ? copy.intro : copy.introNotSent}</p>
         <div className={styles.flags}>
           <ChipGroup label={copy.symptomsGroup} options={options} selected={selected} tone="flag" onChange={setSelected} />
@@ -178,6 +190,7 @@ function Panel(): React.JSX.Element {
           </span>
         </div>
         )}
+        {nobodyUnlocked && crew !== null && crew.length > 0 && chosen === null && selected.length > 0 && <p className={styles.pending}>{copy.chooseWho}</p>}
         {notRecorded && (
           <p role="alert" className={styles.notRecorded}>
             <b>{copy.notRecordedTitle}</b> {copy.notRecordedBody}
@@ -186,10 +199,11 @@ function Panel(): React.JSX.Element {
         <div className={styles.actions}>
           <Button
             variant="urgent"
-            disabled={selected.length === 0 || sent}
+            disabled={selected.length === 0 || sent || target === null}
             onClick={() => {
+              if (target === null) return;
               setNotRecorded(false);
-              data.sendUrgentReport(selected).then(
+              data.sendUrgentReport(target, selected).then(
                 () => {
                   setSent(true);
                 },

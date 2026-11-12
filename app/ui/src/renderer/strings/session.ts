@@ -9,7 +9,20 @@ export const session = {
   reps: (n: number): string => `${String(n)} reps`,
   title: 'Session',
   none: 'No session is in progress.',
-  noneHint: 'When one starts it appears here, with its steps.',
+  noneHint: 'Choose one below to start it. It appears here with its steps.',
+  /** The session is starting: the harness has not confirmed yet. */
+  anotherTitle: 'Start another session',
+  starting: 'Starting. Waiting for the harness to confirm.',
+  rejected: {
+    title: 'The harness did not accept the session.',
+    body: 'Check that the harness is on and fitted, then try again.',
+    retry: 'Try again',
+  },
+  failed: {
+    title: 'The analysis of this session failed.',
+    body: 'The recording is kept. Reprocess it to analyse it again.',
+    reprocess: 'Reprocess',
+  },
   started: (started: string): string => `Started ${started} GMT.`,
   /** `minutes` is signed: positive when it started after the planned time, negative when before. */
   late: (started: string, minutes: number, planned: string): string => {
@@ -37,6 +50,46 @@ export const session = {
   pending: 'Placement and procedure pending Aguado',
   back: 'Back',
   next: 'Next step',
+} as const;
+
+export const start = {
+  group: 'Choose the session',
+  hints: {
+    lat_pulldown_standing_v1: 'Exercise: reps with the band, measured by the harness.',
+    spine_length_rest_v1: 'Spine check: stand still while the cord reads your lower back.',
+  },
+  button: 'Start session',
+  busy: 'Starting',
+  noHarness: {
+    title: 'No harness is paired to you.',
+    body: 'Pair one before starting a session.',
+    link: 'Pair a harness in Settings',
+  },
+  noContext: {
+    title: 'The monitor needs today’s mission context before a session can start.',
+    body: 'Set the phase and gravity for today, then start again.',
+    link: 'Set it in Profile',
+  },
+  failure: {
+    conflict: 'The harness is busy or offline.',
+    locked: 'The app is locked. Unlock it, then start again.',
+    unavailable: 'The monitor did not answer. Nothing was started; try again.',
+  },
+} as const;
+
+/** Outcomes of the actions on a running session (finish, calibrate, mark an artefact, reprocess). */
+export const actionText = {
+  failure: {
+    unavailable: 'The monitor did not answer. Nothing was sent; try again.',
+    locked: 'The app is locked. Unlock it, then try again.',
+    invalid: 'The monitor refused the request. Nothing was sent.',
+    conflict: 'The harness is busy or the session is not running any more. Nothing was sent.',
+  },
+  finished: 'Finish sent. The session is being saved.',
+  calibrated: 'Calibration requested. Waiting for the harness to confirm.',
+  artefact: 'Artefact marked.',
+  reprocessing: 'Reprocessing. The result shows here when it is done.',
+  notFailed: 'This session is no longer failed.',
 } as const;
 
 export const voiceUndo = {
@@ -68,6 +121,7 @@ export const stages = {
     notSent: 'No calibration command was sent yet.',
     waiting: 'Calibration sent. Waiting for the harness to confirm.',
     saved: (gmt: string): string => `Calibration saved at ${gmt} GMT.`,
+    calibrate: 'Calibrate',
   },
   reps: {
     of: (total: number): string => `of ${String(total)}`,
@@ -104,6 +158,6 @@ export const stages = {
     resting: 'Resting',
     noRest: 'This protocol has no rest period.',
     finish: 'Finish session',
-    hint: 'Finish is available when the rest ends. Then the session is saved and a new assessment runs.',
+    hint: 'Finish once the rest is over. Then the session is saved and a new assessment runs.',
   },
 } as const;

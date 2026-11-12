@@ -102,15 +102,16 @@ async def test_view_routes_cover_exactly_the_paths_and_methods_of_ui_openapi(har
     contract = yaml.safe_load((CONTRACTS / "ui-openapi.yaml").read_text(encoding="utf-8"))
     served = (await harness.http.get("/openapi.json")).json()["paths"]
 
+    # Served under /ui but outside the UI contract: the crew registry (main process only), the export and the command
+    # state (the UI follows the session view instead).
+    outside = {
+        ("/ui/crew/{astronaut_id}", "put"),
+        ("/ui/crew/{astronaut_id}/export", "get"),
+        ("/ui/commands/{command_id}", "get"),
+    }
+
     def views(paths: dict[str, Any]) -> set[tuple[str, str]]:
-        read = {(p, m) for p, item in paths.items() if "/views/" in p or p.endswith(("/view", "/reps", "/houston", "/outbox", "/contacts")) for m in item}
-        # The contacts are written on the same path (POST), outside this read-only contract; the crew list is GET /ui/crew.
-        crew_data = {(p, m) for p, item in paths.items() if p.endswith(("/profile", "/devices", "/daily-context/{day}")) for m in item}
-        return (
-            {(p, m) for p, m in read if m == "get" or not p.endswith("/contacts")}
-            | {(p, m) for p, item in paths.items() if p == "/ui/crew" for m in item}
-            | crew_data
-        )
+        return {(p, m) for p, item in paths.items() if p.startswith("/ui/") or p == "/ui/crew" for m in item} - outside
 
     assert views(served) == {(p, m) for p, item in contract["paths"].items() for m in item}
 

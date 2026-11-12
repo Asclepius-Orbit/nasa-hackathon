@@ -10,12 +10,21 @@ import {
   IPC_CHANNELS,
   createCrewInputSchema,
   dailyContextFieldsSchema,
+  dailyReportFieldsSchema,
+  exerciseEntrySchema,
   historyInputSchema,
+  logOfficerCallInputSchema,
+  markArtifactInputSchema,
+  oswestryInputSchema,
   profileFieldsSchema,
   repsUnsubscribeInputSchema,
   sessionInputSchema,
+  sessionOnlyInputSchema,
   setHarnessInputSchema,
   settingsPatchSchema,
+  startSessionInputSchema,
+  stopInputSchema,
+  urgentInputSchema,
   verifyPinInputSchema,
 } from '../shared/ipc-schema';
 import type { AuthService } from './auth/auth-service';
@@ -23,7 +32,11 @@ import type { DailyContextService } from './profile/daily-context-service';
 import type { DevicesService } from './profile/devices-service';
 import type { HarnessService } from './profile/harness-service';
 import type { ProfileService } from './profile/profile-service';
+import type { ContactsService } from './reports/contacts-service';
+import type { ReportsService } from './reports/reports-service';
+import type { UrgentService } from './reports/urgent-service';
 import type { IpcEventLike } from './security/app-url';
+import type { SessionsService } from './sessions/sessions-service';
 import type { CrewStore } from './store/crew-store';
 import type { SettingsStore } from './store/settings-store';
 import type { RepsService } from './views/reps-service';
@@ -45,6 +58,10 @@ export interface IpcServices {
   dailyContext: DailyContextService;
   devices: DevicesService;
   harness: HarnessService;
+  sessions: SessionsService;
+  reports: ReportsService;
+  urgent: UrgentService;
+  contacts: ContactsService;
 }
 
 class UnavailableError extends Error {
@@ -60,7 +77,7 @@ function orUnavailable<T>(value: T | null): T {
 
 export function registerIpc(
   ipcMain: IpcMainLike,
-  { crew, auth, settings, views, reps, profile, dailyContext, devices, harness }: IpcServices,
+  { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts }: IpcServices,
   isTrustedSender: (event: IpcEventLike) => boolean,
   logError: (error: unknown) => void = console.error,
 ): void {
@@ -146,6 +163,19 @@ export function registerIpc(
   withoutInput(IPC_CHANNELS.dailyContextToday, () => dailyContext.today());
   withInput(IPC_CHANNELS.dailyContextUpdateToday, dailyContextFieldsSchema, (fields) => dailyContext.updateToday(fields));
   withoutInput(IPC_CHANNELS.devicesList, () => devices.list());
+  withInput(IPC_CHANNELS.sessionsStart, startSessionInputSchema, (input) => sessions.start(input));
+  withInput(IPC_CHANNELS.sessionsStop, stopInputSchema, (input) => sessions.stop(input));
+  withInput(IPC_CHANNELS.sessionsMarkArtifact, markArtifactInputSchema, (input) => sessions.markArtifact(input));
+  withInput(IPC_CHANNELS.sessionsCalibrateMvc, sessionOnlyInputSchema, (input) => sessions.calibrateMvc(input));
+  withInput(IPC_CHANNELS.sessionsReprocess, sessionOnlyInputSchema, (input) => sessions.reprocess(input));
+  withInput(IPC_CHANNELS.reportsSaveDaily, dailyReportFieldsSchema, (fields) => reports.saveDaily(fields));
+  withInput(IPC_CHANNELS.reportsSaveOswestry, oswestryInputSchema, (input) => reports.saveOswestry(input));
+  withInput(IPC_CHANNELS.reportsAddExercise, exerciseEntrySchema, (entry) => reports.addExercise(entry));
+  withoutInput(IPC_CHANNELS.reportsDue, () => reports.due());
+  // The one write allowed without a PIN (see UrgentService); its schema still requires a well-formed crew id.
+  withInput(IPC_CHANNELS.urgentSend, urgentInputSchema, (input) => urgent.send(input));
+  withoutInput(IPC_CHANNELS.contactsList, () => contacts.list());
+  withInput(IPC_CHANNELS.contactsLogOfficerCall, logOfficerCallInputSchema, (input) => contacts.logOfficerCall(input));
   // Live push: the handlers only start and stop it; events travel on `IPC_EVENT_CHANNELS.repsEvent` (see RepsService).
   withInput(IPC_CHANNELS.repsSubscribe, sessionInputSchema, ({ sessionId }, event) => reps.subscribe(event.sender, sessionId));
   withInput(IPC_CHANNELS.repsUnsubscribe, repsUnsubscribeInputSchema, ({ subscriptionId }, event) => {

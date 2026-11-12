@@ -55,6 +55,12 @@ function build(respond: () => Promise<Response> | Response, token: string | null
 }
 
 describe('createWriteClient requests', () => {
+  it('sends an ETag and reports a stale context as a conflict', async () => {
+    const { client, calls } = build(() => problem(412));
+    expect(await client.putDailyContext(ASTRONAUT, DAY, { phase: 'inflight' }, '"v1"')).toEqual({ ok: false, reason: 'conflict' });
+    expect(calls[0]?.init.headers['if-match']).toBe('"v1"');
+  });
+
   it('sends If-Match for a conditional profile update and reports a stale version as conflict', async () => {
     const { client, calls } = build(() => problem(412));
     expect(await client.putProfile(ASTRONAUT, {}, '"version"')).toEqual({ ok: false, reason: 'conflict' });
@@ -114,6 +120,13 @@ describe('createWriteClient requests', () => {
     expect(calls[0]?.init.headers).not.toHaveProperty('authorization');
   });
 
+  it('POSTs without a body when the request has none', async () => {
+    const { client, calls } = build(() => json({}, 202));
+    await client.send({ method: 'POST', path: '/ui/x', astronautId: ASTRONAUT, body: undefined, schema: z.looseObject({}) });
+    expect(calls[0]?.init).not.toHaveProperty('body');
+    expect(calls[0]?.init.headers).not.toHaveProperty('content-type');
+  });
+
   it('refuses a non-loopback backend', () => {
     expect(() => createWriteClient({ baseUrl: 'http://example.com' })).toThrow(/loopback/);
   });
@@ -126,6 +139,7 @@ describe('createWriteClient status mapping', () => {
     [409, 'conflict'],
     [412, 'unavailable'],
     [500, 'unavailable'],
+    [503, 'unavailable'],
     [404, 'unavailable'],
     [302, 'unavailable'],
   ])('%i is %s', async (status, reason) => {

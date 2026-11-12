@@ -141,6 +141,94 @@ export interface DailyContextFields {
   mission_day: number | null;
 }
 
+/** Protocols the UI can start (`contracts/catalog/protocol-catalog.json`). */
+export type ProtocolId = 'lat_pulldown_standing_v1' | 'spine_length_rest_v1';
+
+/** A start that reached the backend: the new session (still `starting` until the harness acks). */
+export interface StartedSession {
+  sessionId: string;
+  state: 'starting';
+}
+
+/**
+ * Outcome of starting a session: a `WriteResult`, or `no_harness` when the unlocked member has no paired harness (nothing
+ * was sent). A 422 without field pointers usually means today has no daily context; a 409 the harness is busy or offline.
+ */
+export type StartSessionResult = WriteResult<StartedSession> | { ok: false; reason: 'no_harness' };
+
+/** Why a session is stopped (contract `end_reason`); `repIndex` (from 1) only with `aborted_pain`. */
+export type StopInput =
+  | { sessionId: string; reason: 'completed' | 'aborted_by_user' | 'aborted_other' }
+  | { sessionId: string; reason: 'aborted_pain'; repIndex: number | null };
+
+/** A command sent to the harness was accepted by the backend (the ack shows later in the session view). */
+export interface CommandSent {
+  commandId: string;
+}
+
+/** The daily self-report as the form fills it (`domain/self-report`, kind `daily`); main adds ids and time. */
+export interface DailyReportFields {
+  pain_nrs: number;
+  stiffness_nrs: number;
+  pain_locations: { region: string; side: string | null }[];
+  /** `null` when the crew member is not sure how long they slept (then no sleep is sent). */
+  sleep_hours: number | null;
+  sleep_quality_nrs: number | null;
+  red_flags: string[];
+  /** Exercise done today; main adds it to today's daily context (`exercise[]`), if there is one. */
+  exercise: { modality: 'ared' | 'cevis' | 't2' | 'other'; duration_min: number } | null;
+}
+
+/** One answered Oswestry item: `score` 0-5. The item set is provisional (pending Aguado, #48). */
+export interface OdiAnswer {
+  item_id: string;
+  score: number;
+}
+
+/** What `POST self-reports` left: the assessment is redone at once (`null` when skipped, with the reason). */
+export interface ReportSaved {
+  reportId: string;
+  assessmentLevel: 'green' | 'amber' | 'red' | null;
+  assessmentSkipped: string | null;
+  /**
+   * What became of the exercise of a daily report, which is stored apart from the report (in today's daily context):
+   * `stored`, `no_context` (today has no daily context to put it in), `not_stored` (any other failure; the report is
+   * stored anyway) or `null` (nothing to store). `reports.addExercise` retries it.
+   */
+  exercise: 'stored' | 'not_stored' | 'no_context' | null;
+}
+
+/** One exercise of the day, as the daily report carries it. */
+export type ExerciseEntry = NonNullable<DailyReportFields['exercise']>;
+
+/** Outcome of adding an exercise to today's daily context: a `WriteResult`, or `no_context` (nothing was written). */
+export type AddExerciseResult = WriteResult<DailyContext> | { ok: false; reason: 'no_context' };
+
+/** Self-reports due today (`GET self-reports/due`). */
+export interface ReportsDue {
+  dailyDue: boolean;
+  weeklyOdiDue: boolean;
+  lastDailyAt: string | null;
+  lastWeeklyOdiAt: string | null;
+}
+
+/**
+ * An urgent symptom report (`self-report` kind `red_flag`). `crewId` is required when nobody is unlocked (sent from the
+ * login or lock screen without a PIN, for that crew member only); when someone is unlocked it must be them.
+ */
+export interface UrgentInput {
+  crewId: string;
+  red_flags: string[];
+  other_symptoms: string[];
+}
+
+/** A logged contact with the crew medical officer (`domain/medical-contact`). */
+export interface MedicalContactEntry {
+  contactId: string;
+  at: string;
+  sessionId: string | null;
+}
+
 /** Pairing a harness changes only the unlocked member; `locked` when nobody is, `unavailable` when it could not be stored. */
 export type SetHarnessResult = { ok: true; member: CrewMember } | { ok: false; reason: 'locked' | 'unavailable' };
 
@@ -190,6 +278,34 @@ export interface AsclepiusApi {
   /** Devices that published a status for the unlocked astronaut (to pair a harness). Rejects with a `ViewsErrorCode`. */
   devices: {
     list(): Promise<DeviceStatus[]>;
+  };
+  /** Session commands for the unlocked astronaut's own sessions. A refusal is a result; only `ok` means the backend took it. */
+  sessions: {
+    start(input: { protocolId: ProtocolId }): Promise<StartSessionResult>;
+    stop(input: StopInput): Promise<WriteResult<CommandSent>>;
+    /** Marks an artefact at the current repetition (`event_type` `artifact`). */
+    markArtifact(input: { sessionId: string; repIndex: number | null }): Promise<WriteResult<CommandSent>>;
+    /** Asks the harness for an EMG MVC calibration of the session's EMG streams. */
+    calibrateMvc(input: { sessionId: string }): Promise<WriteResult<CommandSent>>;
+    /** Analyses again a `processing_failed` session (`conflict` for any other state). */
+    reprocess(input: { sessionId: string }): Promise<WriteResult<{ sessionId: string }>>;
+  };
+  /** Self-reports of the unlocked astronaut. `due` rejects with a `ViewsErrorCode`. */
+  reports: {
+    saveDaily(fields: DailyReportFields): Promise<WriteResult<ReportSaved>>;
+    saveOswestry(input: { items: OdiAnswer[] }): Promise<WriteResult<ReportSaved>>;
+    /** Retries the exercise a daily report could not store; always today's context of the unlocked astronaut. */
+    addExercise(entry: ExerciseEntry): Promise<AddExerciseResult>;
+    due(): Promise<ReportsDue>;
+  };
+  /** The urgent symptom report: also without a PIN, from login or lock (see `UrgentInput`). */
+  urgent: {
+    send(input: UrgentInput): Promise<WriteResult<ReportSaved>>;
+  };
+  /** Contacts with the crew medical officer. `list` rejects with a `ViewsErrorCode`. */
+  contacts: {
+    list(): Promise<MedicalContactEntry[]>;
+    logOfficerCall(input: { sessionId: string | null }): Promise<WriteResult<MedicalContactEntry>>;
   };
   /** Live push from the backend, for the signed-in astronaut's own sessions only. */
   reps: {

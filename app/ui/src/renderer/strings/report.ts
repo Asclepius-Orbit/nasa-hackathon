@@ -24,7 +24,11 @@ export const report = {
     sendNow: 'Send the alert now; you do not need to finish first.',
     sendAlert: 'Send alert',
   },
-  sleepHours: { question: 'How long did you sleep?', optional: 'Optional' },
+  sleepHours: {
+    question: 'How long did you sleep?',
+    optional: 'Optional',
+    needed: 'Say how long you slept to save how well you slept.',
+  },
   sleepQuality: { question: 'How well did you sleep?', low: '0, terrible', high: '10, perfect' },
   exercise: {
     question: 'Exercise today',
@@ -37,8 +41,24 @@ export const report = {
     pain: 'pain',
     stiffness: 'stiffness',
     symptoms: 'warning symptoms',
+    exerciseMinutes: 'exercise duration',
     list: (parts: readonly string[]): string => `Still to answer: ${parts.join(', ')}.`,
     ready: 'Ready. Saving runs a new assessment.',
   },
   saved: 'Daily report saved. A new assessment is running.',
+  exerciseNotSaved: {
+    title: 'Daily report saved, but your exercise was not.',
+    notStored: "It could not be added to today's context. Try again.",
+    noContext: "There is no context for today. Set today's context in Profile, then try again.",
+    retry: 'Retry exercise',
+    retrying: 'Retrying',
+  },
+  saving: 'Saving',
+  fixMarked: 'Check the marked answers.',
+  failure: {
+    unavailable: 'The monitor did not answer. Nothing was saved; your answers are still here, try again.',
+    locked: 'The app is locked. Unlock it, then save again.',
+    conflict: 'The monitor already holds a different report for this. Nothing was saved; reload the screen.',
+    invalid: 'The monitor refused the report. Nothing was saved; your answers are still here.',
+  },
 } as const;

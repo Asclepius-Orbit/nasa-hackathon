@@ -7,7 +7,14 @@
  * between its read and its write (the write is create-only, so the backend refuses it then), and never fails: it is
  * best effort, run after sign-in and after a profile update.
  */
-import type { AstronautProfile, DailyContext, DailyContextFields, WriteResult } from '../../shared/api';
+import type {
+  AddExerciseResult,
+  AstronautProfile,
+  DailyContext,
+  DailyContextFields,
+  ExerciseEntry,
+  WriteResult,
+} from '../../shared/api';
 import type { AuthService } from '../auth/auth-service';
 import type { RecordsClient } from '../views/records-client';
 import type { WriteClient } from '../views/write-client';
@@ -18,7 +25,14 @@ export interface DailyContextService {
   updateToday(fields: DailyContextFields): Promise<WriteResult<DailyContext>>;
   /** Writes today's context derived from the profile when none is stored. Resolves once done; never rejects. */
   ensureToday(astronautId: string): Promise<void>;
+  /**
+   * Appends an exercise to today's stored context (`exercise[]`); `no_context` and nothing written when today has
+   * none. Never rejects: a failed read or write is logged and answered as a failure, so the caller can offer a retry.
+   */
+  addExercise(astronautId: string, entry: ExerciseEntry): Promise<AddExerciseResult>;
 }
+
+export type { ExerciseEntry };
 
 export interface DailyContextServiceOptions {
   auth: Pick<AuthService, 'current'>;
@@ -115,6 +129,26 @@ export function createDailyContextService({
         if (!result.ok && result.reason !== 'exists') logError(`daily context: ${day} not stored automatically (${result.reason})`);
       } catch (error) {
         logError(error);
+      }
+    },
+
+    async addExercise(astronautId, entry) {
+      const day = utcDay(now());
+      try {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const current = await records.dailyContextVersioned(astronautId, day);
+          if (current === null) return { ok: false, reason: 'no_context' };
+          const { schema_version: _version, ...kept } = current.value;
+          const previous = Array.isArray(kept['exercise']) ? (kept['exercise'] as unknown[]) : [];
+          const result = await writer.putDailyContext(astronautId, day, { ...kept, exercise: [...previous, entry] }, current.etag);
+          if (!result.ok && result.reason === 'conflict') continue;
+          if (!result.ok) logError(`daily context: exercise not added to ${day} (${result.reason})`);
+          return result;
+        }
+        logError(`daily context: exercise not added to ${day} (conflict)`);
+        return { ok: false, reason: 'conflict' };
+      } catch (error) {
+        return readFailure(error, logError);
       }
     },
   };

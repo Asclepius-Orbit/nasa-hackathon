@@ -16,9 +16,13 @@ import { createDailyContextRefresh } from './profile/daily-context-refresh';
 import { createDevicesService } from './profile/devices-service';
 import { createHarnessService } from './profile/harness-service';
 import { createProfileService } from './profile/profile-service';
+import { createContactsService } from './reports/contacts-service';
+import { createReportsService } from './reports/reports-service';
+import { createUrgentService } from './reports/urgent-service';
 import { APP_SCHEME_PRIVILEGES, createAppProtocolHandler } from './security/app-protocol';
 import { APP_SCHEME, createAppUrlPolicy, createSenderGuard } from './security/app-url';
 import { devCsp, PROD_CSP } from './security/csp';
+import { createSessionsService } from './sessions/sessions-service';
 import { createCrewRegistry, withCrewRegistry } from './store/crew-registry';
 import { createCrewStore, crewFileSchema } from './store/crew-store';
 import { DEMO_CREW } from './store/demo-crew';
@@ -120,9 +124,13 @@ if (!app.requestSingleInstanceLock()) {
     const profile = createProfileService({ auth, records, writer, dailyContext, logError: console.error });
     const devices = createDevicesService({ auth, records });
     const harness = createHarnessService({ auth, crew });
+    const sessions = createSessionsService({ auth, crew, records, writer, logError: console.error });
+    const reports = createReportsService({ auth, records, writer, dailyContext });
+    const urgent = createUrgentService({ auth, crew, writer, now: Date.now });
+    const contacts = createContactsService({ auth, records, writer });
     registerIpc(
       ipcMain,
-      { crew, auth, settings, views, reps, profile, dailyContext, devices, harness },
+      { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts },
       createSenderGuard(policy),
     );
 

@@ -46,6 +46,7 @@ describe('Stop: pain', () => {
     const spy = vi.spyOn(data, 'stopSessionForPain');
     await user.click(await screen.findByRole('button', { name: /Stop: pain/ }));
     expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(expect.any(String), 4);
     expect(await screen.findByTestId('where')).toHaveTextContent('/stopped');
   });
 });
@@ -90,6 +91,7 @@ describe('Stop: pain when the stop cannot be recorded', () => {
     const api = new FakeAsclepiusApi();
     api.viewData.today = example<TodayView>('ui-today.nodata');
     api.viewData.sessions = { [SESSION_ID]: example<SessionPayload>('ui-session') };
+    api.forced.set('sessions.stop', { ok: false, reason: 'unavailable' });
     renderInWorld(
       <Routes>
         <Route path="/session" element={<SessionView />} />
@@ -174,12 +176,12 @@ describe('stages', () => {
     expect(screen.getByRole('heading', { name: '2. Check the harness is sending' })).toBeInTheDocument();
   });
 
-  it('opens the finish stage with Finish disabled', async () => {
+  it('opens the finish stage with Finish enabled while the session runs', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(await screen.findByRole('button', { name: 'Rest and finish' }));
     expect(screen.getByRole('heading', { name: '5. Rest and finish' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Finish session' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Finish session' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Next step' })).not.toBeInTheDocument();
   });
 

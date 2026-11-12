@@ -50,6 +50,26 @@ const api: AsclepiusApi = Object.freeze({
   devices: Object.freeze({
     list: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.devicesList)),
   } satisfies AsclepiusApi['devices']),
+  sessions: Object.freeze({
+    start: (input) => ipcRenderer.invoke(IPC_CHANNELS.sessionsStart, input),
+    stop: (input) => ipcRenderer.invoke(IPC_CHANNELS.sessionsStop, input),
+    markArtifact: (input) => ipcRenderer.invoke(IPC_CHANNELS.sessionsMarkArtifact, input),
+    calibrateMvc: (input) => ipcRenderer.invoke(IPC_CHANNELS.sessionsCalibrateMvc, input),
+    reprocess: (input) => ipcRenderer.invoke(IPC_CHANNELS.sessionsReprocess, input),
+  } satisfies AsclepiusApi['sessions']),
+  reports: Object.freeze({
+    saveDaily: (fields) => ipcRenderer.invoke(IPC_CHANNELS.reportsSaveDaily, fields),
+    saveOswestry: (input) => ipcRenderer.invoke(IPC_CHANNELS.reportsSaveOswestry, input),
+    addExercise: (entry) => ipcRenderer.invoke(IPC_CHANNELS.reportsAddExercise, entry),
+    due: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.reportsDue)),
+  } satisfies AsclepiusApi['reports']),
+  urgent: Object.freeze({
+    send: (input) => ipcRenderer.invoke(IPC_CHANNELS.urgentSend, input),
+  } satisfies AsclepiusApi['urgent']),
+  contacts: Object.freeze({
+    list: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.contactsList)),
+    logOfficerCall: (input) => ipcRenderer.invoke(IPC_CHANNELS.contactsLogOfficerCall, input),
+  } satisfies AsclepiusApi['contacts']),
   // Live push. The bridge hands the callback plain events only: never `ipcRenderer` or Electron's event object.
   reps: Object.freeze(createRepsBridge(ipcRenderer)),
 });

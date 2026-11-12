@@ -204,3 +204,64 @@ describe('ensureToday', () => {
     expect(logged).toHaveLength(2);
   });
 });
+
+describe('addExercise', () => {
+  const ENTRY = { modality: 'cevis', duration_min: 30 } as const;
+
+  it("appends the exercise to today's stored context, keeping the rest", async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    await service.addExercise(ID, ENTRY);
+    const { schema_version: _version, ...kept } = STORED;
+    expect(backend.puts).toEqual([
+      { path: `${ID}/daily-context/${TODAY}`, body: { ...kept, exercise: [{ kind: 'treadmill' }, ENTRY] } },
+    ]);
+  });
+
+  it('retries against a concurrent context edit without losing either change', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    backend.beforeContextPut = () => {
+      backend.beforeContextPut = () => undefined;
+      backend.contexts.set(`${ID}/${TODAY}`, { ...STORED, mission_day: 42 });
+    };
+    expect(await service.addExercise(ID, ENTRY)).toMatchObject({ ok: true });
+    expect(backend.contexts.get(`${ID}/${TODAY}`)).toMatchObject({
+      mission_day: 42,
+      exercise: [{ kind: 'treadmill' }, ENTRY],
+    });
+  });
+
+  it('starts the list when the context has no exercise yet', async () => {
+    const { backend, service } = build();
+    const { exercise: _exercise, ...without } = STORED as unknown as Record<string, unknown>;
+    backend.contexts.set(`${ID}/${TODAY}`, without as unknown as DailyContext);
+    await service.addExercise(ID, ENTRY);
+    expect(backend.puts[0]?.body['exercise']).toEqual([ENTRY]);
+  });
+
+  it('answers that the exercise is stored, with the context it left', async () => {
+    const { backend, service } = build();
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    const result = await service.addExercise(ID, ENTRY);
+    expect(result).toMatchObject({ ok: true, value: { exercise: [{ kind: 'treadmill' }, ENTRY] } });
+  });
+
+  it('writes nothing and answers no_context when today has none', async () => {
+    const { backend, service, logged } = build();
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'no_context' });
+    expect(backend.puts).toEqual([]);
+    expect(logged).toEqual([]);
+  });
+
+  it('answers a failed read or a refused write as a failure, logs it and never rejects', async () => {
+    const { backend, service, logged } = build();
+    backend.readFailure = new ViewsError('unavailable');
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'unavailable' });
+    backend.readFailure = null;
+    backend.contexts.set(`${ID}/${TODAY}`, STORED);
+    backend.writeAnswer = { ok: false, reason: 'conflict' };
+    expect(await service.addExercise(ID, ENTRY)).toEqual({ ok: false, reason: 'conflict' });
+    expect(logged).toHaveLength(2);
+  });
+});

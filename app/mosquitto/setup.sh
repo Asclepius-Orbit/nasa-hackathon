@@ -18,7 +18,8 @@ set -eu
 IMAGE=eclipse-mosquitto:2.0.22
 # Devices of spine_monitor/physiology/configs/example-mission.yaml and of physiology/tests/test_gateway_mosquitto.py.
 DEFAULT_SIM_DEVICES="AST-01:sim-01 AST-02:sim-02"
-ITEST_DEVICES="AST-01:itest-01 AST-02:itest-02"
+DEMO_DEVICES="AST-01:gw-demo"
+ITEST_DEVICES="AST-01:itest-01 AST-02:itest-02 AST-01:itest-gw AST-98:itest-e2e"
 
 here=$(cd "$(dirname "$0")" && pwd)
 env_file="$(dirname "$here")/.env"
@@ -102,15 +103,15 @@ for entry in $new_devices; do
         *) devices="${devices:+$devices }$entry" ;;
     esac
 done
-for entry in $sim_devices $ITEST_DEVICES $devices; do
+for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do
     check_device "$entry"
 done
 
 # MQTT usernames are global, including the service accounts. Reusing one would
 # replace its password and combine its ACL grants with those of the device.
-seen_users=" spine-app spine-health spine-itest "
+seen_users=" spine-app spine-health spine-itest spine-gwtest "
 seen_vars=" "
-for entry in $sim_devices $ITEST_DEVICES $devices; do
+for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do
     device=${entry#*:}
     case "$seen_users" in
         *" $device "*) echo "duplicate or reserved MQTT user: $device" >&2; exit 2 ;;
@@ -162,7 +163,9 @@ trap 'rm -f "$tmp_env" "$users" "$auth_dir/passwd.tmp" "$auth_dir/acl.tmp"' EXIT
     echo "spine-app $app_pw"
     echo "spine-health $health_pw"
     echo "spine-itest $itest_pw"
+    echo "spine-gwtest $itest_pw"
     for entry in $sim_devices; do echo "${entry#*:} $sim_pw"; done
+    for entry in $DEMO_DEVICES; do echo "${entry#*:} $sim_pw"; done
     for entry in $ITEST_DEVICES; do echo "${entry#*:} $itest_device_pw"; done
     for entry in $devices; do
         var=$(device_var "${entry#*:}")
@@ -181,7 +184,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -i "$IMAGE" sh -c '
 # ACL: the template with one acl-device.template block per device user in place of @DEVICES@.
 {
     sed '/^@DEVICES@$/,$d' "$here/acl.template"
-    for entry in $sim_devices $ITEST_DEVICES $devices; do
+    for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do
         case "$entry" in
             *:*) astronaut=${entry%%:*} ;;
             *) astronaut=+ ;;
@@ -197,5 +200,5 @@ mv "$auth_dir/acl.tmp" "$auth_dir/acl"
 chmod 600 "$env_file" "$auth_dir/passwd" "$auth_dir/acl"
 
 echo "MQTT credentials in $env_file; password file and ACL in $auth_dir."
-echo "Device users: $(for entry in $sim_devices $ITEST_DEVICES $devices; do printf '%s ' "${entry#*:}"; done)"
+echo "Device users: $(for entry in $sim_devices $DEMO_DEVICES $ITEST_DEVICES $devices; do printf '%s ' "${entry#*:}"; done)"
 echo "Restart the broker to load them: docker compose -f app/docker-compose.yml up -d --force-recreate mosquitto"

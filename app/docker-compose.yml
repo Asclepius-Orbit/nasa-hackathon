@@ -143,6 +143,62 @@ services:
     profiles: ["sim"]
     restart: unless-stopped
 
+  gateway:
+    # Real wearable gateway (issue #13): Arduino over USB serial -> MQTT v1 chunks. Profile "hardware":
+    #   docker compose -f app/docker-compose.yml --profile hardware up -d gateway
+    # Only works on Linux: Docker Desktop on Windows/macOS cannot pass a USB device through to a container.
+    # On Windows the gateway runs natively instead (from spine_monitor/): uv run spine-gateway
+    # with SPINE_GATEWAY_SERIAL_URL=COM3 and SPINE_GATEWAY_MQTT_HOST=127.0.0.1.
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
+    image: spine-gateway:dev
+    environment:
+      SPINE_GATEWAY_MQTT_HOST: mosquitto
+      SPINE_GATEWAY_MQTT_USERNAME: "${SPINE_GATEWAY_MQTT_USERNAME:-wb-01}"
+      SPINE_GATEWAY_MQTT_PASSWORD: "${SPINE_GATEWAY_MQTT_PASSWORD:-${SPINE_MQTT_DEVICE_PASSWORD_WB_01:-}}"
+      # Port as seen inside the container: the device below is always mapped to /dev/ttyACM0.
+      SPINE_GATEWAY_SERIAL_URL: "${SPINE_GATEWAY_SERIAL_URL:-/dev/ttyACM0}"
+    devices:
+      - "${SPINE_GATEWAY_SERIAL_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    profiles: ["hardware"]
+    restart: unless-stopped
+
+  arduino-emulator:
+    # Fake Arduino over TCP (spine_gateway.emulator) for the gateway demo without hardware. Profile "gateway-demo":
+    #   docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
+    image: spine-gateway:dev
+    command: ["spine-arduino-emulator", "--host", "0.0.0.0", "--port", "5000"]
+    profiles: ["gateway-demo"]
+    restart: unless-stopped
+
+  gateway-demo:
+    # The real gateway reading the emulator through pyserial's socket:// instead of a USB port.
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
+    image: spine-gateway:dev
+    command: ["spine-gateway"]
+    environment:
+      SPINE_GATEWAY_SERIAL_URL: socket://arduino-emulator:5000
+      SPINE_GATEWAY_MQTT_HOST: mosquitto
+      SPINE_GATEWAY_DEVICE_ID: gw-demo
+      SPINE_GATEWAY_MQTT_USERNAME: gw-demo
+      SPINE_GATEWAY_MQTT_PASSWORD: "${SPINE_MQTT_SIM_PASSWORD:?run sh app/mosquitto/setup.sh}"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      arduino-emulator:
+        condition: service_started
+    profiles: ["gateway-demo"]
+    restart: "no"
+
   ollama:
     # Local LLM runtime for the spine agent (profile "llm": docker compose --profile llm up -d).
     # Model cache: the ollama-models volume survives `down`/`up`, so models are downloaded once.
@@ -229,6 +285,20 @@ services:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     command: ["sh", "-c", "pnpm install --frozen-lockfile && pnpm check"]
     profiles: ["quality"]
+
+  firmware-build:
+    # Build reproducible del firmware del wearable (issue #13): test de paridad del protocolo en host (gcc)
+    # y compilacion del sketch para arduino:avr:uno. No depende del broker. Perfil "firmware":
+    #   docker compose -f app/docker-compose.yml --profile firmware run --rm firmware-build
+    # Sale distinto de 0 si falla el test o la compilacion (el comando esta en firmware/Dockerfile).
+    build:
+      context: ..
+      dockerfile: firmware/Dockerfile
+    image: spine-firmware:dev
+    # Las fuentes del host pisan la copia de la imagen: editar y volver a ejecutar sin reconstruir.
+    volumes:
+      - ../firmware:/work/firmware:ro
+    profiles: ["firmware"]
 
 volumes:
   backend_data:

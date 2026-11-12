@@ -241,6 +241,19 @@ def test_ui_crew_data_reads_and_writes_the_domain_schema(path):
         assert {"401", "403", "404" if method == "get" else "422"} <= set(item[method]["responses"])
 
 
+def test_ui_daily_context_put_can_create_only_when_absent():
+    document = load("ui-openapi.yaml")
+    put = document["paths"]["/ui/crew/{astronaut_id}/daily-context/{day}"]["put"]
+    params = [document["components"]["parameters"][p["$ref"].rsplit("/", 1)[1]] for p in put["parameters"]]
+    headers = [p for p in params if p["in"] == "header"]
+    assert [(p["name"], p["required"], p["schema"]) for p in headers] == [
+        ("If-None-Match", False, {"type": "string", "const": "*"}),
+        ("If-Match", False, {"type": "string"}),
+    ]
+    assert put["responses"]["412"] == {"$ref": "#/components/responses/AlreadyStored"}
+    assert document["paths"]["/ui/crew/{astronaut_id}/profile"]["put"]["responses"]["412"] == {"$ref": "#/components/responses/AlreadyStored"}
+
+
 def test_ui_devices_is_a_list_of_device_statuses():
     item = load("ui-openapi.yaml")["paths"][DEVICES_PATH]
     schema = item["get"]["responses"]["200"]["content"]["application/json"]["schema"]

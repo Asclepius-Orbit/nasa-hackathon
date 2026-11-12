@@ -8,6 +8,7 @@ describe('prepareIdempotentWrite', () => {
   it.each(['report_id', 'contact_id'] as const)('reuses %s and the original payload after an uncertain failure', async (field) => {
     const bodies: unknown[] = [];
     const fetch: WriteFetch = (_url, init) => {
+      if (init.body === undefined) return Promise.reject(new Error('expected a request body'));
       bodies.push(JSON.parse(init.body) as unknown);
       if (bodies.length === 1) return Promise.reject(new Error('response lost'));
       return Promise.resolve(new Response('{}', { status: 200 }));

@@ -1,0 +1,2 @@
+# Los vectores dorados se comparan byte a byte: nunca deben pasar a CRLF.
+* text eol=lf

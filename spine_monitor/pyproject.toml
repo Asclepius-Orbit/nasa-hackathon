@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["contracts", "physiology", "engine", "mcp_server", "agent", "backend"]
+members = ["contracts", "physiology", "engine", "mcp_server", "agent", "backend", "gateway"]
 
 [dependency-groups]
 dev = [
@@ -18,7 +18,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "contracts/tests", "engine/tests", "physiology/tests", "backend/tests", "mcp_server/tests", "agent/tests"]
+testpaths = ["tests", "contracts/tests", "engine/tests", "physiology/tests", "backend/tests", "mcp_server/tests", "agent/tests", "gateway/tests"]
 pythonpath = ["agent"]  # agent/evals is imported as the package `evals` (it lives outside src on purpose)
 addopts = "--import-mode=importlib --strict-markers --timeout=120"
 markers = [
@@ -32,7 +32,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["spine_contracts", "spine_engine", "spine_physiology", "monitor", "spine_mcp_server", "spine_agent"]
+source = ["spine_contracts", "spine_engine", "spine_physiology", "monitor", "spine_mcp_server", "spine_agent", "spine_gateway"]
 
 [tool.coverage.report]
 fail_under = 90
@@ -49,6 +49,6 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pyright]
 pythonVersion = "3.14"
-include = ["contracts/src", "engine/src", "physiology/src", "backend/src", "mcp_server/src", "agent/src", "agent/evals"]
+include = ["contracts/src", "engine/src", "physiology/src", "backend/src", "mcp_server/src", "agent/src", "agent/evals", "gateway/src"]
 exclude = ["contracts/src/spine_contracts/models"]
 typeCheckingMode = "standard"

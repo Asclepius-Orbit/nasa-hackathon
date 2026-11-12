@@ -7,6 +7,15 @@
 `spine_monitor/` is a uv workspace: a single `.venv` and a single `uv.lock` for every package. Always work from `spine_monitor/` (`uv sync --all-packages`, `uv run pytest`). In PyCharm, open the `spine_monitor/` folder and pick its `.venv` as the interpreter.
 
 Docker Compose (`app/docker-compose.yml`): the MQTT broker requires users and ACLs, and their credentials are never in the repo. Run `sh app/mosquitto/setup.sh` once before any `docker compose` command (Git Bash on Windows); it writes them to `app/.env` (gitignored). Users, device registration and LAN access over TLS are described in [spine_monitor/backend/README.md](spine_monitor/backend/README.md).
+## Wearable gateway
+
+The real wearable gateway (`spine_monitor/gateway`) reads the Arduino over USB serial and publishes the MQTT v1 bus; the sketch is in `firmware/`. A demo without hardware runs the gateway against an Arduino emulator:
+
+```bash
+docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
+```
+
+The build context is the repository root: if Docker cannot read it because of unreadable folders (leftover temporary directories on Windows), delete them or build from a clean clone. It has not been tested with a real board yet. See [`spine_monitor/gateway/README.md`](spine_monitor/gateway/README.md) (running, configuration, wiring and test with the board) and [`firmware/README.md`](firmware/README.md) (sketch and serial protocol).
 
 ## Claude Code skills for pull requests
 

@@ -24,6 +24,7 @@ COPY spine_monitor/engine/pyproject.toml engine/
 COPY spine_monitor/mcp_server/pyproject.toml mcp_server/
 COPY spine_monitor/agent/pyproject.toml agent/
 COPY spine_monitor/backend/pyproject.toml backend/
+COPY spine_monitor/gateway/pyproject.toml gateway/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package spine-physiology --no-install-workspace

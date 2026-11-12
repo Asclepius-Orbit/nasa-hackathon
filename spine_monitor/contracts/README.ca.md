@@ -73,7 +73,7 @@ Edita l'schema, afegeix o actualitza el seu exemple, regenera, executa els tests
 
 ## Obert
 - **Aguado:** validar el catàleg de features (ids, unitats, `risk_direction`, rangs i les seves fonts); el conjunt reduït d'ítems de l'ODI; el protocol exacte de l'exercici (repeticions, càrrega, procediment de MVC) i la col·locació d'elèctrodes i IMU; el model del cordó (no és lineal i triga a recuperar-se, així que la longitud surt d'una corba mesurada).
-- **Polfer:** el mòdul EMG dona el senyal cru o una envolvent? (les features espectrals necessiten cru). Fer servir pins ADC1 de l'ESP32 (l'ADC2 no funciona amb Bluetooth/WiFi). El format wearable→gateway és lliure; el contracte comença a MQTT.
+- **Polfer:** el mòdul EMG dona el senyal cru o una envolvent? (les features espectrals necessiten cru). Fer servir pins ADC1 de l'ESP32 (l'ADC2 no funciona amb Bluetooth/WiFi). El format wearable→gateway és lliure; el contracte comença a MQTT. El gateway real fa servir el protocol sèrie documentat a `spine_monitor/gateway/README.ca.md` i `firmware/README.ca.md`.
 - **Freqüència de la IMU:** 100 Hz per defecte; 10 Hz es queda curta per a suavitat i velocitat de pic d'una repetició de ~2 s.
 - Sortides de les eines MCP: `compare_periods` té el seu propi schema, `mcp/compare-periods` (el calcula el servidor amb dues crides a `/history`); les altres eines MCP reutilitzen els schemas `app` i `engine`.
 - Els tipus TypeScript de la UI es generen d'aquests schemas a `app/ui/src/contracts/v1.ts` (`pnpm run gen:types` a `app/ui`; `pnpm run check:types` falla si no estan al dia). Regenera'ls després de qualsevol canvi de schema.

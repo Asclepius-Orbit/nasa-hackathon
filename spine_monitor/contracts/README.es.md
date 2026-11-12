@@ -73,7 +73,7 @@ Edita el schema, añade o actualiza su ejemplo, regenera, ejecuta los tests y av
 
 ## Abierto
 - **Aguado:** validar el catálogo de features (ids, unidades, `risk_direction`, rangos y sus fuentes); el conjunto reducido de ítems del ODI; el protocolo exacto del ejercicio (repeticiones, carga, procedimiento de MVC) y la colocación de electrodos e IMU; el modelo del cordón (no es lineal y tarda en recuperarse, así que la longitud sale de una curva medida).
-- **Polfer:** ¿el módulo EMG da la señal cruda o una envolvente? (las features espectrales necesitan cruda). Usar pines ADC1 del ESP32 (el ADC2 no funciona con Bluetooth/WiFi). El formato wearable→gateway es libre; el contrato empieza en MQTT.
+- **Polfer:** ¿el módulo EMG da la señal cruda o una envolvente? (las features espectrales necesitan cruda). Usar pines ADC1 del ESP32 (el ADC2 no funciona con Bluetooth/WiFi). El formato wearable→gateway es libre; el contrato empieza en MQTT. El gateway real usa el protocolo serie documentado en `spine_monitor/gateway/README.es.md` y `firmware/README.es.md`.
 - **Frecuencia de la IMU:** 100 Hz por defecto; 10 Hz se queda corta para suavidad y velocidad pico de una repetición de ~2 s.
 - Salidas de las herramientas MCP: `compare_periods` tiene su propio schema, `mcp/compare-periods` (lo calcula el servidor con dos llamadas a `/history`); las demás herramientas MCP reutilizan los schemas `app` y `engine`.
 - Los tipos TypeScript de la UI se generan de estos schemas en `app/ui/src/contracts/v1.ts` (`pnpm run gen:types` en `app/ui`; `pnpm run check:types` falla si están desactualizados). Regenéralos tras cualquier cambio de schema.

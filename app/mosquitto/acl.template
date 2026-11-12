@@ -24,4 +24,10 @@ topic write asclepius/v1/crew/+/device/+/cmd
 user spine-health
 topic read $SYS/broker/uptime
 
+# Gateway integration observer, limited to its two test devices and marker topics.
+user spine-gwtest
+topic readwrite asclepius/v1/crew/AST-01/device/itest-gw/#
+topic readwrite asclepius/v1/crew/AST-98/device/itest-e2e/#
+topic readwrite asclepius/v1/itest-marker/+
+
 @DEVICES@

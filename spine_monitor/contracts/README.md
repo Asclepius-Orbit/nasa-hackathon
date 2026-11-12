@@ -73,7 +73,7 @@ Edit the schema, add or update its example, regenerate, run the tests, and tell 
 
 ## Open
 - **Aguado:** validate the feature catalog (ids, units, `risk_direction`, ranges and their sources); the reduced ODI item set; the exact exercise protocol (repetitions, load, MVC procedure) and electrode/IMU placement; the model of the stretch cord (it is non-linear and recovers slowly, so the length comes from a measured curve).
-- **Polfer:** does the EMG module output the raw signal or an envelope (spectral features need raw)? Use ADC1 pins on the ESP32 (ADC2 does not work with Bluetooth/WiFi). The wearable-to-gateway format is free; the contract starts at MQTT.
+- **Polfer:** does the EMG module output the raw signal or an envelope (spectral features need raw)? Use ADC1 pins on the ESP32 (ADC2 does not work with Bluetooth/WiFi). The wearable-to-gateway format is free; the contract starts at MQTT. The real gateway uses the serial protocol documented in `spine_monitor/gateway/README.md` and `firmware/README.md`.
 - **IMU rate:** 100 Hz by default; 10 Hz is too low for smoothness and peak velocity of a ~2 s repetition.
 - MCP tool outputs: `compare_periods` has its own schema, `mcp/compare-periods` (computed by the server from two `/history` calls); the other MCP tools reuse the `app` and `engine` schemas.
 - TypeScript types for the UI are generated from these schemas into `app/ui/src/contracts/v1.ts` (`pnpm run gen:types` in `app/ui`; `pnpm run check:types` fails when they are stale). Regenerate them after any schema change.

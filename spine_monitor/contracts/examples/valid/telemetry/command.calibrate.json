@@ -7,6 +7,6 @@
   "type": "calibrate",
   "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
   "calibration_type": "emg_mvc",
-  "stream_ids": ["emg_lat_left"],
+  "stream_ids": ["emg_lat_left", "emg_lat_right"],
   "duration_s": 5
 }

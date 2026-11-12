@@ -6,7 +6,15 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, constr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    RootModel,
+    confloat,
+    constr,
+)
 
 
 class CommonDefinitions(RootModel[Any]):
@@ -59,6 +67,8 @@ class Muscle(str, Enum):
 
 
 class SpineLevel(str, Enum):
+    C3 = 'c3'
+    C4 = 'c4'
     C7 = 'c7'
     T1 = 't1'
     T2 = 't2'
@@ -86,6 +96,12 @@ class SpineRegion(str, Enum):
     THORACOLUMBAR = 'thoracolumbar'
     LUMBAR = 'lumbar'
     SACRAL = 'sacral'
+    FULL_SPINE = 'full_spine'
+
+
+class GroundLocation(str, Enum):
+    ILIAC_CREST = 'iliac_crest'
+    OTHER = 'other'
 
 
 class AnatomicalPlane(str, Enum):
@@ -98,6 +114,14 @@ class StreamKind(str, Enum):
     EMG = 'emg'
     IMU = 'imu'
     STRETCH = 'stretch'
+
+
+class Ground(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    location: GroundLocation
+    side: Side | None = None
 
 
 class Span(BaseModel):
@@ -116,8 +140,16 @@ class Placement1(BaseModel):
     side: Side | None = None
     spine_level: SpineLevel | None = None
     spine_region: SpineRegion | None = None
+    electrode_spacing_cm: PositiveFloat | None = Field(
+        None,
+        description='Centre-to-centre distance between the two electrodes of an EMG pair, in cm. The standard protocol uses ~10 cm. EMG only.',
+    )
+    ground: Ground | None = Field(
+        None, description='EMG ground (GND) electrode. EMG only.'
+    )
     span: Span | None = Field(
-        None, description='Vertebral span covered by a stretch cord.'
+        None,
+        description='Vertebral span covered by a stretch cord (the standard protocol: C3-C4 to L5-S1) or by an EMG electrode pair (the standard protocol: T11 to L2).',
     )
     description: constr(max_length=200) | None = None
 
@@ -130,8 +162,16 @@ class Placement2(BaseModel):
     side: Side | None = None
     spine_level: SpineLevel
     spine_region: SpineRegion | None = None
+    electrode_spacing_cm: PositiveFloat | None = Field(
+        None,
+        description='Centre-to-centre distance between the two electrodes of an EMG pair, in cm. The standard protocol uses ~10 cm. EMG only.',
+    )
+    ground: Ground | None = Field(
+        None, description='EMG ground (GND) electrode. EMG only.'
+    )
     span: Span | None = Field(
-        None, description='Vertebral span covered by a stretch cord.'
+        None,
+        description='Vertebral span covered by a stretch cord (the standard protocol: C3-C4 to L5-S1) or by an EMG electrode pair (the standard protocol: T11 to L2).',
     )
     description: constr(max_length=200) | None = None
 
@@ -144,8 +184,16 @@ class Placement3(BaseModel):
     side: Side | None = None
     spine_level: SpineLevel | None = None
     spine_region: SpineRegion
+    electrode_spacing_cm: PositiveFloat | None = Field(
+        None,
+        description='Centre-to-centre distance between the two electrodes of an EMG pair, in cm. The standard protocol uses ~10 cm. EMG only.',
+    )
+    ground: Ground | None = Field(
+        None, description='EMG ground (GND) electrode. EMG only.'
+    )
     span: Span | None = Field(
-        None, description='Vertebral span covered by a stretch cord.'
+        None,
+        description='Vertebral span covered by a stretch cord (the standard protocol: C3-C4 to L5-S1) or by an EMG electrode pair (the standard protocol: T11 to L2).',
     )
     description: constr(max_length=200) | None = None
 

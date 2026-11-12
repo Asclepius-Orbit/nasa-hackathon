@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-session.schema.json",
   "title": "SessionView",
-  "description": "Response of GET /ui/sessions/{session_id}/view: the guided session screen of the desktop UI. Protocol facts (band, reps, rest, fit items) come from catalog/protocol-catalog.json; the UI writes the instructions. Live repetitions are not part of this view.",
+  "description": "Response of GET /ui/sessions/{session_id}/view: the guided session screen of the desktop UI. Protocol facts (band, sets, reps, rests, fit items) come from catalog/protocol-catalog.json; the UI writes the instructions. Live repetitions are not part of this view.",
   "type": "object",
   "properties": {
     "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
@@ -17,13 +17,28 @@
       "description": "Band of the protocol; null when it uses none.",
       "oneOf": [{ "$ref": "ui-common.schema.json#/$defs/band" }, { "type": "null" }]
     },
-    "total_reps": {
-      "description": "Repetitions of the protocol; null when it has none.",
+    "planned_sets": {
+      "description": "Sets of the protocol (4 for lat_pulldown_standing_v1); null when it has none.",
       "type": ["integer", "null"],
       "minimum": 1
     },
+    "reps_per_set": {
+      "description": "Repetitions in each set of the protocol (15 for lat_pulldown_standing_v1); null when it has none.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "total_reps": {
+      "description": "TOTAL repetitions of the protocol (planned_sets * reps_per_set); null when it has none.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "rest_between_sets_s": {
+      "description": "Recovery between two sets, in seconds; null when the protocol has no sets. Nominal until the clinical owner fixes it.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
     "rest_seconds": {
-      "description": "Rest of the protocol; null when it has none.",
+      "description": "Rest of the protocol before finishing the session, after the last set; null when it has none.",
       "type": ["integer", "null"],
       "minimum": 0
     },
@@ -101,7 +116,8 @@
     }
   },
   "required": [
-    "schema_version", "session_id", "astronaut_id", "state", "protocol_id", "band", "total_reps", "rest_seconds", "fit_items",
+    "schema_version", "session_id", "astronaut_id", "state", "protocol_id", "band", "planned_sets", "reps_per_set", "total_reps",
+    "rest_between_sets_s", "rest_seconds", "fit_items",
     "started_at", "steps", "sensor_checks", "calibration", "stretched_cm", "planned_at"
   ],
   "additionalProperties": false,

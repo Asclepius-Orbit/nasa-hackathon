@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "session_id": "a55e55e0-0000-4000-8000-000000000001",
+  "rep": 15,
+  "total": 60,
+  "set": 1,
+  "sets_total": 4,
+  "reps_per_set": 15,
+  "rep_in_set": 15,
+  "phase": "resting",
+  "progress_pct": null,
+  "last": {
+    "rep": 15,
+    "duration_s": 3.8
+  },
+  "signal": "ok",
+  "as_of": "2026-11-15T10:00:00Z"
+}

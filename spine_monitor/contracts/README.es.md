@@ -15,7 +15,7 @@ Contratos de datos compartidos por todos los componentes: gateway del wearable, 
 | `schemas/v1/app/` | Cuerpos HTTP de la API de solo lectura de la app: estado, histórico, explicación, listas de evaluaciones, sesiones y autoinformes, errores; y las vistas de la UI de `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | Cuerpos HTTP de la API de chat del agente LLM (`agent-openapi.yaml`): la pregunta (`chat-request`) y los eventos SSE de la respuesta (`chat-event`) |
 | `catalog/feature-catalog.json` | Cada métrica derivada (feature) con unidad, entradas y requisitos; los rangos son de Aguado |
-| `catalog/protocol-catalog.json` | Datos fijos de cada protocolo (banda, repeticiones, descanso, ids de colocación) que citan las vistas de la UI |
+| `catalog/protocol-catalog.json` | Datos fijos de cada protocolo (banda, series, repeticiones, descansos, agarre, tempo, postura, ids de colocación) que citan las vistas de la UI |
 | `asyncapi.yaml` | Topics MQTT, dirección, QoS y retain (desde el punto de vista del gateway) |
 | `openapi.yaml` | API HTTP del motor |
 | `app-openapi.yaml` | API HTTP de solo lectura de la app (solo GET), la usa el servidor MCP |
@@ -33,6 +33,14 @@ Contratos de datos compartidos por todos los componentes: gateway del wearable, 
 - **Perfil**: edad, sexo biológico, antropometría, historia de columna y espacial, forma física.
 
 Los datos pertenecen a una **sesión**: `exercise` (protocolo estandarizado, p. ej. jalón al pecho de pie, con carga declarada) o `spine_check` (medición pasiva corta). Solo son comparables los datos con el mismo `protocol_id`, y Tierra frente a espacio se lee a través de `gravity_environment`.
+
+### El protocolo de ejercicio estandarizado
+`lat_pulldown_standing_v1` (mismo id, valores fijados por Aguado en la issue #12):
+- **Ejercicio:** jalón al pecho de pie con banda elástica, agarre en pronación, tempo moderado. Banda verde (resistencia alta, 15-35 kg según el estiramiento; 25 kg nominales), 4 series de 15 repeticiones (60 en total, unos 5 minutos) con recuperaciones muy cortas (`rest_between_sets_s`, 30 s nominales hasta que Aguado lo confirme). La sesión declara `planned_sets`, `reps_per_set` y `planned_reps` (el total, `planned_sets * reps_per_set`); los eventos `set_start` / `set_end` (con `set_index`) delimitan las series y `rep_index` cuenta las repeticiones de toda la sesión.
+- **EMG:** un stream por dorsal ancho (`emg_lat_left`, `emg_lat_right`), electrodos separados unos 10 cm (`electrode_spacing_cm`) cubriendo T11-L2 (`span`), tierra (GND) en la cresta ilíaca (`ground.location`).
+- **IMU:** `imu_t9`, en T9.
+- **Cordón elástico:** `stretch_spine`, región `full_spine`, de C3-C4 a L5-S1 (unos 650 mm); sus features son `stretch.full_spine.*`.
+- **Spine checks:** `spine_length_rest_v1`, de pie, justo antes (`phase: pre`) y justo después (`phase: post`) del ejercicio; `related_session_id` es la sesión de ejercicio que enmarcan.
 
 ## Convenciones
 - Campos y descripciones en inglés, `snake_case`.
@@ -72,7 +80,7 @@ validation.validate("telemetry/stream-chunk", dump(chunk))  # reglas completas, 
 Edita el schema, añade o actualiza su ejemplo, regenera, ejecuta los tests y avisa a los dueños de las demás capas. Las ampliaciones compatibles suben la versión menor; cualquier otra cosa, la mayor.
 
 ## Abierto
-- **Aguado:** validar el catálogo de features (ids, unidades, `risk_direction`, rangos y sus fuentes); el conjunto reducido de ítems del ODI; el protocolo exacto del ejercicio (repeticiones, carga, procedimiento de MVC) y la colocación de electrodos e IMU; el modelo del cordón (no es lineal y tarda en recuperarse, así que la longitud sale de una curva medida).
+- **Aguado:** validar el catálogo de features (ids, unidades, `risk_direction`, rangos y sus fuentes); el conjunto reducido de ítems del ODI; la recuperación entre series (30 s es un valor provisional), el procedimiento de MVC y el estiramiento exacto de la banda; la medición del cordón (unos 650 mm, PENDIENTE medición Aguado: la curva resistencia-longitud es provisional hasta medirla con un óhmetro; no es lineal y tarda en recuperarse, así que la longitud sale de una curva medida).
 - **Polfer:** ¿el módulo EMG da la señal cruda o una envolvente? (las features espectrales necesitan cruda). Usar pines ADC1 del ESP32 (el ADC2 no funciona con Bluetooth/WiFi). El formato wearable→gateway es libre; el contrato empieza en MQTT. El gateway real usa el protocolo serie documentado en `spine_monitor/gateway/README.es.md` y `firmware/README.es.md`.
 - **Frecuencia de la IMU:** 100 Hz por defecto; 10 Hz se queda corta para suavidad y velocidad pico de una repetición de ~2 s.
 - Salidas de las herramientas MCP: `compare_periods` tiene su propio schema, `mcp/compare-periods` (lo calcula el servidor con dos llamadas a `/history`); las demás herramientas MCP reutilizan los schemas `app` y `engine`.

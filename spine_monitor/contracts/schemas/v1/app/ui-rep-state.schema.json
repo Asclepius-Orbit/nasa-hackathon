@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-rep-state.schema.json",
   "title": "RepStateView",
-  "description": "Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept. A session that is over has signal ok (it did not lose its sensor) with phase and progress_pct null, rep and last kept, in both its final `state` and its `end`.",
+  "description": "Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. A session is made of sets of repetitions: rep and total count repetitions of the whole session (rep 1 to 60), set and rep_in_set place the repetition inside its set (set 1 to 4, rep_in_set 1 to 15). With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept. A session that is over has signal ok (it did not lose its sensor) with phase and progress_pct null, rep and last kept, in both its final `state` and its `end`.",
   "type": "object",
   "properties": {
     "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
@@ -13,12 +13,32 @@
       "minimum": 0
     },
     "total": {
-      "description": "planned_reps of the session, otherwise total_reps of the protocol catalog; null when neither is known.",
+      "description": "planned_reps (TOTAL, all sets) of the session, otherwise total_reps of the protocol catalog; null when neither is known.",
       "type": ["integer", "null"],
       "minimum": 1
     },
+    "set": {
+      "description": "Set (1-based) of the current repetition; while resting between two sets, the set that just ended. 0 when none has started yet.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "sets_total": {
+      "description": "planned_sets of the session, otherwise planned_sets of the protocol catalog; null when neither is known.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "reps_per_set": {
+      "description": "reps_per_set of the session, otherwise of the protocol catalog; null when neither is known.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "rep_in_set": {
+      "description": "Repetitions completed plus the current one inside `set`; 0 when none has started yet. Between two sets it keeps the last repetition of the set that ended (rep_in_set equals reps_per_set) while phase is resting.",
+      "type": "integer",
+      "minimum": 0
+    },
     "phase": {
-      "description": "pulling, letting_up or resting (between repetitions); null when there is no signal or the session is over.",
+      "description": "pulling, letting_up or resting (between repetitions, or between two sets); null when there is no signal or the session is over.",
       "oneOf": [{ "type": "string", "enum": ["pulling", "letting_up", "resting"] }, { "type": "null" }]
     },
     "progress_pct": {
@@ -44,13 +64,16 @@
       ]
     },
     "signal": {
-      "description": "ok, or no_signal when the imu_l3 stream is not delivering.",
+      "description": "ok, or no_signal when the imu_t9 stream is not delivering.",
       "type": "string",
       "enum": ["ok", "no_signal"]
     },
     "as_of": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
   },
-  "required": ["schema_version", "session_id", "rep", "total", "phase", "progress_pct", "last", "signal", "as_of"],
+  "required": [
+    "schema_version", "session_id", "rep", "total", "set", "sets_total", "reps_per_set", "rep_in_set", "phase", "progress_pct", "last", "signal",
+    "as_of"
+  ],
   "additionalProperties": false,
   "allOf": [
     {

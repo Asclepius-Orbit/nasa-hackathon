@@ -23,40 +23,68 @@
       },
       "load_declared": {
         "type": "elastic_band",
-        "nominal_kg": 15,
-        "band_id": "blue",
+        "nominal_kg": 25,
+        "band_id": "green",
         "band_stretch_cm": 40,
-        "description": "Anchored overhead, grip at shoulder width plus a hand."
+        "description": "Standing, band anchored overhead, pronated grip."
       },
-      "planned_reps": 10,
+      "planned_reps": 60,
+      "planned_sets": 4,
+      "reps_per_set": 15,
       "streams": [
         {
           "stream_id": "emg_lat_left",
           "stream_kind": "emg",
           "placement": {
             "muscle": "latissimus_dorsi",
-            "side": "left"
+            "side": "left",
+            "electrode_spacing_cm": 10,
+            "span": {
+              "from_level": "t11",
+              "to_level": "l2"
+            },
+            "ground": {
+              "location": "iliac_crest"
+            }
           },
           "sample_rate_hz": 1000,
           "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f12"
         },
         {
-          "stream_id": "imu_l3",
+          "stream_id": "emg_lat_right",
+          "stream_kind": "emg",
+          "placement": {
+            "muscle": "latissimus_dorsi",
+            "side": "right",
+            "electrode_spacing_cm": 10,
+            "span": {
+              "from_level": "t11",
+              "to_level": "l2"
+            },
+            "ground": {
+              "location": "iliac_crest"
+            }
+          },
+          "sample_rate_hz": 1000,
+          "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f14"
+        },
+        {
+          "stream_id": "imu_t9",
           "stream_kind": "imu",
           "placement": {
-            "spine_level": "l3"
+            "spine_level": "t9"
           },
           "sample_rate_hz": 100,
           "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f13"
         },
         {
-          "stream_id": "stretch_lumbar",
+          "stream_id": "stretch_spine",
           "stream_kind": "stretch",
           "placement": {
-            "spine_region": "lumbar",
+            "spine_region": "full_spine",
             "span": {
-              "from_level": "l1",
-              "to_level": "l5"
+              "from_level": "c3",
+              "to_level": "s1"
             }
           },
           "sample_rate_hz": 20,
@@ -65,10 +93,18 @@
       ],
       "events": [
         {
+          "event_type": "set_start",
+          "timestamp": "2026-11-13T10:03:08.000Z",
+          "device_ms": 188000,
+          "boot_id": 2893746120,
+          "set_index": 1
+        },
+        {
           "event_type": "rep_start",
           "timestamp": "2026-11-13T10:03:10.500Z",
           "device_ms": 190500,
           "boot_id": 2893746120,
+          "set_index": 1,
           "rep_index": 1
         },
         {
@@ -76,7 +112,43 @@
           "timestamp": "2026-11-13T10:03:14.100Z",
           "device_ms": 194100,
           "boot_id": 2893746120,
+          "set_index": 1,
           "rep_index": 1
+        },
+        {
+          "event_type": "rep_start",
+          "timestamp": "2026-11-13T10:04:00.900Z",
+          "device_ms": 240900,
+          "boot_id": 2893746120,
+          "set_index": 1,
+          "rep_index": 15
+        },
+        {
+          "event_type": "rep_end",
+          "timestamp": "2026-11-13T10:04:04.500Z",
+          "device_ms": 244500,
+          "boot_id": 2893746120,
+          "set_index": 1,
+          "rep_index": 15
+        },
+        {
+          "event_type": "set_end",
+          "timestamp": "2026-11-13T10:04:05.000Z",
+          "device_ms": 245000,
+          "boot_id": 2893746120,
+          "set_index": 1
+        },
+        {
+          "event_type": "rest_start",
+          "timestamp": "2026-11-13T10:04:05.200Z",
+          "device_ms": 245200,
+          "boot_id": 2893746120
+        },
+        {
+          "event_type": "rest_end",
+          "timestamp": "2026-11-13T10:04:35.000Z",
+          "device_ms": 275000,
+          "boot_id": 2893746120
         }
       ]
     }

@@ -15,7 +15,7 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 | `schemas/v1/app/` | HTTP bodies of the read-only API of the app: status, history, explanation, lists of assessments, sessions and self-reports, errors; and the UI views of `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | HTTP bodies of the LLM agent chat API (`agent-openapi.yaml`): the question (`chat-request`) and the server-sent events of the answer (`chat-event`) |
 | `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements; ranges owned by Aguado |
-| `catalog/protocol-catalog.json` | Fixed facts of each protocol (band, reps, rest, fit item ids) quoted by the UI views |
+| `catalog/protocol-catalog.json` | Fixed facts of each protocol (band, sets, reps, rests, grip, tempo, posture, fit item ids) quoted by the UI views |
 | `asyncapi.yaml` | MQTT topics, direction, QoS and retain (the gateway's point of view) |
 | `openapi.yaml` | Engine HTTP API |
 | `app-openapi.yaml` | Read-only HTTP API of the app (GET only), used by the MCP server |
@@ -33,6 +33,14 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 - **Profile**: age, sex at birth, anthropometry, spine and space history, fitness.
 
 Data belongs to a **session**: `exercise` (standardised protocol, e.g. standing lat pulldown, declared load) or `spine_check` (short passive measurement). Only data of the same `protocol_id` is comparable, and Earth vs space is read through the `gravity_environment`.
+
+### The standardised exercise protocol
+`lat_pulldown_standing_v1` (same id, values fixed by Aguado in issue #12):
+- **Exercise:** standing lat pulldown with an elastic band, pronated grip, moderate tempo. Green band (high resistance, 15-35 kg depending on the stretch; 25 kg nominal), 4 sets of 15 repetitions (60 in total, about 5 minutes) with very short recoveries (`rest_between_sets_s`, a nominal 30 s until Aguado confirms it). The session declares `planned_sets`, `reps_per_set` and `planned_reps` (the total, `planned_sets * reps_per_set`); events `set_start` / `set_end` (with `set_index`) delimit the sets, and `rep_index` counts repetitions over the whole session.
+- **EMG:** one stream per latissimus dorsi (`emg_lat_left`, `emg_lat_right`), electrodes about 10 cm apart (`electrode_spacing_cm`) spanning T11-L2 (`span`), ground (GND) on the iliac crest (`ground.location`).
+- **IMU:** `imu_t9`, at T9.
+- **Stretch cord:** `stretch_spine`, region `full_spine`, spanning C3-C4 to L5-S1 (about 650 mm); its features are `stretch.full_spine.*`.
+- **Spine checks:** `spine_length_rest_v1`, standing, just before (`phase: pre`) and just after (`phase: post`) the exercise; `related_session_id` is the exercise session they bracket.
 
 ## Conventions
 - Field names and descriptions in English, `snake_case`.
@@ -72,7 +80,7 @@ validation.validate("telemetry/stream-chunk", dump(chunk))  # full rules, see be
 Edit the schema, add or update its example, regenerate, run the tests, and tell the owners of the other layers. Backwards-compatible additions bump the minor version; anything else the major.
 
 ## Open
-- **Aguado:** validate the feature catalog (ids, units, `risk_direction`, ranges and their sources); the reduced ODI item set; the exact exercise protocol (repetitions, load, MVC procedure) and electrode/IMU placement; the model of the stretch cord (it is non-linear and recovers slowly, so the length comes from a measured curve).
+- **Aguado:** validate the feature catalog (ids, units, `risk_direction`, ranges and their sources); the reduced ODI item set; the recovery between sets (30 s is a placeholder), the MVC procedure and the exact band stretch; the measurement of the stretch cord (about 650 mm, PENDIENTE medición Aguado: the resistance-to-length curve is a placeholder until it is measured with an ohmmeter; it is non-linear and recovers slowly, so the length comes from a measured curve).
 - **Polfer:** does the EMG module output the raw signal or an envelope (spectral features need raw)? Use ADC1 pins on the ESP32 (ADC2 does not work with Bluetooth/WiFi). The wearable-to-gateway format is free; the contract starts at MQTT. The real gateway uses the serial protocol documented in `spine_monitor/gateway/README.md` and `firmware/README.md`.
 - **IMU rate:** 100 Hz by default; 10 Hz is too low for smoothness and peak velocity of a ~2 s repetition.
 - MCP tool outputs: `compare_periods` has its own schema, `mcp/compare-periods` (computed by the server from two `/history` calls); the other MCP tools reuse the `app` and `engine` schemas.

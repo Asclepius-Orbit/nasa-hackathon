@@ -54,11 +54,27 @@ class RepStateView(BaseModel):
     )
     total: conint(ge=1) | None = Field(
         ...,
-        description='planned_reps of the session, otherwise total_reps of the protocol catalog; null when neither is known.',
+        description='planned_reps (TOTAL, all sets) of the session, otherwise total_reps of the protocol catalog; null when neither is known.',
+    )
+    set: conint(ge=0) = Field(
+        ...,
+        description='Set (1-based) of the current repetition; while resting between two sets, the set that just ended. 0 when none has started yet.',
+    )
+    sets_total: conint(ge=1) | None = Field(
+        ...,
+        description='planned_sets of the session, otherwise planned_sets of the protocol catalog; null when neither is known.',
+    )
+    reps_per_set: conint(ge=1) | None = Field(
+        ...,
+        description='reps_per_set of the session, otherwise of the protocol catalog; null when neither is known.',
+    )
+    rep_in_set: conint(ge=0) = Field(
+        ...,
+        description='Repetitions completed plus the current one inside `set`; 0 when none has started yet. Between two sets it keeps the last repetition of the set that ended (rep_in_set equals reps_per_set) while phase is resting.',
     )
     phase: Phase | None = Field(
         ...,
-        description='pulling, letting_up or resting (between repetitions); null when there is no signal or the session is over.',
+        description='pulling, letting_up or resting (between repetitions, or between two sets); null when there is no signal or the session is over.',
     )
     progress_pct: confloat(ge=0.0, le=100.0) | None = Field(
         ...,
@@ -68,7 +84,7 @@ class RepStateView(BaseModel):
         ..., description='Last completed repetition; null when none is complete.'
     )
     signal: Signal = Field(
-        ..., description='ok, or no_signal when the imu_l3 stream is not delivering.'
+        ..., description='ok, or no_signal when the imu_t9 stream is not delivering.'
     )
     as_of: AwareDatetime = Field(
         ...,

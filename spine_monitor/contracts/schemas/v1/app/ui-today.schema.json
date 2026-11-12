@@ -79,7 +79,7 @@
       ]
     },
     "lumbar_delta_mm": {
-      "description": "Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.",
+      "description": "Latest spine elongation, measured by the cord over the whole spine (stretch.full_spine.peak_elongation_mm; the field keeps its original lumbar_ name), minus its baseline mean, in mm. Null when either is missing; never 0 by default.",
       "type": ["number", "null"]
     },
     "lumbar_measured_at": {
@@ -96,13 +96,23 @@
             "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
             "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
             "started_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+            "planned_sets": {
+              "description": "Planned sets; null for protocols without them.",
+              "type": ["integer", "null"],
+              "minimum": 1
+            },
+            "reps_per_set": {
+              "description": "Planned repetitions in each set; null for protocols without sets.",
+              "type": ["integer", "null"],
+              "minimum": 1
+            },
             "total_reps": {
-              "description": "Planned repetitions; null for protocols without them.",
+              "description": "TOTAL planned repetitions (all sets); null for protocols without them.",
               "type": ["integer", "null"],
               "minimum": 1
             }
           },
-          "required": ["session_id", "protocol_id", "started_at", "total_reps"],
+          "required": ["session_id", "protocol_id", "started_at", "planned_sets", "reps_per_set", "total_reps"],
           "additionalProperties": false
         },
         { "type": "null" }

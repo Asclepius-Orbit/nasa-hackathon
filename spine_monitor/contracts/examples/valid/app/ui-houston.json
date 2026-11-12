@@ -15,7 +15,7 @@
     "data_total": 6,
     "drivers": [
       {
-        "feature_id": "stretch.lumbar.peak_elongation_mm",
+        "feature_id": "stretch.full_spine.peak_elongation_mm",
         "deviation_z": 2.4
       },
       {

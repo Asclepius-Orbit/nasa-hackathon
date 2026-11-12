@@ -69,3 +69,16 @@ def test_importing_the_package_does_not_load_jsonschema():
     code = "import sys, spine_contracts; print(sorted(m for m in ('jsonschema', 'rfc3987_syntax', 'referencing') if m in sys.modules))"
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
     assert out == "[]"
+
+
+def test_session_phase_rules_are_enforced_at_the_boundary():
+    # A spine check brackets an exercise: phase and related_session_id belong to spine checks only, and the
+    # related session needs its phase. Pydantic cannot see these if/then rules; validation.errors can.
+    exercise = example("domain/session.exercise")
+    assert validation.errors("domain/session", exercise) == []
+    assert validation.errors("domain/session", exercise | {"phase": "pre"}) != []
+
+    post = example("domain/session.spine-check-post")
+    assert validation.errors("domain/session", post) == []
+    assert validation.errors("domain/session", {k: v for k, v in post.items() if k != "phase"}) != []
+    assert validation.errors("domain/session", post | {"planned_sets": 4}) != []

@@ -40,7 +40,7 @@ class ChunkBase(BaseModel):
     stream_id: constr(pattern=r'^[a-z0-9][a-z0-9_]{1,31}$') = Field(
         ...,
         description='Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.',
-        examples=['emg_lat_left', 'imu_l3', 'stretch_lumbar'],
+        examples=['emg_lat_left', 'emg_lat_right', 'imu_t9', 'stretch_spine'],
     )
     session_id: constr(
         pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'

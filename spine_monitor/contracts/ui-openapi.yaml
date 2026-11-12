@@ -441,7 +441,10 @@ paths:
               required: [event_type]
               properties:
                 event_type:
-                  enum: [rep_start, rep_end, mvc_start, mvc_end, rest_start, rest_end, pain_reported, artifact, note]
+                  enum: [set_start, set_end, rep_start, rep_end, mvc_start, mvc_end, rest_start, rest_end, pain_reported, artifact, note]
+                set_index:
+                  type: integer
+                  minimum: 1
                 rep_index:
                   type: integer
                   minimum: 1
@@ -579,7 +582,7 @@ paths:
     get:
       operationId: getTodayView
       summary: Today screen
-      description: Level, reasons, recommendations and trust of the latest assessment, lumbar change, session in progress and other tasks of the day. Level `nodata` without an assessment.
+      description: Level, reasons, recommendations and trust of the latest assessment, spine length change, session in progress and other tasks of the day. Level `nodata` without an assessment.
       parameters:
         - $ref: '#/components/parameters/AstronautId'
       responses:
@@ -745,7 +748,7 @@ paths:
     get:
       operationId: streamRepState
       summary: Live repetition counter
-      description: Server-sent events with the live repetition counter of one session, derived from its imu_l3 stream.
+      description: Server-sent events with the live repetition counter of one session, derived from its imu_t9 stream.
       parameters:
         - $ref: '#/components/parameters/SessionId'
       responses:
@@ -883,7 +886,7 @@ components:
           schema:
             $ref: 'schemas/v1/app/error.schema.json'
     NoReps:
-      description: Problem details, type `no_reps`. The protocol of the session has no repetitions or the session has no imu_l3 stream.
+      description: Problem details, type `no_reps`. The protocol of the session has no repetitions or the session has no imu_t9 stream.
       content:
         application/problem+json:
           schema:

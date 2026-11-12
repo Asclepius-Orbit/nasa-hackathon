@@ -26,7 +26,7 @@
       "description": "Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9_]{1,31}$",
-      "examples": ["emg_lat_left", "imu_l3", "stretch_lumbar"]
+      "examples": ["emg_lat_left", "emg_lat_right", "imu_t9", "stretch_spine"]
     },
     "uuid": {
       "description": "RFC 4122 UUID, lowercase.",
@@ -93,18 +93,24 @@
       ]
     },
     "spine_level": {
-      "description": "Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).",
+      "description": "Vertebral level, lowercase so it can be embedded in ids (imu.t9.*). c3 and c4 are the upper end of the stretch cord of the standard protocol (C3-C4 to L5-S1); only c3, c4 and c7 are defined of the cervical spine.",
       "type": "string",
       "enum": [
-        "c7",
+        "c3", "c4", "c7",
         "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "t10", "t11", "t12",
         "l1", "l2", "l3", "l4", "l5",
         "s1"
       ]
     },
     "spine_region": {
+      "description": "Region of the spine. full_spine is the whole cord span of the standard protocol, from C3-C4 to L5-S1 (~65 cm).",
       "type": "string",
-      "enum": ["cervical", "thoracic", "thoracolumbar", "lumbar", "sacral"]
+      "enum": ["cervical", "thoracic", "thoracolumbar", "lumbar", "sacral", "full_spine"]
+    },
+    "ground_location": {
+      "description": "Where the EMG ground (GND) electrode is attached. The standard protocol puts it on the iliac crest.",
+      "type": "string",
+      "enum": ["iliac_crest", "other"]
     },
     "anatomical_plane": {
       "type": "string",
@@ -115,15 +121,30 @@
       "enum": ["emg", "imu", "stretch"]
     },
     "placement": {
-      "description": "Where a sensor sits on the body. EMG needs muscle + side, IMU needs spine_level, stretch cord needs spine_region (and optionally the span it covers). The session schema enforces this per stream kind.",
+      "description": "Where a sensor sits on the body. EMG needs muscle + side (and says the electrode spacing, the vertebral span of the electrodes and where the ground is), IMU needs spine_level, stretch cord needs spine_region (and optionally the span it covers). The session schema enforces this per stream kind.",
       "type": "object",
       "properties": {
         "muscle": { "$ref": "#/$defs/muscle" },
         "side": { "$ref": "#/$defs/side" },
         "spine_level": { "$ref": "#/$defs/spine_level" },
         "spine_region": { "$ref": "#/$defs/spine_region" },
+        "electrode_spacing_cm": {
+          "description": "Centre-to-centre distance between the two electrodes of an EMG pair, in cm. The standard protocol uses ~10 cm. EMG only.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "ground": {
+          "description": "EMG ground (GND) electrode. EMG only.",
+          "type": "object",
+          "properties": {
+            "location": { "$ref": "#/$defs/ground_location" },
+            "side": { "$ref": "#/$defs/side" }
+          },
+          "required": ["location"],
+          "additionalProperties": false
+        },
         "span": {
-          "description": "Vertebral span covered by a stretch cord.",
+          "description": "Vertebral span covered by a stretch cord (the standard protocol: C3-C4 to L5-S1) or by an EMG electrode pair (the standard protocol: T11 to L2).",
           "type": "object",
           "properties": {
             "from_level": { "$ref": "#/$defs/spine_level" },
@@ -187,7 +208,7 @@
       "description": "Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
-      "examples": ["emg.latissimus_dorsi.left.rms_pct_mvc", "stretch.lumbar.elongation_mm"]
+      "examples": ["emg.latissimus_dorsi.left.rms_pct_mvc", "stretch.full_spine.elongation_mm"]
     },
     "recommendation_code": {
       "type": "string",

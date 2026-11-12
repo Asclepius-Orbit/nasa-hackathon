@@ -33,7 +33,7 @@ channels:
         examples: [wb-01]
       stream_id:
         description: Stream declared in the session.
-        examples: [emg_lat_left, imu_l3, stretch_lumbar]
+        examples: [emg_lat_left, emg_lat_right, imu_t9, stretch_spine]
     messages:
       streamChunk:
         $ref: '#/components/messages/streamChunk'
@@ -83,7 +83,7 @@ channels:
       device_id: {}
       stream_id:
         description: Stream the calibration applies to.
-        examples: [stretch_lumbar]
+        examples: [stretch_spine]
     messages:
       calibration:
         $ref: '#/components/messages/calibration'

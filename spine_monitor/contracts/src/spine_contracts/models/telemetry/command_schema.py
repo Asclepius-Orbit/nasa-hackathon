@@ -104,6 +104,9 @@ class MarkEventCommand(CommandBase):
         pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     ) = Field(..., description='RFC 4122 UUID, lowercase.')
     event_type: session_schema.EventType
+    set_index: conint(ge=1) | None = Field(
+        None, description='Set (1-based) the event belongs to.'
+    )
     rep_index: conint(ge=1) | None = None
     note: constr(max_length=200) | None = None
 

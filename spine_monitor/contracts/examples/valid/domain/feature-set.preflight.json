@@ -20,12 +20,12 @@
       "quality": { "score": 0.9, "flags": [], "assessed_by": "engine" }
     },
     {
-      "feature_id": "imu.l3.sagittal.rom_deg",
+      "feature_id": "imu.t9.sagittal.rom_deg",
       "value": 28.4, "unit": "deg", "n": 10,
       "quality": { "score": 1.0, "flags": [], "assessed_by": "engine" }
     },
     {
-      "feature_id": "stretch.lumbar.peak_elongation_mm",
+      "feature_id": "stretch.full_spine.peak_elongation_mm",
       "value": 6.8, "unit": "mm", "n": 10,
       "quality": { "score": 0.8, "flags": ["band_recovering"], "assessed_by": "engine" }
     },

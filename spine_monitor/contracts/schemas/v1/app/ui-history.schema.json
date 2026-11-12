@@ -19,7 +19,7 @@
       "type": ["integer", "null"]
     },
     "preflight_range_mm": {
-      "description": "Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.peak_elongation_mm baseline entry. Null without that entry.",
+      "description": "Own pre-flight range of spine length (whole-spine cord), relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.full_spine.peak_elongation_mm baseline entry. Null without that entry.",
       "oneOf": [
         {
           "title": "LengthRange",
@@ -53,7 +53,7 @@
           "$ref": "ui-common.schema.json#/$defs/day_level"
         },
         "length_delta_mm": {
-          "description": "Lumbar elongation of the day minus its baseline mean, in mm; null without data (never 0).",
+          "description": "Spine elongation of the day (whole-spine cord) minus its baseline mean, in mm; null without data (never 0).",
           "type": ["number", "null"]
         },
         "pain_nrs": {

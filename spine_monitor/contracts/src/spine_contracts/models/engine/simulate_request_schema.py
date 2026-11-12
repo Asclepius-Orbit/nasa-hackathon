@@ -25,7 +25,7 @@ class Override(BaseModel):
         description='Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.',
         examples=[
             'emg.latissimus_dorsi.left.rms_pct_mvc',
-            'stretch.lumbar.elongation_mm',
+            'stretch.full_spine.elongation_mm',
         ],
     )
     mode: Mode = Field(

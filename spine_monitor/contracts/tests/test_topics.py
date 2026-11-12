@@ -14,8 +14,8 @@ def test_topic_layout():
     assert topics.ack("AST-01", "wb-01") == "asclepius/v1/crew/AST-01/device/wb-01/ack"
     assert topics.clock("AST-01", "wb-01") == "asclepius/v1/crew/AST-01/device/wb-01/clock"
     assert (
-        topics.calibration("AST-01", "wb-01", "stretch_lumbar")
-        == "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_lumbar"
+        topics.calibration("AST-01", "wb-01", "stretch_spine")
+        == "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_spine"
     )
 
 
@@ -26,17 +26,17 @@ def test_wildcard_subscriptions():
 
 
 def test_parse_calibration_round_trip():
-    topic = topics.calibration("AST-02", "sim-01", "stretch_lumbar")
+    topic = topics.calibration("AST-02", "sim-01", "stretch_spine")
 
-    assert topics.parse_calibration(topic) == ("AST-02", "sim-01", "stretch_lumbar")
+    assert topics.parse_calibration(topic) == ("AST-02", "sim-01", "stretch_spine")
 
 
 @pytest.mark.parametrize(
     "topic",
     [
-        "asclepius/v1/crew/AST-01/device/wb-01/stream/stretch_lumbar",
-        "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_lumbar/extra",
-        "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_lumbar\n",
+        "asclepius/v1/crew/AST-01/device/wb-01/stream/stretch_spine",
+        "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_spine/extra",
+        "asclepius/v1/crew/AST-01/device/wb-01/calibration/stretch_spine\n",
         "asclepius/v1/crew/+/device/+/calibration/+",
     ],
 )
@@ -47,23 +47,23 @@ def test_parse_calibration_rejects_other_topics(topic):
 
 def test_parse_stream_rejects_calibration_topics():
     with pytest.raises(ValueError):
-        topics.parse_stream(topics.calibration("AST-01", "wb-01", "stretch_lumbar"))
+        topics.parse_stream(topics.calibration("AST-01", "wb-01", "stretch_spine"))
 
 
 def test_parse_stream_round_trip():
-    topic = topics.stream("AST-02", "sim-01", "imu_l3")
+    topic = topics.stream("AST-02", "sim-01", "imu_t9")
 
-    assert topics.parse_stream(topic) == ("AST-02", "sim-01", "imu_l3")
-    assert topics.parse_stream(topic).stream_id == "imu_l3"
+    assert topics.parse_stream(topic) == ("AST-02", "sim-01", "imu_t9")
+    assert topics.parse_stream(topic).stream_id == "imu_t9"
 
 
 @pytest.mark.parametrize(
     "topic",
     [
         "asclepius/v1/crew/AST-01/device/wb-01/status",
-        "asclepius/v2/crew/AST-01/device/wb-01/stream/imu_l3",
-        "asclepius/v1/crew/AST-01/device/wb-01/stream/imu_l3/extra",
-        "asclepius/v1/crew/AST-01/device/wb-01/stream/imu_l3\n",
+        "asclepius/v2/crew/AST-01/device/wb-01/stream/imu_t9",
+        "asclepius/v1/crew/AST-01/device/wb-01/stream/imu_t9/extra",
+        "asclepius/v1/crew/AST-01/device/wb-01/stream/imu_t9\n",
         "asclepius/v1/crew/+/device/+/stream/+",
     ],
 )

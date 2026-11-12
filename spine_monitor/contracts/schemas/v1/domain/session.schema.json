@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.asclepius-orbit.example/v1/domain/session.schema.json",
   "title": "Session",
-  "description": "One capture session. Every chunk, feature set and calibration belongs to a session. Two types: 'exercise' (standardised protocol such as the standing lat pulldown, with repetitions and a declared load) and 'spine_check' (short passive measurement of spine length, e.g. on waking or before sleeping). Comparing Earth and space only makes sense for sessions with the same protocol_id, so the protocol is part of the comparison key.",
+  "description": "One capture session. Every chunk, feature set and calibration belongs to a session. Two types: 'exercise' (standardised protocol such as the standing lat pulldown, in sets of repetitions with a declared load) and 'spine_check' (short passive measurement of spine length, standing). A spine_check linked to an exercise session says so with phase ('pre': just before the exercise; 'post': just after it) and related_session_id (the exercise session it brackets). Comparing Earth and space only makes sense for sessions with the same protocol_id, so the protocol is part of the comparison key.",
   "type": "object",
   "properties": {
     "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
@@ -41,7 +41,30 @@
       "required": ["type"],
       "additionalProperties": false
     },
-    "planned_reps": { "type": "integer", "minimum": 1 },
+    "planned_reps": {
+      "description": "TOTAL repetitions planned for the whole exercise session (planned_sets * reps_per_set when both are given; 60 for lat_pulldown_standing_v1).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "planned_sets": {
+      "description": "Sets planned in an exercise session (4 for lat_pulldown_standing_v1). Not for spine checks.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "reps_per_set": {
+      "description": "Repetitions planned in each set (15 for lat_pulldown_standing_v1). Not for spine checks.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "phase": {
+      "description": "Only for a spine_check bracketing an exercise session: pre (just before the exercise) or post (just after it).",
+      "type": "string",
+      "enum": ["pre", "post"]
+    },
+    "related_session_id": {
+      "description": "Only for a spine_check bracketing an exercise session: session_id of that exercise session. Requires phase.",
+      "$ref": "../common.schema.json#/$defs/uuid"
+    },
     "streams": {
       "description": "Streams enabled for this session, with their placement and calibration.",
       "type": "array",
@@ -60,12 +83,20 @@
     "protocol_id", "source", "started_at", "mission_context", "streams"
   ],
   "if": { "properties": { "session_type": { "const": "exercise" } }, "required": ["session_type"] },
-  "then": { "required": ["load_declared"] },
+  "then": {
+    "required": ["load_declared"],
+    "properties": { "phase": false, "related_session_id": false }
+  },
+  "else": {
+    "properties": { "planned_sets": false, "reps_per_set": false }
+  },
+  "dependentRequired": { "related_session_id": ["phase"] },
   "additionalProperties": false,
   "$defs": {
     "event_type": {
       "type": "string",
       "enum": [
+        "set_start", "set_end",
         "rep_start", "rep_end",
         "mvc_start", "mvc_end",
         "rest_start", "rest_end",
@@ -83,7 +114,8 @@
           "minimum": 0
         },
         "boot_id": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
-        "rep_index": { "type": "integer", "minimum": 1 },
+        "set_index": { "type": "integer", "minimum": 1, "description": "Set (1-based) the event belongs to: set_start, set_end and the events of the repetitions inside it." },
+        "rep_index": { "type": "integer", "minimum": 1, "description": "Repetition (1-based) within the session, counted across sets." },
         "note": { "type": "string", "maxLength": 200 }
       },
       "required": ["event_type", "timestamp"],
@@ -109,11 +141,11 @@
         },
         {
           "if": { "properties": { "stream_kind": { "const": "imu" } }, "required": ["stream_kind"] },
-          "then": { "properties": { "placement": { "required": ["spine_level"] } } }
+          "then": { "properties": { "placement": { "required": ["spine_level"], "not": { "anyOf": [{ "required": ["electrode_spacing_cm"] }, { "required": ["ground"] }] } } } }
         },
         {
           "if": { "properties": { "stream_kind": { "const": "stretch" } }, "required": ["stream_kind"] },
-          "then": { "properties": { "placement": { "required": ["spine_region"] } } }
+          "then": { "properties": { "placement": { "required": ["spine_region"], "not": { "anyOf": [{ "required": ["electrode_spacing_cm"] }, { "required": ["ground"] }] } } } }
         }
       ],
       "additionalProperties": false

@@ -46,7 +46,7 @@
     ],
     "drivers": [
       {
-        "feature_id": "stretch.lumbar.peak_elongation_mm",
+        "feature_id": "stretch.full_spine.peak_elongation_mm",
         "value": 9.1,
         "unit": "mm",
         "deviation_z": 2.4,
@@ -145,7 +145,7 @@
     ],
     "drivers": [
       {
-        "feature_id": "stretch.lumbar.peak_elongation_mm",
+        "feature_id": "stretch.full_spine.peak_elongation_mm",
         "value": 9.1,
         "unit": "mm",
         "deviation_z": 2.4,
@@ -206,7 +206,7 @@
   "projection": {
     "project_days": 7,
     "unprojected_features": [
-      "stretch.lumbar.peak_elongation_mm"
+      "stretch.full_spine.peak_elongation_mm"
     ]
   }
 }

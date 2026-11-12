@@ -87,7 +87,7 @@ class SensorCheck(BaseModel):
     stream: constr(pattern=r'^[a-z0-9][a-z0-9_]{1,31}$') = Field(
         ...,
         description='Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.',
-        examples=['emg_lat_left', 'imu_l3', 'stretch_lumbar'],
+        examples=['emg_lat_left', 'emg_lat_right', 'imu_t9', 'stretch_spine'],
     )
     status: Status
     state: device_status_schema.State
@@ -119,11 +119,25 @@ class SessionView(BaseModel):
     band: ui_common_schema.Band | None = Field(
         ..., description='Band of the protocol; null when it uses none.'
     )
+    planned_sets: conint(ge=1) | None = Field(
+        ...,
+        description='Sets of the protocol (4 for lat_pulldown_standing_v1); null when it has none.',
+    )
+    reps_per_set: conint(ge=1) | None = Field(
+        ...,
+        description='Repetitions in each set of the protocol (15 for lat_pulldown_standing_v1); null when it has none.',
+    )
     total_reps: conint(ge=1) | None = Field(
-        ..., description='Repetitions of the protocol; null when it has none.'
+        ...,
+        description='TOTAL repetitions of the protocol (planned_sets * reps_per_set); null when it has none.',
+    )
+    rest_between_sets_s: conint(ge=0) | None = Field(
+        ...,
+        description='Recovery between two sets, in seconds; null when the protocol has no sets. Nominal until the clinical owner fixes it.',
     )
     rest_seconds: conint(ge=0) | None = Field(
-        ..., description='Rest of the protocol; null when it has none.'
+        ...,
+        description='Rest of the protocol before finishing the session, after the last set; null when it has none.',
     )
     fit_items: list[constr(pattern=r'^[a-z][a-z0-9_]{0,31}$')] = Field(
         ..., description='Ids of the fit items of the protocol, in order.'

@@ -8,6 +8,6 @@
   "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
   "session_type": "exercise",
   "protocol_id": "lat_pulldown_standing_v1",
-  "stream_ids": ["emg_lat_left", "imu_l3", "stretch_lumbar"],
-  "max_duration_s": 300
+  "stream_ids": ["emg_lat_left", "emg_lat_right", "imu_t9", "stretch_spine"],
+  "max_duration_s": 600
 }

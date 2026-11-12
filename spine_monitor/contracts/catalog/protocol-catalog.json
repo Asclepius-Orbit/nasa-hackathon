@@ -1,20 +1,34 @@
 {
   "$schema": "./protocol-catalog.schema.json",
-  "catalog_version": "0.1.0",
+  "catalog_version": "0.2.0",
   "entries": [
     {
       "protocol_id": "lat_pulldown_standing_v1",
-      "band": { "color": "blue", "nominal_kg": 15 },
-      "total_reps": 10,
+      "band": { "color": "green", "nominal_kg": 25 },
+      "planned_sets": 4,
+      "reps_per_set": 15,
+      "total_reps": 60,
+      "rest_between_sets_s": 30,
       "rest_seconds": 120,
-      "fit_items": [{ "id": "skin" }, { "id": "emg" }, { "id": "imu" }, { "id": "cord" }]
+      "grip": "pronated",
+      "tempo": "moderate",
+      "posture": "standing",
+      "fit_items": [{ "id": "skin" }, { "id": "emg" }, { "id": "ground" }, { "id": "imu" }, { "id": "cord" }],
+      "notes": "Standing lat pulldown with a green elastic band (high resistance, 15-35 kg depending on stretch; 25 kg nominal), 4 sets of 15 repetitions in about 5 minutes. rest_between_sets_s is a nominal placeholder, pending Aguado: the protocol only says very short recoveries. EMG on each latissimus dorsi, ~10 cm between electrodes, ground on the iliac crest; IMU at T9; cord C3-C4 to L5-S1."
     },
     {
       "protocol_id": "spine_length_rest_v1",
       "band": null,
+      "planned_sets": null,
+      "reps_per_set": null,
       "total_reps": null,
+      "rest_between_sets_s": null,
       "rest_seconds": null,
-      "fit_items": [{ "id": "cord" }]
+      "grip": null,
+      "tempo": null,
+      "posture": "standing",
+      "fit_items": [{ "id": "cord" }],
+      "notes": "Passive spine_check, standing, just before (phase pre) and just after (phase post) the exercise session."
     }
   ]
 }

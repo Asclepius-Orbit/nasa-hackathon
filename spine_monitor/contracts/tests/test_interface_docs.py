@@ -246,9 +246,12 @@ def test_ui_daily_context_put_can_create_only_when_absent():
     put = document["paths"]["/ui/crew/{astronaut_id}/daily-context/{day}"]["put"]
     params = [document["components"]["parameters"][p["$ref"].rsplit("/", 1)[1]] for p in put["parameters"]]
     headers = [p for p in params if p["in"] == "header"]
-    assert [(p["name"], p["required"], p["schema"]) for p in headers] == [("If-None-Match", False, {"type": "string", "const": "*"})]
+    assert [(p["name"], p["required"], p["schema"]) for p in headers] == [
+        ("If-None-Match", False, {"type": "string", "const": "*"}),
+        ("If-Match", False, {"type": "string"}),
+    ]
     assert put["responses"]["412"] == {"$ref": "#/components/responses/AlreadyStored"}
-    assert "412" not in document["paths"]["/ui/crew/{astronaut_id}/profile"]["put"]["responses"]
+    assert document["paths"]["/ui/crew/{astronaut_id}/profile"]["put"]["responses"]["412"] == {"$ref": "#/components/responses/AlreadyStored"}
 
 
 def test_ui_devices_is_a_list_of_device_statuses():

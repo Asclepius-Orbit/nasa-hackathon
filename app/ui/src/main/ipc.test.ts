@@ -689,6 +689,13 @@ describe('session, report, urgent and contact channels', () => {
     expect(await call(IPC_CHANNELS.reportsDue)).toEqual(records.due);
   });
 
+  it('retries an exercise on the unlocked astronaut, and says when today has no context', async () => {
+    await unlock();
+    const entry = { modality: 'ared', duration_min: 20 };
+    expect(await call(IPC_CHANNELS.reportsAddExercise, entry)).toEqual({ ok: false, reason: 'no_context' });
+    expect(records.puts).toEqual([]);
+  });
+
   it('logs and lists contacts with the crew medical officer', async () => {
     await unlock();
     records.sendAnswer = { contact_id: OTHER, at: '2026-11-05T10:00:00Z' };
@@ -717,6 +724,7 @@ describe('session, report, urgent and contact channels', () => {
     expect(await call(IPC_CHANNELS.sessionsStart, { protocolId: 'spine_length_rest_v1' })).toEqual(locked);
     expect(await call(IPC_CHANNELS.sessionsStop, { sessionId: SESSION, reason: 'completed' })).toEqual(locked);
     expect(await call(IPC_CHANNELS.reportsSaveDaily, DAILY_FIELDS)).toEqual(locked);
+    expect(await call(IPC_CHANNELS.reportsAddExercise, { modality: 'ared', duration_min: 20 })).toEqual(locked);
     expect(await call(IPC_CHANNELS.contactsLogOfficerCall, { sessionId: SESSION })).toEqual(locked);
     expect(records.sent).toEqual([]);
   });

@@ -14,7 +14,7 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 | `schemas/v1/engine/` | HTTP bodies of the engine: `/features`, `/baseline`, `/assess`, `/simulate`, errors |
 | `schemas/v1/app/` | HTTP bodies of the read-only API of the app: status, history, explanation, lists of assessments, sessions and self-reports, errors; and the UI views of `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | HTTP bodies of the LLM agent chat API (`agent-openapi.yaml`): the question (`chat-request`) and the server-sent events of the answer (`chat-event`) |
-| `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements; ranges owned by Aguado |
+| `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements, `risk_direction` and ranges. `catalog_version` 0.2.0: the directions and ranges are **provisional** (status stays `proposed`, every range source starts with "provisional, pendiente de Aguado") until Aguado validates them |
 | `catalog/protocol-catalog.json` | Fixed facts of each protocol (band, sets, reps, rests, grip, tempo, posture, fit item ids) quoted by the UI views |
 | `asyncapi.yaml` | MQTT topics, direction, QoS and retain (the gateway's point of view) |
 | `openapi.yaml` | Engine HTTP API |
@@ -80,7 +80,7 @@ validation.validate("telemetry/stream-chunk", dump(chunk))  # full rules, see be
 Edit the schema, add or update its example, regenerate, run the tests, and tell the owners of the other layers. Backwards-compatible additions bump the minor version; anything else the major.
 
 ## Open
-- **Aguado:** validate the feature catalog (ids, units, `risk_direction`, ranges and their sources); the reduced ODI item set; the recovery between sets (30 s is a placeholder), the MVC procedure and the exact band stretch; the measurement of the stretch cord (about 650 mm, PENDIENTE medición Aguado: the resistance-to-length curve is a placeholder until it is measured with an ohmmeter; it is non-linear and recovers slowly, so the length comes from a measured curve).
+- **Aguado:** validate the feature catalog (ids, units, `risk_direction`, ranges and their sources): the `risk_direction` values and ranges in `catalog_version` 0.2.0 are provisional and pending Aguado (#38; the left-right symmetry index, #106, is left untouched); the reduced ODI item set; the recovery between sets (30 s is a placeholder), the MVC procedure and the exact band stretch; the measurement of the stretch cord (about 650 mm, PENDIENTE medición Aguado: the resistance-to-length curve is a placeholder until it is measured with an ohmmeter; it is non-linear and recovers slowly, so the length comes from a measured curve).
 - **Polfer:** does the EMG module output the raw signal or an envelope (spectral features need raw)? Use ADC1 pins on the ESP32 (ADC2 does not work with Bluetooth/WiFi). The wearable-to-gateway format is free; the contract starts at MQTT. The real gateway uses the serial protocol documented in `spine_monitor/gateway/README.md` and `firmware/README.md`.
 - **IMU rate:** 100 Hz by default; 10 Hz is too low for smoothness and peak velocity of a ~2 s repetition.
 - MCP tool outputs: `compare_periods` has its own schema, `mcp/compare-periods` (computed by the server from two `/history` calls); the other MCP tools reuse the `app` and `engine` schemas.

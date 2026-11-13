@@ -1,6 +1,6 @@
 {
   "$schema": "./feature-catalog.schema.json",
-  "catalog_version": "0.1.0",
+  "catalog_version": "0.2.0",
   "entries": [
     {
       "feature_id": "emg.{muscle}.{side}.rms_mv",
@@ -49,7 +49,7 @@
       "unit": "Hz",
       "inputs": ["emg", "session_events"],
       "requires": ["raw_emg"],
-      "risk_direction": "unspecified",
+      "risk_direction": "lower_is_worse",
       "ranges": null,
       "status": "proposed"
     },
@@ -61,7 +61,7 @@
       "unit": "Hz/rep",
       "inputs": ["emg", "session_events"],
       "requires": ["raw_emg"],
-      "risk_direction": "unspecified",
+      "risk_direction": "lower_is_worse",
       "ranges": null,
       "status": "proposed"
     },
@@ -135,7 +135,7 @@
       "unit": "mm",
       "inputs": ["stretch", "session_events"],
       "requires": ["stretch_calibration"],
-      "risk_direction": "unspecified",
+      "risk_direction": "lower_is_worse",
       "ranges": null,
       "status": "proposed"
     },
@@ -147,7 +147,7 @@
       "unit": "s",
       "inputs": ["stretch", "session_events"],
       "requires": ["stretch_calibration"],
-      "risk_direction": "unspecified",
+      "risk_direction": "higher_is_worse",
       "ranges": null,
       "status": "proposed"
     },
@@ -171,8 +171,13 @@
       "unit": "deg",
       "inputs": ["imu", "session_events"],
       "requires": ["imu_calibration"],
-      "risk_direction": "unspecified",
-      "ranges": null,
+      "risk_direction": "lower_is_worse",
+      "ranges": {
+        "normal": { "min": 25.5, "max": null },
+        "alert": { "min": 21.0, "max": 25.5 },
+        "critical": { "min": null, "max": 21.0 },
+        "source": "provisional, pendiente de Aguado: nominal 30 deg of the protocol ROM (rom_deg in example-mission.yaml) with the 15 % peak ROM loss of the simulator's rom_motor_control curve as the lower edge of normal; alert up to a 30 % loss is an assumption"
+      },
       "status": "proposed",
       "notes": "Standard protocol: the IMU sits at T9 (imu.t9.*), with the subject standing."
     },
@@ -184,7 +189,7 @@
       "unit": "deg/s",
       "inputs": ["imu", "session_events"],
       "requires": ["imu_calibration"],
-      "risk_direction": "unspecified",
+      "risk_direction": "lower_is_worse",
       "ranges": null,
       "status": "proposed"
     },
@@ -220,7 +225,7 @@
       "unit": "s",
       "inputs": ["session_events", "imu"],
       "requires": [],
-      "risk_direction": "unspecified",
+      "risk_direction": "none",
       "ranges": null,
       "status": "proposed"
     },
@@ -269,7 +274,7 @@
       "unit": "h",
       "inputs": ["self_report"],
       "requires": [],
-      "risk_direction": "unspecified",
+      "risk_direction": "lower_is_worse",
       "ranges": null,
       "status": "proposed"
     },

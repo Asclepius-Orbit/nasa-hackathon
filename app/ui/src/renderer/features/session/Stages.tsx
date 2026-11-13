@@ -254,7 +254,7 @@ export function FinishStage({ session, action, onFinish }: { session: SessionDat
   return (
     <Panel className={styles.stage}>
       <h2>{copy.title}</h2>
-      <p className={styles.stageLede}>{copy.lede}</p>
+      <p className={styles.stageLede}>{copy.lede(session.restSeconds)}</p>
       {session.restSeconds === null ? (
         <p className={styles.hint}>{copy.noRest}</p>
       ) : (

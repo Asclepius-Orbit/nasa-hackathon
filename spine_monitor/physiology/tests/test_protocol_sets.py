@@ -1,5 +1,6 @@
 """Protocolo estandarizado de #12: 4 series x 15 reps, colocación de sensores y spine_check pre/post."""
 
+import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -46,6 +47,20 @@ def test_example_protocol_is_the_standard_lat_pulldown(config):
     assert p.load.band_id == "green" and p.load.nominal_kg == 25.0
     assert p.streams == ["emg_lat_left", "emg_lat_right", "imu_t9", "stretch_spine"]
     assert 4 * 60 <= exercise_duration_s(p) <= 7 * 60  # ~5 min
+
+
+@pytest.mark.unit
+def test_loaded_mission_rhythm_values_equal_the_protocol_catalog(config):
+    # The catalog is the single source of rep_duration_s, rest_between_reps_s, gap_s and rom_deg (the mission
+    # keeps its own mandatory copy); the loaded config must not diverge from it. Read via the installed package.
+    from spine_contracts.catalog import CATALOG_DIR
+
+    entries = json.loads((CATALOG_DIR / "protocol-catalog.json").read_text(encoding="utf-8"))["entries"]
+    entry = next(e for e in entries if e["protocol_id"] == LAT)
+    p = lat(config)
+    assert (p.rep_duration_s, p.rest_between_reps_s, p.rom_deg) == (entry["rep_duration_s"], entry["rest_between_reps_s"], entry["rom_deg"])
+    gaps = {s.bracket.gap_s for s in config.schedule.sessions if s.bracket is not None and s.bracket.of == "lat_pulldown"}
+    assert gaps == {entry["gap_s"]}
 
 
 def test_example_streams_carry_the_standard_placement(config):

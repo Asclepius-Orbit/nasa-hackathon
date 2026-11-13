@@ -14,7 +14,7 @@ recuperación es ``recovery_wait_s`` de esa calibración (aunque esté caducada)
 - Por repetición (ventana activa ``inicio <= t < fin``): ``peak_elongation_mm`` = máxima elongación, ``range_mm`` =
   máx − mín. Publicado = media sobre las repeticiones con muestras; ``n`` las cuenta.
 - ``recovery_time_s``: por repetición, segundos desde el fin de la activa hasta la primera muestra con elongación
-  ``<= RECOVERY_FRACTION · pico de esa repetición`` (PROVISIONAL hasta #46), buscada en ``[fin, fin + espera)``
+  ``<= recovery_fraction · pico de esa repetición`` (PROVISIONAL hasta #46), buscada en ``[fin, fin + espera)``
   recortado al fin del reposo de la ``RepWindow`` si lo tiene. Una repetición que no recupera ahí se excluye;
   publicado = media de las que recuperan, ``n`` las cuenta; si ninguna recupera, ``no_data``.
 
@@ -42,9 +42,7 @@ from spine_engine.features.registry import ComputedFeature, FamilyResult, Skippe
 from spine_engine.features.repetitions import RepetitionService, RepWindow
 from spine_engine.features.signals import segment_samples
 from spine_engine.features.stretch_curve import StretchCurveError, adc_to_resistance, elongation_mm, resistance_to_length
-
-# PROVISIONAL hasta #46: fracción del pico de la repetición por debajo de la cual el cordón se da por recuperado.
-RECOVERY_FRACTION = 0.1
+from spine_engine.settings import DEFAULT_STRETCH_RECOVERY_FRACTION
 
 _NAMES = ("elongation_mm", "elongation_pct", "peak_elongation_mm", "range_mm", "recovery_time_s", "rest_resistance_ohm")
 _PER_REP = ("peak_elongation_mm", "range_mm", "recovery_time_s")
@@ -122,7 +120,7 @@ def _span(micros: NDArray[np.int64], start: datetime, end: datetime) -> NDArray[
 
 
 def _recovery_s(micros: NDArray[np.int64], elongation: NDArray[np.float64], rep: RepWindow, peak: float, wait: timedelta, fraction: float) -> float | None:
-    """Segundos desde el fin de la activa hasta la primera muestra con elongación ``<= RECOVERY_FRACTION · peak``.
+    """Segundos desde el fin de la activa hasta la primera muestra con elongación ``<= recovery_fraction · peak``.
 
     Se busca en ``[fin, fin + wait)`` recortado al fin del reposo si lo hay; ``None`` si no recupera ahí.
     """
@@ -144,7 +142,7 @@ class StretchFamily:
     family = "stretch"
     feature_ids: Sequence[str] = tuple(i for name in _NAMES for i in expand_template(f"stretch.{{spine_region}}.{name}"))
 
-    def __init__(self, repetitions: RepetitionService, *, default_recovery_wait_s: float, recovery_fraction: float = RECOVERY_FRACTION) -> None:
+    def __init__(self, repetitions: RepetitionService, *, default_recovery_wait_s: float, recovery_fraction: float = DEFAULT_STRETCH_RECOVERY_FRACTION) -> None:
         self._repetitions = repetitions
         self._default_recovery_wait_s = default_recovery_wait_s
         self._recovery_fraction = recovery_fraction

@@ -1,6 +1,6 @@
 {
   "$schema": "./protocol-catalog.schema.json",
-  "catalog_version": "0.2.0",
+  "catalog_version": "0.3.0",
   "entries": [
     {
       "protocol_id": "lat_pulldown_standing_v1",
@@ -10,11 +10,15 @@
       "total_reps": 60,
       "rest_between_sets_s": 30,
       "rest_seconds": 120,
+      "rep_duration_s": 3.0,
+      "rest_between_reps_s": 0.6,
+      "gap_s": 30,
+      "rom_deg": 30,
       "grip": "pronated",
       "tempo": "moderate",
       "posture": "standing",
       "fit_items": [{ "id": "skin" }, { "id": "emg" }, { "id": "ground" }, { "id": "imu" }, { "id": "cord" }],
-      "notes": "Standing lat pulldown with a green elastic band (high resistance, 15-35 kg depending on stretch; 25 kg nominal), 4 sets of 15 repetitions in about 5 minutes. rest_between_sets_s is a nominal placeholder, pending Aguado: the protocol only says very short recoveries. EMG on each latissimus dorsi, ~10 cm between electrodes, ground on the iliac crest; IMU at T9; cord C3-C4 to L5-S1."
+      "notes": "Standing lat pulldown with a green elastic band (high resistance, 15-35 kg depending on stretch; 25 kg nominal), 4 sets of 15 repetitions in about 5 minutes. rest_seconds (120 s, standing rest after the exercise) is provisional: PENDIENTE medición Aguado (#106). rest_between_sets_s is a nominal placeholder, pending Aguado: the protocol only says very short recoveries. Likewise rep_duration_s, rest_between_reps_s, gap_s and rom_deg are provisional values pending Aguado (#106). EMG on each latissimus dorsi, ~10 cm between electrodes, ground on the iliac crest; IMU at T9; cord C3-C4 to L5-S1."
     },
     {
       "protocol_id": "spine_length_rest_v1",
@@ -24,6 +28,10 @@
       "total_reps": null,
       "rest_between_sets_s": null,
       "rest_seconds": null,
+      "rep_duration_s": null,
+      "rest_between_reps_s": null,
+      "gap_s": null,
+      "rom_deg": null,
       "grip": null,
       "tempo": null,
       "posture": "standing",

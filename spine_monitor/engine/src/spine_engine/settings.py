@@ -7,6 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from spine_contracts import AssessmentDomain
 
 DEFAULT_DOMAIN_WEIGHT = 1.0
+# PROVISIONAL hasta #46: fracción del pico de la repetición por debajo de la cual el cordón se da por recuperado.
+# Única fuente: StretchFamily la usa como default del constructor.
+DEFAULT_STRETCH_RECOVERY_FRACTION = 0.1
 
 
 class EngineSettings(BaseSettings):
@@ -17,7 +20,7 @@ class EngineSettings(BaseSettings):
 
     # Valores provisionales del protocolo hasta #46.
     stretch_recovery_wait_s: float = Field(default=120.0, ge=0, allow_inf_nan=False)
-    stretch_recovery_fraction: float = Field(default=0.1, ge=0, le=1, allow_inf_nan=False)
+    stretch_recovery_fraction: float = Field(default=DEFAULT_STRETCH_RECOVERY_FRACTION, ge=0, le=1, allow_inf_nan=False)
 
     # z robusto: suelo de la escala, como fracción de la mediana, cuando MAD y desviación son ~0.
     scale_floor: float = 0.05

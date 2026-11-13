@@ -12,14 +12,19 @@ from typing import Self
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from spine_contracts import topics
+from spine_contracts.catalog import load_calibration_defaults
 from spine_contracts.models.common_schema import Muscle, Side
 from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 
-DEFAULT_STRETCH_CURVE_FACTORS = (1.0, 1.25, 1.5, 1.75, 2.0)
-"""Curva "Adafruit 519 escalada desde R0": aproximación lineal R = R0 · L / L0 con puntos en L0 · factor.
+_CALIBRATION_DEFAULTS = load_calibration_defaults()
+DEFAULT_STRETCH_CURVE: tuple[tuple[float, float], ...] = tuple(
+    (float(p["resistance_ohm"]), float(p["length_mm"])) for p in _CALIBRATION_DEFAULTS["stretch"]["curve"]
+)
+"""Curva por defecto del cordón, de ``contracts/catalog/calibration-defaults.json`` (la misma que la misión de ejemplo).
 
-Valor por defecto sin medir (PENDIENTE medición Aguado); se cambia con SPINE_GATEWAY_STRETCH_CURVE_FACTORS al medir el
-cordón. El cordón no es lineal y tiene histéresis.
+Puntos absolutos (R ohm, L mm) respecto al reposo de referencia (``rest_resistance_ohm``, ``rest_length_mm`` del mismo
+fichero). La calibración los escala al reposo medido: R0 · R / R_ref y L0 · L / L_ref. Valores sin medir (PENDIENTE
+medición Aguado); se cambian con SPINE_GATEWAY_STRETCH_CURVE al medir el cordón. El cordón no es lineal y tiene histéresis.
 """
 
 
@@ -89,20 +94,26 @@ class GatewaySettings(BaseSettings):
     # ``envelope``. El clon del Muscle Sensor V3 probablemente da envolvente, pero NO está confirmado con la placa
     # (issue #13): el default es la suposición, no un hecho. Condiciona calidad, conversión a mV y calibración MVC.
     emg_signal_kind: SignalKind = SignalKind.ENVELOPE
-    # PENDIENTE medición Aguado (ohmímetro): ~650 mm es el cordón C3->S1 del protocolo (region full_spine), un marcador de
-    # posición hasta que se mida; la curva por defecto de calibration.py tampoco está medida.
-    stretch_rest_length_mm: float = Field(default=650.0, gt=0)
-    # Puntos de la curva del cordón como múltiplos de (R0, L0): el primero es 1.0 (el reposo) y crecen estrictamente.
-    # PENDIENTE medición Aguado: valor por defecto sin medir. En .env como lista JSON: [1.0, 1.25, 1.5].
-    stretch_curve_factors: tuple[float, ...] = DEFAULT_STRETCH_CURVE_FACTORS
+    # Defaults de calibración: salen de contracts/catalog/calibration-defaults.json (una sola fuente, la misma que la misión
+    # de ejemplo). PENDIENTE medición Aguado (#106): ~650 mm es el cordón C3->S1 del protocolo, un marcador de posición.
+    stretch_rest_length_mm: float = Field(default=float(_CALIBRATION_DEFAULTS["stretch"]["rest_length_mm"]), gt=0)
+    # Punto de reposo (ohm, mm) al que está referida la curva por defecto: sirve para escalarla a la R0 y la L0 medidas; no
+    # es la R0 de la calibración (sale de las cuentas) ni ``stretch_rest_length_mm``. Si cambias la curva, cambia también este par.
+    stretch_curve_rest_length_mm: float = Field(default=float(_CALIBRATION_DEFAULTS["stretch"]["rest_length_mm"]), gt=0)
+    stretch_curve_rest_resistance_ohm: float = Field(default=float(_CALIBRATION_DEFAULTS["stretch"]["rest_resistance_ohm"]), gt=0)
+    # Curva del cordón como puntos absolutos (R ohm, L mm) respecto a ese reposo de referencia, crecientes en ambos ejes. En .env como
+    # lista JSON de pares: [[5400, 585], [6012, 650], [6790, 731]]. PENDIENTE medición Aguado: valor por defecto sin medir.
+    stretch_curve: tuple[tuple[float, float], ...] = DEFAULT_STRETCH_CURVE
     # Ventana (ms) del RMS deslizante de la calibración emg_mvc; 250 ms como el ejemplo del contrato.
-    emg_mvc_window_ms: int = Field(default=250, gt=0)
+    emg_mvc_window_ms: int = Field(default=int(_CALIBRATION_DEFAULTS["emg_mvc"]["window_ms"]), gt=0)
 
-    @field_validator("stretch_curve_factors")
+    @field_validator("stretch_curve")
     @classmethod
-    def _stretch_curve_factors(cls, value: tuple[float, ...]) -> tuple[float, ...]:
-        if len(value) < 2 or value[0] != 1.0 or any(b <= a for a, b in zip(value, value[1:], strict=False)):
-            raise ValueError("stretch_curve_factors must have at least two points, start at 1.0 and rise strictly")
+    def _stretch_curve(cls, value: tuple[tuple[float, float], ...]) -> tuple[tuple[float, float], ...]:
+        positive = all(r > 0 and length > 0 for r, length in value)
+        rising = all(b[0] > a[0] and b[1] > a[1] for a, b in zip(value, value[1:], strict=False))
+        if len(value) < 2 or not positive or not rising:
+            raise ValueError("stretch_curve must have at least two (ohm, mm) points, all positive and rising strictly in both axes")
         return value
 
     @field_validator("astronaut_id")

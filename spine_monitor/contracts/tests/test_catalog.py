@@ -297,3 +297,38 @@ def test_example_mission_protocol_matches_the_protocol_catalog():
     assert mission_protocol["rest_between_sets_s"] == entry["rest_between_sets_s"]
     assert mission_protocol["load"]["nominal_kg"] == entry["band"]["nominal_kg"]
     assert mission_protocol["load"]["band_id"] == entry["band"]["color"]
+    assert mission_protocol["rep_duration_s"] == entry["rep_duration_s"]
+    assert mission_protocol["rest_between_reps_s"] == entry["rest_between_reps_s"]
+    assert mission_protocol["rom_deg"] == entry["rom_deg"]
+    # gap_s lives in the schedule: the spine checks that bracket the exercise are `gap_s` away from it
+    brackets = [s["bracket"] for s in mission["schedule"]["sessions"] if s.get("bracket", {}).get("of") == "lat_pulldown"]
+    assert brackets and all(bracket["gap_s"] == entry["gap_s"] for bracket in brackets)
+
+
+RHYTHM_FIELDS = ("rep_duration_s", "rest_between_reps_s", "gap_s", "rom_deg")
+
+
+def test_lat_pulldown_protocol_states_the_provisional_rhythm_values():
+    entry = _protocols()["lat_pulldown_standing_v1"]
+    assert (entry["rep_duration_s"], entry["rest_between_reps_s"], entry["gap_s"], entry["rom_deg"]) == (3.0, 0.6, 30, 30)
+    assert "#106" in entry["notes"] and "provisional" in entry["notes"]
+
+
+def test_rest_seconds_is_marked_as_provisional_pending_aguado():
+    notes = _protocols()["lat_pulldown_standing_v1"]["notes"]
+    assert "rest_seconds" in notes and "PENDIENTE medición Aguado" in notes and "#106" in notes
+
+
+def test_spine_check_protocol_has_null_rhythm_values():
+    entry = _protocols()["spine_length_rest_v1"]
+    assert all(field in entry and entry[field] is None for field in RHYTHM_FIELDS)
+
+
+def test_protocol_catalog_requires_and_bounds_the_rhythm_values():
+    validator = Draft202012Validator(_load(PROTOCOL_CATALOG_SCHEMA))
+    catalog = _load(PROTOCOL_CATALOG)
+    entry = catalog["entries"][0]
+    for field in RHYTHM_FIELDS:
+        assert not validator.is_valid({**catalog, "entries": [{k: v for k, v in entry.items() if k != field}]}), field
+        assert not validator.is_valid({**catalog, "entries": [{**entry, field: -1}]}), field
+    assert catalog["catalog_version"] == "0.3.0"

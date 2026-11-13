@@ -4,6 +4,7 @@ La verdad es la del propio simulador: ``expected_features`` (``exercise.rep_coun
 y el calendario constante de ``rep_duration_s`` (por eso el CV real es 0).
 """
 
+import json
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from typing import Any
 import pytest
 import spine_physiology
 from spine_contracts import FeaturesRequest, dump, validation
-from spine_contracts.catalog import unit_for
+from spine_contracts.catalog import CATALOG_DIR, unit_for
 from spine_contracts.models.domain.session_schema import Event, EventType
 from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
@@ -22,7 +23,28 @@ COUNT = "exercise.rep_count"
 MEAN = "exercise.rep_duration_s_mean"
 CV = "exercise.rep_duration_cv_pct"
 ALL_IDS = (COUNT, MEAN, CV)
-REP_DURATION_S = 3.0  # rep_duration_s del protocolo de example-mission.yaml
+
+
+def _catalog_rep_duration_s() -> float:
+    # CATALOG_DIR viene del paquete instalado: sin rutas a carpetas hermanas (bajo mutmut no existen)
+    entries = json.loads((CATALOG_DIR / "protocol-catalog.json").read_text(encoding="utf-8"))["entries"]
+    return next(e["rep_duration_s"] for e in entries if e["protocol_id"] == "lat_pulldown_standing_v1")
+
+
+def _mission_rep_duration_s() -> float:
+    import yaml
+
+    raw = yaml.safe_load(_MISSION.read_text(encoding="utf-8"))
+    return raw["protocols"]["lat_pulldown_standing_v1"]["rep_duration_s"]
+
+
+# La misión copia el valor del catálogo (lo cruza contracts/tests/test_catalog.py); el test lee la misión, sin literal.
+REP_DURATION_S = _catalog_rep_duration_s()
+
+
+def test_the_mission_rep_duration_is_the_catalog_one():
+    assert _mission_rep_duration_s() == REP_DURATION_S
+
 
 # Con eventos la duración es exacta (los eventos son la verdad del calendario): tolerancia de redondeo.
 EVENTS_MEAN_ABS_TOLERANCE_S = 1e-6

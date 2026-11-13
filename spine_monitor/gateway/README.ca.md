@@ -144,7 +144,9 @@ Totes les variables porten el prefix `SPINE_GATEWAY_` i són opcionals; `.env.ex
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Guany del mòdul EMG; els mV es divideixen per ell. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | Què lliura el mòdul EMG a l'ADC: `raw`, `rectified` o `envelope`. El valor per defecte és una suposició, no està confirmat amb la placa (vegeu a sota). |
 | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Longitud (mm) del cordó en repòs, usada pel calibratge `stretch`. PENDENT mesura Aguado (ohmímetre): marcador de ~650 mm per al cordó C3->S1 (#12). |
-| `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` | `[1.0, 1.25, 1.5, 1.75, 2.0]` | Punts de la corba del cordó com a múltiples de (R0, L0), en llista JSON: comença a 1.0 i creix estrictament. PENDENT mesura Aguado (ohmímetre): valor per defecte sense mesurar. |
+| `SPINE_GATEWAY_STRETCH_CURVE` | `[[5400, 585], [6012, 650], [6790, 731], [7560, 812]]` | Punts (ohm, mm) de la corba del cordó, en llista JSON de parells que creixen estrictament en tots dos eixos. El valor per defecte és la corba de la missió d'exemple, llegida de `contracts/catalog/calibration-defaults.json` (font única, comprovada contra la missió per un test). El calibratge `stretch` l'escala al repòs mesurat: `R0 * R / CURVE_REST_RESISTANCE_OHM` i `L0 * L / CURVE_REST_LENGTH_MM`. Substitueix l'antic `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (múltiples de (R0, L0)). PENDENT mesura Aguado (#106): valor per defecte sense mesurar. |
+| `SPINE_GATEWAY_STRETCH_CURVE_REST_RESISTANCE_OHM` | `6012.0` | Resistència en repòs (ohm) a la qual està referida la corba anterior. Canvia-la juntament amb la corba. |
+| `SPINE_GATEWAY_STRETCH_CURVE_REST_LENGTH_MM` | `650.0` | Longitud en repòs (mm) a la qual està referida la corba anterior. Canvia-la juntament amb la corba. |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Finestra (ms) de l'RMS lliscant del calibratge `emg_mvc`. |
 
 El protocol declara dos mòduls EMG (dorsal ample esquerre/dret) però el maquinari i el gateway actuals en publiquen un (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) fins que Polfer confirmi el maquinari (#13).
@@ -219,7 +221,7 @@ Altres regles:
 - `calibrate` admet `stretch` i `emg_mvc`; `imu` es rebutja amb `invalid_command` (l'enum d'`error.code` no té "no suportat"). Grava durant `duration_s` (per defecte `SPINE_GATEWAY_CALIBRATION_DEFAULT_DURATION_S`) de **temps de dispositiu**; no exigeix que `session_id` sigui la sessió en curs. Si les dades no són completes 5 s després de `duration_s`, falla.
 - `calibration_failed` i `calibration_timeout` viatgen tots dos com a `error.code = "calibration_failed"`; el detall va al missatge: `<motiu>: <detall>`, amb motiu `incomplete`, `rest_resistance_not_computable`, `too_few_samples`, `flat_signal` o `calibration_timeout`. Els missatges es tallen a 300 caràcters.
 - Els calibratges viuen a la memòria del gateway i es republiquen retained després de cada reconnexió MQTT, abans del següent chunk que els citi. Reiniciar el gateway arrenca sense calibratge.
-- `stretch`: `rest_resistance_ohm` és la resistència calculada amb la mitjana dels comptes; `rest_length_mm` surt de la configuració; la corba és l'**aproximació per defecte**, una lineal `R = R0 * L / L0` amb punts a `L0 * {1.0, 1.25, 1.5, 1.75, 2.0}`. No està mesurada: el cordó no és lineal i té histèresi, i la corba mesurada de #12 l'ha de substituir.
+- `stretch`: `rest_resistance_ohm` és la resistència calculada amb la mitjana dels comptes; `rest_length_mm` surt de la configuració; la corba és la **corba per defecte** de la missió d'exemple (`contracts/catalog/calibration-defaults.json`), escalada al repòs mesurat (`R0 * R / 6012`, `L0 * L / 650`). No està mesurada: el cordó no és lineal i té histèresi, i la corba mesurada de #12 l'ha de substituir.
 - `emg_mvc`: `mvc_rms_mv` és el màxim de l'RMS lliscant (`SPINE_GATEWAY_EMG_MVC_WINDOW_MS`) en mV.
 
 ## Protocol sèrie
@@ -303,7 +305,7 @@ Amb el mòdul connectat, mesura `SIG` amb un multímetre (o mira `emg` en una se
 
 - EMG crua o envolvent (`SPINE_GATEWAY_EMG_SIGNAL_KIND`), pendent del mòdul real.
 - Alimentació del mòdul EMG i rang real de `SIG`.
-- `rest_length_mm` i la corba real del cordó (#12); avui són un marcador de posició i una aproximació lineal.
+- `rest_length_mm` i la corba real del cordó (#12); avui són un marcador de posició i la corba de la missió.
 - `calibrate` de tipus `imu` no està implementat.
 - Un codi d'error propi per a "no suportat": requereix canviar el contracte (avui es fa servir `invalid_command`).
 - Autenticació i TLS del broker (#96).

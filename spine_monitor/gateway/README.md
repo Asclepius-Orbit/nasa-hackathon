@@ -144,7 +144,9 @@ All variables have the prefix `SPINE_GATEWAY_` and are optional; `.env.example` 
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Gain of the EMG module; mV are divided by it. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | What the EMG module delivers to the ADC: `raw`, `rectified` or `envelope`. The default is an assumption, not confirmed with the board (see below). |
 | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Length (mm) of the cord at rest, used by the `stretch` calibration. PENDING Aguado's ohmmeter measurement: ~650 mm placeholder for the C3->S1 cord (#12). |
-| `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` | `[1.0, 1.25, 1.5, 1.75, 2.0]` | Points of the cord curve as multiples of (R0, L0), as a JSON list: it starts at 1.0 and rises strictly. PENDING Aguado's ohmmeter measurement: unmeasured default. |
+| `SPINE_GATEWAY_STRETCH_CURVE` | `[[5400, 585], [6012, 650], [6790, 731], [7560, 812]]` | Points (ohm, mm) of the cord curve, as a JSON list of pairs rising strictly in both axes. The default is the curve of the example mission, read from `contracts/catalog/calibration-defaults.json` (single source, checked against the mission by a test). The `stretch` calibration scales it to the measured rest: `R0 * R / CURVE_REST_RESISTANCE_OHM` and `L0 * L / CURVE_REST_LENGTH_MM`. Replaces the old `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (multiples of (R0, L0)). PENDING Aguado's ohmmeter measurement (#106): unmeasured default. |
+| `SPINE_GATEWAY_STRETCH_CURVE_REST_RESISTANCE_OHM` | `6012.0` | Rest resistance (ohm) the curve above is referred to. Change it together with the curve. |
+| `SPINE_GATEWAY_STRETCH_CURVE_REST_LENGTH_MM` | `650.0` | Rest length (mm) the curve above is referred to. Change it together with the curve. |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Window (ms) of the sliding RMS of the `emg_mvc` calibration. |
 
 The protocol declares two EMG modules (left/right latissimus) but the current hardware and gateway publish one (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) until Polfer confirms the hardware (#13).
@@ -219,7 +221,7 @@ Other rules:
 - `calibrate` supports `stretch` and `emg_mvc`; `imu` is rejected with `invalid_command` (the enum of `error.code` has no "not supported"). It records for `duration_s` (default `SPINE_GATEWAY_CALIBRATION_DEFAULT_DURATION_S`) of **device time**; it does not require `session_id` to be the running session. If the data is not complete 5 s after `duration_s`, it fails.
 - `calibration_failed` and `calibration_timeout` travel both as `error.code = "calibration_failed"`; the detail goes in the message: `<reason>: <detail>`, where the reason is `incomplete`, `rest_resistance_not_computable`, `too_few_samples`, `flat_signal` or `calibration_timeout`. Messages are cut at 300 characters.
 - Calibrations live in the gateway memory and are republished retained after each MQTT reconnection, before the next chunk that cites them. A gateway restart starts without calibration.
-- `stretch`: `rest_resistance_ohm` is the resistance computed from the mean of the counts; `rest_length_mm` comes from the configuration; the curve is the **default approximation**, a linear `R = R0 * L / L0` with points at `L0 * {1.0, 1.25, 1.5, 1.75, 2.0}`. It is not measured: the cord is non-linear and has hysteresis, and the measured curve of #12 must replace it.
+- `stretch`: `rest_resistance_ohm` is the resistance computed from the mean of the counts; `rest_length_mm` comes from the configuration; the curve is the **default curve** of the example mission (`contracts/catalog/calibration-defaults.json`), scaled to the measured rest (`R0 * R / 6012`, `L0 * L / 650`). It is not measured: the cord is non-linear and has hysteresis, and the measured curve of #12 must replace it.
 - `emg_mvc`: `mvc_rms_mv` is the maximum of the sliding RMS (`SPINE_GATEWAY_EMG_MVC_WINDOW_MS`) in mV.
 
 ## Serial protocol
@@ -303,7 +305,7 @@ With the module connected, measure `SIG` with a multimeter (or watch `emg` in a 
 
 - EMG raw or envelope (`SPINE_GATEWAY_EMG_SIGNAL_KIND`), pending the real module.
 - Power supply of the EMG module and real range of `SIG`.
-- `rest_length_mm` and the real curve of the stretch cord (#12); today they are a placeholder and a linear approximation.
+- `rest_length_mm` and the real curve of the stretch cord (#12); today they are a placeholder and the mission curve.
 - `calibrate` of type `imu` is not implemented.
 - A dedicated error code for "not supported": it requires changing the contract (today `invalid_command` is used).
 - BLE is out of scope.

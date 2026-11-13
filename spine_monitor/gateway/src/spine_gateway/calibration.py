@@ -7,7 +7,8 @@ anteriores a ese instante. Se ignoran los lotes de otros kinds, los duplicados o
 ``n`` inesperado y los anteriores al inicio (vuelta de ``millis()``); un lote perdido acorta la muestra, no la duración.
 
 - ``stretch``: media de las cuentas -> ``R0`` con el divisor del ensamblador -> ``rest_resistance_ohm``, con
-  ``rest_length_mm`` de los ajustes y la curva ``stretch_curve_factors`` de los ajustes (por defecto ``DEFAULT_STRETCH_CURVE_FACTORS``).
+  ``rest_length_mm`` de los ajustes y la curva ``stretch_curve`` de los ajustes (por defecto ``DEFAULT_STRETCH_CURVE``, la de la
+  misión de ejemplo), escalada al reposo medido: R0 · R / ``stretch_curve_rest_resistance_ohm`` y L0 · L / ``stretch_curve_rest_length_mm``.
 - ``emg_mvc``: RMS en ventanas deslizantes de ``emg_mvc_window_ms`` (paso de una muestra) y ``mvc_rms_mv`` = la máxima.
   La conversión a mV es lineal, así que el RMS se calcula en cuentas y se convierte al final; para una señal ``raw`` se
   resta antes el offset de media escala del ensamblador (``emg_offset_counts``, suposición no verificada con hardware),
@@ -146,7 +147,10 @@ class CalibrationRecorder:
                 "rest_length_mm": l0,
                 "curve": {
                     "model": "piecewise_linear",
-                    "points": [{"resistance_ohm": r0 * f, "length_mm": l0 * f} for f in s.stretch_curve_factors],
+                    "points": [
+                        {"resistance_ohm": r0 * r / s.stretch_curve_rest_resistance_ohm, "length_mm": l0 * length / s.stretch_curve_rest_length_mm}
+                        for r, length in s.stretch_curve
+                    ],
                 },
             }
         )

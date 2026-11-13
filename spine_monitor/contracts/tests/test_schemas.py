@@ -657,11 +657,75 @@ def test_catalog_placeholders_resolve_and_expand_to_valid_ids(catalog, common):
             assert fullmatch(pattern, expanded), expanded
 
 
+# Until Aguado validates (#38), ranges may exist only if they say so in their source.
+PROVISIONAL_MARKER = "provisional, pendiente de Aguado"
+NO_RANGES_DIRECTIONS = {"none", "unspecified"}
+SYMMETRY_ID = "emg.{muscle}.symmetry_index_pct"
+
+
+def _catalog_entries() -> list[dict]:
+    return load_catalog()["entries"]
+
+
+def _entries_with_ranges() -> list[dict]:
+    return [entry for entry in _catalog_entries() if entry["ranges"] is not None]
+
+
+def _entry_ids(entries: list[dict]) -> list[str]:
+    return [entry["feature_id"] for entry in entries]
+
+
 def test_catalog_has_no_invented_ranges(catalog):
-    # Ranges belong to the clinical owner; a non-null range must carry its source.
+    # Ranges belong to the clinical owner: a non-null range is validated or says it is provisional.
     for entry in catalog["entries"]:
         if entry["ranges"] is not None:
-            assert entry["status"] == "validated", entry["feature_id"]
+            provisional = entry["ranges"]["source"].startswith(PROVISIONAL_MARKER)
+            assert entry["status"] == "validated" or provisional, entry["feature_id"]
+
+
+@pytest.mark.parametrize("entry", _entries_with_ranges(), ids=_entry_ids(_entries_with_ranges()))
+def test_catalog_ranges_are_ordered_and_consistent_with_risk_direction(entry):
+    ranges = entry["ranges"]
+    assert entry["risk_direction"] not in NO_RANGES_DIRECTIONS, entry["feature_id"]
+    for name in ("normal", "alert", "critical"):
+        low, high = ranges[name]["min"], ranges[name]["max"]
+        assert low is None or high is None or low <= high, f"{entry['feature_id']}: {name}"
+    # normal, alert and critical are laid out from the good end to the bad end
+    order = {"higher_is_worse": ("normal", "alert", "critical"), "lower_is_worse": ("critical", "alert", "normal")}
+    if entry["risk_direction"] in order:
+        first, middle, last = (ranges[name] for name in order[entry["risk_direction"]])
+        assert first["max"] is not None and middle["min"] is not None and first["max"] <= middle["min"], entry["feature_id"]
+        assert middle["max"] is not None and last["min"] is not None and middle["max"] <= last["min"], entry["feature_id"]
+
+
+@pytest.mark.parametrize("entry", _entries_with_ranges(), ids=_entry_ids(_entries_with_ranges()))
+def test_provisional_catalog_entries_stay_proposed(entry):
+    if entry["ranges"]["source"].startswith(PROVISIONAL_MARKER):
+        assert entry["status"] == "proposed", entry["feature_id"]
+        assert "Aguado" in entry["ranges"]["source"] and len(entry["ranges"]["source"]) > len(PROVISIONAL_MARKER) + 2
+
+
+@pytest.mark.parametrize("entry", _catalog_entries(), ids=_entry_ids(_catalog_entries()))
+def test_catalog_entries_without_a_risk_direction_have_no_ranges(entry):
+    if entry["risk_direction"] in NO_RANGES_DIRECTIONS:
+        assert entry["ranges"] is None, entry["feature_id"]
+
+
+def test_catalog_version_marks_the_provisional_values():
+    assert load_catalog()["catalog_version"] == "0.2.0"
+
+
+def test_catalog_carries_provisional_directions_and_ranges_for_the_risk_layer():
+    # #51 needs something to read: more than the symptoms scales, and at least one provisional range
+    directions = {entry["feature_id"]: entry["risk_direction"] for entry in _catalog_entries()}
+    specified = {fid for fid, direction in directions.items() if direction not in NO_RANGES_DIRECTIONS}
+    assert len([fid for fid in specified if not fid.startswith("symptoms.")]) >= 5
+    assert any(entry["ranges"]["source"].startswith(PROVISIONAL_MARKER) for entry in _entries_with_ranges())
+
+
+def test_symmetry_index_waits_for_aguado():
+    entry = next(entry for entry in _catalog_entries() if entry["feature_id"] == SYMMETRY_ID)
+    assert (entry["risk_direction"], entry["ranges"], entry["status"]) == ("unspecified", None, "proposed")
 
 
 def test_example_feature_ids_exist_in_catalog(catalog, common):

@@ -16,6 +16,8 @@ from spine_contracts.catalog import (
     is_known,
     load_catalog,
     placeholders,
+    ranges,
+    risk_direction,
     unit_for,
 )
 
@@ -80,6 +82,35 @@ def test_features_removed_by_clinical_decision_stay_out_of_the_catalog():
     }
     assert removed.isdisjoint(all_feature_ids())
     assert not any(is_known(feature_id) for feature_id in removed)
+
+
+def test_risk_direction_and_ranges_of_a_concrete_id_come_from_its_entry():
+    entry = next(e for e in load_catalog()["entries"] if e["ranges"] is not None)
+    concrete = expand_ids(entry)[0]
+    assert risk_direction(concrete) == entry["risk_direction"]
+    assert ranges(concrete) == entry["ranges"]
+
+
+def test_ranges_is_none_when_the_entry_has_no_ranges():
+    entry = next(e for e in load_catalog()["entries"] if e["ranges"] is None)
+    assert ranges(expand_ids(entry)[0]) is None
+
+
+@pytest.mark.parametrize("accessor", [risk_direction, ranges])
+def test_risk_accessors_raise_for_unknown_and_unexpanded_ids(accessor):
+    with pytest.raises(UnknownFeatureIdError, match="nope.nothing"):
+        accessor("nope.nothing")
+    with pytest.raises(UnknownFeatureIdError):
+        accessor("emg.{muscle}.{side}.rms_mv")
+
+
+@pytest.mark.property
+@given(data=st.data())
+def test_every_expanded_id_resolves_risk_direction_and_ranges_of_its_entry(data):
+    entry = data.draw(st.sampled_from(load_catalog()["entries"]))
+    feature_id = data.draw(st.sampled_from(expand_ids(entry)))
+    assert risk_direction(feature_id) == entry["risk_direction"]
+    assert ranges(feature_id) == entry["ranges"]
 
 
 @pytest.mark.property
@@ -253,9 +284,12 @@ def test_symmetry_and_imu_notes_reflect_the_standard_protocol():
 def test_example_mission_protocol_matches_the_protocol_catalog():
     # The simulator mission repeats the catalog's protocol facts; changing one without the other must fail here
     # (docs/protocolo-ejercicio.md lists every place to edit when Aguado validates a value).
+    import spine_physiology
     import yaml
 
-    mission = yaml.safe_load((CONTRACTS_DIR.parent / "physiology" / "configs" / "example-mission.yaml").read_text(encoding="utf-8"))
+    # Via the installed package: mutmut stages the tests in a tree without `physiology/` next to `contracts/`.
+    mission_file = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
+    mission = yaml.safe_load(mission_file.read_text(encoding="utf-8"))
     mission_protocol = mission["protocols"]["lat_pulldown_standing_v1"]
     entry = _protocols()["lat_pulldown_standing_v1"]
     assert mission_protocol["planned_sets"] == entry["planned_sets"]

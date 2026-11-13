@@ -1,8 +1,9 @@
 """Catálogo de features como módulo de runtime.
 
 Carga `feature-catalog.json`, expande los ids con plantilla (`emg.{muscle}.{side}.rms_mv`) a ids concretos
-con los enums de `common.schema.json` y resuelve la unidad de un id concreto. No contiene rangos ni
-valores clínicos: solo lee lo que declara el catálogo.
+con los enums de `common.schema.json` y resuelve la unidad, la dirección de riesgo y los rangos de un id
+concreto. No contiene valores clínicos: viven en el JSON (provisionales hasta que Aguado los valide) y este
+módulo solo los lee.
 
 El catálogo se lee del repositorio (`contracts/catalog`) al ejecutar desde el workspace de uv, y de la copia
 incluida en el wheel (`spine_contracts/catalog`) al instalarlo por separado, igual que los esquemas.
@@ -70,23 +71,38 @@ def expand_ids(entry: CatalogEntry) -> list[str]:
 
 
 @cache
-def _units() -> dict[str, str]:
-    return {feature_id: str(entry["unit"]) for entry in load_catalog()["entries"] for feature_id in expand_ids(entry)}
+def _entries_by_id() -> dict[str, CatalogEntry]:
+    return {feature_id: entry for entry in load_catalog()["entries"] for feature_id in expand_ids(entry)}
+
+
+def _entry_for(feature_id: str) -> CatalogEntry:
+    try:
+        return _entries_by_id()[feature_id]
+    except KeyError:
+        raise UnknownFeatureIdError(feature_id) from None
 
 
 def all_feature_ids() -> list[str]:
     """Todos los ids concretos del catálogo, en orden de entrada."""
-    return list(_units())
+    return list(_entries_by_id())
 
 
 def is_known(feature_id: str) -> bool:
     """True si `feature_id` es un id concreto del catálogo (una plantilla sin expandir no lo es)."""
-    return feature_id in _units()
+    return feature_id in _entries_by_id()
 
 
 def unit_for(feature_id: str) -> str:
     """Unidad de la entrada cuya plantilla produce `feature_id`; lanza `UnknownFeatureIdError` si no existe."""
-    try:
-        return _units()[feature_id]
-    except KeyError:
-        raise UnknownFeatureIdError(feature_id) from None
+    return str(_entry_for(feature_id)["unit"])
+
+
+def risk_direction(feature_id: str) -> str:
+    """`risk_direction` de la entrada de `feature_id` (puede ser `unspecified`); `UnknownFeatureIdError` si no existe."""
+    return str(_entry_for(feature_id)["risk_direction"])
+
+
+def ranges(feature_id: str) -> dict[str, Any] | None:
+    """Rangos normal/alert/critical/source de la entrada de `feature_id`, o None si no hay; `UnknownFeatureIdError` si no existe."""
+    value = _entry_for(feature_id)["ranges"]
+    return None if value is None else cast(dict[str, Any], value)

@@ -1,3 +1,35 @@
+Asclepius Orbit
+Copyright (c) 2026 the Asclepius-Orbit team and contributors. All rights reserved
+until the Effective Date below.
+
+EFFECTIVE DATE: 2026-11-15 16:00 Europe/Madrid (CET, UTC+01:00), i.e. 2026-11-15 15:00 UTC.
+
+1. BEFORE THE EFFECTIVE DATE
+
+   No licence is granted. All rights are reserved. You may not use, copy, modify, merge,
+   publish, distribute, sublicense, sell or create derivative works of this repository or any
+   part of it, nor include any part of it in another project, without the prior written
+   permission of the copyright holders. The only rights that exist before the Effective Date
+   are those that the GitHub Terms of Service give to users of the platform (viewing the
+   repository and forking it on GitHub); they do not allow reuse of the code outside GitHub.
+
+2. FROM THE EFFECTIVE DATE
+
+   From the Effective Date, and not before, the repository is licensed under the GNU General
+   Public License, version 3, whose full text follows this notice. This grant is not
+   retroactive: it gives no right over copies made, or uses made, before the Effective Date,
+   and it does not cover them.
+
+3. THIRD-PARTY MATERIAL (NOT COVERED)
+
+   Neither the reservation of rights in section 1 nor the licence in section 2 covers third-party
+   material included in this repository. In particular, everything under `.claude/skills/` was
+   written by others and is distributed under its own licence (see `.claude/skills/THIRD_PARTY.md`
+   and the licence file inside each skill folder). Each file that carries its own licence or
+   copyright notice stays under that licence; we make no claim over it.
+
+------------------------------------------------------------------------------------------
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 

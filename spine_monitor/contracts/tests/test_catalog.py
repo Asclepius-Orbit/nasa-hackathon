@@ -284,9 +284,12 @@ def test_symmetry_and_imu_notes_reflect_the_standard_protocol():
 def test_example_mission_protocol_matches_the_protocol_catalog():
     # The simulator mission repeats the catalog's protocol facts; changing one without the other must fail here
     # (docs/protocolo-ejercicio.md lists every place to edit when Aguado validates a value).
+    import spine_physiology
     import yaml
 
-    mission = yaml.safe_load((CONTRACTS_DIR.parent / "physiology" / "configs" / "example-mission.yaml").read_text(encoding="utf-8"))
+    # Via the installed package: mutmut stages the tests in a tree without `physiology/` next to `contracts/`.
+    mission_file = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
+    mission = yaml.safe_load(mission_file.read_text(encoding="utf-8"))
     mission_protocol = mission["protocols"]["lat_pulldown_standing_v1"]
     entry = _protocols()["lat_pulldown_standing_v1"]
     assert mission_protocol["planned_sets"] == entry["planned_sets"]

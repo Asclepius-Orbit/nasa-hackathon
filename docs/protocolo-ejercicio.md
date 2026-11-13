@@ -40,3 +40,19 @@ El comentario no define el procedimiento de contracción voluntaria máxima. Las
 ## Estado del hardware (#13)
 
 El protocolo declara dos canales EMG, pero el firmware y el gateway reales publican uno (`emg_lat_left`) hasta confirmar el hardware con Polfer. El formato de las tramas serie no cambia.
+
+## Datos sin validar y dónde se cambian
+
+Los datos que Aguado aún no ha validado (issue #106) se cambian en un solo lugar de configuración, no en el código. Un test cruza la misión del simulador con el catálogo, así que olvidar una copia falla en CI.
+
+| Dato | Valor provisional | Dónde se cambia |
+|---|---|---|
+| Descanso entre series | 30 s | `rest_between_sets_s` en `protocol-catalog.json` (backend y UI); `rest_between_sets_s` de `lat_pulldown_standing_v1` en `example-mission.yaml`; copia en `app/ui/src/main/sessions/protocols.ts` si es necesario |
+| Series, repeticiones, banda | 4 × 15, verde, 25 kg | `protocol-catalog.json`; `example-mission.yaml` (`planned_sets`, `reps_per_set`, `load`); `protocols.ts` |
+| Ritmo («moderado») | 3,0 s por repetición y 0,6 s entre repeticiones en el simulador | `rep_duration_s`, `rest_between_reps_s` en `example-mission.yaml` |
+| Longitud del cordón en reposo | 650 mm | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` (gateway); calibración de `example-mission.yaml` y `calibration.stretch.json` |
+| Curva del cordón | factores 1,0 / 1,25 / 1,5 / 1,75 / 2,0 sobre R0 y L0 | `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (gateway, lista JSON); curva de `example-mission.yaml` |
+| Espera de recuperación del cordón | 120 s | `recovery_wait_s` en `example-mission.yaml` y `calibration.stretch.json` |
+| Separación de electrodos, tramo, GND | 10 cm, T11-L2, cresta ilíaca | `placement` de `session.exercise.json` y de `emgLat` en `protocols.ts`; `example-mission.yaml` |
+| MVC | sin procedimiento | `emg_mvc` de `example-mission.yaml` (`window_ms`, `n_trials`); `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` (gateway) |
+| Textos de colocación y etiquetas de la UI | provisionales | `app/ui/src/renderer/strings/` |

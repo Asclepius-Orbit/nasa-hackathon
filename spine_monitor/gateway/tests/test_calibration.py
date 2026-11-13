@@ -12,14 +12,13 @@ from spine_contracts import EmgMvcCalibration, Muscle, Side, StretchCalibration,
 from spine_contracts.models.telemetry.command_schema import CalibrationType
 from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 from spine_gateway.calibration import (
-    DEFAULT_STRETCH_CURVE_FACTORS,
     CalibrationFailure,
     CalibrationRecorder,
     CalibrationStatus,
     FailureReason,
 )
 from spine_gateway.protocol import Frame, FrameKind
-from spine_gateway.settings import GatewaySettings
+from spine_gateway.settings import DEFAULT_STRETCH_CURVE_FACTORS, GatewaySettings
 
 STRETCH = CalibrationType.STRETCH
 EMG_MVC = CalibrationType.EMG_MVC
@@ -334,3 +333,10 @@ def test_stretch_curve_is_valid_and_increasing(settings: GatewaySettings, counts
     points = data["curve"]["points"]  # pyright: ignore[reportIndexIssue]
     assert points[0] == {"resistance_ohm": data["rest_resistance_ohm"], "length_mm": rest}
     assert all(a["resistance_ohm"] < b["resistance_ohm"] and a["length_mm"] < b["length_mm"] for a, b in zip(points, points[1:], strict=False))
+
+
+def test_stretch_curve_uses_the_configured_factors(settings: GatewaySettings) -> None:
+    rec = recorder(settings.model_copy(update={"stretch_rest_length_mm": 500.0, "stretch_curve_factors": (1.0, 1.5)}), STRETCH, 0.1)
+    rec.feed(cord(0, (682, 682)))
+    points = calibration_payload(rec.finish(NOW))["curve"]["points"]
+    assert points == [{"resistance_ohm": 20000.0, "length_mm": 500.0}, {"resistance_ohm": 30000.0, "length_mm": 750.0}]

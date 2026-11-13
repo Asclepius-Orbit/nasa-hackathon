@@ -248,3 +248,18 @@ def test_stretch_notes_state_what_350_ohm_means():
 def test_symmetry_and_imu_notes_reflect_the_standard_protocol():
     assert "#13" in _feature_notes("emg.{muscle}.symmetry_index_pct")
     assert "T9" in _feature_notes("imu.{spine_level}.{anatomical_plane}.rom_deg")
+
+
+def test_example_mission_protocol_matches_the_protocol_catalog():
+    # The simulator mission repeats the catalog's protocol facts; changing one without the other must fail here
+    # (docs/protocolo-ejercicio.md lists every place to edit when Aguado validates a value).
+    import yaml
+
+    mission = yaml.safe_load((CONTRACTS_DIR.parent / "physiology" / "configs" / "example-mission.yaml").read_text(encoding="utf-8"))
+    mission_protocol = mission["protocols"]["lat_pulldown_standing_v1"]
+    entry = _protocols()["lat_pulldown_standing_v1"]
+    assert mission_protocol["planned_sets"] == entry["planned_sets"]
+    assert mission_protocol["reps_per_set"] == entry["reps_per_set"]
+    assert mission_protocol["rest_between_sets_s"] == entry["rest_between_sets_s"]
+    assert mission_protocol["load"]["nominal_kg"] == entry["band"]["nominal_kg"]
+    assert mission_protocol["load"]["band_id"] == entry["band"]["color"]

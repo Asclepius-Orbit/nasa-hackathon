@@ -164,3 +164,15 @@ def test_emg_signal_kind_invalid_rejected(monkeypatch: pytest.MonkeyPatch, value
     monkeypatch.setenv("SPINE_GATEWAY_EMG_SIGNAL_KIND", value)
     with pytest.raises(ValidationError):
         GatewaySettings()
+
+
+def test_stretch_curve_factors_default_and_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert GatewaySettings().stretch_curve_factors == (1.0, 1.25, 1.5, 1.75, 2.0)
+    monkeypatch.setenv("SPINE_GATEWAY_STRETCH_CURVE_FACTORS", "[1.0, 1.1, 1.3]")
+    assert GatewaySettings().stretch_curve_factors == (1.0, 1.1, 1.3)
+
+
+@pytest.mark.parametrize("factors", [(1.0,), (1.0, 1.0, 2.0), (1.0, 2.0, 1.5), (0.9, 1.2), (1.0, -1.0)])
+def test_stretch_curve_factors_must_be_a_rising_curve_from_the_rest_point(factors: tuple[float, ...]) -> None:
+    with pytest.raises(ValueError, match="stretch_curve_factors"):
+        GatewaySettings(stretch_curve_factors=factors)

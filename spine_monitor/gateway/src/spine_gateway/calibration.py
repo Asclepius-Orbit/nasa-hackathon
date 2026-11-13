@@ -7,7 +7,7 @@ anteriores a ese instante. Se ignoran los lotes de otros kinds, los duplicados o
 ``n`` inesperado y los anteriores al inicio (vuelta de ``millis()``); un lote perdido acorta la muestra, no la duración.
 
 - ``stretch``: media de las cuentas -> ``R0`` con el divisor del ensamblador -> ``rest_resistance_ohm``, con
-  ``rest_length_mm`` de los ajustes y la curva por defecto ``DEFAULT_STRETCH_CURVE_FACTORS``.
+  ``rest_length_mm`` de los ajustes y la curva ``stretch_curve_factors`` de los ajustes (por defecto ``DEFAULT_STRETCH_CURVE_FACTORS``).
 - ``emg_mvc``: RMS en ventanas deslizantes de ``emg_mvc_window_ms`` (paso de una muestra) y ``mvc_rms_mv`` = la máxima.
   La conversión a mV es lineal, así que el RMS se calcula en cuentas y se convierte al final; para una señal ``raw`` se
   resta antes el offset de media escala del ensamblador (``emg_offset_counts``, suposición no verificada con hardware),
@@ -29,12 +29,6 @@ from spine_contracts.models.telemetry.command_schema import CalibrationType
 from spine_gateway.assembler import SAMPLE_RATE_HZ, SAMPLES_PER_BATCH, counts_to_mv, counts_to_resistance, emg_offset_counts, scalar_samples
 from spine_gateway.protocol import Frame, FrameKind, frame_gap
 from spine_gateway.settings import GatewaySettings
-
-DEFAULT_STRETCH_CURVE_FACTORS = (1.0, 1.25, 1.5, 1.75, 2.0)
-"""Curva "Adafruit 519 escalada desde R0": aproximación lineal R = R0 · L / L0 con puntos en L0 · factor.
-
-Valor por defecto sin medir; sustituir por la curva medida (#12). El cordón no es lineal y tiene histéresis.
-"""
 
 _KIND = {CalibrationType.STRETCH: FrameKind.CORD, CalibrationType.EMG_MVC: FrameKind.EMG}
 
@@ -152,7 +146,7 @@ class CalibrationRecorder:
                 "rest_length_mm": l0,
                 "curve": {
                     "model": "piecewise_linear",
-                    "points": [{"resistance_ohm": r0 * f, "length_mm": l0 * f} for f in DEFAULT_STRETCH_CURVE_FACTORS],
+                    "points": [{"resistance_ohm": r0 * f, "length_mm": l0 * f} for f in s.stretch_curve_factors],
                 },
             }
         )

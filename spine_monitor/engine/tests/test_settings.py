@@ -25,15 +25,16 @@ def test_a_key_that_is_not_a_domain_is_rejected():
     with pytest.raises(ValidationError, match="risk_domain_weights"):
         EngineSettings(_env_file=None, risk_domain_weights={"not_a_domain": 1.0})
 
-@pytest.mark.parametrize(('wait', 'fraction'), [(-1.0, 0.1), (float('inf'), 0.1), (1.0, -0.1), (1.0, 1.1), (1.0, float('nan'))])
+
+@pytest.mark.parametrize(("wait", "fraction"), [(-1.0, 0.1), (float("inf"), 0.1), (1.0, -0.1), (1.0, 1.1), (1.0, float("nan"))])
 def test_invalid_stretch_protocol_settings_are_rejected(wait, fraction):
     with pytest.raises(ValidationError):
         EngineSettings(_env_file=None, stretch_recovery_wait_s=wait, stretch_recovery_fraction=fraction)
 
 
 def test_stretch_protocol_settings_are_configurable(monkeypatch):
-    monkeypatch.setenv('SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S', '30')
-    monkeypatch.setenv('SPINE_ENGINE_STRETCH_RECOVERY_FRACTION', '0.25')
+    monkeypatch.setenv("SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S", "30")
+    monkeypatch.setenv("SPINE_ENGINE_STRETCH_RECOVERY_FRACTION", "0.25")
     settings = EngineSettings(_env_file=None)
     assert settings.stretch_recovery_wait_s == 30
     assert settings.stretch_recovery_fraction == 0.25

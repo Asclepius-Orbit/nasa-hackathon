@@ -45,6 +45,7 @@ REP_DURATION_S = _catalog_rep_duration_s()
 def test_the_mission_rep_duration_is_the_catalog_one():
     assert _mission_rep_duration_s() == REP_DURATION_S
 
+
 # Con eventos la duración es exacta (los eventos son la verdad del calendario): tolerancia de redondeo.
 EVENTS_MEAN_ABS_TOLERANCE_S = 1e-6
 EVENTS_CV_ABS_TOLERANCE_PCT = 1e-6

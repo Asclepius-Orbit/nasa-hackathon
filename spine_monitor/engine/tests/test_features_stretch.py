@@ -675,9 +675,10 @@ def test_the_recovery_time_is_the_offset_of_the_first_sample_at_or_below_the_thr
 def test_recovery_fraction_is_configurable():
     reps, signal = recovering_reps(3, low=2.0)
     result = StretchFamily(FakeService(reps), default_recovery_wait_s=2.0, recovery_fraction=0.25).extract(make_context(signal))
-    assert computed(result)[fid('recovery_time_s')].value == pytest.approx(0.3)
+    assert computed(result)[fid("recovery_time_s")].value == pytest.approx(0.3)
 
 
 def test_default_registry_includes_stretch():
     from spine_engine.features.registry import default_registry
-    assert 'stretch' in [family.family for family in default_registry()]
+
+    assert "stretch" in [family.family for family in default_registry()]

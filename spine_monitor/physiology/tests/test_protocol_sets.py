@@ -1,9 +1,8 @@
 """Protocolo estandarizado de #12: 4 series x 15 reps, colocación de sensores y spine_check pre/post."""
 
+import json
 from datetime import timedelta
 from pathlib import Path
-
-import json
 
 import pytest
 import yaml
@@ -59,8 +58,7 @@ def test_loaded_mission_rhythm_values_equal_the_protocol_catalog(config):
     entries = json.loads((CATALOG_DIR / "protocol-catalog.json").read_text(encoding="utf-8"))["entries"]
     entry = next(e for e in entries if e["protocol_id"] == LAT)
     p = lat(config)
-    assert (p.rep_duration_s, p.rest_between_reps_s, p.rom_deg) == (
-        entry["rep_duration_s"], entry["rest_between_reps_s"], entry["rom_deg"])
+    assert (p.rep_duration_s, p.rest_between_reps_s, p.rom_deg) == (entry["rep_duration_s"], entry["rest_between_reps_s"], entry["rom_deg"])
     gaps = {s.bracket.gap_s for s in config.schedule.sessions if s.bracket is not None and s.bracket.of == "lat_pulldown"}
     assert gaps == {entry["gap_s"]}
 

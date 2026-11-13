@@ -18,7 +18,7 @@ from spine_gateway.calibration import (
     FailureReason,
 )
 from spine_gateway.protocol import Frame, FrameKind
-from spine_gateway.settings import DEFAULT_STRETCH_CURVE_FACTORS, GatewaySettings
+from spine_gateway.settings import GatewaySettings
 
 STRETCH = CalibrationType.STRETCH
 EMG_MVC = CalibrationType.EMG_MVC
@@ -54,8 +54,19 @@ def calibration_payload(result: object) -> dict[str, object]:
 # --- construcción ---
 
 
-def test_default_curve_factors() -> None:
-    assert DEFAULT_STRETCH_CURVE_FACTORS == (1.0, 1.25, 1.5, 1.75, 2.0)
+MISSION_CURVE = ((5400.0, 585.0), (6012.0, 650.0), (6790.0, 731.0), (7560.0, 812.0))
+
+
+def test_default_curve_is_the_mission_curve_scaled_to_the_measured_rest() -> None:
+    # 682 counts of 1023 with Rs = 10 kohm give R0 = 20000 ohm (mission rest: 6012 ohm at 650 mm), so the mission
+    # resistances scale by 20000 / 6012 and the lengths by 1 (L0 = 650 mm).
+    rec = recorder(GatewaySettings(), STRETCH, 0.1)
+    rec.feed(cord(0, (682, 682)))
+    data = calibration_payload(rec.finish(NOW))
+    points = data["curve"]["points"]  # pyright: ignore[reportIndexIssue]
+    assert [p["length_mm"] for p in points] == pytest.approx([585.0, 650.0, 731.0, 812.0])
+    assert [p["resistance_ohm"] for p in points] == pytest.approx([r * 20000.0 / 6012.0 for r in (5400.0, 6012.0, 6790.0, 7560.0)])
+    assert points[1] == {"resistance_ohm": pytest.approx(20000.0), "length_mm": pytest.approx(650.0)}
 
 
 def test_imu_is_not_recorded_here(settings: GatewaySettings) -> None:
@@ -94,11 +105,10 @@ def test_stretch_calibration(settings: GatewaySettings) -> None:
         "curve": {
             "model": "piecewise_linear",
             "points": [
-                {"resistance_ohm": 5000.0, "length_mm": 650.0},
-                {"resistance_ohm": 6250.0, "length_mm": 812.5},
-                {"resistance_ohm": 7500.0, "length_mm": 975.0},
-                {"resistance_ohm": 8750.0, "length_mm": 1137.5},
-                {"resistance_ohm": 10000.0, "length_mm": 1300.0},
+                {"resistance_ohm": pytest.approx(5000.0 * 5400.0 / 6012.0), "length_mm": pytest.approx(585.0)},
+                {"resistance_ohm": pytest.approx(5000.0), "length_mm": pytest.approx(650.0)},
+                {"resistance_ohm": pytest.approx(5000.0 * 6790.0 / 6012.0), "length_mm": pytest.approx(731.0)},
+                {"resistance_ohm": pytest.approx(5000.0 * 7560.0 / 6012.0), "length_mm": pytest.approx(812.0)},
             ],
         },
     }
@@ -117,7 +127,7 @@ def test_rest_length_comes_from_settings(settings: GatewaySettings) -> None:
     assert (data["rest_resistance_ohm"], data["rest_length_mm"]) == (20000.0, 400.0)
     assert data["curve"] == {
         "model": "piecewise_linear",
-        "points": [{"resistance_ohm": 20000.0 * f, "length_mm": 400.0 * f} for f in DEFAULT_STRETCH_CURVE_FACTORS],
+        "points": [{"resistance_ohm": pytest.approx(20000.0 * r / 6012.0), "length_mm": pytest.approx(400.0 * length / 650.0)} for r, length in MISSION_CURVE],
     }
 
 
@@ -331,12 +341,20 @@ def test_stretch_curve_is_valid_and_increasing(settings: GatewaySettings, counts
     r0 = 10000.0 * counts / (1023 - counts)
     assert data["rest_resistance_ohm"] == pytest.approx(r0, rel=1e-12)
     points = data["curve"]["points"]  # pyright: ignore[reportIndexIssue]
-    assert points[0] == {"resistance_ohm": data["rest_resistance_ohm"], "length_mm": rest}
+    assert points[1] == {"resistance_ohm": pytest.approx(data["rest_resistance_ohm"]), "length_mm": pytest.approx(rest)}
     assert all(a["resistance_ohm"] < b["resistance_ohm"] and a["length_mm"] < b["length_mm"] for a, b in zip(points, points[1:], strict=False))
 
 
-def test_stretch_curve_uses_the_configured_factors(settings: GatewaySettings) -> None:
-    rec = recorder(settings.model_copy(update={"stretch_rest_length_mm": 500.0, "stretch_curve_factors": (1.0, 1.5)}), STRETCH, 0.1)
+def test_stretch_curve_uses_the_configured_points_relative_to_the_reference_rest(settings: GatewaySettings) -> None:
+    custom = settings.model_copy(
+        update={
+            "stretch_rest_length_mm": 500.0,
+            "stretch_curve_rest_length_mm": 500.0,
+            "stretch_curve_rest_resistance_ohm": 10000.0,
+            "stretch_curve": ((10000.0, 500.0), (15000.0, 750.0)),
+        }
+    )
+    rec = recorder(custom, STRETCH, 0.1)
     rec.feed(cord(0, (682, 682)))
     points = calibration_payload(rec.finish(NOW))["curve"]["points"]
     assert points == [{"resistance_ohm": 20000.0, "length_mm": 500.0}, {"resistance_ohm": 30000.0, "length_mm": 750.0}]

@@ -144,7 +144,9 @@ Todas las variables llevan el prefijo `SPINE_GATEWAY_` y son opcionales; `.env.e
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Ganancia del módulo EMG; los mV se dividen entre ella. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | Qué entrega el módulo EMG al ADC: `raw`, `rectified` o `envelope`. El valor por defecto es una suposición, no está confirmado con la placa (ver abajo). |
 | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Longitud (mm) del cordón en reposo, usada por la calibración `stretch`. PENDIENTE medición Aguado (ohmímetro): marcador de ~650 mm para el cordón C3->S1 (#12). |
-| `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` | `[1.0, 1.25, 1.5, 1.75, 2.0]` | Puntos de la curva del cordón como múltiplos de (R0, L0), en lista JSON: empieza en 1.0 y crece estrictamente. PENDIENTE medición Aguado (ohmímetro): valor por defecto sin medir. |
+| `SPINE_GATEWAY_STRETCH_CURVE` | `[[5400, 585], [6012, 650], [6790, 731], [7560, 812]]` | Puntos (ohm, mm) de la curva del cordón, en lista JSON de pares que crecen estrictamente en ambos ejes. El valor por defecto es la curva de la misión de ejemplo, leída de `contracts/catalog/calibration-defaults.json` (fuente única, comprobada contra la misión por un test). La calibración `stretch` la escala al reposo medido: `R0 * R / CURVE_REST_RESISTANCE_OHM` y `L0 * L / CURVE_REST_LENGTH_MM`. Sustituye al antiguo `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (múltiplos de (R0, L0)). PENDIENTE medición Aguado (#106): valor por defecto sin medir. |
+| `SPINE_GATEWAY_STRETCH_CURVE_REST_RESISTANCE_OHM` | `6012.0` | Resistencia en reposo (ohm) a la que está referida la curva anterior. Cámbiala junto con la curva. |
+| `SPINE_GATEWAY_STRETCH_CURVE_REST_LENGTH_MM` | `650.0` | Longitud en reposo (mm) a la que está referida la curva anterior. Cámbiala junto con la curva. |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Ventana (ms) del RMS deslizante de la calibración `emg_mvc`. |
 
 El protocolo declara dos módulos EMG (dorsal ancho izquierdo/derecho) pero el hardware y el gateway actuales publican uno (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) hasta que Polfer confirme el hardware (#13).
@@ -219,7 +221,7 @@ Otras reglas:
 - `calibrate` admite `stretch` y `emg_mvc`; `imu` se rechaza con `invalid_command` (el enum de `error.code` no tiene "no soportado"). Graba durante `duration_s` (por defecto `SPINE_GATEWAY_CALIBRATION_DEFAULT_DURATION_S`) de **tiempo de dispositivo**; no exige que `session_id` sea la sesión en curso. Si los datos no están completos 5 s después de `duration_s`, falla.
 - `calibration_failed` y `calibration_timeout` viajan ambos como `error.code = "calibration_failed"`; el detalle va en el mensaje: `<motivo>: <detalle>`, con motivo `incomplete`, `rest_resistance_not_computable`, `too_few_samples`, `flat_signal` o `calibration_timeout`. Los mensajes se cortan a 300 caracteres.
 - Las calibraciones viven en la memoria del gateway y se republican retained tras cada reconexión MQTT, antes del siguiente chunk que las cite. Reiniciar el gateway arranca sin calibración.
-- `stretch`: `rest_resistance_ohm` es la resistencia calculada con la media de las cuentas; `rest_length_mm` sale de la configuración; la curva es la **aproximación por defecto**, una lineal `R = R0 * L / L0` con puntos en `L0 * {1.0, 1.25, 1.5, 1.75, 2.0}`. No está medida: el cordón no es lineal y tiene histéresis, y la curva medida de #12 debe sustituirla.
+- `stretch`: `rest_resistance_ohm` es la resistencia calculada con la media de las cuentas; `rest_length_mm` sale de la configuración; la curva es la **curva por defecto** de la misión de ejemplo (`contracts/catalog/calibration-defaults.json`), escalada al reposo medido (`R0 * R / 6012`, `L0 * L / 650`). No está medida: el cordón no es lineal y tiene histéresis, y la curva medida de #12 debe sustituirla.
 - `emg_mvc`: `mvc_rms_mv` es el máximo del RMS deslizante (`SPINE_GATEWAY_EMG_MVC_WINDOW_MS`) en mV.
 
 ## Protocolo serie
@@ -303,7 +305,7 @@ Con el módulo conectado, mide `SIG` con un multímetro (o mira `emg` en una ses
 
 - EMG cruda o envolvente (`SPINE_GATEWAY_EMG_SIGNAL_KIND`), pendiente del módulo real.
 - Alimentación del módulo EMG y rango real de `SIG`.
-- `rest_length_mm` y la curva real del cordón (#12); hoy son un marcador de posición y una aproximación lineal.
+- `rest_length_mm` y la curva real del cordón (#12); hoy son un marcador de posición y la curva de la misión.
 - `calibrate` de tipo `imu` no está implementado.
 - Un código de error propio para "no soportado": requiere cambiar el contrato (hoy se usa `invalid_command`).
 - Autenticación y TLS del broker (#96).

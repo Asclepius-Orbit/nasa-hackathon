@@ -106,3 +106,15 @@ def ranges(feature_id: str) -> dict[str, Any] | None:
     """Rangos normal/alert/critical/source de la entrada de `feature_id`, o None si no hay; `UnknownFeatureIdError` si no existe."""
     value = _entry_for(feature_id)["ranges"]
     return None if value is None else cast(dict[str, Any], value)
+
+
+@cache
+def load_calibration_defaults() -> dict[str, Any]:
+    """Defaults provisionales de calibración (`calibration-defaults.json`): curva del cordón, reposo y ventana MVC.
+
+    Los lee el gateway y los comprueban los tests contra la misión de ejemplo (compartido: no lo mutes).
+    """
+    path = CATALOG_DIR / "calibration-defaults.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"calibration defaults not found at {path}; run from the repository workspace or install the wheel")
+    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))

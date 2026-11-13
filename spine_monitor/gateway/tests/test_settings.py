@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from spine_contracts.catalog import load_calibration_defaults
 from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 from spine_gateway.settings import GatewaySettings
 
@@ -166,13 +167,37 @@ def test_emg_signal_kind_invalid_rejected(monkeypatch: pytest.MonkeyPatch, value
         GatewaySettings()
 
 
-def test_stretch_curve_factors_default_and_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert GatewaySettings().stretch_curve_factors == (1.0, 1.25, 1.5, 1.75, 2.0)
-    monkeypatch.setenv("SPINE_GATEWAY_STRETCH_CURVE_FACTORS", "[1.0, 1.1, 1.3]")
-    assert GatewaySettings().stretch_curve_factors == (1.0, 1.1, 1.3)
+def test_calibration_defaults_come_from_the_contracts_file() -> None:
+    defaults = load_calibration_defaults()
+    s = GatewaySettings()
+    assert s.stretch_rest_length_mm == defaults["stretch"]["rest_length_mm"] == 650
+    assert s.stretch_curve_rest_resistance_ohm == defaults["stretch"]["rest_resistance_ohm"] == 6012
+    assert s.emg_mvc_window_ms == defaults["emg_mvc"]["window_ms"] == 250
+    assert [{"resistance_ohm": r, "length_mm": length} for r, length in s.stretch_curve] == defaults["stretch"]["curve"]
 
 
-@pytest.mark.parametrize("factors", [(1.0,), (1.0, 1.0, 2.0), (1.0, 2.0, 1.5), (0.9, 1.2), (1.0, -1.0)])
-def test_stretch_curve_factors_must_be_a_rising_curve_from_the_rest_point(factors: tuple[float, ...]) -> None:
-    with pytest.raises(ValueError, match="stretch_curve_factors"):
-        GatewaySettings(stretch_curve_factors=factors)
+def test_stretch_curve_default_and_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert GatewaySettings().stretch_curve == ((5400.0, 585.0), (6012.0, 650.0), (6790.0, 731.0), (7560.0, 812.0))
+    monkeypatch.setenv("SPINE_GATEWAY_STRETCH_CURVE", "[[5000, 600], [6000, 650], [7000, 700]]")
+    assert GatewaySettings().stretch_curve == ((5000.0, 600.0), (6000.0, 650.0), (7000.0, 700.0))
+
+
+@pytest.mark.parametrize(
+    "curve",
+    [
+        ((6000.0, 650.0),),
+        ((5000.0, 600.0), (5000.0, 650.0)),
+        ((5000.0, 600.0), (6000.0, 600.0)),
+        ((6000.0, 650.0), (5000.0, 700.0)),
+        ((-1.0, 600.0), (5000.0, 650.0)),
+    ],
+)
+def test_stretch_curve_must_rise_strictly_in_both_axes(curve: tuple[tuple[float, float], ...]) -> None:
+    with pytest.raises(ValueError, match="stretch_curve"):
+        GatewaySettings(stretch_curve=curve)
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0])
+def test_stretch_rest_resistance_must_be_positive(value: float) -> None:
+    with pytest.raises(ValidationError):
+        GatewaySettings(stretch_curve_rest_resistance_ohm=value)

@@ -16,6 +16,7 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 | `schemas/v1/agent/` | HTTP bodies of the LLM agent chat API (`agent-openapi.yaml`): the question (`chat-request`) and the server-sent events of the answer (`chat-event`) |
 | `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements, `risk_direction` and ranges. `catalog_version` 0.2.0: the directions and ranges are **provisional** (status stays `proposed`, every range source starts with "provisional, pendiente de Aguado") until Aguado validates them |
 | `catalog/protocol-catalog.json` | Fixed facts of each protocol (band, sets, reps, rests, grip, tempo, posture, fit item ids) quoted by the UI views |
+| `catalog/calibration-defaults.json` | Provisional defaults of the gateway calibrations (cord curve and rest point, EMG MVC window), the same values as the example mission; PENDING Aguado's measurement (#106) |
 | `asyncapi.yaml` | MQTT topics, direction, QoS and retain (the gateway's point of view) |
 | `openapi.yaml` | Engine HTTP API |
 | `app-openapi.yaml` | Read-only HTTP API of the app (GET only), used by the MCP server |

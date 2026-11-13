@@ -16,6 +16,7 @@ Contractes de dades compartits per tots els components: gateway del wearable, br
 | `schemas/v1/agent/` | Cossos HTTP de l'API de xat de l'agent LLM (`agent-openapi.yaml`): la pregunta (`chat-request`) i els esdeveniments SSE de la resposta (`chat-event`) |
 | `catalog/feature-catalog.json` | Cada mètrica derivada (feature) amb unitat, entrades, requisits, `risk_direction` i rangs. `catalog_version` 0.2.0: les direccions i els rangs són **provisional, pendiente de Aguado** (l'estat continua sent `proposed` i cada font de rang comença per "provisional, pendiente de Aguado") fins que Aguado els validi |
 | `catalog/protocol-catalog.json` | Dades fixes de cada protocol (banda, sèries, repeticions, descansos, agafada, tempo, postura, ids de col·locació) que citen les vistes de la UI |
+| `catalog/calibration-defaults.json` | Valors per defecte provisionals dels calibratges del gateway (corba i repòs del cordó, finestra MVC de l'EMG), els mateixos valors que la missió d'exemple; PENDENT mesura Aguado (#106) |
 | `asyncapi.yaml` | Topics MQTT, direcció, QoS i retain (des del punt de vista del gateway) |
 | `openapi.yaml` | API HTTP del motor |
 | `app-openapi.yaml` | API HTTP de només lectura de l'app (només GET), la fa servir el servidor MCP |

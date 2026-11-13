@@ -131,7 +131,10 @@ def test_every_rule_is_marked_provisional_and_well_formed():
 
 
 def test_recommendation_ids_are_known_to_the_ui():
-    codes = (PACKAGE.parents[3] / "app/ui/src/renderer/strings/codes.ts").read_text(encoding="utf-8")
+    codes_file = PACKAGE.parents[3] / "app/ui/src/renderer/strings/codes.ts"
+    if not codes_file.exists():  # bajo mutmut los tests se copian a un árbol sin app/ui
+        pytest.skip("app/ui is not next to the engine in this tree")
+    codes = codes_file.read_text(encoding="utf-8")
     known = set(re.findall(r"^\s{2}(REC_[A-Z0-9_]+):", codes, flags=re.M))
     assert known, "regex found no REC ids in codes.ts"
     used = {rec for rule in RULES for rec in rule["recommendations"]}

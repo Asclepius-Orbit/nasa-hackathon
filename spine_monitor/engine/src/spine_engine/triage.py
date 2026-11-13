@@ -1,6 +1,7 @@
 """Configurable triage mechanics; policy content must be clinically reviewed."""
 
 import re
+from importlib import resources
 from pathlib import Path
 from typing import Literal
 
@@ -26,6 +27,7 @@ class Rule(BaseModel):
     domain: Literal["spine_length", "muscle", "kinematics", "symptoms", "safety"] = "safety"
     recommendations: list[str] = Field(default_factory=list)
     urgency: Urgency | None = None
+    source: str | None = None
 
     @model_validator(mode="after")
     def valid_flag_rule(self):
@@ -48,6 +50,7 @@ class PolicyConfig(BaseModel):
     red_cutoff: float | None = Field(default=None, ge=0, le=1)
     unknown_flag_urgency: Urgency = Urgency.IMMEDIATE
     rules: list[Rule] = Field(default_factory=list)
+    source: str | None = None
 
     @model_validator(mode="after")
     def valid_config(self):
@@ -62,6 +65,11 @@ class PolicyConfig(BaseModel):
     @classmethod
     def from_file(cls, path: Path):
         return cls.model_validate_json(path.read_text(encoding="utf-8"))
+
+    @classmethod
+    def default(cls):
+        """Provisional policy shipped in the package (pending Aguado; not a clinical validation)."""
+        return cls.model_validate_json(resources.files("spine_engine").joinpath("triage-policy.json").read_text(encoding="utf-8"))
 
 
 def _matches(value: float, operator: str, threshold: float) -> bool:

@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from spine_contracts import validation
+from spine_contracts import catalog, validation
 from spine_engine.api import create_default_app
 
 _SPEC = importlib.util.spec_from_file_location("_stretch_simulator", Path(__file__).with_name("test_features_stretch_simulator.py"))
@@ -47,10 +47,11 @@ BASELINE_SESSIONS = 3
 HELD_OUT_DAY = BASELINE_SESSIONS
 DAYS = BASELINE_SESSIONS + 1
 INCOMPLETE_DATA_RULE = "RULE_INCOMPLETE_DATA"
-# Control: las últimas SHIFTED_SESSIONS sesiones de ejercicio (la nueva incluida) multiplican por SHIFT_FACTOR la ROM sagital
-# y las features del cordón. Los detectores piden >= 3 puntos (``cusum_min_points``): con 3 el cambio ya es sostenido, y
-# x3 sale de la dispersión normal de la baseline (observado: riesgo saturado a 1,0 en la semilla 7).
-SHIFTED_SESSIONS = 3
+# Control: todas las sesiones de ejercicio del historial (la nueva incluida) desplazan por un factor SHIFT_FACTOR la ROM
+# sagital y las features del cordón, en el sentido malo que declara el catálogo (``lower_is_worse`` divide, el resto
+# multiplica): el riesgo ignora el sentido bueno. Se desplazan todas porque una sesión sin desplazar al inicio de la serie
+# (z alto y de signo contrario) impide que el detector marque el cambio como sostenido. Un factor 3 sale de la dispersión
+# normal de la baseline (observado antes de #51: riesgo saturado a 1,0 en la semilla 7).
 SHIFT_FACTOR = 3.0
 SHIFTED_PREFIXES = ("imu.t9.sagittal", "stretch.")
 
@@ -140,10 +141,11 @@ def test_a_sustained_shift_of_the_same_sessions_does_deviate_so_the_normal_case_
     baseline = _baseline(client, reference)
     history = copy.deepcopy([*reference, *held_out])
     exercise = [fs for fs in history if fs["protocol_id"] == _SIM_EXERCISE_PROTOCOL]
-    for feature_set in exercise[-SHIFTED_SESSIONS:]:
+    for feature_set in exercise:
         for feature in feature_set["features"]:
             if feature["feature_id"].startswith(SHIFTED_PREFIXES):
-                feature["value"] *= SHIFT_FACTOR
+                worse_when_lower = catalog.risk_direction(feature["feature_id"]) == "lower_is_worse"
+                feature["value"] = feature["value"] / SHIFT_FACTOR if worse_when_lower else feature["value"] * SHIFT_FACTOR
 
     assessment = _assess(client, baseline, history)
 

@@ -23,14 +23,14 @@ async def test_subscribes_to_every_bus_topic(harness):
 async def test_full_preflight_session_builds_features_baseline_and_assessment(harness):
     await harness.setup_astronaut()
     calibration = harness.example("domain/calibration.stretch")
-    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_lumbar"), calibration)
+    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_spine"), calibration)
     anchor = harness.example("telemetry/clock-sync.round-trip")
     harness.mqtt.deliver(topics.clock(harness.astronaut_id, harness.device_id), anchor)
 
     session_id, start = await harness.start_session()
     [published] = harness.mqtt.commands("start_session")
     assert validation.errors("telemetry/command", published) == []
-    assert published["stream_ids"] == ["emg_lat_left", "imu_l3", "stretch_lumbar"]
+    assert published["stream_ids"] == ["emg_lat_left", "emg_lat_right", "imu_t9", "stretch_spine"]
     assert (await harness.http.get(f"/ui/sessions/{session_id}")).json()["state"] == "running"
 
     await harness.send_chunks(session_id)
@@ -177,19 +177,17 @@ async def test_duplicate_ack_is_ignored(harness):
 async def test_calibration_links_its_id_to_the_stream(harness):
     await harness.setup_astronaut()
     session_id, _ = await harness.start_session()
-    response = await harness.http.post(
-        f"/ui/sessions/{session_id}/calibrations", json={"calibration_type": "stretch", "stream_ids": ["stretch_lumbar"]}
-    )
+    response = await harness.http.post(f"/ui/sessions/{session_id}/calibrations", json={"calibration_type": "stretch", "stream_ids": ["stretch_spine"]})
     assert response.status_code == 202
     command = response.json()["command"]
     calibration = harness.example("domain/calibration.stretch")
     calibration.update(calibration_id="0b9e6a10-1111-4222-8333-444455556666", session_id=session_id)
-    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_lumbar"), calibration)
+    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_spine"), calibration)
     await harness.ack(command, "accepted")
     await harness.ack(command, "completed", result={"calibration_id": calibration["calibration_id"]})
 
     streams = (await harness.http.get(f"/ui/sessions/{session_id}")).json()["session"]["streams"]
-    stretch = next(s for s in streams if s["stream_id"] == "stretch_lumbar")
+    stretch = next(s for s in streams if s["stream_id"] == "stretch_spine")
     assert stretch["calibration_id"] == calibration["calibration_id"]
 
 
@@ -197,9 +195,7 @@ async def test_calibrate_rejects_undeclared_streams(harness):
     await harness.setup_astronaut()
     session_id, _ = await harness.start_session()
 
-    response = await harness.http.post(
-        f"/ui/sessions/{session_id}/calibrations", json={"calibration_type": "imu", "stream_ids": ["imu_t12"]}
-    )
+    response = await harness.http.post(f"/ui/sessions/{session_id}/calibrations", json={"calibration_type": "imu", "stream_ids": ["imu_t12"]})
 
     assert response.status_code == 422
 

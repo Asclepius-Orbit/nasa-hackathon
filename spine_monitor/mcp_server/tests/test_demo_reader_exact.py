@@ -67,7 +67,7 @@ def test_assessment_drivers_and_domains_follow_the_stretch_and_pain_tables():
     for t, a in enumerate(assessments):
         stretch, pain = a["drivers"]
         assert (stretch["feature_id"], stretch["unit"], stretch["value"], stretch["deviation_z"]) == (
-            "stretch.lumbar.peak_elongation_mm",
+            "stretch.full_spine.peak_elongation_mm",
             "mm",
             DRIVER_STRETCH[t],
             DRIVER_STRETCH_Z[t],
@@ -119,8 +119,8 @@ def test_exercise_features_are_computed_every_other_day_three_minutes_after_the_
         values = {x["feature_id"]: x for x in f["features"]}
         assert values["emg.latissimus_dorsi.left.rms_pct_mvc"]["value"] == pytest.approx(41.0 + 0.5 * t, abs=0.051)
         assert values["emg.latissimus_dorsi.left.median_freq_hz"]["value"] == pytest.approx(87.3 - 0.65 * t, abs=0.051)
-        assert values["imu.l3.sagittal.rom_deg"]["value"] == pytest.approx(28.4 + 0.2167 * t, abs=0.051)
-        assert values["stretch.lumbar.peak_elongation_mm"]["value"] == (round(6.6 + 0.06 * t, 2) if t < 8 else round(7.0 + 0.35 * (t - 6), 2))
+        assert values["imu.t9.sagittal.rom_deg"]["value"] == pytest.approx(28.4 + 0.2167 * t, abs=0.051)
+        assert values["stretch.full_spine.peak_elongation_mm"]["value"] == (round(6.6 + 0.06 * t, 2) if t < 8 else round(7.0 + 0.35 * (t - 6), 2))
         flags = values["emg.latissimus_dorsi.left.median_freq_hz"]["quality"]["flags"]
         assert (flags == []) if t < 8 else (flags != [])
 
@@ -146,10 +146,19 @@ def test_sessions_are_the_exact_exercise_and_spine_check_timestamps_in_order():
     assert [i["protocol_id"] for i in items if i["session_type"] == "spine_check"] == ["spine_length_rest_v1"] * 3
 
 
-def test_exercise_events_are_offset_from_the_start_by_39_5_and_43_1_seconds():
+def test_exercise_events_keep_the_offsets_of_the_contract_example_from_the_start():
     first = _sessions()["items"][0]
     assert first["started_at"] == "2026-10-31T10:30:00Z"
-    assert [e["timestamp"] for e in first["events"]] == ["2026-10-31T10:30:39.500000Z", "2026-10-31T10:30:43.100000Z"]
+    assert [(e["event_type"], e["timestamp"]) for e in first["events"]] == [
+        ("set_start", "2026-10-31T10:30:37Z"),
+        ("rep_start", "2026-10-31T10:30:39.500000Z"),
+        ("rep_end", "2026-10-31T10:30:43.100000Z"),
+        ("rep_start", "2026-10-31T10:31:29.900000Z"),
+        ("rep_end", "2026-10-31T10:31:33.500000Z"),
+        ("set_end", "2026-10-31T10:31:34Z"),
+        ("rest_start", "2026-10-31T10:31:34.200000Z"),
+        ("rest_end", "2026-10-31T10:32:04Z"),
+    ]
 
 
 def test_self_reports_are_daily_at_half_past_eleven_plus_one_weekly_odi():
@@ -331,7 +340,7 @@ def test_explanations_are_exact_for_first_middle_and_last_assessments(k: int):
     assert explanation["assessment"]["risk_score"] == RISKS[t]
     assert explanation["baseline"] == {"baseline_id": BASELINE_ID, "version": 1}
     assert explanation["unresolved"] == []
-    assert [e["feature_id"] for e in explanation["baseline_entries"]] == ["stretch.lumbar.peak_elongation_mm"]
+    assert [e["feature_id"] for e in explanation["baseline_entries"]] == ["stretch.full_spine.peak_elongation_mm"]
     session_k = k if k % 2 == 1 else k + 1
     assert [f["session_id"] for f in explanation["feature_sets"]] == [_id("session", _day(session_k, 10, 30))]
     assert [r["report_id"] for r in explanation["self_reports"]] == [_id("self_report", _day(k, 11, 30))]

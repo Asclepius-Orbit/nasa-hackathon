@@ -1,12 +1,16 @@
 {
   "schema_version": "1.0.0",
   "session_id": "a55e55e0-0000-4000-8000-000000000001",
-  "rep": 10,
-  "total": 10,
+  "rep": 60,
+  "total": 60,
+  "set": 4,
+  "sets_total": 4,
+  "reps_per_set": 15,
+  "rep_in_set": 15,
   "phase": null,
   "progress_pct": null,
   "last": {
-    "rep": 10,
+    "rep": 60,
     "duration_s": 4.1
   },
   "signal": "ok",

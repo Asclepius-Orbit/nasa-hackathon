@@ -63,7 +63,7 @@ class HistoryDay(BaseModel):
     )
     length_delta_mm: float | None = Field(
         ...,
-        description='Lumbar elongation of the day minus its baseline mean, in mm; null without data (never 0).',
+        description='Spine elongation of the day (whole-spine cord) minus its baseline mean, in mm; null without data (never 0).',
     )
     pain_nrs: conint(ge=0, le=10) | None = Field(
         ...,
@@ -97,6 +97,6 @@ class HistoryView(BaseModel):
     )
     preflight_range_mm: LengthRange | None = Field(
         ...,
-        description='Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.peak_elongation_mm baseline entry. Null without that entry.',
+        description='Own pre-flight range of spine length (whole-spine cord), relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.full_spine.peak_elongation_mm baseline entry. Null without that entry.',
     )
     days: list[HistoryDay]

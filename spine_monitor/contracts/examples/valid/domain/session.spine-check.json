@@ -5,15 +5,17 @@
   "device_id": "wb-01",
   "session_type": "spine_check",
   "protocol_id": "spine_length_rest_v1",
+  "phase": "pre",
+  "related_session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
   "source": "device",
-  "started_at": "2026-11-13T07:00:00Z",
+  "started_at": "2026-11-13T09:52:00Z",
   "ended_at": null,
   "mission_context": { "phase": "preflight", "gravity_environment": "earth_1g" },
   "streams": [
     {
-      "stream_id": "stretch_lumbar",
+      "stream_id": "stretch_spine",
       "stream_kind": "stretch",
-      "placement": { "spine_region": "lumbar", "span": { "from_level": "l1", "to_level": "l5" } },
+      "placement": { "spine_region": "full_spine", "span": { "from_level": "c3", "to_level": "s1" } },
       "sample_rate_hz": 20
     }
   ]

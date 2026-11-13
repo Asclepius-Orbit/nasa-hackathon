@@ -47,7 +47,7 @@ HOST, PORT = "127.0.0.1", 1883
 TIMEOUT_S = 25.0
 OBSERVER_AUTH = {"username": "spine-gwtest", "password": os.environ["SPINE_TEST_MQTT_PASSWORD"]} if os.getenv("SPINE_TEST_MQTT_PASSWORD") else {}
 DEVICE_PASSWORD = os.getenv("SPINE_TEST_MQTT_DEVICE_PASSWORD")
-STRETCH, EMG, IMU = "stretch_lumbar", "emg_lat_left", "imu_l3"
+STRETCH, EMG, IMU = "stretch_spine", "emg_lat_left", "imu_t9"
 ASTRONAUT = "AST-98"
 """Astronauta propio de estos tests: no se mezclan con los datos de AST-01 del broker compartido."""
 SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"

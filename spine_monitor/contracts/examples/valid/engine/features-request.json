@@ -17,40 +17,68 @@
     },
     "load_declared": {
       "type": "elastic_band",
-      "nominal_kg": 15,
-      "band_id": "blue",
+      "nominal_kg": 25,
+      "band_id": "green",
       "band_stretch_cm": 40,
-      "description": "Anchored overhead, grip at shoulder width plus a hand."
+      "description": "Standing, band anchored overhead, pronated grip."
     },
-    "planned_reps": 10,
+    "planned_reps": 60,
+    "planned_sets": 4,
+    "reps_per_set": 15,
     "streams": [
       {
         "stream_id": "emg_lat_left",
         "stream_kind": "emg",
         "placement": {
           "muscle": "latissimus_dorsi",
-          "side": "left"
+          "side": "left",
+          "electrode_spacing_cm": 10,
+          "span": {
+            "from_level": "t11",
+            "to_level": "l2"
+          },
+          "ground": {
+            "location": "iliac_crest"
+          }
         },
         "sample_rate_hz": 1000,
         "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f12"
       },
       {
-        "stream_id": "imu_l3",
+        "stream_id": "emg_lat_right",
+        "stream_kind": "emg",
+        "placement": {
+          "muscle": "latissimus_dorsi",
+          "side": "right",
+          "electrode_spacing_cm": 10,
+          "span": {
+            "from_level": "t11",
+            "to_level": "l2"
+          },
+          "ground": {
+            "location": "iliac_crest"
+          }
+        },
+        "sample_rate_hz": 1000,
+        "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f14"
+      },
+      {
+        "stream_id": "imu_t9",
         "stream_kind": "imu",
         "placement": {
-          "spine_level": "l3"
+          "spine_level": "t9"
         },
         "sample_rate_hz": 100,
         "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f13"
       },
       {
-        "stream_id": "stretch_lumbar",
+        "stream_id": "stretch_spine",
         "stream_kind": "stretch",
         "placement": {
-          "spine_region": "lumbar",
+          "spine_region": "full_spine",
           "span": {
-            "from_level": "l1",
-            "to_level": "l5"
+            "from_level": "c3",
+            "to_level": "s1"
           }
         },
         "sample_rate_hz": 20,
@@ -59,10 +87,18 @@
     ],
     "events": [
       {
+        "event_type": "set_start",
+        "timestamp": "2026-11-13T10:03:08.000Z",
+        "device_ms": 188000,
+        "boot_id": 2893746120,
+        "set_index": 1
+      },
+      {
         "event_type": "rep_start",
         "timestamp": "2026-11-13T10:03:10.500Z",
         "device_ms": 190500,
         "boot_id": 2893746120,
+        "set_index": 1,
         "rep_index": 1
       },
       {
@@ -70,7 +106,43 @@
         "timestamp": "2026-11-13T10:03:14.100Z",
         "device_ms": 194100,
         "boot_id": 2893746120,
+        "set_index": 1,
         "rep_index": 1
+      },
+      {
+        "event_type": "rep_start",
+        "timestamp": "2026-11-13T10:04:00.900Z",
+        "device_ms": 240900,
+        "boot_id": 2893746120,
+        "set_index": 1,
+        "rep_index": 15
+      },
+      {
+        "event_type": "rep_end",
+        "timestamp": "2026-11-13T10:04:04.500Z",
+        "device_ms": 244500,
+        "boot_id": 2893746120,
+        "set_index": 1,
+        "rep_index": 15
+      },
+      {
+        "event_type": "set_end",
+        "timestamp": "2026-11-13T10:04:05.000Z",
+        "device_ms": 245000,
+        "boot_id": 2893746120,
+        "set_index": 1
+      },
+      {
+        "event_type": "rest_start",
+        "timestamp": "2026-11-13T10:04:05.200Z",
+        "device_ms": 245200,
+        "boot_id": 2893746120
+      },
+      {
+        "event_type": "rest_end",
+        "timestamp": "2026-11-13T10:04:35.000Z",
+        "device_ms": 275000,
+        "boot_id": 2893746120
       }
     ]
   },
@@ -123,7 +195,51 @@
       "schema_version": "1.0.0",
       "astronaut_id": "AST-01",
       "device_id": "wb-01",
-      "stream_id": "imu_l3",
+      "stream_id": "emg_lat_right",
+      "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+      "source": "device",
+      "boot_id": 2893746120,
+      "seq": 1843,
+      "t0_device_ms": 184200,
+      "received_at": "2026-11-13T10:03:04.311Z",
+      "sample_rate_hz": 1000,
+      "n_samples": 5,
+      "dropped_samples": 0,
+      "stream_kind": "emg",
+      "signal_kind": "raw",
+      "units": {
+        "emg": "mV"
+      },
+      "data": {
+        "emg": [
+          0.118,
+          0.152,
+          0.264,
+          0.397,
+          0.352
+        ]
+      },
+      "quality": {
+        "emg": {
+          "score": 0.92,
+          "flags": [],
+          "assessed_by": "gateway"
+        }
+      },
+      "acquisition": {
+        "adc_bits": 12,
+        "vref_v": 3.3,
+        "input_pin": "GPIO39"
+      },
+      "filter": {
+        "notch_hz": 50
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "astronaut_id": "AST-01",
+      "device_id": "wb-01",
+      "stream_id": "imu_t9",
       "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
       "source": "device",
       "boot_id": 2893746120,
@@ -200,7 +316,7 @@
       "schema_version": "1.0.0",
       "astronaut_id": "AST-01",
       "device_id": "wb-01",
-      "stream_id": "stretch_lumbar",
+      "stream_id": "stretch_spine",
       "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
       "source": "device",
       "boot_id": 2893746120,
@@ -229,10 +345,10 @@
           6101.8
         ],
         "length_mm": [
-          400.0,
-          400.5,
-          403.7,
-          406.8
+          650.0,
+          650.5,
+          653.7,
+          656.8
         ]
       },
       "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f11",
@@ -264,29 +380,30 @@
       "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f11",
       "astronaut_id": "AST-01",
       "device_id": "wb-01",
-      "stream_id": "stretch_lumbar",
+      "stream_id": "stretch_spine",
       "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02",
-      "created_at": "2026-11-13T07:05:00Z",
+      "created_at": "2026-11-13T09:57:00Z",
       "source": "device",
       "calibration_type": "stretch",
       "rest_resistance_ohm": 6012.0,
-      "rest_length_mm": 400,
+      "rest_length_mm": 650,
       "recovery_wait_s": 120,
       "temperature_c": 22.5,
+      "notes": "PENDIENTE medición Aguado: cord ~650 mm (C3-C4 to L5-S1); curve values are placeholders until measured with an ohmmeter.",
       "curve": {
         "model": "piecewise_linear",
         "points": [
           {
             "resistance_ohm": 6012.0,
-            "length_mm": 400
+            "length_mm": 650
           },
           {
             "resistance_ohm": 6790.0,
-            "length_mm": 450
+            "length_mm": 700
           },
           {
             "resistance_ohm": 7560.0,
-            "length_mm": 500
+            "length_mm": 750
           }
         ],
         "fit_rmse_mm": 1.2
@@ -312,15 +429,33 @@
     },
     {
       "schema_version": "1.0.0",
+      "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f14",
+      "astronaut_id": "AST-01",
+      "device_id": "wb-01",
+      "stream_id": "emg_lat_right",
+      "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+      "created_at": "2026-11-13T10:00:12Z",
+      "source": "device",
+      "calibration_type": "emg_mvc",
+      "muscle": "latissimus_dorsi",
+      "side": "right",
+      "mvc_rms_mv": 1.79,
+      "window_ms": 250,
+      "n_trials": 3,
+      "signal_kind": "raw",
+      "resting_baseline_mv": 0.03
+    },
+    {
+      "schema_version": "1.0.0",
       "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f13",
       "astronaut_id": "AST-01",
       "device_id": "wb-01",
-      "stream_id": "imu_l3",
+      "stream_id": "imu_t9",
       "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
       "created_at": "2026-11-13T10:01:00Z",
       "source": "device",
       "calibration_type": "imu",
-      "spine_level": "l3",
+      "spine_level": "t9",
       "accel_range_g": 2,
       "gyro_range_dps": 250,
       "gyro_bias_dps": {

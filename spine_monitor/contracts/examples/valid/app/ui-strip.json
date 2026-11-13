@@ -5,7 +5,7 @@
   "harness": {
     "device_id": "wb-01",
     "battery_pct": 18,
-    "weak_streams": [{ "stream": "stretch_lumbar", "state": "stalled" }],
+    "weak_streams": [{ "stream": "stretch_spine", "state": "stalled" }],
     "degraded": true,
     "stale": false,
     "last_seen_at": "2026-11-15T09:58:00Z"

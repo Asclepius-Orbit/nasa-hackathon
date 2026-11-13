@@ -76,7 +76,7 @@ async def running(harness) -> tuple[str, dict[str, Any]]:
 # --- live: connection, changes, signal, heartbeat ----------------------------------------------------
 
 
-async def test_a_real_session_over_the_bus_streams_its_10_reps(harness) -> None:
+async def test_a_real_session_over_the_bus_streams_all_its_reps(harness) -> None:
     session_id, _ = await running(harness)
     frames: list[str] = []
     events = stream(harness, only_messages).events(session_id)
@@ -96,13 +96,19 @@ async def test_a_real_session_over_the_bus_streams_its_10_reps(harness) -> None:
     parsed = [parse(frame) for frame in frames]
     assert {event for event, _ in parsed} == {"state"}
     views = [view for _, view in parsed]
-    assert (views[0]["rep"], views[0]["total"], views[0]["signal"], views[0]["phase"]) == (0, 10, "no_signal", None)
-    assert (views[-1]["rep"], views[-1]["last"]["rep"], views[-1]["total"], views[-1]["phase"], views[-1]["signal"]) == (10, 10, 10, "resting", "ok")
+    assert (views[0]["rep"], views[0]["total"], views[0]["signal"], views[0]["phase"]) == (0, 60, "no_signal", None)
+    assert (views[-1]["rep"], views[-1]["last"]["rep"], views[-1]["total"], views[-1]["phase"], views[-1]["signal"]) == (
+        harness.simulated_reps(),
+        harness.simulated_reps(),
+        60,
+        "resting",
+        "ok",
+    )
     trace = []
     for view in views[1:]:
         if not trace or trace[-1] != (view["rep"], view["phase"]):
             trace.append((view["rep"], view["phase"]))
-    assert trace == [(0, "resting"), *((rep, phase) for rep in range(1, 11) for phase in ("pulling", "letting_up", "resting"))]
+    assert trace == [(0, "resting"), *((rep, phase) for rep in range(1, harness.simulated_reps() + 1) for phase in ("pulling", "letting_up", "resting"))]
     # An event only when something changed: `as_of` alone is not a change.
     contents = [{key: value for key, value in view.items() if key != "as_of"} for view in views]
     assert all(before != after for before, after in zip(contents, contents[1:], strict=False))
@@ -123,7 +129,7 @@ async def test_no_signal_after_2_s_and_back_with_no_early_event(harness) -> None
 
     harness.clock.advance(seconds=0.1)
     event, view = parse(await next_frame(events))
-    assert (event, view["signal"], view["phase"], view["progress_pct"], view["rep"], view["total"]) == ("state", "no_signal", None, None, 0, 10)
+    assert (event, view["signal"], view["phase"], view["progress_pct"], view["rep"], view["total"]) == ("state", "no_signal", None, None, 0, 60)
     assert view["as_of"] == harness.clock().isoformat()
 
     await harness.send_stream_chunks(chunks[1:2])
@@ -219,7 +225,7 @@ async def test_route_on_a_finished_session_sends_final_state_and_end_with_sse_he
     assert [parse(frame)[0] for frame in frames] == ["state", "end"]
     for frame in frames:
         _, view = parse(frame)
-        assert (view["signal"], view["phase"], view["progress_pct"], view["total"], view["session_id"]) == ("ok", None, None, 10, session_id)
+        assert (view["signal"], view["phase"], view["progress_pct"], view["total"], view["session_id"]) == ("ok", None, None, 60, session_id)
     assert harness.runtime.hub.tracked_sessions() == set()
 
 
@@ -243,7 +249,7 @@ async def test_an_unknown_session_is_404(harness) -> None:
     await assert_problem(harness, UNKNOWN, 404, "not_found")
 
 
-async def test_a_protocol_without_reps_or_a_session_without_imu_l3_is_409_no_reps(harness) -> None:
+async def test_a_protocol_without_reps_or_a_session_without_imu_t9_is_409_no_reps(harness) -> None:
     await harness.setup_astronaut()
     no_reps = harness.plan(protocol_id="spine_length_rest_v1")
     del no_reps["planned_reps"]
@@ -252,7 +258,7 @@ async def test_a_protocol_without_reps_or_a_session_without_imu_l3_is_409_no_rep
     await harness.ack(created.json()["command"], "rejected", error={"code": "busy", "message": "busy"})
 
     plan = harness.plan()
-    no_imu = harness.plan(streams=[stream for stream in plan["streams"] if stream["stream_id"] != "imu_l3"])
+    no_imu = harness.plan(streams=[stream for stream in plan["streams"] if stream["stream_id"] != "imu_t9"])
     created = await harness.http.post(f"/ui/crew/{harness.astronaut_id}/sessions", json=no_imu)
     await assert_problem(harness, created.json()["session"]["session_id"], 409, "no_reps")
 

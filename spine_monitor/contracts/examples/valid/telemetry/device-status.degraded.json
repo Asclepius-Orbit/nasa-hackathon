@@ -12,7 +12,8 @@
   "link": { "type": "ble", "rssi_dbm": -67 },
   "streams": [
     { "stream_id": "emg_lat_left", "stream_kind": "emg", "state": "active", "sample_rate_hz": 1000, "last_seq": 1840 },
-    { "stream_id": "imu_l3", "stream_kind": "imu", "state": "active", "sample_rate_hz": 100, "last_seq": 367 },
-    { "stream_id": "stretch_lumbar", "stream_kind": "stretch", "state": "stalled", "sample_rate_hz": 20, "last_seq": 88 }
+    { "stream_id": "emg_lat_right", "stream_kind": "emg", "state": "active", "sample_rate_hz": 1000, "last_seq": 1841 },
+    { "stream_id": "imu_t9", "stream_kind": "imu", "state": "active", "sample_rate_hz": 100, "last_seq": 367 },
+    { "stream_id": "stretch_spine", "stream_kind": "stretch", "state": "stalled", "sample_rate_hz": 20, "last_seq": 88 }
   ]
 }

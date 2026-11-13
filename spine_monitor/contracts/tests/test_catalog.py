@@ -74,6 +74,7 @@ def test_features_removed_by_clinical_decision_stay_out_of_the_catalog():
     # Aguado retiró estas features; no deben volver al catálogo (ni como plantilla ni como id concreto)
     removed = {
         "imu.l3.sagittal.smoothness_sparc",
+        "imu.t9.sagittal.smoothness_sparc",
         "symptoms.pain_nrs_7d_max",
         "symptoms.odi_pct",
     }
@@ -147,7 +148,15 @@ def test_protocol_catalog_rejects_prose_and_missing_facts():
         {**entry, "fit_items": [{"id": "skin", "label": "Clean the skin"}]},
         {**entry, "band": {"color": "blue"}},
         {key: value for key, value in entry.items() if key != "rest_seconds"},
+        {key: value for key, value in entry.items() if key != "planned_sets"},
+        {key: value for key, value in entry.items() if key != "posture"},
         {**entry, "total_reps": 0},
+        {**entry, "planned_sets": 0},
+        {**entry, "reps_per_set": 0},
+        {**entry, "rest_between_sets_s": -1},
+        {**entry, "grip": "fancy"},
+        {**entry, "tempo": "2-0-2"},
+        {**entry, "posture": "hanging"},
     ):
         assert not validator.is_valid({**catalog, "entries": [broken]}), broken
 
@@ -165,4 +174,58 @@ def test_ui_session_example_quotes_its_protocol_entry():
     assert session["band"] == entry["band"]
     assert session["total_reps"] == entry["total_reps"]
     assert session["rest_seconds"] == entry["rest_seconds"]
+    assert session["planned_sets"] == entry["planned_sets"]
+    assert session["reps_per_set"] == entry["reps_per_set"]
+    assert session["rest_between_sets_s"] == entry["rest_between_sets_s"]
     assert session["fit_items"] == [item["id"] for item in entry["fit_items"]]
+
+
+# ---- the standardised exercise protocol (issue #12, Aguado) ------------------------------------
+# Standing lat pulldown, green elastic band (nominal 25 kg), 4 sets of 15 repetitions, pronated grip,
+# moderate tempo. The spine_check that brackets it is also done standing.
+
+
+def test_lat_pulldown_protocol_states_the_standardised_facts():
+    entry = _protocols()["lat_pulldown_standing_v1"]
+    assert entry["band"] == {"color": "green", "nominal_kg": 25}
+    assert (entry["planned_sets"], entry["reps_per_set"], entry["total_reps"]) == (4, 15, 60)
+    assert entry["grip"] == "pronated"
+    assert entry["tempo"] == "moderate"
+    assert entry["posture"] == "standing"
+    assert isinstance(entry["rest_between_sets_s"], int) and entry["rest_between_sets_s"] > 0
+    assert "Aguado" in entry["notes"], "the nominal rest between sets is a placeholder until Aguado fixes it"
+
+
+def test_protocol_total_reps_is_sets_times_reps_per_set_or_all_null():
+    for protocol_id, entry in _protocols().items():
+        sets, reps, total = entry["planned_sets"], entry["reps_per_set"], entry["total_reps"]
+        if None in (sets, reps, total):
+            assert sets is reps is total is None, f"{protocol_id}: sets, reps per set and total are null together"
+        else:
+            assert total == sets * reps, protocol_id
+
+
+def test_spine_check_protocol_is_standing_and_has_no_repetitions():
+    entry = _protocols()["spine_length_rest_v1"]
+    assert entry["posture"] == "standing"
+    assert entry["band"] is None and entry["planned_sets"] is None and entry["reps_per_set"] is None
+    assert entry["grip"] is None and entry["tempo"] is None and entry["rest_between_sets_s"] is None
+
+
+def test_protocol_total_reps_is_the_session_planned_reps_in_the_examples():
+    entry = _protocols()["lat_pulldown_standing_v1"]
+    session = _load(CONTRACTS_DIR / "examples" / "valid" / "domain" / "session.exercise.json")
+    assert (session["planned_sets"], session["reps_per_set"], session["planned_reps"]) == (
+        entry["planned_sets"],
+        entry["reps_per_set"],
+        entry["total_reps"],
+    )
+    assert session["load_declared"]["nominal_kg"] == entry["band"]["nominal_kg"]
+    assert session["load_declared"]["band_id"] == entry["band"]["color"]
+
+
+def test_whole_spine_cord_and_t9_imu_features_are_in_the_feature_catalog():
+    # the cord spans C3-C4 to L5-S1 (full_spine) and the IMU sits at T9
+    for feature_id in ("stretch.full_spine.peak_elongation_mm", "stretch.full_spine.elongation_mm", "imu.t9.sagittal.rom_deg"):
+        assert is_known(feature_id), feature_id
+    assert is_known("imu.c3.sagittal.rom_deg") and is_known("imu.c4.sagittal.rom_deg")

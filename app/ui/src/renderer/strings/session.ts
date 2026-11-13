@@ -4,9 +4,11 @@ export const session = {
   loadError: 'The session could not be loaded.',
   loading: 'Loading the session.',
   lede: 'Keep your hands on the band. The harness counts the reps; you do not need to touch the screen.',
-  band: (color: string, kg: number): string => `Band ${color}, ${String(kg)} kg nominal`,
+  /** `Green, 25 kg nominal`: the color is a code of the contract (`green`), written with a capital. */
+  band: (color: string, kg: number): string => `${color.charAt(0).toUpperCase()}${color.slice(1)}, ${String(kg)} kg nominal`,
   stretched: (cm: number): string => `Stretched ${String(cm)} cm at start`,
   reps: (n: number): string => `${String(n)} reps`,
+  sets: (sets: number, repsPerSet: number): string => `${String(sets)} sets of ${String(repsPerSet)} reps`,
   title: 'Session',
   none: 'No session is in progress.',
   noneHint: 'Choose one below to start it. It appears here with its steps.',
@@ -38,13 +40,13 @@ export const session = {
   },
   stepsLabel: 'Protocol steps',
   stepLabels: {
-    fit: 'Fit electrodes, IMU and cord',
+    fit: 'Fit electrodes, ground, IMU and cord',
     check: 'Check the harness is sending',
     mvc: 'Calibrate maximum effort',
     reps: 'Do the reps',
     finish: 'Rest and finish',
   },
-  countingBy: 'IMU at L3, automatic',
+  countingBy: 'IMU at T9, automatic',
   backup: 'Say “mark rep” or press the foot pedal',
   stepsHint: 'Tap a step to see it.',
   pending: 'Placement and procedure pending Aguado',
@@ -56,7 +58,7 @@ export const start = {
   group: 'Choose the session',
   hints: {
     lat_pulldown_standing_v1: 'Exercise: reps with the band, measured by the harness.',
-    spine_length_rest_v1: 'Spine check: stand still while the cord reads your lower back.',
+    spine_length_rest_v1: 'Spine check: stand upright and still, just before and just after the exercise, while the cord reads your spine.',
   },
   button: 'Start session',
   busy: 'Starting',
@@ -102,7 +104,7 @@ export const voiceUndo = {
 
 export const stages = {
   fit: {
-    title: '1. Fit electrodes, IMU and cord',
+    title: '1. Fit electrodes, ground, IMU and cord',
     lede: 'Ask a crewmate to fit and check the back: you cannot see it. Tick each one when it is on.',
   },
   check: {
@@ -128,6 +130,14 @@ export const stages = {
     pulling: 'Pulling down',
     lettingUp: 'Letting up',
     resting: 'Resting between reps',
+    restingBetweenSets: 'Rest between sets',
+    set: (set: number, total: number): string => `Set ${String(set)} of ${String(total)}`,
+    inTotal: (rep: number, total: number): string => `${String(rep)} of ${String(total)} reps in total`,
+    /** Between two sets: the one that ended, the nominal recovery (pending the clinical owner) and the next one. */
+    setDone: (set: number, total: number, restS: number | null, next: number): string =>
+      restS === null
+        ? `Set ${String(set)} of ${String(total)} done. Next, set ${String(next)} of ${String(total)}.`
+        : `Set ${String(set)} of ${String(total)} done. Rest about ${String(restS)} s, then set ${String(next)} of ${String(total)}.`,
     countingBy: 'Counting by',
     lastRep: 'Last rep',
     backup: 'Backup',

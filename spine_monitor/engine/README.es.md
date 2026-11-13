@@ -76,7 +76,7 @@ El compuesto rellena `unit` desde el catálogo de features y la calidad sobre lo
 
 El origen, en este orden:
 
-1. Los eventos `rep_start`/`rep_end` de la sesión (que registra el comando `mark_event`), ordenados por tiempo y emparejados por orden. Los huérfanos, los duplicados y las ventanas con fin <= inicio se descartan.
+1. Los eventos `rep_start`/`rep_end` de la sesión (que registra el comando `mark_event`), ordenados por tiempo y emparejados por orden. Los huérfanos, los duplicados y las ventanas con fin <= inicio se descartan. `rep_index` cuenta a lo largo de toda la sesión, no por serie; `set_start`/`set_end`/`rest_start` solo separan series, así que el descanso entre series nunca es un reposo entre repeticiones (la última repetición de una serie no tiene ventana de reposo; el respaldo IMU aplica la misma regla a las pausas de más de 5 veces la habitual).
 2. Si no queda ninguna ventana válida, respaldo por IMU que usa solo el giróscopo (en microgravedad el acelerómetro no ve la gravedad): lóbulos de velocidad angular de signo contrario en el eje dominante, por `boot_id`, con reloj UTC. Sin señal no devuelve nada.
 3. Si tampoco hay nada, no hay repeticiones.
 

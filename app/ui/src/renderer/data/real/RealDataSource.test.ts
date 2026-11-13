@@ -20,7 +20,7 @@ describe('getStrip', () => {
       missionDay: 87,
       missionStart: '2026-11-15',
       flightPhase: 'inflight',
-      harness: { id: 'wb-01', batteryPct: 18, weakStreams: [{ stream: 'stretch_lumbar', state: 'stalled' }], degraded: true, stale: false, lastSeenAt: '2026-11-15T09:58:00Z' },
+      harness: { id: 'wb-01', batteryPct: 18, weakStreams: [{ stream: 'stretch_spine', state: 'stalled' }], degraded: true, stale: false, lastSeenAt: '2026-11-15T09:58:00Z' },
       groundLink: { state: 'down', backInMin: 12 },
       lastContactMinAgo: 45,
       reportsDue: 1,
@@ -70,7 +70,7 @@ describe('getToday', () => {
       level: 'amber',
       recommendations: ['REC_LUMBAR_STAB_01', 'REC_INCREASE_ARED'],
       reasons: [
-        { featureId: 'stretch.lumbar.peak_elongation_mm', deviationZ: 2.4, contribution: 0.31 },
+        { featureId: 'stretch.full_spine.peak_elongation_mm', deviationZ: 2.4, contribution: 0.31 },
         { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8, contribution: 0.18 },
       ],
       trust: {
@@ -101,7 +101,9 @@ describe('getToday', () => {
         sessionId: '3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01',
         protocolId: 'lat_pulldown_standing_v1',
         startedAt: '2026-11-13T10:02:31Z',
-        totalReps: 10,
+        plannedSets: 4,
+        repsPerSet: 15,
+        totalReps: 60,
       },
     });
   });
@@ -183,10 +185,13 @@ describe('getSession', () => {
       sessionId,
       state: 'running',
       protocolId: 'lat_pulldown_standing_v1',
-      band: { color: 'blue', nominalKg: 15 },
-      totalReps: 10,
+      band: { color: 'green', nominalKg: 25 },
+      plannedSets: 4,
+      repsPerSet: 15,
+      totalReps: 60,
+      restBetweenSetsS: 30,
       restSeconds: 120,
-      fitItems: ['skin', 'emg', 'imu', 'cord'],
+      fitItems: ['skin', 'emg', 'ground', 'imu', 'cord'],
       startedAt: '2026-11-13T10:02:31Z',
       steps: [
         { id: 'fit', status: 'done' },
@@ -197,8 +202,9 @@ describe('getSession', () => {
       ],
       sensorChecks: [
         { stream: 'emg_lat_left', status: 'good', state: 'active' },
-        { stream: 'imu_l3', status: 'good', state: 'active' },
-        { stream: 'stretch_lumbar', status: 'weak', state: 'stalled' },
+        { stream: 'emg_lat_right', status: 'good', state: 'active' },
+        { stream: 'imu_t9', status: 'good', state: 'active' },
+        { stream: 'stretch_spine', status: 'weak', state: 'stalled' },
       ],
       calibration: { commandId: 'c0ffee00-0000-4000-8000-000000000004', acked: true, ackedAt: '2026-11-13T10:00:06.400Z' },
       stretchedCm: null,
@@ -209,7 +215,7 @@ describe('getSession', () => {
   it('keeps a protocol without band, reps or rest as null', async () => {
     api.viewData.sessions = { [sessionId]: example<SessionView>('ui-session.spine-check') };
     const result = await data.getSession();
-    expect(result).toMatchObject({ band: null, totalReps: null, restSeconds: null, startedAt: null, calibration: null, sensorChecks: [] });
+    expect(result).toMatchObject({ band: null, plannedSets: null, repsPerSet: null, totalReps: null, restBetweenSetsS: null, restSeconds: null, startedAt: null, calibration: null, sensorChecks: [] });
   });
 
   it('is null when no session is in progress, without asking for one', async () => {
@@ -254,7 +260,7 @@ describe('getHouston', () => {
         dataAvailable: 5,
         dataTotal: 6,
         drivers: [
-          { featureId: 'stretch.lumbar.peak_elongation_mm', deviationZ: 2.4 },
+          { featureId: 'stretch.full_spine.peak_elongation_mm', deviationZ: 2.4 },
           { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8 },
         ],
         redFlags: [],
@@ -493,10 +499,10 @@ describe('subscribeReps', () => {
       api.emitReps(SID, { kind: 'state', state: view(name) });
     }
     expect(seen).toEqual([
-      { kind: 'state', state: { rep: 3, total: 10, phase: 'pulling', barPercent: 42.5, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
-      { kind: 'state', state: { rep: 1, total: 10, phase: 'pulling', barPercent: null, last: null, signal: 'ok' } },
-      { kind: 'state', state: { rep: 3, total: 10, phase: 'resting', barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
-      { kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'no_signal' } },
+      { kind: 'state', state: { rep: 3, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 3, phase: 'pulling', barPercent: 42.5, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
+      { kind: 'state', state: { rep: 1, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 1, phase: 'pulling', barPercent: null, last: null, signal: 'ok' } },
+      { kind: 'state', state: { rep: 3, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 3, phase: 'resting', barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ok' } },
+      { kind: 'state', state: { rep: 3, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 3, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'no_signal' } },
     ]);
   });
 
@@ -511,7 +517,7 @@ describe('subscribeReps', () => {
     api.emitReps(SID, { kind: 'state', state: view() });
     api.emitReps(SID, { kind: 'lost' });
     api.emitReps(SID, { kind: 'state', state: view('ui-rep-state.resting') });
-    expect(seen[1]).toEqual({ kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'lost' } });
+    expect(seen[1]).toEqual({ kind: 'state', state: { rep: 3, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 3, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'lost' } });
     expect(seen[2]).toMatchObject({ state: { phase: 'resting', signal: 'ok' } });
   });
 
@@ -525,7 +531,7 @@ describe('subscribeReps', () => {
     const { seen } = listen();
     api.emitReps(SID, { kind: 'end', state: { ...view(), phase: null, progress_pct: null } });
     expect(seen).toEqual([
-      { kind: 'state', state: { rep: 3, total: 10, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ended' } },
+      { kind: 'state', state: { rep: 3, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 3, phase: null, barPercent: null, last: { rep: 2, seconds: 4.2 }, signal: 'ended' } },
     ]);
     expect(api.repsListenerCount(SID)).toBe(0);
   });

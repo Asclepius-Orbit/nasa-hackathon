@@ -56,6 +56,9 @@ class RepWindows:
         return len(self.windows)
 
 
+_SET_BOUNDARY = frozenset({EventType.SET_START, EventType.SET_END, EventType.REST_START})
+
+
 def _sort_key(event: Event) -> tuple[datetime, int, bool]:
     # el tiempo manda; rep_index solo desempata y, en empate total, el inicio va antes que el fin
     return (event.timestamp, event.rep_index or 0, event.event_type is EventType.REP_END)
@@ -75,16 +78,18 @@ def detect_from_events(events: Iterable[Event]) -> tuple[RepWindow, ...]:
                 pairs.append((open_start, event.timestamp))
             open_start = None
     last_rest_end = _rest_end_after(ordered, pairs[-1][1]) if pairs else None
-    return tuple(
-        RepWindow(
-            index=i,
-            start=start,
-            end=end,
-            rest_start=end if (i < len(pairs) or last_rest_end is not None) else None,
-            rest_end=pairs[i][0] if i < len(pairs) else last_rest_end,
-        )
-        for i, (start, end) in enumerate(pairs, start=1)
-    )
+    boundaries = [e.timestamp for e in ordered if e.event_type in _SET_BOUNDARY]
+    windows: list[RepWindow] = []
+    for i, (start, end) in enumerate(pairs, start=1):
+        if i < len(pairs):
+            following = pairs[i][0]
+            # el hueco entre series (set_end/set_start/rest_start por medio) no es un reposo entre repeticiones
+            between_sets = any(end <= t <= following for t in boundaries)
+            rest = (None, None) if between_sets else (end, following)
+        else:
+            rest = (end, last_rest_end) if last_rest_end is not None else (None, None)
+        windows.append(RepWindow(index=i, start=start, end=end, rest_start=rest[0], rest_end=rest[1]))
+    return tuple(windows)
 
 
 def _rest_end_after(ordered: list[Event], moment: datetime) -> datetime | None:

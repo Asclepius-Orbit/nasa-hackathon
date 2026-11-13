@@ -62,7 +62,14 @@ class LoadDeclared(BaseModel):
     description: constr(max_length=200) | None = None
 
 
+class Phase(str, Enum):
+    PRE = 'pre'
+    POST = 'post'
+
+
 class EventType(str, Enum):
+    SET_START = 'set_start'
+    SET_END = 'set_end'
     REP_START = 'rep_start'
     REP_END = 'rep_end'
     MVC_START = 'mvc_start'
@@ -89,7 +96,14 @@ class Event(BaseModel):
         description='Device monotonic clock at the event, if the device stamped it.',
     )
     boot_id: conint(ge=0, le=4294967295) | None = None
-    rep_index: conint(ge=1) | None = None
+    set_index: conint(ge=1) | None = Field(
+        None,
+        description='Set (1-based) the event belongs to: set_start, set_end and the events of the repetitions inside it.',
+    )
+    rep_index: conint(ge=1) | None = Field(
+        None,
+        description='Repetition (1-based) within the session, counted across sets.',
+    )
     note: constr(max_length=200) | None = None
 
 
@@ -100,14 +114,14 @@ class StreamDeclaration(BaseModel):
     stream_id: constr(pattern=r'^[a-z0-9][a-z0-9_]{1,31}$') = Field(
         ...,
         description='Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.',
-        examples=['emg_lat_left', 'imu_l3', 'stretch_lumbar'],
+        examples=['emg_lat_left', 'emg_lat_right', 'imu_t9', 'stretch_spine'],
     )
     stream_kind: common_schema.StreamKind
     placement: (
         common_schema.Placement1 | common_schema.Placement2 | common_schema.Placement3
     ) = Field(
         ...,
-        description='Where a sensor sits on the body. EMG needs muscle + side, IMU needs spine_level, stretch cord needs spine_region (and optionally the span it covers). The session schema enforces this per stream kind.',
+        description='Where a sensor sits on the body. EMG needs muscle + side (and says the electrode spacing, the vertebral span of the electrodes and where the ground is), IMU needs spine_level, stretch cord needs spine_region (and optionally the span it covers). The session schema enforces this per stream kind.',
     )
     sample_rate_hz: PositiveFloat
     calibration_id: (
@@ -164,7 +178,31 @@ class Session(BaseModel):
         None,
         description='Resistance used in an exercise session. There is no force sensor, so the load is declared, not measured: that is why the protocol must be very standardised. Required for exercise sessions.',
     )
-    planned_reps: conint(ge=1) | None = None
+    planned_reps: conint(ge=1) | None = Field(
+        None,
+        description='TOTAL repetitions planned for the whole exercise session (planned_sets * reps_per_set when both are given; 60 for lat_pulldown_standing_v1).',
+    )
+    planned_sets: conint(ge=1) | None = Field(
+        None,
+        description='Sets planned in an exercise session (4 for lat_pulldown_standing_v1). Not for spine checks.',
+    )
+    reps_per_set: conint(ge=1) | None = Field(
+        None,
+        description='Repetitions planned in each set (15 for lat_pulldown_standing_v1). Not for spine checks.',
+    )
+    phase: Phase | None = Field(
+        None,
+        description='Only for a spine_check bracketing an exercise session: pre (just before the exercise) or post (just after it).',
+    )
+    related_session_id: (
+        constr(
+            pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        )
+        | None
+    ) = Field(
+        None,
+        description='Only for a spine_check bracketing an exercise session: session_id of that exercise session. Requires phase.',
+    )
     streams: list[StreamDeclaration] = Field(
         ...,
         description='Streams enabled for this session, with their placement and calibration.',

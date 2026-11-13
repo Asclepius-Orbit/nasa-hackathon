@@ -25,7 +25,7 @@ def schema_files() -> list[Path]:
 
 def test_simulate_projection_metadata_contract(validator_for):
     response = load_json(EXAMPLES_DIR / "valid/engine/simulate-response.json")
-    response["projection"] = {"project_days": 7, "unprojected_features": ["stretch.lumbar.peak_elongation_mm"]}
+    response["projection"] = {"project_days": 7, "unprojected_features": ["stretch.full_spine.peak_elongation_mm"]}
     validator = validator_for("engine/simulate-response")
     assert not list(validator.iter_errors(response))
     for invalid in ({"project_days": 0, "unprojected_features": []}, {"project_days": 7}, {"project_days": 7, "unprojected_features": [3]}):
@@ -150,10 +150,38 @@ MUTATIONS = [
     ("telemetry/command-ack.rejected", "unknown error code", lambda d: d["error"].update(code="oops")),
     ("domain/session.exercise", "exercise without declared load", lambda d: d.pop("load_declared")),
     ("domain/session.exercise", "EMG placement without side", lambda d: d["streams"][0]["placement"].pop("side")),
-    ("domain/session.exercise", "IMU placement without level", lambda d: d["streams"][1].update(placement={"spine_region": "lumbar"})),
-    ("domain/session.exercise", "stretch placement without region", lambda d: d["streams"][2].update(placement={"spine_level": "l3"})),
+    ("domain/session.exercise", "IMU placement without level", lambda d: d["streams"][2].update(placement={"spine_region": "thoracic"})),
+    ("domain/session.exercise", "stretch placement without region", lambda d: d["streams"][3].update(placement={"spine_level": "t9"})),
     ("domain/session.exercise", "no streams", lambda d: d.update(streams=[])),
     ("domain/session.exercise", "event without timestamp", lambda d: d["events"][0].pop("timestamp")),
+    # Standardised exercise protocol (#12): sets, spine_check brackets, EMG electrodes and ground, cord spanning the whole spine.
+    ("domain/session.exercise", "zero planned sets", lambda d: d.update(planned_sets=0)),
+    ("domain/session.exercise", "zero repetitions per set", lambda d: d.update(reps_per_set=0)),
+    ("domain/session.exercise", "phase on an exercise session", lambda d: d.update(phase="pre")),
+    (
+        "domain/session.exercise",
+        "related session on an exercise session",
+        lambda d: d.update(related_session_id="3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02"),
+    ),
+    ("domain/session.exercise", "unknown set event", lambda d: d["events"][0].update(event_type="set_pause")),
+    ("domain/session.exercise", "set index zero", lambda d: d["events"][0].update(set_index=0)),
+    ("domain/session.exercise", "unknown property in an event", lambda d: d["events"][0].update(set=1)),
+    ("domain/session.exercise", "electrode spacing zero", lambda d: d["streams"][0]["placement"].update(electrode_spacing_cm=0)),
+    ("domain/session.exercise", "electrode spacing on an IMU", lambda d: d["streams"][2]["placement"].update(electrode_spacing_cm=10)),
+    ("domain/session.exercise", "ground on a stretch cord", lambda d: d["streams"][3]["placement"].update(ground={"location": "iliac_crest"})),
+    ("domain/session.exercise", "unknown ground location", lambda d: d["streams"][0]["placement"]["ground"].update(location="forehead")),
+    ("domain/session.exercise", "ground without location", lambda d: d["streams"][0]["placement"]["ground"].pop("location")),
+    ("domain/session.exercise", "ground with an unknown property", lambda d: d["streams"][0]["placement"]["ground"].update(gel="x")),
+    ("domain/session.exercise", "cord level outside the vertebral enum", lambda d: d["streams"][3]["placement"]["span"].update(from_level="c5")),
+    ("domain/session.exercise", "unknown spine region", lambda d: d["streams"][3]["placement"].update(spine_region="whole")),
+    ("domain/session.spine-check", "unknown spine check phase", lambda d: d.update(phase="during")),
+    ("domain/session.spine-check", "related session without its phase", lambda d: d.pop("phase")),
+    ("domain/session.spine-check", "related session that is not a uuid", lambda d: d.update(related_session_id="exercise")),
+    ("domain/session.spine-check", "planned sets on a spine check", lambda d: d.update(planned_sets=4)),
+    ("domain/session.spine-check", "repetitions per set on a spine check", lambda d: d.update(reps_per_set=15)),
+    ("domain/session.spine-check-post", "post check that lost its phase", lambda d: d.pop("phase")),
+    ("telemetry/command.mark-event", "set index zero", lambda d: d.update(set_index=0)),
+    ("telemetry/command.mark-event", "set index that is not an integer", lambda d: d.update(set_index=1.5)),
     ("domain/calibration.stretch", "curve with a single point", lambda d: d["curve"].update(points=d["curve"]["points"][:1])),
     ("domain/calibration.stretch", "zero rest length", lambda d: d.update(rest_length_mm=0)),
     ("domain/calibration.emg-mvc", "negative MVC", lambda d: d.update(mvc_rms_mv=-1)),
@@ -238,6 +266,14 @@ MUTATIONS = [
     ("app/ui-rep-state", "total zero", lambda d: d.update(total=0)),
     ("app/ui-rep-state", "unknown phase", lambda d: d.update(phase="holding")),
     ("app/ui-rep-state", "progress above 100", lambda d: d.update(progress_pct=100.5)),
+    ("app/ui-rep-state", "set negative", lambda d: d.update(set=-1)),
+    ("app/ui-rep-state", "set omitted", lambda d: d.pop("set")),
+    ("app/ui-rep-state", "sets total zero", lambda d: d.update(sets_total=0)),
+    ("app/ui-rep-state", "sets total omitted instead of null", lambda d: d.pop("sets_total")),
+    ("app/ui-rep-state", "reps per set zero", lambda d: d.update(reps_per_set=0)),
+    ("app/ui-rep-state", "reps per set omitted instead of null", lambda d: d.pop("reps_per_set")),
+    ("app/ui-rep-state", "rep in set negative", lambda d: d.update(rep_in_set=-1)),
+    ("app/ui-rep-state", "rep in set omitted", lambda d: d.pop("rep_in_set")),
     ("app/ui-rep-state", "last omitted instead of null", lambda d: d.pop("last")),
     ("app/ui-rep-state", "last duration zero", lambda d: d["last"].update(duration_s=0)),
     ("app/ui-rep-state", "unknown signal", lambda d: d.update(signal="weak")),
@@ -264,6 +300,9 @@ MUTATIONS = [
     ("app/ui-today.nodata", "nodata with an assessment id", lambda d: d.update(assessment_id="a55e55e0-0000-4000-8000-0000000000a1")),
     ("app/ui-today.nodata", "nodata with trust facts", lambda d: d.update(trust={"confidence": 1, "data_available": 0, "data_total": 0, "missing": []})),
     ("app/ui-today.nodata", "nodata with recommendations", lambda d: d.update(recommendations=["REC_LUMBAR_STAB_01"])),
+    ("app/ui-today.nodata", "session in progress without planned sets", lambda d: d["session_in_progress"].pop("planned_sets")),
+    ("app/ui-today.nodata", "session in progress without reps per set", lambda d: d["session_in_progress"].pop("reps_per_set")),
+    ("app/ui-today.nodata", "session in progress with zero sets", lambda d: d["session_in_progress"].update(planned_sets=0)),
     ("app/ui-today.nodata", "session in progress without started_at", lambda d: d["session_in_progress"].pop("started_at")),
     ("app/ui-history", "window end that is a timestamp", lambda d: d.update(to="2027-02-09T00:00:00Z")),
     ("app/ui-history", "day level green by default", lambda d: d["days"][0].pop("level")),
@@ -329,6 +368,12 @@ MUTATIONS = [
     ("app/ui-session", "unknown step status", lambda d: d["steps"][0].update(status="skipped")),
     ("app/ui-session", "unknown sensor check status", lambda d: d["sensor_checks"][0].update(status="ok")),
     ("app/ui-session", "unknown stream state", lambda d: d["sensor_checks"][0].update(state="sleeping")),
+    ("app/ui-session", "planned sets omitted instead of null", lambda d: d.pop("planned_sets")),
+    ("app/ui-session", "planned sets zero", lambda d: d.update(planned_sets=0)),
+    ("app/ui-session", "reps per set omitted instead of null", lambda d: d.pop("reps_per_set")),
+    ("app/ui-session", "reps per set zero", lambda d: d.update(reps_per_set=0)),
+    ("app/ui-session", "rest between sets omitted instead of null", lambda d: d.pop("rest_between_sets_s")),
+    ("app/ui-session", "negative rest between sets", lambda d: d.update(rest_between_sets_s=-1)),
     ("app/ui-session", "band without load", lambda d: d["band"].pop("nominal_kg")),
     ("app/ui-session", "fit item that is prose", lambda d: d.update(fit_items=["Clean the skin"])),
     ("app/ui-session", "unacked calibration with an ack time", lambda d: d["calibration"].update(acked=False)),
@@ -367,7 +412,7 @@ def test_mutated_example_is_rejected(case, validator_for):
 
 def test_feature_set_accepts_calibration_expired_as_skip_reason(validator_for):
     document = load_json(EXAMPLES_DIR / "valid" / "domain" / "feature-set.preflight.json")
-    document["skipped"].append({"feature_id": "stretch.lumbar.peak_elongation_mm", "reason": "calibration_expired"})
+    document["skipped"].append({"feature_id": "stretch.full_spine.peak_elongation_mm", "reason": "calibration_expired"})
     assert validator_for("domain/feature-set").is_valid(document)
     document["skipped"][-1]["reason"] = "calibration_stale"
     assert not validator_for("domain/feature-set").is_valid(document)
@@ -376,7 +421,7 @@ def test_feature_set_accepts_calibration_expired_as_skip_reason(validator_for):
 def test_feature_set_accepts_insufficient_sample_rate_as_skip_reason(validator_for):
     # an IMU feature needs a fast enough stream (#44): a slower stream skips it with its own reason
     document = load_json(EXAMPLES_DIR / "valid" / "domain" / "feature-set.preflight.json")
-    document["skipped"].append({"feature_id": "imu.l3.sagittal.rom_deg", "reason": "insufficient_sample_rate"})
+    document["skipped"].append({"feature_id": "imu.t9.sagittal.rom_deg", "reason": "insufficient_sample_rate"})
     assert validator_for("domain/feature-set").is_valid(document)
     document["skipped"][-1]["reason"] = "sample_rate_too_low"
     assert not validator_for("domain/feature-set").is_valid(document)
@@ -405,11 +450,16 @@ def valid_example(rel: str):
     return load_json(EXAMPLES_DIR / "valid" / f"{rel}.json")
 
 
+# Two EMG streams (one per latissimus dorsi), the IMU at T9 and the cord over the whole spine.
+CHUNK_KINDS = ("emg", "emg-right", "imu", "stretch")
+CALIBRATION_KINDS = ("stretch", "emg-mvc", "emg-mvc-right", "imu")
+
+
 def test_engine_examples_embed_the_standalone_examples():
     features = valid_example("engine/features-request")
     assert features["session"] == valid_example("domain/session.exercise")
-    assert features["chunks"] == [valid_example(f"telemetry/stream-chunk.{kind}") for kind in ("emg", "imu", "stretch")]
-    assert features["calibrations"] == [valid_example(f"domain/calibration.{kind}") for kind in ("stretch", "emg-mvc", "imu")]
+    assert features["chunks"] == [valid_example(f"telemetry/stream-chunk.{kind}") for kind in CHUNK_KINDS]
+    assert features["calibrations"] == [valid_example(f"domain/calibration.{kind}") for kind in CALIBRATION_KINDS]
     assert features["clock_syncs"] == [valid_example("telemetry/clock-sync.round-trip")]
     assert features["profile"] == valid_example("domain/astronaut-profile")
 
@@ -480,10 +530,10 @@ def test_status_freshness_is_consistent():
 
 def test_session_streams_and_calibrations_are_consistent():
     session = valid_example("domain/session.exercise")
-    calibrations = {c["calibration_id"]: c for c in (valid_example(f"domain/calibration.{kind}") for kind in ("stretch", "emg-mvc", "imu"))}
+    calibrations = {c["calibration_id"]: c for c in (valid_example(f"domain/calibration.{kind}") for kind in CALIBRATION_KINDS)}
     for stream in session["streams"]:
         assert calibrations[stream["calibration_id"]]["stream_id"] == stream["stream_id"]
-    chunk_streams = {valid_example(f"telemetry/stream-chunk.{kind}")["stream_id"] for kind in ("emg", "imu", "stretch")}
+    chunk_streams = {valid_example(f"telemetry/stream-chunk.{kind}")["stream_id"] for kind in CHUNK_KINDS}
     assert chunk_streams == {stream["stream_id"] for stream in session["streams"]}
 
 
@@ -658,3 +708,76 @@ def test_ground_schemas_carry_no_personal_profile_data(rel, schemas):
 def test_assessment_example_has_a_fired_rule_with_evidence():
     evidence = valid_example("domain/assessment.amber")["fired_rules"][0]["evidence"]
     assert set(evidence) == {"datum", "value", "operator", "threshold"}
+
+
+# ---- standardised exercise protocol (#12) -----------------------------------------------------
+
+
+def test_exercise_session_follows_the_standardised_protocol():
+    session = valid_example("domain/session.exercise")
+    assert session["protocol_id"] == "lat_pulldown_standing_v1"
+    assert (session["planned_sets"], session["reps_per_set"]) == (4, 15)
+    assert session["planned_reps"] == session["planned_sets"] * session["reps_per_set"]
+    assert session["load_declared"]["band_id"] == "green" and session["load_declared"]["nominal_kg"] == 25
+    streams = {stream["stream_id"]: stream for stream in session["streams"]}
+    assert set(streams) == {"emg_lat_left", "emg_lat_right", "imu_t9", "stretch_spine"}
+    for stream_id, side in (("emg_lat_left", "left"), ("emg_lat_right", "right")):
+        placement = streams[stream_id]["placement"]
+        assert (placement["muscle"], placement["side"]) == ("latissimus_dorsi", side)
+        assert placement["electrode_spacing_cm"] == 10
+        assert placement["span"] == {"from_level": "t11", "to_level": "l2"}
+        assert placement["ground"]["location"] == "iliac_crest"
+    assert streams["imu_t9"]["placement"] == {"spine_level": "t9"}
+    assert streams["stretch_spine"]["placement"] == {"spine_region": "full_spine", "span": {"from_level": "c3", "to_level": "s1"}}
+
+
+def test_exercise_events_delimit_sets_and_repetitions():
+    events = valid_example("domain/session.exercise")["events"]
+    types = [event["event_type"] for event in events]
+    assert {"set_start", "set_end", "rep_start", "rep_end"} <= set(types)
+    assert types.index("set_start") < types.index("rep_start") and types.index("rep_end") < types.index("set_end")
+    assert all(event["set_index"] == 1 for event in events if event["event_type"].startswith("set_"))
+
+
+def test_spine_checks_bracket_the_exercise_session():
+    exercise = valid_example("domain/session.exercise")
+    pre, post = valid_example("domain/session.spine-check"), valid_example("domain/session.spine-check-post")
+    assert (pre["phase"], post["phase"]) == ("pre", "post")
+    assert pre["related_session_id"] == post["related_session_id"] == exercise["session_id"]
+    assert pre["protocol_id"] == post["protocol_id"] == "spine_length_rest_v1"
+    assert pre["started_at"] < exercise["started_at"] < post["started_at"]
+
+
+def test_a_spine_check_without_an_exercise_needs_neither_phase_nor_related_session(validator_for):
+    document = valid_example("domain/session.spine-check")
+    document.pop("phase")
+    document.pop("related_session_id")
+    assert validator_for("domain/session").is_valid(document)
+
+
+def test_set_events_are_valid_for_the_mark_event_command_and_the_session(validator_for):
+    command = valid_example("telemetry/command.mark-event")
+    event_types = load_json(SCHEMAS_DIR / "domain" / "session.schema.json")["$defs"]["event_type"]["enum"]
+    for event_type in ("set_start", "set_end"):
+        assert event_type in event_types
+        assert validator_for("telemetry/command").is_valid(command | {"event_type": event_type, "set_index": 2})
+
+
+def test_ui_openapi_event_request_matches_the_session_event_types():
+    import yaml
+
+    spec = yaml.safe_load((CONTRACTS_DIR / "ui-openapi.yaml").read_text(encoding="utf-8"))
+    body = spec["paths"]["/ui/sessions/{session_id}/events"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    event_types = load_json(SCHEMAS_DIR / "domain" / "session.schema.json")["$defs"]["event_type"]["enum"]
+    assert body["properties"]["event_type"]["enum"] == event_types
+    assert body["properties"]["set_index"] == {"type": "integer", "minimum": 1}
+
+
+def test_common_defines_the_protocol_sensor_positions(common):
+    defs = common["$defs"]
+    assert {"electrode_spacing_cm", "ground", "span"} <= set(defs["placement"]["properties"])
+    assert defs["placement"]["properties"]["ground"]["properties"]["location"] == {"$ref": "#/$defs/ground_location"}
+    assert "iliac_crest" in defs["ground_location"]["enum"]
+    assert {"c3", "c4", "t9", "t11", "l2", "l5", "s1"} <= set(defs["spine_level"]["enum"])
+    assert "c5" not in defs["spine_level"]["enum"], "only c3 and c4 were added"
+    assert "full_spine" in defs["spine_region"]["enum"]

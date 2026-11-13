@@ -7,8 +7,9 @@ from typing import Any
 import pytest
 from monitor.ingest import Ingest
 from monitor.live.reps import RepDetector, RepDetectorParams
-from monitor.live.tracker import RepHub, RepMessage, RepTracker, Subscription, has_live_reps, rep_total
+from monitor.live.tracker import RepHub, RepMessage, RepTracker, Subscription, has_live_reps, rep_sets, rep_total, set_position
 from monitor.settings import AppSettings
+from monitor.views.protocol_catalog import reps_per_set_for
 from spine_contracts import topics, validation
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
@@ -45,7 +46,7 @@ def chunks_until(chunks: list[dict[str, Any]], *, rep: int, phase: str) -> int:
 
 
 def counter(view: dict[str, Any]) -> dict[str, Any]:
-    return {key: view[key] for key in ("rep", "total", "last")}
+    return {key: view[key] for key in ("rep", "total", "set", "sets_total", "reps_per_set", "rep_in_set", "last")}
 
 
 async def running_session(harness, **overrides: Any) -> str:
@@ -82,7 +83,7 @@ def test_live_settings_defaults_and_env_prefix(monkeypatch) -> None:
     ("session", "expected"),
     [
         ({"planned_reps": 6, "protocol_id": LAT}, 6),
-        ({"protocol_id": LAT}, 10),
+        ({"protocol_id": LAT}, 60),
         ({"protocol_id": SPINE_CHECK}, None),
         ({"protocol_id": "not_in_the_catalog"}, None),
     ],
@@ -91,12 +92,42 @@ def test_total_is_the_planned_reps_then_the_catalog_then_null(session: dict[str,
     assert rep_total(session) == expected
 
 
+@pytest.mark.parametrize(
+    ("session", "expected"),
+    [
+        ({"planned_sets": 2, "reps_per_set": 5, "protocol_id": LAT}, (2, 5)),
+        ({"protocol_id": LAT}, (4, 15)),
+        ({"reps_per_set": 5, "protocol_id": LAT}, (4, 5)),
+        ({"protocol_id": SPINE_CHECK}, (None, None)),
+        ({"protocol_id": "not_in_the_catalog"}, (None, None)),
+    ],
+)
+def test_sets_are_the_session_plan_then_the_catalog_then_null(session: dict[str, Any], expected: tuple[int | None, int | None]) -> None:
+    assert rep_sets(session) == expected
+
+
+@pytest.mark.parametrize(
+    ("rep", "reps_per_set", "expected"),
+    [
+        (0, 15, (0, 0)),
+        (1, 15, (1, 1)),
+        (15, 15, (1, 15)),  # the last repetition of a set stays in it: the rest between sets is a phase, not a new set
+        (16, 15, (2, 1)),
+        (60, 15, (4, 15)),
+        (7, None, (1, 7)),
+        (0, None, (0, 0)),
+    ],
+)
+def test_a_repetition_counted_across_the_session_sits_in_its_set(rep: int, reps_per_set: int | None, expected: tuple[int, int]) -> None:
+    assert set_position(rep, reps_per_set) == expected
+
+
 # --- the tracker -----------------------------------------------------------------------------------
 
 
 async def test_tracker_view_has_no_signal_until_a_chunk_and_from_2_s_after_the_last_one(harness) -> None:
     chunks = harness.imu_chunks(OTHER_SESSION)
-    tracker = RepTracker(OTHER_SESSION, 10, clock=harness.clock, no_signal_s=2.0)
+    tracker = RepTracker(OTHER_SESSION, 10, sets_total=2, reps_per_set=5, clock=harness.clock, no_signal_s=2.0)
 
     fresh = tracker.view()
     assert validation.errors(STATE_SCHEMA, fresh) == []
@@ -105,6 +136,10 @@ async def test_tracker_view_has_no_signal_until_a_chunk_and_from_2_s_after_the_l
         "session_id": OTHER_SESSION,
         "rep": 0,
         "total": 10,
+        "set": 0,
+        "sets_total": 2,
+        "reps_per_set": 5,
+        "rep_in_set": 0,
         "phase": None,
         "progress_pct": None,
         "last": None,
@@ -125,7 +160,7 @@ async def test_tracker_view_has_no_signal_until_a_chunk_and_from_2_s_after_the_l
 
 async def test_no_signal_keeps_rep_total_and_last_and_clears_phase_and_progress(harness) -> None:
     chunks = harness.imu_chunks(OTHER_SESSION)
-    tracker = RepTracker(OTHER_SESSION, 10, clock=harness.clock, no_signal_s=2.0)
+    tracker = RepTracker(OTHER_SESSION, 10, sets_total=2, reps_per_set=5, clock=harness.clock, no_signal_s=2.0)
     for chunk in chunks[: chunks_until(chunks, rep=2, phase="pulling") + 5]:
         tracker.on_chunk(chunk)
     live = tracker.view()
@@ -168,7 +203,7 @@ async def test_a_failing_tracker_never_breaks_ingestion_nor_loses_the_chunk(harn
             raise RuntimeError("boom")
 
     ingest = Ingest(harness.store, harness.runtime.control, live=Broken())
-    ingest.handle(topics.stream(chunk["astronaut_id"], chunk["device_id"], "imu_l3"), json.dumps(chunk).encode())
+    ingest.handle(topics.stream(chunk["astronaut_id"], chunk["device_id"], "imu_t9"), json.dumps(chunk).encode())
 
     assert ingest.counts == {"accepted": 1, "duplicate": 0, "rejected": 0, "dropped": 0}
     assert harness.store.rejected_count() == 0
@@ -286,7 +321,7 @@ async def test_rebuild_follows_the_real_order_of_the_boots_whatever_their_random
     resume = chunks_until(second, rep=2, phase="pulling") + 3
     live = restarted_hub(harness)
     store_and_tell(harness, live, session_id, [*first, *second[:resume]])
-    key = chunks[0]["astronaut_id"], chunks[0]["device_id"], session_id, "imu_l3"
+    key = chunks[0]["astronaut_id"], chunks[0]["device_id"], session_id, "imu_t9"
     assert [(c["boot_id"], c["seq"]) for c in harness.store.stream_chunks(*key)] == [(c["boot_id"], c["seq"]) for c in [*first, *second[:resume]]]
 
     restarted = restarted_hub(harness)
@@ -297,7 +332,10 @@ async def test_rebuild_follows_the_real_order_of_the_boots_whatever_their_random
     for chunk in second[resume:]:
         restarted.on_chunk(row, chunk)
     assert restarted.tracker_view(session_id) == live.tracker_view(session_id)
-    assert restarted.tracker_view(session_id)["rep"] == 10
+    # The sensor came back inside a set, where the pause between reps is too short for the still second of the first bias
+    # estimate: the rest of that set is lost and the count goes on with the next one.
+    per_set = reps_per_set_for(LAT) or 0
+    assert restarted.tracker_view(session_id)["rep"] == harness.simulated_reps() - (per_set - 5)
 
 
 async def test_stream_chunks_only_returns_that_stream_of_that_session_of_that_device(harness) -> None:
@@ -305,7 +343,7 @@ async def test_stream_chunks_only_returns_that_stream_of_that_session_of_that_de
     chunk = harness.imu_chunks(session_id)[0]
     for stored in (chunk, {**chunk, "stream_id": "imu_t12"}, {**chunk, "session_id": OTHER_SESSION, "seq": 1}, {**chunk, "device_id": "wb-02", "seq": 2}):
         assert harness.store.add_chunk(stored)
-    assert list(harness.store.stream_chunks(chunk["astronaut_id"], chunk["device_id"], session_id, "imu_l3")) == [chunk]
+    assert list(harness.store.stream_chunks(chunk["astronaut_id"], chunk["device_id"], session_id, "imu_t9")) == [chunk]
 
 
 async def test_a_stored_chunk_the_detector_cannot_read_does_not_stop_the_rebuild(harness, caplog) -> None:
@@ -389,3 +427,17 @@ async def test_only_the_most_recently_used_final_states_are_kept(harness) -> Non
     assert store.reads == 2
     hub.subscribe(session_id)
     assert store.reads == 3
+
+
+async def test_the_view_places_the_repetition_in_its_set_and_keeps_it_while_resting_between_sets(harness) -> None:
+    chunks = harness.imu_chunks(OTHER_SESSION)
+    tracker = RepTracker(OTHER_SESSION, 10, sets_total=2, reps_per_set=3, clock=harness.clock, no_signal_s=2.0)
+    seen: dict[tuple[int, str], dict[str, Any]] = {}
+    for chunk in chunks:
+        tracker.on_chunk(chunk)
+        view = tracker.view()
+        assert validation.errors(STATE_SCHEMA, view) == []
+        seen[(view["rep"], view["phase"])] = view
+    assert (seen[(3, "pulling")]["set"], seen[(3, "pulling")]["rep_in_set"]) == (1, 3)
+    assert (seen[(3, "resting")]["set"], seen[(3, "resting")]["rep_in_set"], seen[(3, "resting")]["progress_pct"]) == (1, 3, None)
+    assert (seen[(4, "pulling")]["set"], seen[(4, "pulling")]["rep_in_set"]) == (2, 1)

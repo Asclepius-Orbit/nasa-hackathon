@@ -13,6 +13,8 @@ interface CatalogEntry {
   protocol_id: string;
   band: { color: string; nominal_kg: number } | null;
   total_reps: number | null;
+  planned_sets: number | null;
+  reps_per_set: number | null;
 }
 
 describe('PROTOCOLS', () => {
@@ -22,12 +24,14 @@ describe('PROTOCOLS', () => {
     expect(Object.keys(PROTOCOLS).sort()).toEqual(catalog.map((e) => e.protocol_id).sort());
   });
 
-  it.each(catalog)('matches the catalog band and reps of $protocol_id', (entry) => {
+  it.each(catalog)('matches the catalog band, sets and reps of $protocol_id', (entry) => {
     const protocol = PROTOCOLS[entry.protocol_id as keyof typeof PROTOCOLS];
     expect(protocol.load_declared ?? null).toEqual(
       entry.band === null ? null : { type: 'elastic_band', nominal_kg: entry.band.nominal_kg, band_id: entry.band.color },
     );
     expect(protocol.planned_reps ?? null).toBe(entry.total_reps);
+    expect(protocol.planned_sets ?? null).toBe(entry.planned_sets);
+    expect(protocol.reps_per_set ?? null).toBe(entry.reps_per_set);
   });
 
   it.each([

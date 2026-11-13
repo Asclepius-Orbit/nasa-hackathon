@@ -34,6 +34,12 @@ import { BASELINE, buildDays, FIRST_DAY, SESSION, todayData } from './mock-data'
 
 const REP_TICK_MS = 450;
 const CYCLE_TICKS = 10;
+/** Bar at the first step of a pull (20 % of the movement per tick). */
+const BAR_STEP = 20;
+const SETS = 4;
+const REPS_PER_SET = 15;
+/** Ticks of the simulated rest between two sets (the real one is 30 s; the mock keeps it short). */
+const SET_REST_TICKS = 6;
 const MISSION_DAY = 87;
 const MS_PER_DAY = 86_400_000;
 const MS_PER_MINUTE = 60_000;
@@ -54,7 +60,17 @@ export class MockDataSource implements DataSource {
   private readonly listeners = new Set<(update: RepsUpdate) => void>();
   private stopTimer: (() => void) | null = null;
   private tick = 0;
-  private reps: RepState = { rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' };
+  private reps: RepState = {
+    rep: 4,
+    total: SETS * REPS_PER_SET,
+    set: 1,
+    setsTotal: SETS,
+    repsPerSet: REPS_PER_SET,
+    repInSet: 4,
+    phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 },
+    signal: 'ok',
+  };
+  private restLeft = 0;
   private stopped: { sessionId: string; rep: number | null } | null = null;
   private session: SessionData | null = SESSION;
   private contacts: ContactEntry[] = [];
@@ -242,8 +258,8 @@ export class MockDataSource implements DataSource {
         dataAvailable: 8,
         dataTotal: 10,
         drivers: [
-          { featureId: 'stretch.lumbar.peak_elongation_mm', deviationZ: 2.1 },
-          { featureId: 'imu.l3.sagittal.rom_deg', deviationZ: -1.2 },
+          { featureId: 'stretch.full_spine.peak_elongation_mm', deviationZ: 2.1 },
+          { featureId: 'imu.t9.sagittal.rom_deg', deviationZ: -1.2 },
           { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8 },
         ],
         redFlags: [],
@@ -300,23 +316,62 @@ export class MockDataSource implements DataSource {
     };
   }
 
-  /** One 450 ms step of the simulated IMU: pull for 5 steps, let up for 5, count a rep per cycle up to the total. */
+  /** One 450 ms step of the simulated IMU: pull for 5 steps, let up for 5, count a rep per cycle up to the total, rest between sets. */
   private advance(): void {
+    if (this.restLeft > 0) {
+      this.restLeft -= 1;
+      if (this.restLeft > 0) {
+        this.reps = { ...this.reps, phase: 'resting', barPercent: null };
+        this.emit();
+        return;
+      }
+      // The rest is over: the first rep of the next set starts.
+      this.tick = 0;
+      this.reps = this.countedRep(this.reps.rep + 1, this.reps.last);
+      this.emit();
+      return;
+    }
     this.tick = (this.tick + 1) % CYCLE_TICKS;
     const pulling = this.tick < CYCLE_TICKS / 2;
     let { rep, last } = this.reps;
-    if (this.tick === 0 && this.reps.total !== null && rep < this.reps.total) {
+    const { total } = this.reps;
+    if (this.tick === 0 && total !== null && rep < total) {
       last = { rep, seconds: 2.4 };
+      if (rep % REPS_PER_SET === 0) {
+        // Last rep of a set: stay on it, resting, until the recovery is over.
+        this.restLeft = SET_REST_TICKS;
+        this.reps = { ...this.reps, phase: 'resting', barPercent: null, last };
+        this.emit();
+        return;
+      }
       rep += 1;
     }
     this.reps = {
-      rep,
-      total: this.reps.total,
+      ...this.countedRep(rep, last),
       phase: pulling ? 'pulling' : 'letting_up',
       barPercent: pulling ? (this.tick + 1) * 20 : (CYCLE_TICKS - this.tick) * 20,
+    };
+    this.emit();
+  }
+
+  /** The counter for repetition `rep` of the whole session, placed in its set; moving, with the bar at the start of the pull. */
+  private countedRep(rep: number, last: RepState['last']): RepState {
+    const set = Math.ceil(rep / REPS_PER_SET);
+    return {
+      rep,
+      total: this.reps.total,
+      set,
+      setsTotal: SETS,
+      repsPerSet: REPS_PER_SET,
+      repInSet: rep - (set - 1) * REPS_PER_SET,
+      phase: 'pulling',
+      barPercent: BAR_STEP,
       last,
       signal: 'ok',
     };
+  }
+
+  private emit(): void {
     this.listeners.forEach((listener) => {
       listener({ kind: 'state', state: this.reps });
     });

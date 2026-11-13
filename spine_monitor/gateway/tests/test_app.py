@@ -86,7 +86,7 @@ def test_frames_become_chunks_on_their_stream_topics(harness) -> None:
             await h.run_device(1.0)
             chunks = h.client.payloads("stream")
             # Sin sesión: fondo de IMU y cordón (1 chunk de 1 s a 10 Hz cada 10 lotes); el EMG no se publica.
-            assert sorted(c["stream_id"] for c in chunks) == ["imu_l3", "stretch_lumbar"]
+            assert sorted(c["stream_id"] for c in chunks) == ["imu_t9", "stretch_spine"]
             assert all(c["sample_rate_hz"] == 10.0 and c["seq"] == 0 and c["boot_id"] == 7 for c in chunks)
             assert all(not p.retain for p in h.client.on("stream"))
 
@@ -100,7 +100,7 @@ def test_background_session_id_comes_from_the_utc_day(harness) -> None:
             h.time.now += timedelta(hours=14, minutes=59, seconds=57.5)
             await h.boot()
             await h.run_device(3.0)
-            ids = [c["session_id"] for c in h.client.payloads("stream") if c["stream_id"] == "imu_l3"]
+            ids = [c["session_id"] for c in h.client.payloads("stream") if c["stream_id"] == "imu_t9"]
             assert len(ids) == 3 and ids[0] == ids[1] != ids[2]
 
     go(scenario())
@@ -118,7 +118,7 @@ def test_bad_lines_are_counted_by_reason_and_never_stop_the_loop(harness) -> Non
             await h.feed(h.line(b"garbage"), h.line(corrupted), h.line(b"\xff\xfe"), h.line(b"garbage again"))
             assert h.gateway.bad_lines == {BadLineReason.NO_CRC: 2, BadLineReason.BAD_CRC: 1, BadLineReason.NOT_ASCII: 1}
             await h.run_device(1.0)
-            assert [c["stream_id"] for c in h.client.payloads("stream")] == ["imu_l3", "stretch_lumbar"]
+            assert [c["stream_id"] for c in h.client.payloads("stream")] == ["imu_t9", "stretch_spine"]
 
     go(scenario())
 
@@ -130,7 +130,7 @@ def test_frames_wait_for_the_device_to_speak_after_the_port_opens_and_a_new_boot
             await h.frames(*FrameKind)  # antes de ningún hello: nadie sabe de qué arranque son
             await h.boot()
             await h.run_device(2.0)
-            first = [c for c in h.client.payloads("stream") if c["stream_id"] == "imu_l3"]
+            first = [c for c in h.client.payloads("stream") if c["stream_id"] == "imu_t9"]
             assert [(c["boot_id"], c["seq"]) for c in first] == [(7, 0), (7, 1)]
             await h.link_down()
             await h.link_up()
@@ -201,11 +201,11 @@ def test_a_missing_imu_degrades_the_device_until_its_frames_come_back(harness) -
             await h.run_device(1.1, kinds=(FrameKind.EMG, FrameKind.CORD))  # pasan los 2 s sin un solo lote I
             degraded = h.client.on("status")[-1].payload
             assert degraded["status"] == "degraded"
-            assert states(degraded) == {"emg_lat_left": "disabled", "imu_l3": "stalled", "stretch_lumbar": "active"}
+            assert states(degraded) == {"emg_lat_left": "disabled", "imu_t9": "stalled", "stretch_spine": "active"}
             assert degraded["timestamp"] == "2026-11-02T09:00:02Z"  # en cuanto vence el plazo, no en el periódico
             await h.run_device(0.1)
             back = h.client.payloads("status")[-1]
-            assert back["status"] == "ok" and states(back)["imu_l3"] == "active"
+            assert back["status"] == "ok" and states(back)["imu_t9"] == "active"
 
     go(scenario())
 
@@ -220,7 +220,7 @@ def test_a_stream_that_stops_is_stalled_after_the_timeout(harness) -> None:
             assert len(h.client.payloads("status")) == published  # aún dentro del plazo
             await h.run_device(0.2, kinds=(FrameKind.EMG, FrameKind.IMU))
             last = h.client.payloads("status")[-1]
-            assert last["status"] == "degraded" and states(last)["stretch_lumbar"] == "stalled" and states(last)["imu_l3"] == "active"
+            assert last["status"] == "degraded" and states(last)["stretch_spine"] == "stalled" and states(last)["imu_t9"] == "active"
 
     go(scenario())
 
@@ -233,7 +233,7 @@ def test_a_silent_device_is_noticed_by_the_timer(harness) -> None:
             await h.time.advance(5.0)  # ni lotes ni ticks: solo el temporizador puede verlo
             last = h.client.payloads("status")[-1]
             assert last["status"] == "degraded" and last["timestamp"] == "2026-11-02T09:00:05Z"
-            assert states(last) == {"emg_lat_left": "disabled", "imu_l3": "stalled", "stretch_lumbar": "stalled"}
+            assert states(last) == {"emg_lat_left": "disabled", "imu_t9": "stalled", "stretch_spine": "stalled"}
 
     go(scenario())
 
@@ -268,8 +268,8 @@ def test_status_and_clock_follow_their_intervals(harness) -> None:
                 "2026-11-02T09:00:00Z", "2026-11-02T09:00:00Z", "2026-11-02T09:00:02Z",
                 "2026-11-02T09:00:30Z", "2026-11-02T09:01:00Z", "2026-11-02T09:01:30Z", "2026-11-02T09:02:00Z",
             ]  # fmt: skip
-            assert states(statuses[1]) == dict.fromkeys(["emg_lat_left", "imu_l3", "stretch_lumbar"], "disabled")
-            assert states(statuses[2]) == {"emg_lat_left": "disabled", "imu_l3": "active", "stretch_lumbar": "active"}
+            assert states(statuses[1]) == dict.fromkeys(["emg_lat_left", "imu_t9", "stretch_spine"], "disabled")
+            assert states(statuses[2]) == {"emg_lat_left": "disabled", "imu_t9": "active", "stretch_spine": "active"}
             assert all(s["sample_rate_hz"] == 10.0 for s in statuses[2]["streams"] if s["state"] == "active")
             # El periódico ancla con el último tick conocido (a los 60 s aún no ha llegado el de 60 000 ms).
             clocks = h.client.payloads("clock")
@@ -311,7 +311,7 @@ def test_firmware_debug_lines_are_logged_and_are_not_bad_lines(harness, caplog) 
                 (logging.INFO, "arduino: #�"),
             ]
             await h.run_device(1.0)  # el bucle sigue y los datos siguen saliendo
-            assert [c["stream_id"] for c in h.client.payloads("stream")] == ["imu_l3", "stretch_lumbar"]
+            assert [c["stream_id"] for c in h.client.payloads("stream")] == ["imu_t9", "stretch_spine"]
 
     go(scenario())
 

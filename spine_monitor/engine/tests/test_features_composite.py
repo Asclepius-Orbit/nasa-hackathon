@@ -26,11 +26,11 @@ from spine_engine.features.registry import (
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "features-request.json"
 
-STRETCH_ID = "stretch.lumbar.elongation_mm"
+STRETCH_ID = "stretch.full_spine.elongation_mm"
 EMG_ID = "emg.latissimus_dorsi.left.rms_mv"
-IMU_ID = "imu.l3.sagittal.rom_deg"
-STRETCH = "stretch_lumbar"
-IMU = "imu_l3"
+IMU_ID = "imu.t9.sagittal.rom_deg"
+STRETCH = "stretch_spine"
+IMU = "imu_t9"
 EMG = "emg_lat_left"
 OTHER_SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a99"
 
@@ -163,7 +163,7 @@ def test_chunks_of_undeclared_streams_or_other_sessions_are_ignored():
     extract_json(composite(family), make_request(data))
 
     assert family.seen is not None
-    assert [c.stream_id for c in family.seen.ordered.chunks()] == sorted([EMG, IMU, STRETCH])
+    assert [c.stream_id for c in family.seen.ordered.chunks()] == sorted({c["stream_id"] for c in payload()["chunks"]})
     assert all(c.session_id == data["session"]["session_id"] for c in family.seen.ordered.chunks())
 
 
@@ -232,7 +232,7 @@ def test_an_expired_calibration_reaches_the_extractors_and_flags_the_quality():
 
 def test_quality_covers_only_the_streams_the_feature_used():
     data = payload()
-    gap = dict(data["chunks"][2]) | {"seq": data["chunks"][2]["seq"] + 3}  # stretch: hueco de 2 chunks
+    gap = dict(data["chunks"][3]) | {"seq": data["chunks"][3]["seq"] + 3}  # stretch: hueco de 2 chunks
     data["chunks"].append(gap)
 
     result = extract_json(composite(emitting(STRETCH_ID, STRETCH), emitting(EMG_ID, EMG)), make_request(data))

@@ -82,8 +82,8 @@ def build_session_view(
     now: datetime,
     stale_device_hours: float,
 ) -> dict[str, Any]:
-    """SessionView. `protocol_entry` is the catalog entry of the session protocol (band, total_reps, rest_seconds,
-    fit_items as `[{id}]`); without it those fields are null / empty. `calibration` is the latest calibrate command
+    """SessionView. `protocol_entry` is the catalog entry of the session protocol (band, planned_sets, reps_per_set, total_reps,
+    rest_between_sets_s, rest_seconds, fit_items as `[{id}]`); without it those fields are null / empty. `calibration` is the latest calibrate command
     of any type, while the `mvc` step depends on the protocol (see `_mvc_done`). `stretched_cm` and `planned_at` are reserved: null."""
     payload = session.payload
     calibrations = _calibrations(commands_with_acks)
@@ -98,7 +98,10 @@ def build_session_view(
         "state": session.state,
         "protocol_id": payload["protocol_id"],
         "band": None if band is None else dict(band),
+        "planned_sets": entry.get("planned_sets"),
+        "reps_per_set": entry.get("reps_per_set"),
         "total_reps": entry.get("total_reps"),
+        "rest_between_sets_s": entry.get("rest_between_sets_s"),
         "rest_seconds": entry.get("rest_seconds"),
         "fit_items": [item["id"] for item in entry.get("fit_items", [])],
         "started_at": payload.get("started_at"),

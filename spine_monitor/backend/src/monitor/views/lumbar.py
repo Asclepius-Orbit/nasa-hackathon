@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
-ELONGATION_FEATURE = "stretch.lumbar.peak_elongation_mm"
+ELONGATION_FEATURE = "stretch.full_spine.peak_elongation_mm"
 EARTH_GRAVITY = "earth_1g"
 
 Entry = Mapping[str, Any]

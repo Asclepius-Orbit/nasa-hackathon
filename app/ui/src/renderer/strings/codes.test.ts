@@ -60,14 +60,14 @@ describe('taskText', () => {
 
 describe('reasonText', () => {
   it('names a known feature and says how far from the reference it is', () => {
-    expect(reasonText('stretch.lumbar.peak_elongation_mm', 2.4)).toEqual({
-      label: 'Lumbar length',
+    expect(reasonText('stretch.full_spine.peak_elongation_mm', 2.4)).toEqual({
+      label: 'Spine length',
       text: '2.4 standard deviations above your preflight reference.',
     });
   });
 
   it('says below for a negative deviation, with one decimal', () => {
-    expect(reasonText('stretch.lumbar.peak_elongation_mm', -1).text).toBe('1.0 standard deviations below your preflight reference.');
+    expect(reasonText('stretch.full_spine.peak_elongation_mm', -1).text).toBe('1.0 standard deviations below your preflight reference.');
   });
 
   it('does not invent a direction when the deviation is unknown', () => {
@@ -125,7 +125,16 @@ describe('small code maps', () => {
   });
 
   it('writes fit items, streams and protocols, and falls back to the id', () => {
-    expect(fitItemText('imu').label).toBe('IMU at L3:');
+    expect(fitItemText('imu').label).toBe('IMU at T9:');
+    expect(fitItemText('emg').detail).toContain('10 cm apart');
+    expect(fitItemText('emg').detail).toContain('T11 to L2');
+    expect(fitItemText('ground')).toEqual({
+      label: 'Ground electrode (GND):',
+      detail: 'on the iliac crest, the bony ridge at the top of the hip. Ask a crewmate to place it.',
+    });
+    expect(fitItemText('cord').label).toBe('Stretch cord, C3 to S1:');
+    expect(fitItemText('cord').detail).toContain('C3-C4');
+    expect(fitItemText('cord').detail).toContain('L5-S1');
     expect(fitItemText('mystery')).toEqual({ label: 'mystery', detail: '' });
     expect(streamLabel('emg_lat_left')).toBe('EMG left latissimus');
     expect(streamLabel('new_stream')).toBe('new_stream');
@@ -135,8 +144,8 @@ describe('small code maps', () => {
   });
 
   it('writes weak streams and sensor check details', () => {
-    expect(weakStreamText({ stream: 'stretch_lumbar', state: 'stalled' })).toBe('Stretch cord L1 to L5 stalled');
-    expect(weakStreamText({ stream: 'imu_l3', state: 'disabled' })).toBe('IMU at L3 disabled');
+    expect(weakStreamText({ stream: 'stretch_spine', state: 'stalled' })).toBe('Stretch cord C3 to S1 stalled');
+    expect(weakStreamText({ stream: 'imu_t9', state: 'disabled' })).toBe('IMU at T9 disabled');
     expect(checkDetail('good', 'active')).toBe('Clean signal');
     expect(checkDetail('weak', 'stalled')).toContain('stopped sending');
     expect(checkDetail('weak', 'disabled')).toContain('switched off');

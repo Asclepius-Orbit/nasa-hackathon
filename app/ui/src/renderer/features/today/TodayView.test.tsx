@@ -52,11 +52,11 @@ it('composes the session-in-progress line from the live rep count and the return
   const { scheduler } = setup();
   const item = (await screen.findByText('Repeat the standing lat pulldown session today')).closest('li');
   expect(item).not.toBeNull();
-  await screen.findByText(/In progress since 13:38 GMT, rep 4 of 10. Recommendation REC_SESSION_REPEAT_01./);
+  await screen.findByText(/In progress since 13:38 GMT, rep 4 of 60. Recommendation REC_SESSION_REPEAT_01./);
   act(() => {
     scheduler.advance(4500);
   });
-  expect(item).toHaveTextContent('rep 5 of 10');
+  expect(item).toHaveTextContent('rep 5 of 60');
   await userEvent.click(within(item as HTMLElement).getByRole('button', { name: 'Return to session' }));
   expect(screen.getByTestId('where')).toHaveTextContent('/session');
 });
@@ -79,7 +79,41 @@ it('draws the spine figure from the data: lumbar length in the chosen unit, sens
   for (const text of ['EMG', 'IMU', 'Stretch cord', 'Preflight', 'Today']) {
     expect(within(figure).getByText(text)).toBeInTheDocument();
   }
-  expect(screen.getByText(/The cord measures length from L1 to L5/)).toBeInTheDocument();
+  expect(screen.getByText(/The cord measures length from C3 to S1/)).toBeInTheDocument();
+  expect(screen.getByText(/the curve comes from the IMU at T9/)).toBeInTheDocument();
+});
+
+it('draws the sensors of the protocol: IMU at T9, ground on the iliac crest, cord from C3 to S1', async () => {
+  setup();
+  const figure = await screen.findByRole('img', { name: /Side view of the spine/ });
+  expect(figure).toHaveAccessibleName(/IMU at T9/);
+  expect(figure).toHaveAccessibleName(/stretch cord from C3 to S1/);
+  expect(figure).toHaveAccessibleName(/ground on the iliac crest/);
+  for (const text of ['at T9', 'C3 to S1', 'GND', 'iliac crest']) {
+    expect(within(figure).getByText(text)).toBeInTheDocument();
+  }
+  expect(within(figure).queryByText(/L3|L1 to L5/)).not.toBeInTheDocument();
+});
+
+it('draws the cord over the whole spine and the IMU on the thoracic spine, whatever the lumbar length', async () => {
+  const geometry = async (mm: number): Promise<{ cordTop: number; cordBottom: number; l5: number; imuY: number; imuBelowT9: boolean }> => {
+    const { container, unmount } = setup({ data: new WithToday({ ...TODAY, lumbarLengthMm: mm }) });
+    await screen.findByRole('img', { name: /Side view of the spine/ });
+    const numbers = (container.querySelector('[data-sensor="cord"]')?.getAttribute('d') ?? '').match(/-?\d+(?:\.\d+)?/gu)?.map(Number) ?? [];
+    const imuY = Number(container.querySelector('[data-sensor="imu"]')?.getAttribute('y'));
+    const l5 = Number(container.querySelector('[data-vertebra="L5"]')?.getAttribute('cy'));
+    unmount();
+    return { cordTop: numbers[1] ?? 0, cordBottom: numbers.at(-1) ?? 0, l5, imuY, imuBelowT9: imuY > 200 };
+  };
+  const short = await geometry(-2);
+  const long = await geometry(4);
+  for (const g of [short, long]) {
+    expect(g.cordTop).toBeLessThan(60);
+    expect(g.cordBottom).toBeGreaterThan(g.l5);
+    expect(g.imuBelowT9).toBe(false);
+  }
+  expect(long.imuY).toBe(short.imuY);
+  expect(long.cordBottom).toBeGreaterThan(short.cordBottom);
 });
 
 it('moves the lumbar vertebrae apart as the lumbar length grows', async () => {
@@ -115,7 +149,8 @@ it('explains green, amber and red', async () => {
 it('says why amber and how far to trust it', async () => {
   setup();
   expect(await screen.findByRole('heading', { name: 'Why amber' })).toBeInTheDocument();
-  expect(screen.getByText('Lumbar length')).toBeInTheDocument();
+  expect(screen.getByText('Spine length')).toBeInTheDocument();
+  expect(screen.getByText('Thoracic curve')).toBeInTheDocument();
   expect(screen.getByText(/2\.4 standard deviations above your preflight reference\./)).toBeInTheDocument();
   expect(screen.getByText(/1\.5 standard deviations below your preflight reference\./)).toBeInTheDocument();
   expect(screen.getByText('Confidence').parentElement).toHaveTextContent('70 %');
@@ -214,10 +249,10 @@ it('on a locked bridge it does not claim the monitor is down: it re-reads the se
   expect(screen.queryByTestId('no-monitor')).not.toBeInTheDocument();
 });
 
-it('with the backend it never shows a simulated rep count: only the title, start and total from the contract', async () => {
+it('with the backend it never shows a simulated rep count: only the title, start and sets from the contract', async () => {
   const { scheduler } = realSetup(example<TodayViewPayload>('ui-today.nodata'));
   const row = (await screen.findByText('Session in progress')).closest('li') as HTMLElement;
-  expect(row).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
+  expect(row).toHaveTextContent('In progress since 10:02 GMT, 4 sets of 15 reps.');
   expect(row).not.toHaveTextContent(/rep \d+ of/);
   expect(scheduler.active).toBe(0);
 });
@@ -297,12 +332,12 @@ describe('live rep on Today (real data)', () => {
     const world = realSetup(example<TodayViewPayload>('ui-today.nodata'));
     await line(world.api);
     const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
-    expect(row()).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, 4 sets of 15 reps.');
     expect(row()).not.toHaveTextContent('rep 3');
     act(() => {
       world.api.emitReps(SID, { kind: 'state', state: rep('ui-rep-state') });
     });
-    expect(row()).toHaveTextContent('In progress since 10:02 GMT, rep 3 of 10.');
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, rep 3 of 60.');
     act(() => {
       world.api.emitReps(SID, { kind: 'state', state: rep('ui-rep-state.no-signal') });
     });
@@ -310,7 +345,7 @@ describe('live rep on Today (real data)', () => {
     act(() => {
       world.api.emitReps(SID, { kind: 'state', state: rep('ui-rep-state') });
     });
-    expect(row()).toHaveTextContent('rep 3 of 10');
+    expect(row()).toHaveTextContent('rep 3 of 60');
     act(() => {
       world.api.emitReps(SID, { kind: 'lost' });
     });
@@ -322,13 +357,13 @@ describe('live rep on Today (real data)', () => {
     await line(world.api);
     const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
     act(() => {
-      world.api.emitReps(SID, { kind: 'state', state: { ...rep('ui-rep-state'), rep: 11 } });
+      world.api.emitReps(SID, { kind: 'state', state: { ...rep('ui-rep-state'), rep: 61 } });
     });
-    expect(row()).toHaveTextContent('In progress since 10:02 GMT, rep 11.');
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, rep 61.');
     act(() => {
       world.api.emitReps(SID, { kind: 'end', state: { ...rep('ui-rep-state'), phase: null, progress_pct: null } });
     });
-    expect(row()).toHaveTextContent('In progress since 10:02 GMT, 10 reps.');
+    expect(row()).toHaveTextContent('In progress since 10:02 GMT, 4 sets of 15 reps.');
   });
 
   it('forgets the live rep when the session in progress changes', async () => {
@@ -353,9 +388,9 @@ describe('live rep on Today (real data)', () => {
       expect(listeners.has(SID)).toBe(true);
     });
     act(() => {
-      listeners.get(SID)?.({ kind: 'state', state: { rep: 3, total: 10, phase: 'pulling', barPercent: 10, last: null, signal: 'ok' } });
+      listeners.get(SID)?.({ kind: 'state', state: { rep: 3, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 3, phase: 'pulling', barPercent: 10, last: null, signal: 'ok' } });
     });
-    expect(row()).toHaveTextContent('rep 3 of 10');
+    expect(row()).toHaveTextContent('rep 3 of 60');
     act(() => {
       window.dispatchEvent(new Event('focus'));
     });

@@ -7,7 +7,7 @@ from spine_engine.baseline.builder import StatisticalBaselineBuilder
 from spine_engine.errors import InsufficientDataError
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "baseline-request.json"
-ROM = "imu.l3.sagittal.rom_deg"
+ROM = "imu.t9.sagittal.rom_deg"
 
 
 def request() -> BaselineRequest:

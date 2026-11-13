@@ -294,7 +294,7 @@ describe('Stop: pain with the backend', () => {
 
   it('knows the rep from any stage, not only while the reps stage is open', async () => {
     const { api } = runningWorld();
-    await userEvent.click(await screen.findByRole('button', { name: 'Fit electrodes, IMU and cord' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Fit electrodes, ground, IMU and cord' }));
     await pushRep(api);
     await userEvent.click(screen.getByRole('button', { name: /Stop: pain/ }));
     expect(api.lastArg['sessions.stop']).toMatchObject({ repIndex: 3 });

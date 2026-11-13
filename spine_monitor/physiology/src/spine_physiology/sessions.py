@@ -9,6 +9,9 @@
   entero de chunks, así que todos sus streams comparten la rejilla de chunks. El chunk de las sesiones
   es `signals.chunk_ms`; el del fondo es el suyo, `schedule.background.chunk_ms` (cada `SessionPlan` y
   cada `SynthSpec` llevan su `chunk_ms`: no hay un tamaño de chunk global).
+  Los spine_check con `bracket` (pre/post) no tienen hora ni jitter: se colocan a `gap_s` justo antes o
+  después del ejercicio `of` ya planificado, con `phase` y `related_session_id`; si el ejercicio no se
+  hace ese día, o el spine_check no cabe en la ventana de encendido o choca con otra sesión, se omiten.
 - `active_chunks`: tramos de chunks que de verdad se emiten (el fondo pierde los chunks que tocan una
   pausa: reanuda en el primer chunk de su rejilla de fondo que empieza tras el fin de la sesión).
 - `synthesize`: arrays publicables de cada stream (señal + fallos de calidad + derivados del cordón),
@@ -23,8 +26,10 @@
   `calibration_id` vigente va en `Session.streams` y en los chunks del cordón (length_mm lo exige).
   Cada calibración se emite también por MQTT (retained, `topics.calibration`): ver `generator.calibration_envelope`.
 - `build_session`: registro Session (mission_context, streams con colocación y calibración,
-  load_declared y planned_reps en `exercise`, eventos rep_start/rep_end con device_ms y boot_id, y en
-  el fondo notas de pausa/reanudación).
+  load_declared, planned_reps (total), planned_sets y reps_per_set en `exercise`, eventos
+  set_start/set_end (set_index), rep_start/rep_end (rep_index contado a lo largo de la sesión, más
+  set_index) y rest_start/rest_end entre series, todos con device_ms y boot_id; phase y
+  related_session_id en los spine_check pre/post; en el fondo notas de pausa/reanudación).
 - `resimulate`: la misma sesión con otra gravedad (par A/B exacto).
 
 Decisiones de modelado (documentadas porque el config no las fija):
@@ -77,6 +82,7 @@ from spine_physiology.signals import (
     exercise_duration_s,
     rep_schedule,
     sample_times,
+    set_schedule,
 )
 from spine_physiology.signals import emg as emg_signal
 from spine_physiology.signals import imu as imu_signal
@@ -113,6 +119,9 @@ class SessionPlan:
     chunk_ms: float  # duración de chunk de esta sesión: `signals.chunk_ms`, o `schedule.background.chunk_ms` en el fondo
     # Solo en el fondo: intervalos [inicio, fin) ocupados por sesiones planificadas (sin chunks del fondo).
     pauses: tuple[tuple[datetime, datetime], ...]
+    # Solo en un spine_check que envuelve a un ejercicio (`schedule.sessions[].bracket`): pre/post y la sesión de ejercicio.
+    phase: Literal["pre", "post"] | None = None
+    related_session_id: str | None = None
 
 
 # --- Agenda -----------------------------------------------------------------------------------------
@@ -160,6 +169,8 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
     chunk = chunk_delta(chunk_ms)
     candidates: list[tuple[datetime, int, Any, ExerciseProtocol | SpineCheckProtocol]] = []
     for order, slot in enumerate(config.schedule.sessions):
+        if slot.bracket is not None or slot.time_utc is None or slot.start_jitter_s is None:
+            continue  # los spine_check pre/post se colocan tras el ejercicio al que envuelven
         if day.phase not in slot.phases or day.index % slot.every_n_days:
             continue
         rng = tree.rng(astronaut_id, day.index, slot.name, "plan")
@@ -199,12 +210,44 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
         )
         previous_end = end
 
+    for slot in config.schedule.sessions:
+        bracket = slot.bracket
+        if bracket is None or day.phase not in slot.phases or day.index % slot.every_n_days:
+            continue
+        anchor = next((p for p in plans if p.ref.slot == bracket.of), None)
+        if anchor is None:
+            continue  # el ejercicio no se hace ese día: tampoco su spine_check pre/post
+        protocol = config.protocol(slot.protocol_id)
+        duration = chunks_for(protocol_duration_s(protocol), chunk_ms=chunk_ms) * chunk
+        gap = timedelta(seconds=bracket.gap_s)
+        start = anchor.start - gap - duration if bracket.phase == "pre" else anchor.end + gap
+        end = start + duration
+        if start < power_on or end > power_off or any(p.start < end and p.end > start for p in plans):
+            continue  # no cabe en la ventana de encendido ni entre las demás sesiones
+        plans.append(
+            SessionPlan(
+                ref=SessionRef(astronaut_id, day.index, slot.name),
+                session_id=tree.uuid(astronaut_id, day.index, slot.name),
+                session_type=protocol.session_type,
+                protocol_id=slot.protocol_id,
+                start=start,
+                end=end,
+                stream_ids=tuple(protocol.streams),
+                reps=(),
+                background=False,
+                chunk_ms=chunk_ms,
+                pauses=(),
+                phase=bracket.phase,
+                related_session_id=anchor.session_id,
+            )
+        )
+
     background = config.schedule.background
     if background.enabled:
         start = day.at(background.start_time_utc)
         window_s = (day.at(background.end_time_utc) - start).total_seconds()
         end = start + chunks_for(window_s, chunk_ms=background.chunk_ms) * chunk_delta(background.chunk_ms)
-        pauses = tuple((max(p.start, start), min(p.end, end)) for p in plans if p.start < end and p.end > start)
+        pauses = tuple(sorted((max(p.start, start), min(p.end, end)) for p in plans if p.start < end and p.end > start))
         plans.append(
             SessionPlan(
                 ref=SessionRef(astronaut_id, day.index, background.name),
@@ -436,6 +479,25 @@ def _event(event_type: str, at: datetime, device_plan: DevicePlan, **extra: Any)
     return event
 
 
+def _exercise_events(plan: SessionPlan, protocol: ExerciseProtocol, device_plan: DevicePlan) -> list[dict[str, Any]]:
+    """set_start/set_end por serie, rep_start/rep_end de cada rep (rep_index de la sesión, set_index de su serie)
+    y rest_start/rest_end entre series; ordenados por instante (a igual instante: set_start, rep_start, rep_end, set_end)."""
+    at = lambda seconds: plan.start + timedelta(seconds=seconds)  # noqa: E731
+    sets = set_schedule(protocol)
+    timed: list[tuple[float, int, dict[str, Any]]] = []
+    for window in sets:
+        timed.append((window.start_s, 0, _event("set_start", at(window.start_s), device_plan, set_index=window.index)))
+        timed.append((window.end_s, 3, _event("set_end", at(window.end_s), device_plan, set_index=window.index)))
+    for previous, following in zip(sets, sets[1:], strict=False):
+        timed.append((previous.end_s, 4, _event("rest_start", at(previous.end_s), device_plan, set_index=previous.index)))
+        timed.append((following.start_s, -1, _event("rest_end", at(following.start_s), device_plan, set_index=previous.index)))
+    for rep in plan.reps:
+        timed.append((rep.start_s, 1, _event("rep_start", at(rep.start_s), device_plan, set_index=rep.set_index, rep_index=rep.index)))
+        timed.append((rep.end_s, 2, _event("rep_end", at(rep.end_s), device_plan, set_index=rep.set_index, rep_index=rep.index)))
+    timed.sort(key=lambda t: (t[0], t[1]))
+    return [event for _, _, event in timed]
+
+
 def build_session(
     config: MissionConfig,
     plan: SessionPlan,
@@ -461,9 +523,10 @@ def build_session(
         streams.append(declaration)
 
     events: list[dict[str, Any]] = []
-    for rep in plan.reps:
-        events.append(_event("rep_start", plan.start + timedelta(seconds=rep.start_s), device_plan, rep_index=rep.index))
-        events.append(_event("rep_end", plan.start + timedelta(seconds=rep.end_s), device_plan, rep_index=rep.index))
+    if plan.session_type == "exercise" and plan.reps:
+        protocol = config.protocol(plan.protocol_id)
+        assert isinstance(protocol, ExerciseProtocol)
+        events = _exercise_events(plan, protocol, device_plan)
     if plan.background:
         chunk = chunk_delta(plan.chunk_ms)
         ranges = active_chunks(plan)
@@ -494,6 +557,11 @@ def build_session(
         assert isinstance(protocol, ExerciseProtocol)
         payload["load_declared"] = protocol.load.model_dump(mode="json", exclude_none=True)
         payload["planned_reps"] = protocol.planned_reps
+        payload["planned_sets"] = protocol.planned_sets
+        payload["reps_per_set"] = protocol.reps_per_set
+    if plan.phase is not None and plan.related_session_id is not None:
+        payload["phase"] = plan.phase
+        payload["related_session_id"] = plan.related_session_id
     return Session.model_validate(payload)
 
 

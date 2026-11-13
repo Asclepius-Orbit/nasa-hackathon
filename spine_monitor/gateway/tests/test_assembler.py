@@ -62,7 +62,7 @@ def stretch_calibration(points: list[tuple[float, float]]) -> StretchCalibration
             "calibration_id": CAL_ID,
             "astronaut_id": "AST-01",
             "device_id": "wb-01",
-            "stream_id": "stretch_lumbar",
+            "stream_id": "stretch_spine",
             "created_at": "2026-11-13T07:05:00Z",
             "source": "device",
             "calibration_type": "stretch",
@@ -282,7 +282,7 @@ def test_emg_uses_gain_and_pin_from_settings(settings: GatewaySettings) -> None:
 def test_imu_chunk(assembler: ChunkAssembler) -> None:
     samples = ((8192, -4096, 0, 655, -65, 0),) * 9 + ((-8192, 4096, 16384, -655, 65, 131),)
     data = payload(session(assembler, imu(3, samples, t0=500)))
-    assert data["stream_id"] == "imu_l3"
+    assert data["stream_id"] == "imu_t9"
     assert (data["stream_kind"], data["sample_rate_hz"], data["n_samples"], data["t0_device_ms"], data["seq"]) == ("imu", 100.0, 10, 500, 0)
     assert data["units"] == {"accel_x": "g", "accel_y": "g", "accel_z": "g", "gyro_x": "deg/s", "gyro_y": "deg/s", "gyro_z": "deg/s"}
     assert data["data"]["accel_x"] == [1.0] * 9 + [-1.0]
@@ -350,7 +350,7 @@ def test_samples_of_the_wrong_shape_raise(assembler: ChunkAssembler, frame: Fram
 @pytest.mark.contract
 def test_stretch_chunk_without_calibration(assembler: ChunkAssembler) -> None:
     data = payload(session(assembler, cord(0, (341, 682), t0=184000)))
-    assert (data["stream_id"], data["stream_kind"], data["sample_rate_hz"], data["n_samples"]) == ("stretch_lumbar", "stretch", 20.0, 2)
+    assert (data["stream_id"], data["stream_kind"], data["sample_rate_hz"], data["n_samples"]) == ("stretch_spine", "stretch", 20.0, 2)
     assert data["units"] == {"adc_counts": "count", "resistance_ohm": "ohm"}
     assert data["data"] == {"adc_counts": [341, 682], "resistance_ohm": [5000.0, 20000.0]}
     assert data["quality"] == {"adc_counts": {"score": 1.0, "flags": [], "assessed_by": "gateway"}}

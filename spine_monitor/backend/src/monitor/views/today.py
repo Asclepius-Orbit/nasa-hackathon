@@ -21,10 +21,10 @@ class SessionLike(Protocol):
     def state(self) -> str: ...
 
 
-def _in_progress(session_and_reps: tuple[SessionLike, int | None] | None, now: datetime, stale_session_hours: float) -> dict[str, Any] | None:
-    if session_and_reps is None:
+def _in_progress(session_and_protocol: tuple[SessionLike, Mapping[str, Any] | None] | None, now: datetime, stale_session_hours: float) -> dict[str, Any] | None:
+    if session_and_protocol is None:
         return None
-    session, total_reps = session_and_reps
+    session, protocol = session_and_protocol
     payload = session.payload
     if session.state not in ACTIVE_SESSION_STATES or now - instant(payload["started_at"]) > timedelta(hours=stale_session_hours):
         return None
@@ -32,8 +32,16 @@ def _in_progress(session_and_reps: tuple[SessionLike, int | None] | None, now: d
         "session_id": payload["session_id"],
         "protocol_id": payload["protocol_id"],
         "started_at": payload["started_at"],
-        "total_reps": total_reps,
+        "planned_sets": _plan(payload, protocol, "planned_sets", "planned_sets"),
+        "reps_per_set": _plan(payload, protocol, "reps_per_set", "reps_per_set"),
+        "total_reps": _plan(payload, protocol, "planned_reps", "total_reps"),
     }
+
+
+def _plan(payload: Mapping[str, Any], protocol: Mapping[str, Any] | None, session_key: str, catalog_key: str) -> int | None:
+    """What the session planned, otherwise what its protocol says, otherwise null."""
+    planned = payload.get(session_key)
+    return planned if planned is not None else None if protocol is None else protocol[catalog_key]
 
 
 def _trust(assessment: Mapping[str, Any]) -> dict[str, Any]:
@@ -49,7 +57,7 @@ def _trust(assessment: Mapping[str, Any]) -> dict[str, Any]:
 def build_today(
     assessment: Mapping[str, Any] | None,
     lumbar: LumbarDelta | None,
-    session_in_progress: tuple[SessionLike, int | None] | None,
+    session_in_progress: tuple[SessionLike, Mapping[str, Any] | None] | None,
     also_today: Sequence[str],
     now: datetime,
     stale_session_hours: float,
@@ -57,7 +65,7 @@ def build_today(
     """The Today screen. Without an assessment the level is 'nodata' and every assessment field is null or empty.
 
     `lumbar` arrives already computed (None when unknown): the delta and the instant of its measure are both
-    present or both null. `session_in_progress` is the latest session with the total_reps of its protocol; it is
+    present or both null. `session_in_progress` is the latest session with its plan (sets, reps per set, total reps); it is
     shown only while its state is starting or running and it started at most `stale_session_hours` before `now`
     (an older one never ended and is not live).
     """

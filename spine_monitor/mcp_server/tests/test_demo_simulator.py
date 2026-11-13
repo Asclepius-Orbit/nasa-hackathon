@@ -17,7 +17,7 @@ from spine_mcp_server.demo_data import build_demo_app_reader, build_demo_assess_
 
 AST = "AST-01"
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
-STRETCH = "stretch.lumbar.peak_elongation_mm"
+STRETCH = "stretch.full_spine.peak_elongation_mm"
 OTHER = "emg.latissimus_dorsi.left.rms_pct_mvc"
 SURGEON = "REC_CONTACT_FLIGHT_SURGEON"
 

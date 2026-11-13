@@ -91,7 +91,7 @@ def chunks_for(
                 "schema_version": "1.0.0",
                 "astronaut_id": "AST-01",
                 "device_id": "wb-01",
-                "stream_id": "imu_l3",
+                "stream_id": "imu_t9",
                 "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
                 "source": "device",
                 "boot_id": boot_id,
@@ -266,20 +266,20 @@ def test_one_sagittal_bend_gives_its_rom_and_peak_and_still_planes_give_zero():
     result = run([rep(1, 2.0, 4.0)], sagittal_context())
 
     got = values(result)
-    assert got["imu.l3.sagittal.rom_deg"] == pytest.approx(20.0)
-    assert got["imu.l3.sagittal.peak_angular_velocity_dps"] == pytest.approx(20.0)
+    assert got["imu.t9.sagittal.rom_deg"] == pytest.approx(20.0)
+    assert got["imu.t9.sagittal.peak_angular_velocity_dps"] == pytest.approx(20.0)
     for plane in ("frontal", "transverse"):
-        assert got[f"imu.l3.{plane}.rom_deg"] == pytest.approx(0.0, abs=1e-12)
-        assert got[f"imu.l3.{plane}.peak_angular_velocity_dps"] == pytest.approx(0.0, abs=1e-12)
-    assert got["imu.l3.accel_rms_g"] == 0.0
+        assert got[f"imu.t9.{plane}.rom_deg"] == pytest.approx(0.0, abs=1e-12)
+        assert got[f"imu.t9.{plane}.peak_angular_velocity_dps"] == pytest.approx(0.0, abs=1e-12)
+    assert got["imu.t9.accel_rms_g"] == 0.0
     assert result.skipped == ()
 
 
 def test_the_output_order_streams_and_n_are_fixed():
     result = run([rep(1, 2.0, 4.0)], sagittal_context())
 
-    assert [f.feature_id for f in result.computed] == ids_for("l3")
-    assert {f.streams for f in result.computed} == {("imu_l3",)}
+    assert [f.feature_id for f in result.computed] == ids_for("t9")
+    assert {f.streams for f in result.computed} == {("imu_t9",)}
     assert {f.n for f in result.computed} == {1}
     assert all(f.quality is None for f in result.computed)
 
@@ -300,8 +300,8 @@ def test_the_window_is_half_open_start_sample_in_end_sample_out():
     gyro_y[400] += 50.0
     result = run([rep(1, 2.0, 4.0)], make_context(chunks_for({"gyro_y": gyro_y})))
 
-    assert values(result)["imu.l3.sagittal.peak_angular_velocity_dps"] == pytest.approx(7.0)
-    assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(0.07)
+    assert values(result)["imu.t9.sagittal.peak_angular_velocity_dps"] == pytest.approx(7.0)
+    assert values(result)["imu.t9.sagittal.rom_deg"] == pytest.approx(0.07)
 
 
 def test_values_are_the_mean_over_repetitions_and_n_counts_them():
@@ -309,8 +309,8 @@ def test_values_are_the_mean_over_repetitions_and_n_counts_them():
     result = run([rep(1, 2.0, 4.0), rep(2, 6.0, 8.0)], make_context(chunks_for({"gyro_y": gyro_y})))
 
     got = values(result)
-    assert got["imu.l3.sagittal.rom_deg"] == pytest.approx(15.0)
-    assert got["imu.l3.sagittal.peak_angular_velocity_dps"] == pytest.approx(15.0)
+    assert got["imu.t9.sagittal.rom_deg"] == pytest.approx(15.0)
+    assert got["imu.t9.sagittal.peak_angular_velocity_dps"] == pytest.approx(15.0)
     assert {f.n for f in result.computed} == {2}
 
 
@@ -320,13 +320,13 @@ def test_a_still_repetition_counts_for_n_and_pulls_the_mean_down():
     result = run(reps, make_context(chunks_for({"gyro_y": gyro_y})))
 
     by_id = {f.feature_id: f for f in result.computed}
-    assert (by_id["imu.l3.sagittal.rom_deg"].value, by_id["imu.l3.sagittal.rom_deg"].n) == (pytest.approx(10.0), 3)
+    assert (by_id["imu.t9.sagittal.rom_deg"].value, by_id["imu.t9.sagittal.rom_deg"].n) == (pytest.approx(10.0), 3)
 
 
 def test_a_repetition_without_samples_does_not_count():
     result = run([rep(1, 2.0, 4.0), rep(2, 100.0, 102.0)], sagittal_context())
 
-    assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(20.0)
+    assert values(result)["imu.t9.sagittal.rom_deg"] == pytest.approx(20.0)
     assert {f.n for f in result.computed} == {1}
 
 
@@ -334,14 +334,14 @@ def test_repetitions_without_any_imu_sample_give_no_data():
     result = run([rep(1, 100.0, 102.0)], sagittal_context())
 
     assert result.computed == ()
-    assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.NO_DATA)
+    assert skipped(result) == dict.fromkeys(ids_for("t9"), Reason.NO_DATA)
 
 
 def test_no_repetitions_skip_everything_as_too_few_repetitions():
     result = run([], sagittal_context())
 
     assert result.computed == ()
-    assert [(s.feature_id, s.reason) for s in result.skipped] == [(i, Reason.TOO_FEW_REPETITIONS) for i in ids_for("l3")]
+    assert [(s.feature_id, s.reason) for s in result.skipped] == [(i, Reason.TOO_FEW_REPETITIONS) for i in ids_for("t9")]
 
 
 def test_the_gyro_bias_of_the_calibration_is_subtracted():
@@ -351,9 +351,9 @@ def test_the_gyro_bias_of_the_calibration_is_subtracted():
     # con sesgo 0 el sesgo real del giróscopo queda en la señal y se suma al pico de cada plano
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=no_bias))
 
-    assert values(result)["imu.l3.sagittal.peak_angular_velocity_dps"] == pytest.approx(20.12)
-    assert values(result)["imu.l3.frontal.peak_angular_velocity_dps"] == pytest.approx(0.31)
-    assert values(result)["imu.l3.transverse.peak_angular_velocity_dps"] == pytest.approx(0.05)
+    assert values(result)["imu.t9.sagittal.peak_angular_velocity_dps"] == pytest.approx(20.12)
+    assert values(result)["imu.t9.frontal.peak_angular_velocity_dps"] == pytest.approx(0.31)
+    assert values(result)["imu.t9.transverse.peak_angular_velocity_dps"] == pytest.approx(0.05)
 
 
 def test_the_mounting_of_the_calibration_picks_the_axis_and_its_sign():
@@ -365,8 +365,8 @@ def test_the_mounting_of_the_calibration_picks_the_axis_and_its_sign():
     result = run([rep(1, 2.0, 4.0)], make_context(chunks_for({"gyro_x": gyro_x}), edit=swap))
 
     got = values(result)
-    assert got["imu.l3.sagittal.rom_deg"] == pytest.approx(20.0)
-    assert got["imu.l3.frontal.rom_deg"] == pytest.approx(0.0, abs=1e-12)
+    assert got["imu.t9.sagittal.rom_deg"] == pytest.approx(20.0)
+    assert got["imu.t9.frontal.rom_deg"] == pytest.approx(0.0, abs=1e-12)
 
 
 def test_a_mounting_without_two_planes_skips_both_even_on_a_slow_stream():
@@ -375,17 +375,17 @@ def test_a_mounting_without_two_planes_skips_both_even_on_a_slow_stream():
 
     result = run([rep(1, 2.0, 4.0)], sagittal_context(rate=49.0, edit=broken))
 
-    expected = {f"imu.l3.{plane}.{name}": Reason.NO_CALIBRATION for plane in ("sagittal", "transverse") for name in ("rom_deg", "peak_angular_velocity_dps")}
+    expected = {f"imu.t9.{plane}.{name}": Reason.NO_CALIBRATION for plane in ("sagittal", "transverse") for name in ("rom_deg", "peak_angular_velocity_dps")}
     assert skipped(result) == expected
     assert len(result.skipped) == len(expected)
-    assert list(values(result)) == ["imu.l3.frontal.rom_deg", "imu.l3.frontal.peak_angular_velocity_dps", "imu.l3.accel_rms_g"]
+    assert list(values(result)) == ["imu.t9.frontal.rom_deg", "imu.t9.frontal.peak_angular_velocity_dps", "imu.t9.accel_rms_g"]
 
 
 def test_a_repetition_with_a_single_sample_counts():
     result = run([rep(1, 2.0, 2.005)], sagittal_context())
 
     assert {f.n for f in result.computed} == {1}
-    assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(0.2)
+    assert values(result)["imu.t9.sagittal.rom_deg"] == pytest.approx(0.2)
 
 
 def test_a_non_imu_stream_with_a_spine_level_is_ignored():
@@ -395,19 +395,19 @@ def test_a_non_imu_stream_with_a_spine_level_is_ignored():
 
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=emg_with_level))
 
-    assert [f.feature_id for f in result.computed] == ids_for("l3")
+    assert [f.feature_id for f in result.computed] == ids_for("t9")
     assert result.skipped == ()
 
 
 def test_the_skips_of_every_stream_are_kept():
     def expired_and_second(raw: dict[str, Any]) -> None:
         imu_calibration(raw)["valid_until"] = "2026-11-13T09:00:00Z"
-        decl = next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_l3")
+        decl = next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_t9")
         raw["session"]["streams"].append({**decl, "stream_id": "imu_t12", "placement": {"spine_level": "t12"}})
 
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=expired_and_second))
 
-    expected = [(i, Reason.CALIBRATION_EXPIRED) for i in ids_for("l3")] + [(i, Reason.STREAM_MISSING) for i in ids_for("t12")]
+    expected = [(i, Reason.CALIBRATION_EXPIRED) for i in ids_for("t9")] + [(i, Reason.STREAM_MISSING) for i in ids_for("t12")]
     assert [(s.feature_id, s.reason) for s in result.skipped] == expected
 
 
@@ -417,14 +417,14 @@ def test_a_mounting_without_a_plane_skips_that_plane_as_no_calibration():
 
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=broken))
 
-    sagittal = [i for i in ids_for("l3") if ".sagittal." in i]
+    sagittal = [i for i in ids_for("t9") if ".sagittal." in i]
     assert skipped(result) == dict.fromkeys(sagittal, Reason.NO_CALIBRATION)
-    assert set(values(result)) == set(ids_for("l3")) - set(sagittal)
+    assert set(values(result)) == set(ids_for("t9")) - set(sagittal)
 
 
 def test_the_spine_level_comes_from_the_session_declaration():
     def t12(raw: dict[str, Any]) -> None:
-        next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_l3")["placement"] = {"spine_level": "t12"}
+        next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_t9")["placement"] = {"spine_level": "t12"}
 
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=t12))
 
@@ -438,7 +438,7 @@ def test_without_calibration_everything_is_skipped_as_no_calibration():
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=drop))
 
     assert result.computed == ()
-    assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.NO_CALIBRATION)
+    assert skipped(result) == dict.fromkeys(ids_for("t9"), Reason.NO_CALIBRATION)
 
 
 def test_an_expired_calibration_skips_everything_as_calibration_expired():
@@ -448,28 +448,28 @@ def test_an_expired_calibration_skips_everything_as_calibration_expired():
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=expire))
 
     assert result.computed == ()
-    assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.CALIBRATION_EXPIRED)
+    assert skipped(result) == dict.fromkeys(ids_for("t9"), Reason.CALIBRATION_EXPIRED)
 
 
 def test_a_declared_imu_stream_without_chunks_is_stream_missing():
     result = run([rep(1, 2.0, 4.0)], make_context([]))
 
     assert result.computed == ()
-    assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.STREAM_MISSING)
+    assert skipped(result) == dict.fromkeys(ids_for("t9"), Reason.STREAM_MISSING)
 
 
 def test_chunks_without_a_clock_anchor_give_no_data():
     result = run([rep(1, 2.0, 4.0)], make_context(chunks_for({"gyro_y": [0.0] * 600}), syncs=[sync(boot_id=1)]))
 
     assert result.computed == ()
-    assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.NO_DATA)
+    assert skipped(result) == dict.fromkeys(ids_for("t9"), Reason.NO_DATA)
 
 
 @pytest.mark.parametrize("rate", [10.0, 49.0, 50.0, 100.0])
 def test_the_sample_rate_never_skips_a_feature(rate: float):
     result = run([rep(1, 2.0, 4.0)], sagittal_context(rate=rate))
 
-    assert [f.feature_id for f in result.computed] == ids_for("l3")
+    assert [f.feature_id for f in result.computed] == ids_for("t9")
     assert result.skipped == ()
 
 
@@ -487,13 +487,13 @@ def test_the_range_of_motion_integrates_each_sample_with_the_period_of_its_own_c
     slow = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 10)}, rate=10.0, seq0=60, t0_device_ms=6000)
     result = run([rep(1, 2.0, 4.0)], make_context(fast + slow))
 
-    assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(20.0)
+    assert values(result)["imu.t9.sagittal.rom_deg"] == pytest.approx(20.0)
 
 
 def test_a_slow_stream_without_repetitions_is_too_few_repetitions_for_every_feature():
     result = run([], sagittal_context(rate=10.0))
 
-    assert skipped(result) == dict.fromkeys(ids_for("l3"), Reason.TOO_FEW_REPETITIONS)
+    assert skipped(result) == dict.fromkeys(ids_for("t9"), Reason.TOO_FEW_REPETITIONS)
 
 
 def test_each_repetition_reads_the_segment_with_most_samples_in_its_window():
@@ -504,17 +504,17 @@ def test_each_repetition_reads_the_segment_with_most_samples_in_its_window():
     syncs = [sync(), sync(boot_id=7, utc=at(2.5))]
     result = run([rep(1, 2.0, 4.0)], make_context(first + second, syncs=syncs))
 
-    assert values(result)["imu.l3.sagittal.rom_deg"] == pytest.approx(15.0)
+    assert values(result)["imu.t9.sagittal.rom_deg"] == pytest.approx(15.0)
 
 
 def test_every_declared_imu_stream_gets_its_own_level():
     def second_stream(raw: dict[str, Any]) -> None:
-        decl = next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_l3")
+        decl = next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_t9")
         raw["session"]["streams"].append({**decl, "stream_id": "imu_t12", "placement": {"spine_level": "t12"}})
 
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=second_stream))
 
-    assert [f.feature_id for f in result.computed] == ids_for("l3")
+    assert [f.feature_id for f in result.computed] == ids_for("t9")
     assert skipped(result) == dict.fromkeys(ids_for("t12"), Reason.STREAM_MISSING)
 
 
@@ -523,7 +523,7 @@ def test_the_accelerometer_rms_is_the_mean_over_repetitions():
     gyro_y = with_bias("gyro_y", [0.0] * 1000)
     result = run([rep(1, 2.0, 4.0), rep(2, 6.0, 8.0)], make_context(chunks_for({"accel_x": accel_x, "gyro_y": gyro_y})))
 
-    assert values(result)["imu.l3.accel_rms_g"] == pytest.approx(0.375)
+    assert values(result)["imu.t9.accel_rms_g"] == pytest.approx(0.375)
 
 
 # --- propiedades ---------------------------------------------------------------------------------

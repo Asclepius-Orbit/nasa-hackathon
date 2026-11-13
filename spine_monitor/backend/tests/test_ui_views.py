@@ -15,7 +15,7 @@ AST = "AST-01"
 LAUNCH = "2026-12-13"  # L-30 on the harness date (2026-11-13): preflight, mission day -30
 LAT = "lat_pulldown_standing_v1"
 SPINE_CHECK = "spine_length_rest_v1"
-ELONGATION = "stretch.lumbar.peak_elongation_mm"
+ELONGATION = "stretch.full_spine.peak_elongation_mm"
 
 
 def url(view: str) -> str:
@@ -226,7 +226,7 @@ async def test_today_with_assessment_lumbar_delta_session_and_baseline_pending(h
     assert today["level"] == "amber"
     assert today["lumbar_delta_mm"] == pytest.approx(8.0 - entry["mean"])
     assert today["session_in_progress"]["session_id"] == session_id(2)
-    assert today["session_in_progress"]["total_reps"] == 10
+    assert today["session_in_progress"]["total_reps"] == 60
     # The running session is not complete, so 0 of 3 reference sessions are recorded; one started today, so no TASK_SESSION.
     assert today["also_today"] == ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION"]
 
@@ -516,7 +516,7 @@ async def test_session_view_without_device_status_has_no_sensor_checks(harness):
     entry = protocol_entry(LAT)
     assert entry is not None
     assert view["session_id"] == payload["session_id"]
-    assert (view["state"], view["protocol_id"], view["total_reps"], view["rest_seconds"]) == ("running", LAT, 10, 120)
+    assert (view["state"], view["protocol_id"], view["total_reps"], view["rest_seconds"]) == ("running", LAT, 60, 120)
     assert view["fit_items"] == [item["id"] for item in entry["fit_items"]]
     assert view["sensor_checks"] == []
     assert view["calibration"] is None
@@ -550,7 +550,7 @@ async def test_session_view_follows_the_flow_through_the_real_session_endpoints(
     view = await get(harness, f"/ui/sessions/{started}/view", "app/ui-session")
 
     assert view["calibration"]["acked"] is True
-    assert {c["stream"]: c["state"] for c in view["sensor_checks"]}["stretch_lumbar"] == "stalled"
+    assert {c["stream"]: c["state"] for c in view["sensor_checks"]}["stretch_spine"] == "stalled"
 
 
 async def test_session_view_of_a_spine_check_has_no_reps(harness):

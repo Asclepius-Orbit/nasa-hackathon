@@ -9,7 +9,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-EventType = Literal["rep_start", "rep_end", "mvc_start", "mvc_end", "rest_start", "rest_end", "pain_reported", "artifact", "note"]
+EventType = Literal["set_start", "set_end", "rep_start", "rep_end", "mvc_start", "mvc_end", "rest_start", "rest_end", "pain_reported", "artifact", "note"]
 StopReason = Literal["completed", "aborted_by_user", "aborted_pain", "aborted_other"]
 CalibrationType = Literal["stretch", "emg_mvc", "imu"]
 
@@ -32,6 +32,7 @@ class StopBody(_Body):
 
 class EventBody(_Body):
     event_type: EventType
+    set_index: int | None = Field(default=None, ge=1)
     rep_index: int | None = Field(default=None, ge=1)
     note: str | None = Field(default=None, max_length=200)
 

@@ -7,7 +7,7 @@ from spine_engine.risk import DeviationRiskModel
 
 pytestmark = pytest.mark.property
 
-FEATURES = ["stretch.lumbar.peak_elongation_mm", "emg.latissimus_dorsi.left.rms_pct_mvc", "imu.l3.sagittal.rom_deg", "symptoms.pain.lumbar"]
+FEATURES = ["stretch.full_spine.peak_elongation_mm", "emg.latissimus_dorsi.left.rms_pct_mvc", "imu.t9.sagittal.rom_deg", "symptoms.pain.lumbar"]
 z_values = st.floats(min_value=-50.0, max_value=50.0, allow_nan=False, allow_infinity=False)
 unit = st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)
 weights = st.fixed_dictionaries({d: st.floats(min_value=0.0, max_value=10.0, allow_nan=False) for d in AssessmentDomain})

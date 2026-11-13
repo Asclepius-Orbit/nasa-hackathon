@@ -20,7 +20,7 @@ NOWS = {
     "2026-11-13T12:00:00Z": datetime(2026, 11, 13, 12, 34, 56, tzinfo=UTC),
     "2026-11-06T09:00:00Z": datetime(2026, 11, 6, 9, 30, tzinfo=UTC),
 }
-STRETCH = "stretch.lumbar.peak_elongation_mm"
+STRETCH = "stretch.full_spine.peak_elongation_mm"
 SIMULATIONS = {
     "no_overrides": [],
     "add_1mm": [{"feature_id": STRETCH, "mode": "add", "value": 1}],
@@ -30,7 +30,7 @@ SIMULATIONS = {
     "mixed_clamped_high": [
         {"feature_id": STRETCH, "mode": "add", "value": 3},
         {"feature_id": STRETCH, "mode": "scale", "value": 1.5},
-        {"feature_id": "imu.l3.sagittal.rom_deg", "mode": "add", "value": 9},
+        {"feature_id": "imu.t9.sagittal.rom_deg", "mode": "add", "value": 9},
     ],
 }
 

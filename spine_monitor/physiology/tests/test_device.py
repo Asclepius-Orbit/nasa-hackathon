@@ -55,7 +55,7 @@ def channels_for(kind: StreamKind, n: int, *, length: bool = True) -> dict[str, 
     return out
 
 
-STREAMS = {"emg_lat_left": StreamKind.EMG, "imu_l3": StreamKind.IMU, "stretch_lumbar": StreamKind.STRETCH}
+STREAMS = {"emg_lat_left": StreamKind.EMG, "imu_t9": StreamKind.IMU, "stretch_spine": StreamKind.STRETCH}
 SCHEMA = "telemetry/stream-chunk"
 
 
@@ -95,11 +95,11 @@ def test_chunk_content_and_metadata(config):
     assert emg.signal_kind.value == "raw" and emg.acquisition.adc_bits == config.signals.emg.acquisition.adc_bits
     assert emg.quality.emg.assessed_by.value == "gateway"
 
-    imu = emit(device, config, "imu_l3")[0].chunk
+    imu = emit(device, config, "imu_t9")[0].chunk
     assert imu.config.accel_range_g == config.signals.imu.accel_range_g
     assert imu.units.gyro_x == "deg/s"
 
-    stretch = emit(device, config, "stretch_lumbar")[0].chunk
+    stretch = emit(device, config, "stretch_spine")[0].chunk
     assert stretch.calibration_id == CAL_ID
     assert stretch.circuit.series_resistor_ohm == config.signals.stretch.circuit.series_resistor_ohm
     assert stretch.units.length_mm == "mm"
@@ -107,14 +107,14 @@ def test_chunk_content_and_metadata(config):
 
 def test_stretch_without_length_needs_no_calibration_but_length_requires_it(config):
     device = SimDevice(config, single_boot_plan(config))
-    plain = emit(device, config, "stretch_lumbar", channels=channels_for(StreamKind.STRETCH, 200, length=False), n=200, cal=None)
+    plain = emit(device, config, "stretch_spine", channels=channels_for(StreamKind.STRETCH, 200, length=False), n=200, cal=None)
     for o in plain:
         payload = dump(o.chunk)
         assert "calibration_id" not in payload and "length_mm" not in payload["data"]
         assert validation.errors(SCHEMA, payload) == []
     with pytest.raises(ValueError, match="calibration_id"):
         device.chunks(
-            np.random.default_rng(0), stream_id="stretch_lumbar", session_id=SESSION, start=T0, rate_hz=config.signals.stretch.sample_rate_hz,
+            np.random.default_rng(0), stream_id="stretch_spine", session_id=SESSION, start=T0, rate_hz=config.signals.stretch.sample_rate_hz,
             chunk_ms=config.signals.chunk_ms,
             channels=channels_for(StreamKind.STRETCH, 200),
             quality=clean_quality(StreamKind.STRETCH, 10),
@@ -174,7 +174,7 @@ def test_seq_is_continuous_across_calls_and_advance(config):
     after = emit(device, config, "emg_lat_left", n=300, start=T0 + timedelta(seconds=3))
     assert [o.seq for o in after] == [30, 31, 32]
     # El seq es por stream.
-    assert [o.seq for o in emit(device, config, "imu_l3", n=30)] == [0, 1, 2]
+    assert [o.seq for o in emit(device, config, "imu_t9", n=30)] == [0, 1, 2]
 
 
 def test_advance_matches_emitting_the_same_span(config):
@@ -213,11 +213,11 @@ def test_lost_chunks_jump_seq_and_flag_the_next_one(config):
 def test_clock_uncertain_after_long_time_without_anchor(config):
     plan = single_boot_plan(config, drift_ppm=40.0, boot_at=T0 - timedelta(hours=1))
     device = SimDevice(config, plan)
-    flagged = emit(device, config, "imu_l3", n=100)[0].chunk
+    flagged = emit(device, config, "imu_t9", n=100)[0].chunk
     assert "clock_uncertain" in [f.value for f in flagged.quality.accel.flags]
     # Con un anclaje reciente el error acumulado vuelve a ser pequeño.
     device.clock_sync(np.random.default_rng(0), T0 - timedelta(seconds=1))
-    clean = emit(device, config, "imu_l3", n=100)[0].chunk
+    clean = emit(device, config, "imu_t9", n=100)[0].chunk
     assert "clock_uncertain" not in [f.value for f in clean.quality.accel.flags]
 
 
@@ -317,7 +317,7 @@ def test_status_ok_and_validates_against_contract(config):
     assert payload["status"] == "ok" and payload["source"] == "simulator" and payload["boot_id"] == 1234
     assert payload["link"]["type"] == config.device.link_type
     by_id = {s["stream_id"]: s for s in payload["streams"]}
-    assert by_id["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in by_id["imu_l3"]
+    assert by_id["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in by_id["imu_t9"]
     assert {s["state"] for s in payload["streams"]} == {"active"}
 
 
@@ -328,11 +328,11 @@ def test_status_reports_the_active_stream_rate(config):
     at = T0 + timedelta(seconds=5)
     def rate():
         return {s["stream_id"]: s["sample_rate_hz"] for s in dump(device.status(np.random.default_rng(0), at))["streams"]}
-    assert rate()["imu_l3"] == nominal
-    device.advance("imu_l3", start=T0, n_samples=100, rate_hz=reduced, chunk_ms=100)
-    assert rate()["imu_l3"] == reduced and rate()["emg_lat_left"] == config.signals.rate(StreamKind.EMG)
-    emit(device, config, "imu_l3", n=100, start=T0 + timedelta(seconds=2))
-    assert rate()["imu_l3"] == nominal
+    assert rate()["imu_t9"] == nominal
+    device.advance("imu_t9", start=T0, n_samples=100, rate_hz=reduced, chunk_ms=100)
+    assert rate()["imu_t9"] == reduced and rate()["emg_lat_left"] == config.signals.rate(StreamKind.EMG)
+    emit(device, config, "imu_t9", n=100, start=T0 + timedelta(seconds=2))
+    assert rate()["imu_t9"] == nominal
 
 
 def test_clock_anchors_stay_sorted_whatever_the_sync_order(config):
@@ -352,7 +352,7 @@ def test_battery_drains_and_drops_to_degraded(config):
     hour = T0 + timedelta(hours=1)
     assert device.battery_pct(hour) == pytest.approx(cfg.start_pct - cfg.drain_pct_per_hour_idle)
     device.advance("emg_lat_left", start=T0, n_samples=1_800_000, rate_hz=1000.0, chunk_ms=100)  # 30 min de streaming
-    device.advance("imu_l3", start=T0, n_samples=180_000, rate_hz=100.0, chunk_ms=100)  # el mismo tramo no cuenta doble
+    device.advance("imu_t9", start=T0, n_samples=180_000, rate_hz=100.0, chunk_ms=100)  # el mismo tramo no cuenta doble
     expected = cfg.start_pct - cfg.drain_pct_per_hour_idle - (cfg.drain_pct_per_hour_streaming - cfg.drain_pct_per_hour_idle) * 0.5
     assert device.battery_pct(hour) == pytest.approx(expected)
     assert device.battery_pct(T0 + timedelta(days=5)) == 0.0
@@ -375,7 +375,7 @@ def test_stalled_stream_degrades_status(config):
     payload = dump(device.status(np.random.default_rng(0), T0 + timedelta(milliseconds=500)))
     assert payload["status"] == "degraded"
     states = {s["stream_id"]: s["state"] for s in payload["streams"]}
-    assert states["emg_lat_left"] == "stalled" and states["imu_l3"] == "active"
+    assert states["emg_lat_left"] == "stalled" and states["imu_t9"] == "active"
     assert validation.errors("telemetry/device-status", payload) == []
     after = dump(device.status(np.random.default_rng(0), T0 + timedelta(seconds=5)))
     assert after["status"] == "ok"
@@ -444,17 +444,17 @@ def test_chunk_size_is_the_one_given_per_call(config):
     def quality(n):
         return clean_quality(StreamKind.IMU, n)
     device = SimDevice(config, single_boot_plan(config))
-    heavy = list(device.chunks(np.random.default_rng(0), stream_id="imu_l3", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=100.0,
+    heavy = list(device.chunks(np.random.default_rng(0), stream_id="imu_t9", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=100.0,
                                channels=channels, quality=quality(100), calibration_id=None))  # fmt: skip
     device = SimDevice(config, single_boot_plan(config))
-    light = list(device.chunks(np.random.default_rng(0), stream_id="imu_l3", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=1000.0,
+    light = list(device.chunks(np.random.default_rng(0), stream_id="imu_t9", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=1000.0,
                                channels=channels, quality=quality(10), calibration_id=None))  # fmt: skip
     assert (len(heavy), len(light)) == (100, 10)
     assert {o.chunk.n_samples for o in heavy} == {1} and {o.chunk.n_samples for o in light} == {10}
-    assert [o.seq for o in light] == list(range(10)) and device.next_seq(1234, "imu_l3") == 10
+    assert [o.seq for o in light] == list(range(10)) and device.next_seq(1234, "imu_t9") == 10
     other = SimDevice(config, single_boot_plan(config))
-    other.advance("imu_l3", start=T0, n_samples=100, rate_hz=rate, chunk_ms=1000.0)
-    assert other.next_seq(1234, "imu_l3") == 10
+    other.advance("imu_t9", start=T0, n_samples=100, rate_hz=rate, chunk_ms=1000.0)
+    assert other.next_seq(1234, "imu_t9") == 10
 
 
 def test_status_last_seq_uses_published_when_given(config):
@@ -465,7 +465,7 @@ def test_status_last_seq_uses_published_when_given(config):
         return {s["stream_id"]: s for s in dump(device.status(np.random.default_rng(0), at, **kw))["streams"]}
     assert by_id()["emg_lat_left"]["last_seq"] == 9  # sin published: next_seq - 1
     published = by_id(published={"emg_lat_left": 4})
-    assert published["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in published["imu_l3"]
+    assert published["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in published["imu_t9"]
     assert "last_seq" not in by_id(published={})["emg_lat_left"]  # nada publicado todavía: no declara seq
     payload = dump(device.status(np.random.default_rng(0), at, published={"emg_lat_left": 4}))
     assert validation.errors("telemetry/device-status", payload) == []
@@ -486,15 +486,15 @@ def test_chunks_rejects_malformed_input_naming_the_problem(config):
 
     imu = channels_for(StreamKind.IMU, n)
     short = {k: v for k, v in imu.items() if k != "gyro_z"}
-    with pytest.raises(ValueError, match=r"^imu stream imu_l3 needs channels \['gyro_z'\]$"):
-        call("imu_l3", short)
+    with pytest.raises(ValueError, match=r"^imu stream imu_t9 needs channels \['gyro_z'\]$"):
+        call("imu_t9", short)
     with pytest.raises(ValueError, match=r"^calibration_id is required when length_mm is present$"):
-        call("stretch_lumbar", channels_for(StreamKind.STRETCH, n), cal=None)
+        call("stretch_spine", channels_for(StreamKind.STRETCH, n), cal=None)
     ragged = {**imu, "gyro_z": imu["gyro_z"][: n - 1]}
     with pytest.raises(ValueError, match=rf"^channels must have the same length, got \[{n - 1}, {n}\]$"):
-        call("imu_l3", ragged)
+        call("imu_t9", ragged)
     with pytest.raises(ValueError, match=r"^need quality for 4 chunks, got 3$"):
-        call("imu_l3", imu, quality=clean_quality(StreamKind.IMU, 3))
+        call("imu_t9", imu, quality=clean_quality(StreamKind.IMU, 3))
 
 
 # `_us` es el unico punto de conversion timedelta->int del dispositivo; solo su tipo (int, no float)
@@ -509,9 +509,9 @@ def test_microseconds_of_a_timedelta_are_whole_numbers():
 def test_status_reports_a_published_seq_of_zero_and_the_whole_rssi_range(config):
     cfg = make_config(lambda raw: raw["device"].update(link_type="ble", rssi_dbm={"min": -55, "max": -55}))
     device = SimDevice(cfg, single_boot_plan(cfg))
-    payload = dump(device.status(np.random.default_rng(0), T0, published={"imu_l3": 0}))
+    payload = dump(device.status(np.random.default_rng(0), T0, published={"imu_t9": 0}))
     by_id = {s["stream_id"]: s for s in payload["streams"]}
-    assert by_id["imu_l3"]["last_seq"] == 0 and "last_seq" not in by_id["emg_lat_left"]
+    assert by_id["imu_t9"]["last_seq"] == 0 and "last_seq" not in by_id["emg_lat_left"]
     assert payload["link"]["rssi_dbm"] == -55
 
 

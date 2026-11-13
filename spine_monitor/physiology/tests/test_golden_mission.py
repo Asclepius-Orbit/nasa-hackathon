@@ -27,11 +27,13 @@ def tiny_config() -> MissionConfig:
         {"days": 1, "phase": "postflight", "gravity_environment": "earth_1g"},
     ]
     raw["device"].update(power_on_time_utc="09:00", power_off_time_utc="09:40")
-    raw["protocols"]["lat_pulldown_standing_v1"].update(lead_in_s=2.0, planned_reps=3, rep_duration_s=2.0, rest_between_reps_s=1.0, lead_out_s=6.0)
+    raw["protocols"]["lat_pulldown_standing_v1"].update(
+        lead_in_s=2.0, planned_sets=2, reps_per_set=2, rep_duration_s=2.0, rest_between_reps_s=1.0, rest_between_sets_s=2.0, lead_out_s=6.0
+    )
     raw["protocols"]["spine_length_rest_v1"]["duration_s"] = 5.0
-    times = {"am_spine_check": "09:05", "lat_pulldown": "09:20", "pm_spine_check": "09:35"}
     for s in raw["schedule"]["sessions"]:
-        s.update(time_utc=times[s["name"]], start_jitter_s=20.0)
+        if s["name"] == "lat_pulldown":
+            s.update(time_utc="09:20", start_jitter_s=20.0)
     raw["schedule"]["background"].update(start_time_utc="09:19", end_time_utc="09:22")
     raw["signals"]["chunk_ms"] = 500
     return MissionConfig.model_validate(raw)

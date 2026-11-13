@@ -46,6 +46,7 @@ from spine_contracts import (
     StreamKind,
     topics,
 )
+from spine_contracts.models.common_schema import GroundLocation
 from spine_contracts.models.domain.astronaut_profile_schema import (
     Anthropometry,
     Fitness,
@@ -152,13 +153,23 @@ class Span(_Model):
     to_level: SpineLevel
 
 
+class Ground(_Model):
+    """Electrodo de tierra (GND) del EMG."""
+
+    location: GroundLocation
+    side: Side | None = None
+
+
 class Placement(_Model):
-    """Colocación del sensor (la del contrato). EMG: muscle + side; IMU: spine_level; cordón: spine_region."""
+    """Colocación del sensor (la del contrato). EMG: muscle + side (+ separación de electrodos, tramo
+    vertebral y tierra); IMU: spine_level; cordón: spine_region (+ tramo)."""
 
     muscle: Muscle | None = None
     side: Side | None = None
     spine_level: SpineLevel | None = None
     spine_region: SpineRegion | None = None
+    electrode_spacing_cm: PositiveFloat | None = None
+    ground: Ground | None = None
     span: Span | None = None
     description: Annotated[str, Field(max_length=200)] | None = None
 
@@ -292,14 +303,17 @@ class LoadConfig(_Model):
 
 
 class ExerciseProtocol(_Model):
-    """Sesión `exercise`: lead_in, `planned_reps` × (rep + descanso), lead_out (recuperación del cordón)."""
+    """Sesión `exercise`: lead_in, `planned_sets` series de `reps_per_set` × (rep + descanso entre reps)
+    con `rest_between_sets_s` entre series, lead_out (recuperación del cordón)."""
 
     session_type: Literal["exercise"]
     streams: Annotated[list[StreamId], Field(min_length=1)]
     lead_in_s: NonNegFloat
-    planned_reps: PositiveInt
+    planned_sets: PositiveInt
+    reps_per_set: PositiveInt
     rep_duration_s: PositiveFloat
     rest_between_reps_s: NonNegFloat
+    rest_between_sets_s: NonNegFloat
     lead_out_s: NonNegFloat
     # Pico de %MVC por repetición en condición preflight, con la carga declarada.
     pct_mvc: PositiveFloat
@@ -307,6 +321,11 @@ class ExerciseProtocol(_Model):
     rom_deg: PositiveFloat
     plane: AnatomicalPlane
     load: LoadConfig
+
+    @property
+    def planned_reps(self) -> int:
+        """Repeticiones totales de la sesión (series × reps por serie)."""
+        return self.planned_sets * self.reps_per_set
 
 
 class SpineCheckProtocol(_Model):
@@ -320,17 +339,38 @@ class SpineCheckProtocol(_Model):
 SessionProtocol = Annotated[ExerciseProtocol | SpineCheckProtocol, Field(discriminator="session_type")]
 
 
+class Bracket(_Model):
+    """Sesión que envuelve a otra: justo antes (`pre`) o justo después (`post`) de la sesión `of`, a `gap_s` de ella."""
+
+    phase: Literal["pre", "post"]
+    of: Slug
+    gap_s: NonNegFloat
+
+
 class PlannedSessionConfig(_Model):
-    """Sesión planificada. `name` es la clave estable del hueco (RNG, ids, SessionRef)."""
+    """Sesión planificada. `name` es la clave estable del hueco (RNG, ids, SessionRef).
+
+    Dos formas: a una hora fija (`time_utc` + `start_jitter_s`) o envolviendo a otra sesión (`bracket`).
+    """
 
     name: Slug
     protocol_id: ProtocolId
-    time_utc: TimeOfDay
+    time_utc: TimeOfDay | None = None
     # Desviación típica del inicio real respecto a `time_utc`.
-    start_jitter_s: NonNegFloat
+    start_jitter_s: NonNegFloat | None = None
+    bracket: Bracket | None = None
     phases: Annotated[list[MissionPhase], Field(min_length=1)]
     # Se hace los días con índice % every_n_days == 0.
     every_n_days: PositiveInt
+
+    @model_validator(mode="after")
+    def _timed_xor_bracket(self) -> Self:
+        timed = self.time_utc is not None and self.start_jitter_s is not None
+        if self.bracket is None and not timed:
+            raise ValueError(f"schedule session {self.name}: needs time_utc and start_jitter_s, or a bracket")
+        if self.bracket is not None and (self.time_utc is not None or self.start_jitter_s is not None):
+            raise ValueError(f"schedule session {self.name}: a bracket session takes no time_utc or start_jitter_s")
+        return self
 
 
 class BackgroundRates(_Model):
@@ -849,8 +889,14 @@ class MissionConfig(_Model):
         for planned in self.schedule.sessions:
             if planned.protocol_id not in self.protocols:
                 problems.append(f"schedule session {planned.name}: unknown protocol_id {planned.protocol_id}")
-            if not self.device.power_on_time_utc <= planned.time_utc < self.device.power_off_time_utc:
+            if planned.time_utc is not None and not self.device.power_on_time_utc <= planned.time_utc < self.device.power_off_time_utc:
                 problems.append(f"schedule session {planned.name}: time_utc outside the device power window")
+            if planned.bracket is not None:
+                anchor = next((o for o in self.schedule.sessions if o.name == planned.bracket.of), None)
+                if anchor is None or anchor.bracket is not None:
+                    problems.append(f"schedule session {planned.name}: bracket.of must name a timed session of the schedule")
+                elif not isinstance(self.protocols.get(anchor.protocol_id), ExerciseProtocol):
+                    problems.append(f"schedule session {planned.name}: bracket.of must be an exercise session")
 
         background = self.schedule.background
         for s in background.streams:

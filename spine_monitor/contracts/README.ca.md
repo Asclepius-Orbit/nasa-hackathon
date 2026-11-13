@@ -15,7 +15,7 @@ Contractes de dades compartits per tots els components: gateway del wearable, br
 | `schemas/v1/app/` | Cossos HTTP de l'API de només lectura de l'app: estat, històric, explicació, llistes d'avaluacions, sessions i autoinformes, errors; i les vistes de la UI de `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | Cossos HTTP de l'API de xat de l'agent LLM (`agent-openapi.yaml`): la pregunta (`chat-request`) i els esdeveniments SSE de la resposta (`chat-event`) |
 | `catalog/feature-catalog.json` | Cada mètrica derivada (feature) amb unitat, entrades i requisits; els rangs són d'Aguado |
-| `catalog/protocol-catalog.json` | Dades fixes de cada protocol (banda, repeticions, descans, ids de col·locació) que citen les vistes de la UI |
+| `catalog/protocol-catalog.json` | Dades fixes de cada protocol (banda, sèries, repeticions, descansos, agafada, tempo, postura, ids de col·locació) que citen les vistes de la UI |
 | `asyncapi.yaml` | Topics MQTT, direcció, QoS i retain (des del punt de vista del gateway) |
 | `openapi.yaml` | API HTTP del motor |
 | `app-openapi.yaml` | API HTTP de només lectura de l'app (només GET), la fa servir el servidor MCP |
@@ -33,6 +33,14 @@ Contractes de dades compartits per tots els components: gateway del wearable, br
 - **Perfil**: edat, sexe biològic, antropometria, història de columna i espacial, forma física.
 
 Les dades pertanyen a una **sessió**: `exercise` (protocol estandarditzat, p. ex. estirada al pit dret, amb càrrega declarada) o `spine_check` (mesura passiva curta). Només són comparables les dades amb el mateix `protocol_id`, i Terra enfront d'espai es llegeix a través de `gravity_environment`.
+
+### El protocol d'exercici estandarditzat
+`lat_pulldown_standing_v1` (mateix id, valors fixats per Aguado a la issue #12):
+- **Exercici:** estirada al pit dret amb banda elàstica, agafada en pronació, tempo moderat. Banda verda (resistència alta, 15-35 kg segons l'estirament; 25 kg nominals), 4 sèries de 15 repeticions (60 en total, uns 5 minuts) amb recuperacions molt curtes (`rest_between_sets_s`, 30 s nominals fins que Aguado ho confirmi). La sessió declara `planned_sets`, `reps_per_set` i `planned_reps` (el total, `planned_sets * reps_per_set`); els esdeveniments `set_start` / `set_end` (amb `set_index`) delimiten les sèries i `rep_index` compta les repeticions de tota la sessió.
+- **EMG:** un stream per cada dorsal ample (`emg_lat_left`, `emg_lat_right`), elèctrodes separats uns 10 cm (`electrode_spacing_cm`) cobrint T11-L2 (`span`), terra (GND) a la cresta ilíaca (`ground.location`).
+- **IMU:** `imu_t9`, a T9.
+- **Cordó elàstic:** `stretch_spine`, regió `full_spine`, de C3-C4 a L5-S1 (uns 650 mm); les seves features són `stretch.full_spine.*`.
+- **Spine checks:** `spine_length_rest_v1`, dret, just abans (`phase: pre`) i just després (`phase: post`) de l'exercici; `related_session_id` és la sessió d'exercici que emmarquen.
 
 ## Convencions
 - Camps i descripcions en anglès, `snake_case`.
@@ -72,7 +80,7 @@ validation.validate("telemetry/stream-chunk", dump(chunk))  # regles completes, 
 Edita l'schema, afegeix o actualitza el seu exemple, regenera, executa els tests i avisa els amos de les altres capes. Les ampliacions compatibles pugen la versió menor; qualsevol altra cosa, la major.
 
 ## Obert
-- **Aguado:** validar el catàleg de features (ids, unitats, `risk_direction`, rangs i les seves fonts); el conjunt reduït d'ítems de l'ODI; el protocol exacte de l'exercici (repeticions, càrrega, procediment de MVC) i la col·locació d'elèctrodes i IMU; el model del cordó (no és lineal i triga a recuperar-se, així que la longitud surt d'una corba mesurada).
+- **Aguado:** validar el catàleg de features (ids, unitats, `risk_direction`, rangs i les seves fonts); el conjunt reduït d'ítems de l'ODI; la recuperació entre sèries (30 s és un valor provisional), el procediment de MVC i l'estirament exacte de la banda; la mesura del cordó (uns 650 mm, PENDIENTE medición Aguado: la corba resistència-longitud és provisional fins a mesurar-la amb un òhmetre; no és lineal i triga a recuperar-se, així que la longitud surt d'una corba mesurada).
 - **Polfer:** el mòdul EMG dona el senyal cru o una envolvent? (les features espectrals necessiten cru). Fer servir pins ADC1 de l'ESP32 (l'ADC2 no funciona amb Bluetooth/WiFi). El format wearable→gateway és lliure; el contracte comença a MQTT. El gateway real fa servir el protocol sèrie documentat a `spine_monitor/gateway/README.ca.md` i `firmware/README.ca.md`.
 - **Freqüència de la IMU:** 100 Hz per defecte; 10 Hz es queda curta per a suavitat i velocitat de pic d'una repetició de ~2 s.
 - Sortides de les eines MCP: `compare_periods` té el seu propi schema, `mcp/compare-periods` (el calcula el servidor amb dues crides a `/history`); les altres eines MCP reutilitzen els schemas `app` i `engine`.

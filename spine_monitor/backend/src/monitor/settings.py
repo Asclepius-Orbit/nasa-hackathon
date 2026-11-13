@@ -76,7 +76,7 @@ class AppSettings(BaseSettings):
     # At most 366 days: the longest window the history endpoint accepts (`api.MAX_HISTORY_DAYS`; settings cannot import api).
     history_window_days: int = Field(default=30, ge=1, le=366)
 
-    # Live repetition counter (GET /ui/sessions/{id}/reps). Seconds with no imu_l3 chunk until the signal counts as lost,
+    # Live repetition counter (GET /ui/sessions/{id}/reps). Seconds with no imu_t9 chunk until the signal counts as lost,
     # between comments on an idle stream (the Electron reader gives up after 45 s of silence) and between checks of both.
     live_no_signal_s: float = Field(default=2.0, gt=0)
     live_heartbeat_s: float = Field(default=15.0, gt=0, le=15)

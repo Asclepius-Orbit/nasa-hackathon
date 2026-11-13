@@ -81,7 +81,7 @@ function Verdict({ today, liveRep }: { today: TodayData; liveRep: number | null 
     running === null
       ? null
       : liveRep === null
-        ? inProgressSince(gmtClock(running.startedAt), running.totalReps)
+        ? inProgressSince(gmtClock(running.startedAt), running.plannedSets, running.repsPerSet, running.totalReps)
         : inProgressLine(gmtClock(running.startedAt), liveRep, running.totalReps);
   const reportDue = today.alsoToday.includes('TASK_DAILY_REPORT');
   const todoNow = today.level === 'amber' ? copy.todoNow.amber(plan.length, reportDue) : today.level === 'green' ? copy.todoNow.green(reportDue) : copy.todoNow[today.level];

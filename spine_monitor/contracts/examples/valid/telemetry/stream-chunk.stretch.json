@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "astronaut_id": "AST-01",
   "device_id": "wb-01",
-  "stream_id": "stretch_lumbar",
+  "stream_id": "stretch_spine",
   "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
   "source": "device",
   "boot_id": 2893746120,
@@ -16,7 +16,7 @@
   "data": {
     "adc_counts": [1850, 1852, 1861, 1870],
     "resistance_ohm": [6012.0, 6020.5, 6055.3, 6101.8],
-    "length_mm": [400.0, 400.5, 403.7, 406.8]
+    "length_mm": [650.0, 650.5, 653.7, 656.8]
   },
   "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f11",
   "quality": {

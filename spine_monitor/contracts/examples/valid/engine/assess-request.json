@@ -93,7 +93,7 @@
         "mad": 0.4
       },
       {
-        "feature_id": "imu.l3.sagittal.rom_deg",
+        "feature_id": "imu.t9.sagittal.rom_deg",
         "protocol_id": "lat_pulldown_standing_v1",
         "gravity_environment": "earth_1g",
         "n": 2,
@@ -103,7 +103,7 @@
         "mad": 0.3
       },
       {
-        "feature_id": "stretch.lumbar.peak_elongation_mm",
+        "feature_id": "stretch.full_spine.peak_elongation_mm",
         "protocol_id": "lat_pulldown_standing_v1",
         "gravity_environment": "earth_1g",
         "n": 2,
@@ -154,7 +154,7 @@
           }
         },
         {
-          "feature_id": "imu.l3.sagittal.rom_deg",
+          "feature_id": "imu.t9.sagittal.rom_deg",
           "value": 31.0,
           "unit": "deg",
           "n": 10,
@@ -165,7 +165,7 @@
           }
         },
         {
-          "feature_id": "stretch.lumbar.peak_elongation_mm",
+          "feature_id": "stretch.full_spine.peak_elongation_mm",
           "value": 9.1,
           "unit": "mm",
           "n": 10,

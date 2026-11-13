@@ -124,7 +124,7 @@ describe('createRecordsClient', () => {
         astronaut_id: ASTRONAUT,
         streams: [
           { stream_id: 'emg_lat_left', stream_kind: 'emg', placement: { muscle: 'latissimus_dorsi', side: 'left' }, sample_rate_hz: 1000 },
-          { stream_id: 'imu_l3', stream_kind: 'imu', placement: { spine_level: 'l3' }, sample_rate_hz: 100 },
+          { stream_id: 'imu_t9', stream_kind: 'imu', placement: { spine_level: 't9' }, sample_rate_hz: 100 },
         ],
       },
       state: 'running',
@@ -152,7 +152,7 @@ describe('createRecordsClient', () => {
       const { client, calls } = build(() => json(RAW_SESSION));
       expect(await client.sessionStreams(ASTRONAUT, SESSION)).toEqual([
         { streamId: 'emg_lat_left', kind: 'emg' },
-        { streamId: 'imu_l3', kind: 'imu' },
+        { streamId: 'imu_t9', kind: 'imu' },
       ]);
       expect(calls[0]?.url).toBe(`${BASE}/ui/sessions/${SESSION}`);
       expect(calls[0]?.init.headers).toMatchObject({ 'x-astronaut-id': ASTRONAUT });

@@ -129,8 +129,8 @@ Todas las variables llevan el prefijo `SPINE_GATEWAY_` y son opcionales; `.env.e
 | `SPINE_GATEWAY_STALL_TIMEOUT_S` | `2.0` | Un stream sin lotes durante este tiempo (s) pasa a `stalled` y el dispositivo a `degraded`. |
 | `SPINE_GATEWAY_CALIBRATION_DEFAULT_DURATION_S` | `5.0` | Duración (s) de un `calibrate` sin `duration_s`. |
 | `SPINE_GATEWAY_EMG_STREAM_ID` | `emg_lat_left` | `stream_id` del EMG. |
-| `SPINE_GATEWAY_IMU_STREAM_ID` | `imu_l3` | `stream_id` del IMU. |
-| `SPINE_GATEWAY_STRETCH_STREAM_ID` | `stretch_lumbar` | `stream_id` del cordón elástico. |
+| `SPINE_GATEWAY_IMU_STREAM_ID` | `imu_t9` | `stream_id` del IMU. |
+| `SPINE_GATEWAY_STRETCH_STREAM_ID` | `stretch_spine` | `stream_id` del cordón elástico. |
 | `SPINE_GATEWAY_EMG_MUSCLE` | `latissimus_dorsi` | Músculo donde va el electrodo EMG (enum `Muscle` del contrato); va en la calibración `emg_mvc`. |
 | `SPINE_GATEWAY_EMG_SIDE` | `left` | Lado del electrodo (`left`, `right` o `midline`). |
 | `SPINE_GATEWAY_ADC_BITS` | `10` | Resolución del ADC (el ATmega328P tiene 10 bits). |
@@ -143,8 +143,10 @@ Todas las variables llevan el prefijo `SPINE_GATEWAY_` y son opcionales; `.env.e
 | `SPINE_GATEWAY_IMU_DLPF_HZ` | `44` | Filtro paso bajo digital del MPU-6050, declarado en el chunk (`config.dlpf_hz`). El firmware configura 44 Hz. |
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Ganancia del módulo EMG; los mV se dividen entre ella. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | Qué entrega el módulo EMG al ADC: `raw`, `rectified` o `envelope`. El valor por defecto es una suposición, no está confirmado con la placa (ver abajo). |
-| `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `100.0` | Longitud (mm) del cordón en reposo, usada por la calibración `stretch`. Marcador de posición hasta medirla (#12). |
+| `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Longitud (mm) del cordón en reposo, usada por la calibración `stretch`. PENDIENTE medición Aguado (ohmímetro): marcador de ~650 mm para el cordón C3->S1 (#12). |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Ventana (ms) del RMS deslizante de la calibración `emg_mvc`. |
+
+El protocolo declara dos módulos EMG (dorsal ancho izquierdo/derecho) pero el hardware y el gateway actuales publican uno (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) hasta que Polfer confirme el hardware (#13).
 
 `SPINE_GATEWAY_EMG_SIGNAL_KIND` fija `signal_kind` en los chunks EMG y en la calibración `emg_mvc`, y decide cómo se calculan los mV y la calidad:
 
@@ -285,7 +287,7 @@ Electrodos del EMG (tres, conectados al módulo EMG, no al Arduino): dos diferen
 3. **Cierra el Monitor Serie**: el puerto es exclusivo y el gateway no puede abrirlo mientras lo tenga el IDE.
 4. Levanta el broker: `docker compose -f app/docker-compose.yml up -d mosquitto`.
 5. Ejecuta el gateway nativo (ver arriba) con el puerto correcto.
-6. Observa el bus con `mosquitto_sub` (ver Notas) o con un pequeño script de aiomqtt: `status` debe pasar a `ok` y deben llegar cada segundo chunks de fondo de `imu_l3` y `stretch_lumbar`.
+6. Observa el bus con `mosquitto_sub` (ver Notas) o con un pequeño script de aiomqtt: `status` debe pasar a `ok` y deben llegar cada segundo chunks de fondo de `imu_t9` y `stretch_spine`.
 7. Publica los comandos (JSON que valide contra `telemetry/command`) en `.../cmd`: `start_session` (chunks a 100 ms y aparece el EMG), `calibrate` de tipo `stretch` y `emg_mvc` (reposo para el primero, una contracción máxima para el segundo), `stop_session`. Comprueba los acks y que las calibraciones quedan retained.
 8. Comprueba el cordón (resistencia en reposo y su cambio al estirar) y el IMU (en torno a 1 g en el eje vertical en reposo).
 

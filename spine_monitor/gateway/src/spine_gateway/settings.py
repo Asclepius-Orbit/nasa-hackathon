@@ -61,8 +61,8 @@ class GatewaySettings(BaseSettings):
     calibration_default_duration_s: float = Field(default=5.0, gt=0)
 
     emg_stream_id: str = "emg_lat_left"
-    imu_stream_id: str = "imu_l3"
-    stretch_stream_id: str = "stretch_lumbar"
+    imu_stream_id: str = "imu_t9"
+    stretch_stream_id: str = "stretch_spine"
 
     # Colocación del electrodo EMG (misma que EmgMvcCalibration y el YAML de misión de ejemplo).
     emg_muscle: Muscle = Muscle.LATISSIMUS_DORSI
@@ -82,7 +82,9 @@ class GatewaySettings(BaseSettings):
     # ``envelope``. El clon del Muscle Sensor V3 probablemente da envolvente, pero NO está confirmado con la placa
     # (issue #13): el default es la suposición, no un hecho. Condiciona calidad, conversión a mV y calibración MVC.
     emg_signal_kind: SignalKind = SignalKind.ENVELOPE
-    stretch_rest_length_mm: float = Field(default=100.0, gt=0)
+    # PENDIENTE medición Aguado (ohmímetro): ~650 mm es el cordón C3->S1 del protocolo (region full_spine), un marcador de
+    # posición hasta que se mida; la curva por defecto de calibration.py tampoco está medida.
+    stretch_rest_length_mm: float = Field(default=650.0, gt=0)
     # Ventana (ms) del RMS deslizante de la calibración emg_mvc; 250 ms como el ejemplo del contrato.
     emg_mvc_window_ms: int = Field(default=250, gt=0)
 

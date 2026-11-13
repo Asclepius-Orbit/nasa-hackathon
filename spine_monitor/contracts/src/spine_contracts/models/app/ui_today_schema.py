@@ -26,7 +26,7 @@ class TodayReason(BaseModel):
         description='Dotted identifier of a derived metric. Must exist in the feature catalog (catalog/feature-catalog.json), after expanding its placeholders.',
         examples=[
             'emg.latissimus_dorsi.left.rms_pct_mvc',
-            'stretch.lumbar.elongation_mm',
+            'stretch.full_spine.elongation_mm',
         ],
     )
     deviation_z: float | None
@@ -50,8 +50,16 @@ class SessionInProgress(BaseModel):
         description='RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.',
         examples=['2026-11-13T10:00:00.250Z'],
     )
+    planned_sets: conint(ge=1) | None = Field(
+        ..., description='Planned sets; null for protocols without them.'
+    )
+    reps_per_set: conint(ge=1) | None = Field(
+        ...,
+        description='Planned repetitions in each set; null for protocols without sets.',
+    )
     total_reps: conint(ge=1) | None = Field(
-        ..., description='Planned repetitions; null for protocols without them.'
+        ...,
+        description='TOTAL planned repetitions (all sets); null for protocols without them.',
     )
 
 
@@ -113,7 +121,7 @@ class TodayView(BaseModel):
     )
     lumbar_delta_mm: float | None = Field(
         ...,
-        description='Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.',
+        description='Latest spine elongation, measured by the cord over the whole spine (stretch.full_spine.peak_elongation_mm; the field keeps its original lumbar_ name), minus its baseline mean, in mm. Null when either is missing; never 0 by default.',
     )
     lumbar_measured_at: AwareDatetime | None = Field(
         ...,

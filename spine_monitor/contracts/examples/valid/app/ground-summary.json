@@ -11,7 +11,7 @@
   "data_available": 5,
   "data_total": 6,
   "drivers": [
-    { "feature_id": "stretch.lumbar.peak_elongation_mm", "deviation_z": 2.4 },
+    { "feature_id": "stretch.full_spine.peak_elongation_mm", "deviation_z": 2.4 },
     { "feature_id": "symptoms.pain_nrs_7d_mean", "deviation_z": 1.8 }
   ],
   "red_flags": [],

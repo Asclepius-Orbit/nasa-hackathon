@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from monitor.views.lumbar import LumbarDelta
+from monitor.views.protocol_catalog import protocol_entry
 from monitor.views.today import build_today
 from spine_contracts import validation
 
@@ -23,6 +24,7 @@ SESSION = example("domain/session.exercise")  # started 2026-11-13T10:02:31Z
 NOW = datetime(2026, 11, 13, 10, 30, tzinfo=UTC)
 MEASURED_AT = datetime(2026, 11, 12, 10, 0, tzinfo=UTC)
 STALE_SESSION_HOURS = 48.0
+LAT = protocol_entry("lat_pulldown_standing_v1")
 
 
 @dataclass(frozen=True)
@@ -58,12 +60,12 @@ def test_no_assessment_is_nodata_with_everything_null_or_empty() -> None:
 
 
 def test_no_assessment_still_carries_tasks_lumbar_and_session() -> None:
-    view = today(None, 1.5, (Row(SESSION, "running"), 10), ["TASK_ODI"])
+    view = today(None, 1.5, (Row(SESSION, "running"), LAT), ["TASK_ODI"])
     assert view["level"] == "nodata"
     assert view["assessment_id"] is None
     assert view["lumbar_delta_mm"] == 1.5
     assert view["also_today"] == ["TASK_ODI"]
-    assert view["session_in_progress"]["total_reps"] == 10
+    assert view["session_in_progress"]["total_reps"] == 60
 
 
 def test_assessment_facts_are_copied_in_order() -> None:
@@ -98,8 +100,8 @@ def test_trust_counts_evaluated_domains_and_copies_missing() -> None:
 
 def test_driver_without_deviation_has_null_deviation() -> None:
     assessment = example("domain/assessment.amber")
-    assessment["drivers"] = [{"feature_id": "stretch.lumbar.peak_elongation_mm", "value": 3.0, "contribution": 0.4}]
-    assert today(assessment)["reasons"] == [{"feature_id": "stretch.lumbar.peak_elongation_mm", "deviation_z": None, "contribution": 0.4}]
+    assessment["drivers"] = [{"feature_id": "stretch.full_spine.peak_elongation_mm", "value": 3.0, "contribution": 0.4}]
+    assert today(assessment)["reasons"] == [{"feature_id": "stretch.full_spine.peak_elongation_mm", "deviation_z": None, "contribution": 0.4}]
 
 
 def test_assessment_without_domains_has_zero_available_not_full() -> None:
@@ -111,22 +113,33 @@ def test_assessment_without_domains_has_zero_available_not_full() -> None:
 
 @pytest.mark.parametrize("state", ["starting", "running"])
 def test_session_in_progress_for_active_states(state: str) -> None:
-    view = today(None, None, (Row(SESSION, state), 10))
+    view = today(None, None, (Row(SESSION, state), LAT))
     assert view["session_in_progress"] == {
         "session_id": SESSION["session_id"],
         "protocol_id": SESSION["protocol_id"],
         "started_at": SESSION["started_at"],
-        "total_reps": 10,
+        "planned_sets": 4,
+        "reps_per_set": 15,
+        "total_reps": 60,
     }
 
 
 @pytest.mark.parametrize("state", ["rejected", "ended", "processing", "processed", "processing_failed"])
 def test_session_not_in_progress_for_other_states(state: str) -> None:
-    assert today(None, None, (Row(SESSION, state), 10))["session_in_progress"] is None
+    assert today(None, None, (Row(SESSION, state), LAT))["session_in_progress"] is None
 
 
-def test_session_without_reps_has_null_total_reps() -> None:
-    assert today(None, None, (Row(SESSION, "running"), None))["session_in_progress"]["total_reps"] is None
+def test_session_without_reps_has_null_sets_and_total_reps() -> None:
+    payload = {k: v for k, v in SESSION.items() if k not in ("planned_sets", "reps_per_set", "planned_reps")}
+    progress = today(None, None, (Row(payload, "running"), None))["session_in_progress"]
+    assert (progress["planned_sets"], progress["reps_per_set"], progress["total_reps"]) == (None, None, None)
+
+
+def test_the_plan_of_the_session_wins_over_the_catalog() -> None:
+    payload = {**SESSION, "planned_sets": 2, "reps_per_set": 5, "planned_reps": 10}
+    progress = today(None, None, (Row(payload, "running"), LAT))["session_in_progress"]
+    assert (progress["planned_sets"], progress["reps_per_set"], progress["total_reps"]) == (2, 5, 10)
+    assert validation.errors("app/ui-today", today(None, None, (Row(payload, "running"), LAT))) == []
 
 
 def test_lumbar_delta_is_passed_through_including_zero_and_none() -> None:
@@ -158,14 +171,14 @@ def test_lumbar_measured_at_is_normalised_to_utc_whatever_the_offset() -> None:
 def test_a_session_older_than_the_staleness_threshold_is_not_in_progress() -> None:
     started = datetime.fromisoformat(SESSION["started_at"])
 
-    assert today(None, None, (Row(SESSION, "running"), 10), now=started + timedelta(hours=48))["session_in_progress"] is not None
-    assert today(None, None, (Row(SESSION, "running"), 10), now=started + timedelta(hours=48, seconds=1))["session_in_progress"] is None
-    assert today(None, None, (Row(SESSION, "starting"), 10), now=started + timedelta(days=30))["session_in_progress"] is None
+    assert today(None, None, (Row(SESSION, "running"), LAT), now=started + timedelta(hours=48))["session_in_progress"] is not None
+    assert today(None, None, (Row(SESSION, "running"), LAT), now=started + timedelta(hours=48, seconds=1))["session_in_progress"] is None
+    assert today(None, None, (Row(SESSION, "starting"), LAT), now=started + timedelta(days=30))["session_in_progress"] is None
 
 
 def test_the_session_staleness_threshold_is_the_one_given() -> None:
     now = datetime.fromisoformat(SESSION["started_at"]) + timedelta(hours=5)
-    row = (Row(SESSION, "running"), 10)
+    row = (Row(SESSION, "running"), LAT)
 
     assert build_today(None, None, row, [], now, 4.0)["session_in_progress"] is None
     assert build_today(None, None, row, [], now, 6.0)["session_in_progress"] is not None

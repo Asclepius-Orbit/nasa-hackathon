@@ -41,7 +41,7 @@ def test_health(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_features_extracts_stretch_and_skips_exercise_for_the_single_rep_example(client):
+def test_features_extracts_stretch_and_computes_exercise_for_the_two_rep_example(client):
     request = example("features-request")
 
     response = client.post("/features", json=request)
@@ -49,12 +49,12 @@ def test_features_extracts_stretch_and_skips_exercise_for_the_single_rep_example
     assert response.status_code == 200
     body = response.json()
     assert validation.errors("domain/feature-set", body) == []
-    assert {f["feature_id"] for f in body["features"]} == {
-        "stretch.lumbar.elongation_mm",
-        "stretch.lumbar.elongation_pct",
-        "stretch.lumbar.rest_resistance_ohm",
+    assert {f["feature_id"] for f in body["features"] if f["feature_id"].startswith("stretch.")} == {
+        "stretch.full_spine.elongation_mm",
+        "stretch.full_spine.elongation_pct",
+        "stretch.full_spine.rest_resistance_ohm",
     }
-    assert {s["reason"] for s in body["skipped"] if s["feature_id"].startswith("exercise.")} == {"too_few_repetitions"}
+    assert {s["reason"] for s in body["skipped"] if s["feature_id"].startswith("exercise.")} == set()
     assert body["engine_version"] == "0.1.0"  # lo rellena el extractor compuesto, no el nulo
     assert "window" in body
     assert body["session_id"] == request["session"]["session_id"]
@@ -69,7 +69,7 @@ def test_baseline_is_built_from_the_feature_sets(client):
     body = response.json()
     assert validation.errors("domain/baseline", body) == []
     assert body["version"] == 1
-    assert {e["feature_id"] for e in body["entries"]} >= {"imu.l3.sagittal.rom_deg"}
+    assert {e["feature_id"] for e in body["entries"]} >= {"imu.t9.sagittal.rom_deg"}
 
 
 def test_baseline_entries_omit_protocol_id_when_the_feature_sets_have_none(client):
@@ -148,7 +148,7 @@ def test_simulate_reevaluates_the_base_with_the_overrides_applied():
     assert response.status_code == 200
     assert response.json()["hypothetical"] is True
     reference, scenario = pipeline.seen
-    feature_id = "stretch.lumbar.peak_elongation_mm"
+    feature_id = "stretch.full_spine.peak_elongation_mm"
     value = lambda req: next(f.value for f in req.feature_sets[-1].features if f.feature_id == feature_id)  # noqa: E731
     assert value(scenario) == pytest.approx(value(reference) + 5)
 
@@ -181,7 +181,7 @@ def test_simulate_reports_projection_and_reevaluates_projected_values():
     assert validation.errors("engine/simulate-response", body) == []
     assert body["hypothetical"] is True
     assert body["projection"] == {"project_days": 1, "unprojected_features": []}
-    peak = "stretch.lumbar.peak_elongation_mm"
+    peak = "stretch.full_spine.peak_elongation_mm"
     assert next(f.value for f in pipeline.seen[1].feature_sets[0].features if f.feature_id == peak) == pytest.approx(15)
 
 
@@ -215,7 +215,7 @@ def test_simulate_feature_without_value_in_the_base_is_a_problem(client):
 
 def test_simulate_non_finite_override_is_a_problem(client):
     request = example("simulate-request")
-    request["overrides"] = [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "scale", "value": 1e308}] * 2
+    request["overrides"] = [{"feature_id": "stretch.full_spine.peak_elongation_mm", "mode": "scale", "value": 1e308}] * 2
 
     assert_problem(client.post("/simulate", json=request), 422, "invalid_request")
 
@@ -317,10 +317,10 @@ def test_simulate_problems_carry_title_and_detail(client):
     request["overrides"] = [{"feature_id": "stretch.not.in_catalog", "mode": "set", "value": 1}]
     unknown = assert_problem(client.post("/simulate", json=request), 422, "unknown_feature")
 
-    request["overrides"] = [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "scale", "value": 1e308}] * 2
+    request["overrides"] = [{"feature_id": "stretch.full_spine.peak_elongation_mm", "mode": "scale", "value": 1e308}] * 2
     invalid = assert_problem(client.post("/simulate", json=request), 422, "invalid_request")
 
     assert (unknown["title"], unknown["status"]) == ("Unknown feature", 422)
     assert unknown["detail"] == "The feature 'stretch.not.in_catalog' is not in the catalog."
     assert (invalid["title"], invalid["status"]) == ("Invalid request", 422)
-    assert invalid["detail"] == "The override on 'stretch.lumbar.peak_elongation_mm' does not give a finite value."
+    assert invalid["detail"] == "The override on 'stretch.full_spine.peak_elongation_mm' does not give a finite value."

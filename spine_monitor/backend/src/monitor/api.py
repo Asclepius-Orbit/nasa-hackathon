@@ -51,7 +51,7 @@ from monitor.views.history import build_history
 from monitor.views.houston import build_houston, build_outbox
 from monitor.views.lumbar import ELONGATION_FEATURE, instant, latest_lumbar_delta
 from monitor.views.mission import launch_date_of, mission_day_of, mission_for
-from monitor.views.protocol_catalog import protocol_entry, total_reps_for
+from monitor.views.protocol_catalog import protocol_entry
 from monitor.views.session import build_session_view
 from monitor.views.strip import build_strip, minutes_since
 from monitor.views.tasks import tasks_for
@@ -469,7 +469,7 @@ def build_router(
 
     @router.post("/sessions/{session_id}/events", status_code=202)
     async def mark_event(session_id: str, body: EventBody) -> dict[str, Any]:
-        return {"command": await control.mark_event(session_id, body.event_type, body.rep_index, body.note)}
+        return {"command": await control.mark_event(session_id, body.event_type, body.rep_index, body.note, body.set_index)}
 
     @router.post("/sessions/{session_id}/calibrations", status_code=202)
     async def calibrate(session_id: str, body: CalibrateBody) -> dict[str, Any]:
@@ -532,7 +532,7 @@ def build_router(
         recent = store.feature_sets_between(astronaut_id, now - timedelta(days=views.history_window_days), now)
         lumbar = latest_lumbar_delta(recent, store.latest_baseline(astronaut_id))
         last = store.latest_session(astronaut_id)
-        in_progress = None if last is None else (last, total_reps_for(last.payload["protocol_id"]))
+        in_progress = None if last is None else (last, protocol_entry(last.payload["protocol_id"]))
         tasks = open_tasks(astronaut_id, profile, baseline_view(astronaut_id, profile), now)
         view = build_today(store.latest_assessment(astronaut_id), lumbar, in_progress, tasks, now, views.stale_session_hours)
         return _conforming("app/ui-today", view)

@@ -81,7 +81,7 @@ def test_assessments_between_is_inclusive_oldest_first_and_unbounded(store):
     assert [a["as_of"] for a in found] == ["2026-11-10T09:00:00Z", "2026-11-11T09:00:00Z"]
 
 
-ELONGATION = "stretch.lumbar.peak_elongation_mm"
+ELONGATION = "stretch.full_spine.peak_elongation_mm"
 
 
 def feature_set(n: int, *, astronaut: str = "AST-01", feature_id: str = ELONGATION, value: float | None = 5.0) -> dict:

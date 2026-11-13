@@ -368,7 +368,7 @@ export type StreamDeclaration = {
   calibration_id?: string;
 };
 /**
- * Where a sensor sits on the body. EMG needs muscle + side, IMU needs spine_level, stretch cord needs spine_region (and optionally the span it covers). The session schema enforces this per stream kind.
+ * Where a sensor sits on the body. EMG needs muscle + side (and says the electrode spacing, the vertebral span of the electrodes and where the ground is), IMU needs spine_level, stretch cord needs spine_region (and optionally the span it covers). The session schema enforces this per stream kind.
  */
 export type Placement = (
   | {
@@ -394,9 +394,11 @@ export type Placement = (
     | "rectus_abdominis";
   side?: "left" | "right" | "midline";
   /**
-   * Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).
+   * Vertebral level, lowercase so it can be embedded in ids (imu.t9.*). c3 and c4 are the upper end of the stretch cord of the standard protocol (C3-C4 to L5-S1); only c3, c4 and c7 are defined of the cervical spine.
    */
   spine_level?:
+    | "c3"
+    | "c4"
     | "c7"
     | "t1"
     | "t2"
@@ -416,15 +418,34 @@ export type Placement = (
     | "l4"
     | "l5"
     | "s1";
-  spine_region?: "cervical" | "thoracic" | "thoracolumbar" | "lumbar" | "sacral";
   /**
-   * Vertebral span covered by a stretch cord.
+   * Region of the spine. full_spine is the whole cord span of the standard protocol, from C3-C4 to L5-S1 (~65 cm).
+   */
+  spine_region?: "cervical" | "thoracic" | "thoracolumbar" | "lumbar" | "sacral" | "full_spine";
+  /**
+   * Centre-to-centre distance between the two electrodes of an EMG pair, in cm. The standard protocol uses ~10 cm. EMG only.
+   */
+  electrode_spacing_cm?: number;
+  /**
+   * EMG ground (GND) electrode. EMG only.
+   */
+  ground?: {
+    /**
+     * Where the EMG ground (GND) electrode is attached. The standard protocol puts it on the iliac crest.
+     */
+    location: "iliac_crest" | "other";
+    side?: "left" | "right" | "midline";
+  };
+  /**
+   * Vertebral span covered by a stretch cord (the standard protocol: C3-C4 to L5-S1) or by an EMG electrode pair (the standard protocol: T11 to L2).
    */
   span?: {
     /**
-     * Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).
+     * Vertebral level, lowercase so it can be embedded in ids (imu.t9.*). c3 and c4 are the upper end of the stretch cord of the standard protocol (C3-C4 to L5-S1); only c3, c4 and c7 are defined of the cervical spine.
      */
     from_level:
+      | "c3"
+      | "c4"
       | "c7"
       | "t1"
       | "t2"
@@ -445,9 +466,11 @@ export type Placement = (
       | "l5"
       | "s1";
     /**
-     * Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).
+     * Vertebral level, lowercase so it can be embedded in ids (imu.t9.*). c3 and c4 are the upper end of the stretch cord of the standard protocol (C3-C4 to L5-S1); only c3, c4 and c7 are defined of the cervical spine.
      */
     to_level:
+      | "c3"
+      | "c4"
       | "c7"
       | "t1"
       | "t2"
@@ -483,7 +506,7 @@ export type GroundLink = GroundLinkUp | GroundLinkDown;
  */
 export type OutboxState = "queued" | "sent";
 /**
- * Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept. A session that is over has signal ok (it did not lose its sensor) with phase and progress_pct null, rep and last kept, in both its final `state` and its `end`.
+ * Data of each `state`/`end` event of GET /ui/sessions/{session_id}/reps: the live repetition counter of the desktop UI. Codes and numbers, never prose. A session is made of sets of repetitions: rep and total count repetitions of the whole session (rep 1 to 60), set and rep_in_set place the repetition inside its set (set 1 to 4, rep_in_set 1 to 15). With no signal the counter is never shown frozen as if there were signal: phase and progress_pct are null, rep and last are kept. A session that is over has signal ok (it did not lose its sensor) with phase and progress_pct null, rep and last kept, in both its final `state` and its `end`.
  */
 export type RepStateView = {
   /**
@@ -499,11 +522,27 @@ export type RepStateView = {
    */
   rep: number;
   /**
-   * planned_reps of the session, otherwise total_reps of the protocol catalog; null when neither is known.
+   * planned_reps (TOTAL, all sets) of the session, otherwise total_reps of the protocol catalog; null when neither is known.
    */
   total: number | null;
   /**
-   * pulling, letting_up or resting (between repetitions); null when there is no signal or the session is over.
+   * Set (1-based) of the current repetition; while resting between two sets, the set that just ended. 0 when none has started yet.
+   */
+  set: number;
+  /**
+   * planned_sets of the session, otherwise planned_sets of the protocol catalog; null when neither is known.
+   */
+  sets_total: number | null;
+  /**
+   * reps_per_set of the session, otherwise of the protocol catalog; null when neither is known.
+   */
+  reps_per_set: number | null;
+  /**
+   * Repetitions completed plus the current one inside `set`; 0 when none has started yet. Between two sets it keeps the last repetition of the set that ended (rep_in_set equals reps_per_set) while phase is resting.
+   */
+  rep_in_set: number;
+  /**
+   * pulling, letting_up or resting (between repetitions, or between two sets); null when there is no signal or the session is over.
    */
   phase: ("pulling" | "letting_up" | "resting") | null;
   /**
@@ -515,7 +554,7 @@ export type RepStateView = {
    */
   last: LastRep | null;
   /**
-   * ok, or no_signal when the imu_l3 stream is not delivering.
+   * ok, or no_signal when the imu_t9 stream is not delivering.
    */
   signal: "ok" | "no_signal";
   /**
@@ -554,7 +593,7 @@ export type TodayView = {
    */
   trust: TrustFacts | null;
   /**
-   * Latest lumbar elongation (stretch.lumbar.peak_elongation_mm) minus its baseline mean, in mm. Null when either is missing; never 0 by default.
+   * Latest spine elongation, measured by the cord over the whole spine (stretch.full_spine.peak_elongation_mm; the field keeps its original lumbar_ name), minus its baseline mean, in mm. Null when either is missing; never 0 by default.
    */
   lumbar_delta_mm: number | null;
   /**
@@ -575,13 +614,13 @@ export type TodayView = {
  */
 export type Calibration = StretchCalibration | EmgMvcCalibration | ImuCalibration;
 /**
- * Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait.
+ * Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDIENTE medición Aguado: until the cord is measured with an ohmmeter, curve and rest values are placeholders.
  */
 export type StretchCalibration = CalibrationBase & {
   calibration_type: "stretch";
   rest_resistance_ohm: number;
   /**
-   * Length of cord between the two clamps at rest (the reference for elongation).
+   * Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.
    */
   rest_length_mm: number;
   recovery_wait_s?: number;
@@ -612,7 +651,7 @@ export type StretchCalibration = CalibrationBase & {
   };
 };
 /**
- * Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed.
+ * Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed. The MVC procedure is pending Aguado: until it is defined, mvc_rms_mv values are placeholders.
  */
 export type EmgMvcCalibration = CalibrationBase & {
   calibration_type: "emg_mvc";
@@ -646,9 +685,11 @@ export type EmgMvcCalibration = CalibrationBase & {
 export type ImuCalibration = CalibrationBase & {
   calibration_type: "imu";
   /**
-   * Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).
+   * Vertebral level, lowercase so it can be embedded in ids (imu.t9.*). c3 and c4 are the upper end of the stretch cord of the standard protocol (C3-C4 to L5-S1); only c3, c4 and c7 are defined of the cervical spine.
    */
   spine_level:
+    | "c3"
+    | "c4"
     | "c7"
     | "t1"
     | "t2"
@@ -840,7 +881,7 @@ export type StopSessionCommand = CommandBase & {
   reason: "completed" | "aborted_by_user" | "aborted_pain" | "aborted_other";
 };
 /**
- * Timestamp an event inside a running session (start/end of a repetition, MVC effort...). The device stamps the event on its monotonic clock when it receives the command.
+ * Timestamp an event inside a running session (start/end of a set or of a repetition, MVC effort...). The device stamps the event on its monotonic clock when it receives the command.
  */
 export type MarkEventCommand = CommandBase & {
   type: "mark_event";
@@ -849,6 +890,8 @@ export type MarkEventCommand = CommandBase & {
    */
   session_id: string;
   event_type:
+    | "set_start"
+    | "set_end"
     | "rep_start"
     | "rep_end"
     | "mvc_start"
@@ -858,6 +901,10 @@ export type MarkEventCommand = CommandBase & {
     | "pain_reported"
     | "artifact"
     | "note";
+  /**
+   * Set (1-based) the event belongs to.
+   */
+  set_index?: number;
   rep_index?: number;
   note?: string;
 };
@@ -1390,7 +1437,10 @@ export interface ReportBase {
   source: "device" | "simulator" | "replay";
 }
 export interface PainLocation {
-  region: "cervical" | "thoracic" | "thoracolumbar" | "lumbar" | "sacral";
+  /**
+   * Region of the spine. full_spine is the whole cord span of the standard protocol, from C3-C4 to L5-S1 (~65 cm).
+   */
+  region: "cervical" | "thoracic" | "thoracolumbar" | "lumbar" | "sacral" | "full_spine";
   side?: "left" | "right" | "midline" | "bilateral";
 }
 /**
@@ -1608,7 +1658,7 @@ export interface SessionList {
   items: Session[];
 }
 /**
- * One capture session. Every chunk, feature set and calibration belongs to a session. Two types: 'exercise' (standardised protocol such as the standing lat pulldown, with repetitions and a declared load) and 'spine_check' (short passive measurement of spine length, e.g. on waking or before sleeping). Comparing Earth and space only makes sense for sessions with the same protocol_id, so the protocol is part of the comparison key.
+ * One capture session. Every chunk, feature set and calibration belongs to a session. Two types: 'exercise' (standardised protocol such as the standing lat pulldown, in sets of repetitions with a declared load) and 'spine_check' (short passive measurement of spine length, standing). A spine_check linked to an exercise session says so with phase ('pre': just before the exercise; 'post': just after it) and related_session_id (the exercise session it brackets). Comparing Earth and space only makes sense for sessions with the same protocol_id, so the protocol is part of the comparison key.
  */
 export interface Session {
   /**
@@ -1669,7 +1719,26 @@ export interface Session {
     band_stretch_cm?: number;
     description?: string;
   };
+  /**
+   * TOTAL repetitions planned for the whole exercise session (planned_sets * reps_per_set when both are given; 60 for lat_pulldown_standing_v1).
+   */
   planned_reps?: number;
+  /**
+   * Sets planned in an exercise session (4 for lat_pulldown_standing_v1). Not for spine checks.
+   */
+  planned_sets?: number;
+  /**
+   * Repetitions planned in each set (15 for lat_pulldown_standing_v1). Not for spine checks.
+   */
+  reps_per_set?: number;
+  /**
+   * Only for a spine_check bracketing an exercise session: pre (just before the exercise) or post (just after it).
+   */
+  phase?: "pre" | "post";
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  related_session_id?: string;
   /**
    * Streams enabled for this session, with their placement and calibration.
    *
@@ -1681,6 +1750,8 @@ export interface Session {
 }
 export interface Event {
   event_type:
+    | "set_start"
+    | "set_end"
     | "rep_start"
     | "rep_end"
     | "mvc_start"
@@ -1699,6 +1770,13 @@ export interface Event {
    */
   device_ms?: number;
   boot_id?: number;
+  /**
+   * Set (1-based) the event belongs to: set_start, set_end and the events of the repetitions inside it.
+   */
+  set_index?: number;
+  /**
+   * Repetition (1-based) within the session, counted across sets.
+   */
   rep_index?: number;
   note?: string;
 }
@@ -1984,7 +2062,7 @@ export interface HistoryView {
    */
   today_day: number | null;
   /**
-   * Own pre-flight range of lumbar length, relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.lumbar.peak_elongation_mm baseline entry. Null without that entry.
+   * Own pre-flight range of spine length (whole-spine cord), relative to the baseline mean: lo = min - mean, hi = max - mean of the stretch.full_spine.peak_elongation_mm baseline entry. Null without that entry.
    */
   preflight_range_mm: LengthRange | null;
   days: HistoryDay[];
@@ -2001,7 +2079,7 @@ export interface HistoryDay {
   mission_day: number | null;
   level: DayLevel;
   /**
-   * Lumbar elongation of the day minus its baseline mean, in mm; null without data (never 0).
+   * Spine elongation of the day (whole-spine cord) minus its baseline mean, in mm; null without data (never 0).
    */
   length_delta_mm: number | null;
   /**
@@ -2143,7 +2221,7 @@ export interface LastRep {
   duration_s: number;
 }
 /**
- * Response of GET /ui/sessions/{session_id}/view: the guided session screen of the desktop UI. Protocol facts (band, reps, rest, fit items) come from catalog/protocol-catalog.json; the UI writes the instructions. Live repetitions are not part of this view.
+ * Response of GET /ui/sessions/{session_id}/view: the guided session screen of the desktop UI. Protocol facts (band, sets, reps, rests, fit items) come from catalog/protocol-catalog.json; the UI writes the instructions. Live repetitions are not part of this view.
  */
 export interface SessionView {
   /**
@@ -2168,11 +2246,23 @@ export interface SessionView {
    */
   band: Band | null;
   /**
-   * Repetitions of the protocol; null when it has none.
+   * Sets of the protocol (4 for lat_pulldown_standing_v1); null when it has none.
+   */
+  planned_sets: number | null;
+  /**
+   * Repetitions in each set of the protocol (15 for lat_pulldown_standing_v1); null when it has none.
+   */
+  reps_per_set: number | null;
+  /**
+   * TOTAL repetitions of the protocol (planned_sets * reps_per_set); null when it has none.
    */
   total_reps: number | null;
   /**
-   * Rest of the protocol; null when it has none.
+   * Recovery between two sets, in seconds; null when the protocol has no sets. Nominal until the clinical owner fixes it.
+   */
+  rest_between_sets_s: number | null;
+  /**
+   * Rest of the protocol before finishing the session, after the last set; null when it has none.
    */
   rest_seconds: number | null;
   /**
@@ -2365,7 +2455,15 @@ export interface SessionInProgress {
    */
   started_at: string;
   /**
-   * Planned repetitions; null for protocols without them.
+   * Planned sets; null for protocols without them.
+   */
+  planned_sets: number | null;
+  /**
+   * Planned repetitions in each set; null for protocols without sets.
+   */
+  reps_per_set: number | null;
+  /**
+   * TOTAL planned repetitions (all sets); null for protocols without them.
    */
   total_reps: number | null;
 }
@@ -2449,9 +2547,11 @@ export interface AstronautProfile {
     disc_herniation?: {
       has_history: boolean;
       /**
-       * Items: Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).
+       * Items: Vertebral level, lowercase so it can be embedded in ids (imu.t9.*). c3 and c4 are the upper end of the stretch cord of the standard protocol (C3-C4 to L5-S1); only c3, c4 and c7 are defined of the cervical spine.
        */
       levels?: (
+        | "c3"
+        | "c4"
         | "c7"
         | "t1"
         | "t2"
@@ -2492,9 +2592,11 @@ export interface AstronautProfile {
     degenerative_discs_on_preflight_mri?: {
       present: boolean;
       /**
-       * Items: Vertebral level, lowercase so it can be embedded in ids (imu.l3.*).
+       * Items: Vertebral level, lowercase so it can be embedded in ids (imu.t9.*). c3 and c4 are the upper end of the stretch cord of the standard protocol (C3-C4 to L5-S1); only c3, c4 and c7 are defined of the cervical spine.
        */
       levels?: (
+        | "c3"
+        | "c4"
         | "c7"
         | "t1"
         | "t2"
@@ -2605,6 +2707,10 @@ export interface CalibrationBase {
    */
   source: "device" | "simulator" | "replay";
   quality?: Quality;
+  /**
+   * Free text for maintainers, e.g. PENDIENTE medición Aguado while a placeholder stands in for a value still to be measured.
+   */
+  notes?: string;
 }
 export interface Xyz {
   x: number;

@@ -25,3 +25,15 @@ def total_reps_for(protocol_id: str) -> int | None:
     """Planned repetitions of the protocol; None for protocols without them or not in the catalog."""
     entry = protocol_entry(protocol_id)
     return None if entry is None else entry["total_reps"]
+
+
+def planned_sets_for(protocol_id: str) -> int | None:
+    """Planned sets of the protocol; None for protocols without sets or not in the catalog."""
+    entry = protocol_entry(protocol_id)
+    return None if entry is None else entry["planned_sets"]
+
+
+def reps_per_set_for(protocol_id: str) -> int | None:
+    """Repetitions in each set of the protocol; None for protocols without sets or not in the catalog."""
+    entry = protocol_entry(protocol_id)
+    return None if entry is None else entry["reps_per_set"]

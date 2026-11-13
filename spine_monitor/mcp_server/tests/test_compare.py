@@ -20,7 +20,7 @@ ASSESSMENT_EXAMPLE: dict[str, Any] = HISTORY_EXAMPLE["assessments"][0]
 PROTO = "lat_pulldown_standing_v1"
 MICRO = "microgravity"
 RMS = "emg.latissimus_dorsi.left.rms_pct_mvc"
-ROM = "imu.l3.sagittal.rom_deg"
+ROM = "imu.t9.sagittal.rom_deg"
 FREQ = "emg.latissimus_dorsi.left.median_freq_hz"
 T0 = datetime(2027, 2, 2, tzinfo=UTC)
 

@@ -32,6 +32,8 @@
 .repCount[data-size="small"] { font-size: 5rem; }
 .repCount small { font-size: 2.125rem; color: var(--muted); font-weight: 700; }
 .phase { font-size: 1.6875rem; font-weight: 800; color: var(--action); }
+.setLine { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 8px 0 0; font-size: 1.375rem; font-weight: 700; }
+.setLine span:not(:first-child) { color: var(--muted); font-weight: 400; }
 .repAlert { border-left: 6px solid var(--risk-amber); background: var(--panel); border-radius: var(--radius-s); padding: 10px 14px; margin: 0 0 14px; font-size: 1.375rem; font-weight: 800; color: var(--ink); }
 .repAlert p { margin: 0; }
 .repAlert .hint { font-size: 1rem; font-weight: 400; color: var(--muted); margin-top: 4px; }

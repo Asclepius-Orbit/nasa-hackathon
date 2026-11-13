@@ -51,13 +51,13 @@ def example(name: str) -> dict[str, Any]:
 
 @cache
 def _simulated_imu_chunks() -> tuple[dict[str, Any], ...]:
-    """The imu_l3 chunks of one real simulated exercise (10 reps of the lat pulldown), with no wall clock."""
+    """The imu_t9 chunks of one real simulated exercise (the whole lat pulldown: every set), with no wall clock."""
     config = load_config(SIM_CONFIG)
     start = datetime(2030, 1, 1, 10, tzinfo=UTC)
     plan = plan_device_live(config, config.seed, ASTRONAUT, boot_at=start - timedelta(hours=1), horizon=timedelta(hours=1))
     stream = MissionGenerator(config).live_session(
         astronaut_id=ASTRONAUT, day=1, device=SimDevice(config, plan), session_id=SIM_SESSION, session_type="exercise",
-        protocol_id=SIM_PROTOCOL, stream_ids=("imu_l3",), start=start,
+        protocol_id=SIM_PROTOCOL, stream_ids=("imu_t9",), start=start,
     )  # fmt: skip
     protocol = config.protocols[SIM_PROTOCOL]
     assert isinstance(protocol, ExerciseProtocol)
@@ -68,6 +68,13 @@ def _simulated_imu_chunks() -> tuple[dict[str, Any], ...]:
             if (chunks[-1]["t0_device_ms"] - chunks[0]["t0_device_ms"]) / 1000.0 > exercise_duration_s(protocol):
                 return tuple(chunks)
     raise AssertionError("the live session iterator never ends")
+
+
+def simulated_reps() -> int:
+    """Repetitions the simulator performs in the protocol: the whole session, all sets."""
+    protocol = load_config(SIM_CONFIG).protocols[SIM_PROTOCOL]
+    assert isinstance(protocol, ExerciseProtocol)
+    return protocol.planned_reps
 
 
 def imu_chunks(session_id: str) -> list[dict[str, Any]]:
@@ -178,6 +185,8 @@ class Harness:
     example = staticmethod(example)
     plan = staticmethod(lambda **overrides: session_plan(**overrides))
     imu_chunks = staticmethod(imu_chunks)
+    simulated_reps = staticmethod(simulated_reps)
+    simulated_reps = staticmethod(simulated_reps)
 
     @property
     def store(self):
@@ -212,9 +221,9 @@ class Harness:
         day = self.clock().date().isoformat()
         assert (await self.http.put(f"/ui/crew/{ASTRONAUT}/daily-context/{day}", json=context)).status_code == 200
 
-    async def start_session(self, **overrides: Any) -> tuple[str, dict[str, Any]]:
-        """Creates an exercise session and acks its start_session as accepted."""
-        response = await self.http.post(f"/ui/crew/{ASTRONAUT}/sessions", json=session_plan(**overrides))
+    async def start_session(self, plan: dict[str, Any] | None = None, **overrides: Any) -> tuple[str, dict[str, Any]]:
+        """Creates an exercise session (or the given `plan`) and acks its start_session as accepted."""
+        response = await self.http.post(f"/ui/crew/{ASTRONAUT}/sessions", json=plan if plan is not None else session_plan(**overrides))
         assert response.status_code == 202, response.text
         body = response.json()
         await self.ack(body["command"], "accepted")
@@ -245,7 +254,10 @@ class Harness:
 
 def session_plan(**overrides: Any) -> dict[str, Any]:
     session = example("domain/session.exercise")
-    plan = {k: copy.deepcopy(session[k]) for k in ("device_id", "session_type", "protocol_id", "load_declared", "planned_reps", "streams")}
+    plan = {
+        k: copy.deepcopy(session[k])
+        for k in ("device_id", "session_type", "protocol_id", "load_declared", "planned_reps", "planned_sets", "reps_per_set", "streams")
+    }
     plan.update(overrides)
     return plan
 

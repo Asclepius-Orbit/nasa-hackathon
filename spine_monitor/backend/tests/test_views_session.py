@@ -70,7 +70,7 @@ GOOD, ACKED = device(), [calibrate("c0ffee00-0000-4000-8000-000000000004", "2026
 
 
 def test_a_running_session_with_everything_ready_matches_the_contract_example():
-    stream_states = {"emg_lat_left": "active", "imu_l3": "active", "stretch_lumbar": "stalled"}
+    stream_states = {"emg_lat_left": "active", "imu_t9": "active", "stretch_spine": "stalled"}
     streams = [{"stream_id": k, "stream_kind": "emg", "state": v} for k, v in stream_states.items()]
     status = {"status": "degraded", "timestamp": "2026-11-13T10:04:00Z", "streams": streams}
     result = build(commands=ACKED, status=status)
@@ -82,10 +82,13 @@ def test_a_running_session_with_everything_ready_matches_the_contract_example():
         "astronaut_id": "AST-01",
         "state": "running",
         "protocol_id": "lat_pulldown_standing_v1",
-        "band": {"color": "blue", "nominal_kg": 15},
-        "total_reps": 10,
+        "band": {"color": "green", "nominal_kg": 25},
+        "planned_sets": 4,
+        "reps_per_set": 15,
+        "total_reps": 60,
+        "rest_between_sets_s": 30,
         "rest_seconds": 120,
-        "fit_items": ["skin", "emg", "imu", "cord"],
+        "fit_items": ["skin", "emg", "ground", "imu", "cord"],
         "started_at": "2026-11-13T10:02:31Z",
         "steps": [
             {"id": "fit", "status": "done"},
@@ -96,13 +99,18 @@ def test_a_running_session_with_everything_ready_matches_the_contract_example():
         ],
         "sensor_checks": [
             {"stream": "emg_lat_left", "status": "good", "state": "active"},
-            {"stream": "imu_l3", "status": "good", "state": "active"},
-            {"stream": "stretch_lumbar", "status": "weak", "state": "stalled"},
+            {"stream": "imu_t9", "status": "good", "state": "active"},
+            {"stream": "stretch_spine", "status": "weak", "state": "stalled"},
         ],
         "calibration": {"command_id": "c0ffee00-0000-4000-8000-000000000004", "acked": True, "acked_at": "2026-11-13T10:00:06.400Z"},
         "stretched_cm": None,
         "planned_at": None,
     }
+
+
+def test_a_protocol_without_sets_has_null_set_facts():
+    result = build("starting", entry=REST, protocol="spine_length_rest_v1", started_at=None)
+    assert (result["planned_sets"], result["reps_per_set"], result["rest_between_sets_s"]) == (None, None, None)
 
 
 def test_a_protocol_without_band_reps_or_rest_has_nulls():
@@ -117,6 +125,7 @@ def test_without_catalog_entry_facts_are_null_and_fit_items_empty():
 
     assert validation.errors("app/ui-session", result) == []
     assert (result["band"], result["total_reps"], result["rest_seconds"], result["fit_items"]) == (None, None, None, [])
+    assert (result["planned_sets"], result["reps_per_set"], result["rest_between_sets_s"]) == (None, None, None)
 
 
 def test_the_band_is_a_copy_of_the_catalog_entry():

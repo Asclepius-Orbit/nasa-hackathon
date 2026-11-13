@@ -262,12 +262,12 @@ def test_curve_validation_boundaries_and_messages():
 
 
 def test_measured_curve_spreads_lengths_evenly_up_to_the_top_of_the_true_curve(config, params):
-    # Curva real del ejemplo: longitudes 360..500 mm; 4 puntos de calibracion.
-    # Reposo 400: reparto uniforme 400 -> 500 en 3 pasos de 100/3: 400, 433.33, 466.67, 500.
-    # Reposo 510 (por encima del alcance): alcance = 510 + (500 - 360) = 650, pasos de 140/3: 510, 556.67, 603.33, 650.
-    assert params.curve_pairs()[0][1] == 360.0 and params.curve_pairs()[-1][1] == 500.0 and config.calibration.stretch.n_points == 4
+    # Curva real del ejemplo: longitudes 585..812 mm; 4 puntos de calibracion.
+    # Reposo 650: reparto uniforme 650 -> 812 en 3 pasos de 54: 650, 704, 758, 812.
+    # Reposo 820 (por encima del alcance): alcance = 820 + (812 - 585) = 1047, pasos de 227/3: 820, 895.67, 971.33, 1047.
+    assert params.curve_pairs()[0][1] == 585.0 and params.curve_pairs()[-1][1] == 812.0 and config.calibration.stretch.n_points == 4
     cal = config.calibration.stretch.model_copy(update={"measurement_noise_mm": 0.0})
-    expected = {400.0: [400.0, 1300 / 3, 1400 / 3, 500.0], 510.0: [510.0, 510 + 140 / 3, 510 + 280 / 3, 650.0]}
+    expected = {650.0: [650.0, 704.0, 758.0, 812.0], 820.0: [820.0, 820 + 227 / 3, 820 + 454 / 3, 1047.0]}
     for rest, lengths in expected.items():
         curve = measured_curve(np.random.default_rng(0), params, cal, rest_length_mm=rest)
         assert [p[1] for p in curve] == pytest.approx(lengths)

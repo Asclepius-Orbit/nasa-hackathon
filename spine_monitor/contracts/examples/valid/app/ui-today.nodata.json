@@ -12,7 +12,9 @@
     "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
     "protocol_id": "lat_pulldown_standing_v1",
     "started_at": "2026-11-13T10:02:31Z",
-    "total_reps": 10
+    "planned_sets": 4,
+    "reps_per_set": 15,
+    "total_reps": 60
   },
   "also_today": ["TASK_DAILY_REPORT", "TASK_ODI"]
 }

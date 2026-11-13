@@ -103,7 +103,7 @@ export interface TodayData {
   /** ISO time of the measure behind `lumbarLengthMm`; `null` exactly when that is `null`. */
   lumbarMeasuredAt: string | null;
   /** A session in progress, if any (live rep count comes from `subscribeReps`). */
-  sessionInProgress: { sessionId: string; protocolId: string; startedAt: string; totalReps: number | null } | null;
+  sessionInProgress: { sessionId: string; protocolId: string; startedAt: string; plannedSets: number | null; repsPerSet: number | null; totalReps: number | null } | null;
 }
 
 export interface BaselineSession {
@@ -193,9 +193,15 @@ export interface SessionData {
   protocolId: string;
   /** `null` when the protocol uses no band. */
   band: { color: string; nominalKg: number } | null;
-  /** `null` when the protocol has no repetitions. */
+  /** Sets of the protocol; `null` when it has none. */
+  plannedSets: number | null;
+  /** Repetitions in each set; `null` when the protocol has no sets. */
+  repsPerSet: number | null;
+  /** TOTAL repetitions of the session (all sets); `null` when the protocol has no repetitions. */
   totalReps: number | null;
-  /** `null` when the protocol has no rest. */
+  /** Recovery between two sets, in seconds; nominal until the clinical owner fixes it. `null` when the protocol has no sets. */
+  restBetweenSetsS: number | null;
+  /** Rest after the last set, before finishing; `null` when the protocol has no rest. */
   restSeconds: number | null;
   fitItems: readonly string[];
   /** `null` before the gateway started the session. */
@@ -217,10 +223,18 @@ export interface SessionData {
  * session is over (`end` event): the fields are the final count, with no phase or bar.
  */
 export interface RepState {
-  /** Repetitions completed plus the current one; 0 when none has started. */
+  /** Repetitions completed plus the current one, across all sets; 0 when none has started. */
   rep: number;
-  /** `null` when the planned total is unknown. */
+  /** TOTAL planned repetitions (all sets); `null` when unknown. */
   total: number | null;
+  /** Set of the current repetition (the set that just ended while resting between two); 0 when none has started. */
+  set: number;
+  /** `null` when the planned sets are unknown. */
+  setsTotal: number | null;
+  /** `null` when the repetitions per set are unknown. */
+  repsPerSet: number | null;
+  /** Repetition inside `set`; 0 when none has started. Between two sets it stays at the last one of the set that ended. */
+  repInSet: number;
   /** `null` when the backend gives no phase (no signal, lost). */
   phase: 'pulling' | 'letting_up' | 'resting' | null;
   /** Progress of the current movement, 0-100; `null` when unknown (first rep, resting, no signal). Never a default 0. */

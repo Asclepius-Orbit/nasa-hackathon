@@ -40,7 +40,7 @@ def feature_set(value: float | None, start: str, *, protocol: str = PROTOCOL, gr
 
 
 def test_the_feature_id_is_the_lumbar_elongation():
-    assert ELONGATION_FEATURE == "stretch.lumbar.peak_elongation_mm"
+    assert ELONGATION_FEATURE == "stretch.full_spine.peak_elongation_mm"
 
 
 # --- baseline_entry ------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ def test_baseline_entry_finds_the_lumbar_entry_of_the_protocol_and_gravity():
     wanted = entry(mean=1.0)
     baseline = {
         "entries": [
-            entry(mean=2.0, feature_id="stretch.lumbar.elongation_mm"),
+            entry(mean=2.0, feature_id="stretch.full_spine.elongation_mm"),
             entry(mean=3.0, protocol_id="other_v1"),
             entry(mean=4.0, gravity_environment="microgravity"),
             wanted,
@@ -163,7 +163,7 @@ def test_latest_elongation_ignores_sets_without_the_feature_and_other_features()
     sets = [
         feature_set(5.0, "2030-01-01T10:00:00Z"),
         feature_set(None, "2030-01-02T10:00:00Z"),
-        feature_set(9.0, "2030-01-03T10:00:00Z", feature="stretch.lumbar.elongation_mm"),
+        feature_set(9.0, "2030-01-03T10:00:00Z", feature="stretch.full_spine.elongation_mm"),
     ]
 
     assert latest_elongation(sets) == (5.0, PROTOCOL, GRAVITY)

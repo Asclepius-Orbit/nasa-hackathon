@@ -91,8 +91,8 @@ export function taskText(code: TaskCode | (string & {})): PlanText {
 }
 
 const FEATURES: Readonly<Record<string, string>> = {
-  'stretch.lumbar.peak_elongation_mm': 'Lumbar length',
-  'imu.l3.sagittal.rom_deg': 'Lumbar curve',
+  'stretch.full_spine.peak_elongation_mm': 'Spine length',
+  'imu.t9.sagittal.rom_deg': 'Thoracic curve',
   'emg.latissimus_dorsi.left.median_freq_hz': 'Left latissimus EMG frequency',
   'emg.latissimus_dorsi.right.median_freq_hz': 'Right latissimus EMG frequency',
   'emg.latissimus_dorsi.left.rms_pct_mvc': 'Left latissimus EMG effort',
@@ -166,10 +166,14 @@ const FIT_ITEMS: Readonly<Record<string, { label: string; detail: string }>> = {
   skin: { label: 'Clean the skin', detail: 'with a wipe over both latissimus dorsi, below the shoulder blades on each side.' },
   emg: {
     label: 'EMG electrodes, left and right:',
-    detail: 'two on each latissimus, 2 cm apart along the muscle, and the reference electrode over the spine.',
+    detail: 'two on each latissimus dorsi, 10 cm apart along the muscle, from T11 to L2.',
   },
-  imu: { label: 'IMU at L3:', detail: 'in the belt pocket at the waist line, arrow pointing to the head.' },
-  cord: { label: 'Stretch cord, L1 to L5:', detail: 'top clamp at L1, bottom clamp at L5, no slack and no twist.' },
+  ground: { label: 'Ground electrode (GND):', detail: 'on the iliac crest, the bony ridge at the top of the hip. Ask a crewmate to place it.' },
+  imu: { label: 'IMU at T9:', detail: 'in the belt pocket on the mid back, level with the lower tips of the shoulder blades, arrow pointing to the head.' },
+  cord: {
+    label: 'Stretch cord, C3 to S1:',
+    detail: 'top clamp at C3-C4, bottom clamp at L5-S1, no slack and no twist. Stand upright.',
+  },
 };
 
 export const fitItemText = (id: string): { label: string; detail: string } => FIT_ITEMS[id] ?? { label: id, detail: '' };
@@ -177,8 +181,8 @@ export const fitItemText = (id: string): { label: string; detail: string } => FI
 const STREAMS: Readonly<Record<string, string>> = {
   emg_lat_left: 'EMG left latissimus',
   emg_lat_right: 'EMG right latissimus',
-  imu_l3: 'IMU at L3',
-  stretch_lumbar: 'Stretch cord L1 to L5',
+  imu_t9: 'IMU at T9',
+  stretch_spine: 'Stretch cord C3 to S1',
 };
 
 export const streamLabel = (stream: string): string => STREAMS[stream] ?? stream;

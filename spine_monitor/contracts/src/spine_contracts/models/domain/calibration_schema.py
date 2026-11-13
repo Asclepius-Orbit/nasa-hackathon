@@ -88,7 +88,7 @@ class CalibrationBase(BaseModel):
     stream_id: constr(pattern=r'^[a-z0-9][a-z0-9_]{1,31}$') = Field(
         ...,
         description='Identifier of one sensor stream inside a device. Declared in the session, repeated in every chunk and in the MQTT topic.',
-        examples=['emg_lat_left', 'imu_l3', 'stretch_lumbar'],
+        examples=['emg_lat_left', 'emg_lat_right', 'imu_t9', 'stretch_spine'],
     )
     session_id: (
         constr(
@@ -108,6 +108,10 @@ class CalibrationBase(BaseModel):
     )
     source: common_schema.Source
     quality: common_schema.Quality | None = None
+    notes: constr(max_length=200) | None = Field(
+        None,
+        description='Free text for maintainers, e.g. PENDIENTE medición Aguado while a placeholder stands in for a value still to be measured.',
+    )
 
 
 class StretchCalibration(CalibrationBase):
@@ -118,7 +122,7 @@ class StretchCalibration(CalibrationBase):
     rest_resistance_ohm: PositiveFloat
     rest_length_mm: PositiveFloat = Field(
         ...,
-        description='Length of cord between the two clamps at rest (the reference for elongation).',
+        description='Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.',
     )
     recovery_wait_s: confloat(ge=0.0) | None = None
     temperature_c: float | None = None

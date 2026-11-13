@@ -13,7 +13,7 @@ from spine_engine.interfaces import ChangeSignal
 from spine_engine.settings import EngineSettings
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "assess-request.json"
-ROM = "imu.l3.sagittal.rom_deg"
+ROM = "imu.t9.sagittal.rom_deg"
 
 
 def request() -> AssessRequest:

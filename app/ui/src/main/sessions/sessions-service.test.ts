@@ -32,7 +32,7 @@ const commandAnswer = { command: { command_id: COMMAND, type: 'stop' } };
 const LOCKED = { ok: false, reason: 'locked' };
 
 describe('createSessionsService start', () => {
-  it("starts an exercise on the unlocked member's harness with the protocol's load, reps and streams", async () => {
+  it("starts an exercise on the unlocked member's harness with the protocol's load, sets, reps and streams", async () => {
     const { backend, service } = build();
     backend.sendAnswer = { session: { session_id: SESSION, streams: [] }, state: 'starting', command: { command_id: COMMAND } };
     expect(await service.start({ protocolId: 'lat_pulldown_standing_v1' })).toEqual({
@@ -48,8 +48,10 @@ describe('createSessionsService start', () => {
           device_id: 'wb-01',
           protocol_id: 'lat_pulldown_standing_v1',
           session_type: 'exercise',
-          load_declared: { type: 'elastic_band', nominal_kg: 15, band_id: 'blue' },
-          planned_reps: 10,
+          load_declared: { type: 'elastic_band', nominal_kg: 25, band_id: 'green' },
+          planned_reps: 60,
+          planned_sets: 4,
+          reps_per_set: 15,
           streams: PROTOCOLS.lat_pulldown_standing_v1.streams,
         },
       },
@@ -133,7 +135,7 @@ describe('createSessionsService commands', () => {
     const { backend, service } = build();
     backend.sessionStreams.set(SESSION, [
       { streamId: 'emg_lat_left', kind: 'emg' },
-      { streamId: 'imu_l3', kind: 'imu' },
+      { streamId: 'imu_t9', kind: 'imu' },
       { streamId: 'emg_lat_right', kind: 'emg' },
     ]);
     backend.sendAnswer = commandAnswer;
@@ -150,7 +152,7 @@ describe('createSessionsService commands', () => {
 
   it('refuses an MVC calibration of a session without EMG streams, without sending', async () => {
     const { backend, service } = build();
-    backend.sessionStreams.set(SESSION, [{ streamId: 'stretch_lumbar', kind: 'stretch' }]);
+    backend.sessionStreams.set(SESSION, [{ streamId: 'stretch_spine', kind: 'stretch' }]);
     expect(await service.calibrateMvc({ sessionId: SESSION })).toEqual({
       ok: false,
       reason: 'invalid',

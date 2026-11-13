@@ -24,8 +24,8 @@ Tot paràmetre numèric, fisiològic o tècnic, és obligatori i surt del YAML d
 | `segments` | trams consecutius (`days`, `phase`, `gravity_environment`): preflight 1 g, inflight microgravetat, postflight 1 g |
 | `crew` | per astronauta: ids, `latent_multipliers`, `exercise_adherence`, línia base (longitud de repòs del cordó, MVC d'EMG per stream) i l'`AstronautProfile` |
 | `device` | firmware, enllaç, encesa i apagada diàries (UTC), bateria, temperatura, intervals d'estat i de sincronització de rellotge, streams amb la seva col·locació |
-| `protocols` | protocols d'exercici (repeticions, durades, %MVC, ROM, càrrega) i de control de columna |
-| `schedule` | sessions per dia (`time_utc`, jitter, fases, `every_n_days`) i la finestra opcional de monitorització de fons (`background.chunk_ms`, obligatori: durada del chunk del stream de fons d'IMU + cordó, separada de `signals.chunk_ms`; l'exemple usa 1000 ms) |
+| `protocols` | protocols d'exercici (sèries x repeticions per sèrie, descans entre sèries, durades, %MVC, ROM, càrrega; l'exemple és la politja dempeus, banda verda 25 kg, 4 x 15) i de control de columna |
+| `schedule` | sessions per dia (`time_utc`, jitter, fases, `every_n_days`; un control de columna pot usar `bracket: {phase: pre\|post, of, gap_s}` per anar just abans/després de l'exercici, enllaçat per `phase` i `related_session_id`) i la finestra opcional de monitorització de fons (`background.chunk_ms`, obligatori: durada del chunk del stream de fons d'IMU + cordó, separada de `signals.chunk_ms`; l'exemple usa 1000 ms) |
 | `calibration` | calibratges de cordó, MVC d'EMG i IMU: periodicitat, soroll, punts |
 | `curves` | trajectòria típica dels quatre latents diaris per dia de missió (punts per trams), `daily_sd` i `dose_drift_per_day` |
 | `signals` | `chunk_ms` i la síntesi d'EMG, IMU i cordó (freqüències, soroll, filtres, ADC, histèresi...) |

@@ -76,7 +76,7 @@ The composite fills `unit` from the feature catalog and the quality over the str
 
 The source is, in this order:
 
-1. The session's `rep_start`/`rep_end` events (recorded by the `mark_event` command), sorted by time and paired in order. Orphans, duplicates and windows where end <= start are discarded.
+1. The session's `rep_start`/`rep_end` events (recorded by the `mark_event` command), sorted by time and paired in order. Orphans, duplicates and windows where end <= start are discarded. `rep_index` counts across the whole session, not per set; `set_start`/`set_end`/`rest_start` only separate sets, so the rest between sets is never a rest between repetitions (the last repetition of a set has no rest window; the IMU fallback applies the same rule to pauses over 5 times the usual one).
 2. If no valid window remains, an IMU fallback that uses only the gyroscope (in microgravity the accelerometer does not see gravity): lobes of opposite-sign angular velocity on the dominant axis, per `boot_id`, on the UTC clock. Without signal it returns nothing.
 3. If neither yields anything, there are no repetitions.
 

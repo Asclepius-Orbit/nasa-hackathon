@@ -7,7 +7,7 @@ pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 
 def stretch_topic(harness) -> str:
-    return topics.stream(harness.astronaut_id, harness.device_id, "stretch_lumbar")
+    return topics.stream(harness.astronaut_id, harness.device_id, "stretch_spine")
 
 
 async def test_valid_chunk_is_stored_once(harness):
@@ -35,8 +35,8 @@ async def test_conditional_schema_rule_is_enforced(harness):
 @pytest.mark.parametrize(
     ("topic_ids", "reason"),
     [
-        (("AST-02", "wb-01", "stretch_lumbar"), "astronaut_id"),
-        (("AST-01", "wb-02", "stretch_lumbar"), "device_id"),
+        (("AST-02", "wb-01", "stretch_spine"), "astronaut_id"),
+        (("AST-01", "wb-02", "stretch_spine"), "device_id"),
         (("AST-01", "wb-01", "stretch_other"), "stream_id"),
     ],
 )
@@ -73,7 +73,7 @@ async def test_clock_and_calibration_are_stored(harness):
     anchor = harness.example("telemetry/clock-sync.round-trip")
     calibration = harness.example("domain/calibration.stretch")
     harness.mqtt.deliver(topics.clock(harness.astronaut_id, harness.device_id), anchor)
-    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_lumbar"), calibration)
+    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_spine"), calibration)
     await harness.settle()
 
     assert harness.store.clock_syncs(harness.astronaut_id, harness.device_id, {anchor["boot_id"]}) == [anchor]

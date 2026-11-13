@@ -73,13 +73,13 @@ def test_exercise_features_use_catalog_ids_and_units(config, model):
     expected = {
         "emg.latissimus_dorsi.left.rms_pct_mvc", "emg.latissimus_dorsi.right.peak_pct_mvc", "emg.latissimus_dorsi.left.median_freq_hz",
         "emg.latissimus_dorsi.left.median_freq_slope_hz_per_rep", "emg.latissimus_dorsi.symmetry_index_pct",
-        "imu.l3.sagittal.rom_deg", "imu.l3.sagittal.peak_angular_velocity_dps", "stretch.lumbar.peak_elongation_mm",
-        "stretch.lumbar.range_mm", "exercise.rep_count",
+        "imu.t9.sagittal.rom_deg", "imu.t9.sagittal.peak_angular_velocity_dps", "stretch.full_spine.peak_elongation_mm",
+        "stretch.full_spine.range_mm", "exercise.rep_count",
     }  # fmt: skip
     assert expected <= set(ids)
     protocol = config.protocol("lat_pulldown_standing_v1")
     assert ids["exercise.rep_count"]["value"] == protocol.planned_reps
-    assert ids["imu.l3.sagittal.rom_deg"]["value"] == pytest.approx(effective_rom_deg(protocol.rom_deg, state, config.signals.imu))
+    assert ids["imu.t9.sagittal.rom_deg"]["value"] == pytest.approx(effective_rom_deg(protocol.rom_deg, state, config.signals.imu))
     peak = emg_signal.effective_pct_mvc(protocol.pct_mvc, state.muscle_deconditioning, config.signals.emg)
     assert ids["emg.latissimus_dorsi.left.peak_pct_mvc"]["value"] == pytest.approx(peak, rel=1e-3)
     # Campana seno² hasta el pico desde el reposo: RMS entre el reposo y el pico.
@@ -105,16 +105,16 @@ def test_expected_emg_rms_matches_the_synthesized_signal(config, model):
 
 
 def test_spine_check_elongation_matches_the_published_length(config, model):
-    _, state, synthesis = synth(config, model, "am_spine_check", day=6)
+    _, state, synthesis = synth(config, model, "pre_spine_check", day=6)
     ids = by_id(truth.expected_features(config, synthesis, state=state))
-    stretch = synthesis.stream("stretch_lumbar")
+    stretch = synthesis.stream("stretch_spine")
     rest = config.member(A).baseline.cord_rest_length_mm
     measured = float(np.mean(stretch.channels["length_mm"])) - rest
     # Error: calibración medida (ruido de 0.5 mm por punto) + cuantización del ADC.
-    assert measured == pytest.approx(ids["stretch.lumbar.elongation_mm"]["value"], abs=2.0)
-    assert ids["stretch.lumbar.elongation_mm"]["value"] == pytest.approx(state.spine_elongation_mm, abs=1.0)  # micro: sin pérdida diurna
-    assert ids["stretch.lumbar.elongation_pct"]["value"] == pytest.approx(100 * ids["stretch.lumbar.elongation_mm"]["value"] / rest)
-    assert "imu.l3.sagittal.rom_deg" not in ids and "exercise.rep_count" not in ids
+    assert measured == pytest.approx(ids["stretch.full_spine.elongation_mm"]["value"], abs=2.0)
+    assert ids["stretch.full_spine.elongation_mm"]["value"] == pytest.approx(state.spine_elongation_mm, abs=1.0)  # micro: sin pérdida diurna
+    assert ids["stretch.full_spine.elongation_pct"]["value"] == pytest.approx(100 * ids["stretch.full_spine.elongation_mm"]["value"] / rest)
+    assert "imu.t9.sagittal.rom_deg" not in ids and "exercise.rep_count" not in ids
 
 
 def test_gravity_changes_only_gravity_dependent_features(config, model):
@@ -128,16 +128,16 @@ def test_gravity_changes_only_gravity_dependent_features(config, model):
         else:
             assert a[feature_id] == b[feature_id]
     # La pérdida diurna (solo con gravedad) acorta el cordón.
-    assert b["stretch.lumbar.peak_elongation_mm"]["value"] < a["stretch.lumbar.peak_elongation_mm"]["value"]
+    assert b["stretch.full_spine.peak_elongation_mm"]["value"] < a["stretch.full_spine.peak_elongation_mm"]["value"]
 
 
 def test_background_features_only_count_emitted_chunks(config, model):
     plan, state, synthesis = synth(config, model, "background")
     active = sess.active_chunks(plan)
     with_pause = by_id(truth.expected_features(config, synthesis, state=state, active=active))
-    stretch = synthesis.stream("stretch_lumbar")
+    stretch = synthesis.stream("stretch_spine")
     emitted = sum(k1 - k0 for k0, k1 in active) * stretch.samples_per_chunk
-    assert with_pause["stretch.lumbar.elongation_mm"]["n"] == emitted < stretch.channels["adc_counts"].size
+    assert with_pause["stretch.full_spine.elongation_mm"]["n"] == emitted < stretch.channels["adc_counts"].size
 
 
 def session_key(config):
@@ -146,24 +146,24 @@ def session_key(config):
 
 def test_quality_faults_record_lists_visible_episodes_with_times(config, model):
     plan, _, synthesis = synth(config, model, "background")
-    stream = synthesis.stream("imu_l3")
-    inside = FaultEpisode(QualityFlag.LOW_SNR, "imu_l3", 0, 5, 0.6, 1.0)
+    stream = synthesis.stream("imu_t9")
+    inside = FaultEpisode(QualityFlag.LOW_SNR, "imu_t9", 0, 5, 0.6, 1.0)
     paused_chunk = sess.active_chunks(plan)[0][1]
-    hidden = FaultEpisode(QualityFlag.CLIPPING, "imu_l3", paused_chunk * stream.samples_per_chunk, (paused_chunk + 1) * stream.samples_per_chunk, 0.4, 0.6)
+    hidden = FaultEpisode(QualityFlag.CLIPPING, "imu_t9", paused_chunk * stream.samples_per_chunk, (paused_chunk + 1) * stream.samples_per_chunk, 0.4, 0.6)
     patched = sess.StreamSynthesis(**{**{f: getattr(stream, f) for f in stream.__slots__}, "episodes": (inside, hidden)})
     record = truth.quality_faults_record(session_key(config), [patched], active=sess.active_chunks(plan))
     assert record["type"] == "quality_faults" and record["session_id"] == session_key(config).session_id
-    (episode,) = record["streams"]["imu_l3"]
+    (episode,) = record["streams"]["imu_t9"]
     assert episode["flag"] == "low_snr" and episode["start"] == truth.iso(stream.start)
-    assert len(truth.quality_faults_record(session_key(config), [patched])["streams"]["imu_l3"]) == 2
+    assert len(truth.quality_faults_record(session_key(config), [patched])["streams"]["imu_t9"]) == 2
     json.dumps(record)
 
 
 def test_lost_chunks_record_keeps_only_lost_outcomes(config):
     at = datetime(2026, 11, 1, 10, tzinfo=UTC)
-    lost = ChunkOutcome("imu_l3", StreamKind.IMU, 7, 12, 1200, at, None)
-    record = truth.lost_chunks_record(session_key(config), {"imu_l3": [lost], "stretch_lumbar": []})
-    assert record["streams"] == {"imu_l3": [{"boot_id": 7, "seq": 12, "t0_device_ms": 1200, "received_at": "2026-11-01T10:00:00Z"}], "stretch_lumbar": []}
+    lost = ChunkOutcome("imu_t9", StreamKind.IMU, 7, 12, 1200, at, None)
+    record = truth.lost_chunks_record(session_key(config), {"imu_t9": [lost], "stretch_spine": []})
+    assert record["streams"] == {"imu_t9": [{"boot_id": 7, "seq": 12, "t0_device_ms": 1200, "received_at": "2026-11-01T10:00:00Z"}], "stretch_spine": []}
 
 
 def test_daily_records_are_json_ready(config, model):

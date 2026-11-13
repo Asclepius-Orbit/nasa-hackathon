@@ -215,9 +215,13 @@ class Control:
         await self._send(command)
         return command
 
-    async def mark_event(self, session_id: str, event_type: str, rep_index: int | None = None, note: str | None = None) -> dict[str, Any]:
+    async def mark_event(
+        self, session_id: str, event_type: str, rep_index: int | None = None, note: str | None = None, set_index: int | None = None
+    ) -> dict[str, Any]:
         session = self._active(session_id)
         fields: dict[str, Any] = {"session_id": session_id, "event_type": event_type}
+        if set_index is not None:
+            fields["set_index"] = set_index
         if rep_index is not None:
             fields["rep_index"] = rep_index
         if note is not None:
@@ -306,7 +310,7 @@ class Control:
         if row is None:
             return
         event = {"event_type": command["event_type"], "timestamp": command["issued_at"]}
-        for key in ("rep_index", "note"):
+        for key in ("set_index", "rep_index", "note"):
             if key in command:
                 event[key] = command[key]
         events = [*row.payload.get("events", []), event]

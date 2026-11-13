@@ -21,11 +21,11 @@ from spine_contracts import SCHEMA_VERSION
 
 from monitor.db import SessionRow
 from monitor.live.reps import RepDetector, RepDetectorParams
-from monitor.views.protocol_catalog import total_reps_for
+from monitor.views.protocol_catalog import planned_sets_for, reps_per_set_for, total_reps_for
 
 _log = logging.getLogger(__name__)
 
-REP_STREAM_ID = "imu_l3"
+REP_STREAM_ID = "imu_t9"
 TERMINAL_STATES = frozenset({"ended", "processing", "processed", "processing_failed", "rejected"})
 # At most one state per chunk (10 per second): about a second behind; older states are worth nothing to a counter.
 _QUEUE_SIZE = 8
@@ -40,15 +40,48 @@ def rep_total(session: Mapping[str, Any]) -> int | None:
     return planned if planned is not None else total_reps_for(session["protocol_id"])
 
 
+def rep_sets(session: Mapping[str, Any]) -> tuple[int | None, int | None]:
+    """(planned sets, repetitions per set) of the session: its own plan, otherwise the protocol's, otherwise null."""
+    sets = session.get("planned_sets")
+    per_set = session.get("reps_per_set")
+    return (
+        sets if sets is not None else planned_sets_for(session["protocol_id"]),
+        per_set if per_set is not None else reps_per_set_for(session["protocol_id"]),
+    )
+
+
+def set_position(rep: int, reps_per_set: int | None) -> tuple[int, int]:
+    """(set, repetition in the set), both 1-based and 0 before the first repetition, of a repetition counted across the session.
+
+    The last repetition of a set stays in it: the pause between two sets is the `resting` phase, not a new set.
+    Without a known size of set everything is the first set."""
+    if rep == 0:
+        return 0, 0
+    if reps_per_set is None:
+        return 1, rep
+    return (rep - 1) // reps_per_set + 1, (rep - 1) % reps_per_set + 1
+
+
 def has_live_reps(session: Mapping[str, Any]) -> bool:
     """False when the protocol has no repetitions or the session has no stream to count them with."""
     return rep_total(session) is not None and any(stream["stream_id"] == REP_STREAM_ID for stream in session["streams"])
 
 
 class RepTracker:
-    def __init__(self, session_id: str, total: int | None, *, clock: Callable[[], datetime], no_signal_s: float) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        total: int | None,
+        *,
+        sets_total: int | None = None,
+        reps_per_set: int | None = None,
+        clock: Callable[[], datetime],
+        no_signal_s: float,
+    ) -> None:
         self._session_id = session_id
         self._total = total
+        self._sets_total = sets_total
+        self._reps_per_set = reps_per_set
         self._clock = clock
         self._no_signal_s = no_signal_s
         self._detector = RepDetector(RepDetectorParams.default())
@@ -70,11 +103,16 @@ class RepTracker:
         now = self._clock()
         snapshot = self._detector.snapshot()
         signal = self._received_at is not None and (now - self._received_at).total_seconds() < self._no_signal_s
+        set_index, rep_in_set = set_position(snapshot["rep"], self._reps_per_set)
         return {
             "schema_version": SCHEMA_VERSION,
             "session_id": self._session_id,
             "rep": snapshot["rep"],
             "total": self._total,
+            "set": set_index,
+            "sets_total": self._sets_total,
+            "reps_per_set": self._reps_per_set,
+            "rep_in_set": rep_in_set,
             "phase": snapshot["phase"] if signal else None,
             "progress_pct": snapshot["progress_pct"] if signal else None,
             "last": snapshot["last"],
@@ -216,7 +254,10 @@ class RepHub:
 
     def _rebuilt(self, session: SessionRow) -> RepTracker:
         payload = session.payload
-        tracker = RepTracker(payload["session_id"], rep_total(payload), clock=self._clock, no_signal_s=self._no_signal_s)
+        sets_total, reps_per_set = rep_sets(payload)
+        tracker = RepTracker(
+            payload["session_id"], rep_total(payload), sets_total=sets_total, reps_per_set=reps_per_set, clock=self._clock, no_signal_s=self._no_signal_s
+        )
         for chunk in self._store.stream_chunks(payload["astronaut_id"], payload["device_id"], payload["session_id"], REP_STREAM_ID):
             try:
                 tracker.replay(chunk)

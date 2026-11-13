@@ -24,13 +24,18 @@
         "created_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
         "valid_until": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
         "source": { "$ref": "../common.schema.json#/$defs/source" },
-        "quality": { "$ref": "../common.schema.json#/$defs/quality" }
+        "quality": { "$ref": "../common.schema.json#/$defs/quality" },
+        "notes": {
+          "description": "Free text for maintainers, e.g. PENDIENTE medición Aguado while a placeholder stands in for a value still to be measured.",
+          "type": "string",
+          "maxLength": 200
+        }
       },
       "required": ["schema_version", "calibration_id", "astronaut_id", "device_id", "stream_id", "created_at", "source"]
     },
     "stretch_calibration": {
       "title": "StretchCalibration",
-      "description": "Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait.",
+      "description": "Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDIENTE medición Aguado: until the cord is measured with an ohmmeter, curve and rest values are placeholders.",
       "allOf": [
         { "$ref": "#/$defs/calibration_base" },
         {
@@ -39,7 +44,7 @@
             "calibration_type": { "const": "stretch" },
             "rest_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
             "rest_length_mm": {
-              "description": "Length of cord between the two clamps at rest (the reference for elongation).",
+              "description": "Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.",
               "type": "number",
               "exclusiveMinimum": 0
             },
@@ -76,7 +81,7 @@
     },
     "emg_mvc_calibration": {
       "title": "EmgMvcCalibration",
-      "description": "Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed.",
+      "description": "Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed. The MVC procedure is pending Aguado: until it is defined, mvc_rms_mv values are placeholders.",
       "allOf": [
         { "$ref": "#/$defs/calibration_base" },
         {

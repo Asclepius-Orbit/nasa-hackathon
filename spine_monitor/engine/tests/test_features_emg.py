@@ -517,12 +517,14 @@ def test_non_emg_streams_are_ignored():
 
     result = family_for(*TWO_REPS).extract(context)
 
-    assert all(s.feature_id.startswith("emg.latissimus_dorsi.left.") or s.feature_id.endswith("symmetry_index_pct") for s in result.skipped)
+    own = ("emg.latissimus_dorsi.left.", "emg.latissimus_dorsi.right.")
+    assert all(s.feature_id.startswith(own) or s.feature_id.endswith("symmetry_index_pct") for s in result.skipped)
 
 
 def test_a_non_emg_stream_is_ignored_even_if_its_placement_names_a_muscle_and_a_side():
     # el placement es común a todos los tipos: un IMU puede declarar lado (y músculo); solo el tipo decide
     payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
+    payload["session"]["streams"] = [s for s in payload["session"]["streams"] if s["stream_id"] != RIGHT]
     imu = next(s for s in payload["session"]["streams"] if s["stream_kind"] == "imu")
     imu["placement"].update(muscle=MUSCLE, side="right")
     context = build_context(FeaturesRequest.model_validate(payload))

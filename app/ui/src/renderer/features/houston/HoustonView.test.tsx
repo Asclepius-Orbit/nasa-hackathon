@@ -38,7 +38,7 @@ describe('HoustonView with the contract examples', () => {
     expect(screen.getByText(/It uses your crew code, AST-01, never your name/)).toBeInTheDocument();
     expect(screen.getByText('Amber')).toBeInTheDocument();
     expect(screen.getByText(/confidence 74 %, data 5 of 6/)).toBeInTheDocument();
-    expect(screen.getByText(/Lumbar length/)).toBeInTheDocument();
+    expect(screen.getByText(/Spine length/)).toBeInTheDocument();
     expect(screen.getByText(/Lumbar stabilisation exercises/)).toBeInTheDocument();
     expect(screen.getByText('Not available yet')).toBeInTheDocument();
   });

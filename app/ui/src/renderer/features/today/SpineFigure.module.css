@@ -9,6 +9,7 @@
 .sacrum { fill: none; stroke: var(--bone-line); stroke-width: 14; stroke-linecap: round; }
 .cord { fill: none; stroke: var(--action); stroke-width: 6; stroke-linecap: round; }
 .imu { fill: var(--ink); }
+.gnd { fill: var(--ink); stroke: var(--surface); stroke-width: 2; }
 .emg { fill: var(--surface); stroke: var(--ink); stroke-width: 3; }
 .leader path { stroke: var(--muted); stroke-width: 1.5; fill: none; }
 .labels { font-size: 14px; fill: var(--ink); }

@@ -32,9 +32,9 @@ describe('SessionView header', () => {
   it('shows the load, the late-start note and the lede', async () => {
     setup();
     expect(await screen.findByRole('heading', { level: 1, name: 'Standing lat pulldown with band' })).toBeInTheDocument();
-    expect(screen.getByText('Band blue, 15 kg nominal')).toBeInTheDocument();
+    expect(screen.getByText('Green, 25 kg nominal')).toBeInTheDocument();
     expect(screen.queryByText(/Stretched/)).not.toBeInTheDocument();
-    expect(screen.getByText('10 reps')).toBeInTheDocument();
+    expect(screen.getByText('4 sets of 15 reps')).toBeInTheDocument();
     expect(screen.getByText('Started 13:38 GMT.')).toBeInTheDocument();
   });
 });
@@ -160,9 +160,9 @@ describe('stages', () => {
   it('starts on the reps stage and lets a done step be viewed, with Back and Next', async () => {
     const user = userEvent.setup();
     setup();
-    expect(await screen.findByText('of 10')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Fit electrodes, IMU and cord' }));
-    expect(screen.getByRole('heading', { name: '1. Fit electrodes, IMU and cord' })).toBeInTheDocument();
+    expect(await screen.findByText('of 15')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Fit electrodes, ground, IMU and cord' }));
+    expect(screen.getByRole('heading', { name: '1. Fit electrodes, ground, IMU and cord' })).toBeInTheDocument();
     expect(screen.getByText('Clean the skin')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Next step' }));
@@ -230,11 +230,11 @@ describe('with the backend views', () => {
     const user = userEvent.setup();
     realSetup({ today: example<TodayView>('ui-today.nodata'), session: example<SessionPayload>('ui-session') });
     expect(await screen.findByRole('heading', { level: 1, name: 'Standing lat pulldown with band' })).toBeInTheDocument();
-    expect(screen.getByText('Band blue, 15 kg nominal')).toBeInTheDocument();
-    expect(screen.getByText('10 reps')).toBeInTheDocument();
+    expect(screen.getByText('Green, 25 kg nominal')).toBeInTheDocument();
+    expect(screen.getByText('4 sets of 15 reps')).toBeInTheDocument();
     expect(screen.getByText('Started 10:02 GMT.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Check the harness is sending' }));
-    expect(screen.getByText('Stretch cord L1 to L5')).toBeInTheDocument();
+    expect(screen.getByText('Stretch cord C3 to S1')).toBeInTheDocument();
     expect(screen.getByText('Weak')).toBeInTheDocument();
     expect(screen.getByText(/The sensor stopped sending/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Calibrate maximum effort' }));
@@ -285,9 +285,44 @@ describe('with the backend views', () => {
       const { api } = await openReps();
       push(api, { kind: 'state', state: rep('ui-rep-state') });
       expect(screen.getByText('Pulling down')).toBeInTheDocument();
-      expect(screen.getByText('of 10')).toBeInTheDocument();
+      expect(screen.getByText('of 15')).toBeInTheDocument();
       expect(screen.getByRole('progressbar', { name: 'Movement progress' })).toHaveAttribute('aria-valuenow', '42.5');
       expect(screen.getByText('Rep 2, 4.2 s, recorded by the harness')).toBeInTheDocument();
+    });
+
+    it('places the repetition in its set and in the whole session', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'state', state: rep('ui-rep-state') });
+      expect(screen.getByText('Set 1 of 4')).toBeInTheDocument();
+      expect(screen.getByText('3 of 60 reps in total')).toBeInTheDocument();
+    });
+
+    it('between two sets: says it is resting between sets, which set is next and the nominal rest, with no bar', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'state', state: rep('ui-rep-state.set-rest') });
+      expect(screen.getByText('Rest between sets')).toBeInTheDocument();
+      expect(screen.getByText('Set 1 of 4 done. Rest about 30 s, then set 2 of 4.')).toBeInTheDocument();
+      expect(screen.queryByText('Resting between reps')).not.toBeInTheDocument();
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+
+    it('draws no set line before the first rep starts', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), rep: 0, set: 0, rep_in_set: 0, phase: null, last: null } });
+      expect(screen.queryByText(/^Set /)).not.toBeInTheDocument();
+    });
+
+    it('a set past the planned sets shows no "Set 5 of 4"', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), set: 5 } });
+      expect(screen.queryByText(/^Set /)).not.toBeInTheDocument();
+    });
+
+    it('unknown sets or reps per set fall back to the count of the whole session', async () => {
+      const { api } = await openReps();
+      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), sets_total: null, reps_per_set: null } });
+      expect(screen.getByText('of 60').parentElement).toHaveTextContent('3 of 60');
+      expect(screen.queryByText(/^Set /)).not.toBeInTheDocument();
     });
 
     it('first rep: no bar and no false 0 %, no last rep yet', async () => {
@@ -308,7 +343,7 @@ describe('with the backend views', () => {
 
     it('an unknown total shows the rep without "of N"', async () => {
       const { api } = await openReps();
-      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), total: null } });
+      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), total: null, sets_total: null, reps_per_set: null } });
       expect(screen.getByText('Pulling down')).toBeInTheDocument();
       expect(screen.queryByText(/^of /)).not.toBeInTheDocument();
     });
@@ -340,7 +375,7 @@ describe('with the backend views', () => {
       push(api, { kind: 'state', state: rep('ui-rep-state') });
       push(api, { kind: 'end', state: { ...rep('ui-rep-state'), phase: null, progress_pct: null } });
       expect(screen.getByText('Final count')).toBeInTheDocument();
-      expect(screen.getByText('of 10').parentElement).toHaveTextContent('3 of 10');
+      expect(screen.getByText('of 15').parentElement).toHaveTextContent('3 of 15');
       expect(screen.getByText('Rep 2, 4.2 s, recorded by the harness')).toBeInTheDocument();
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
       expect(screen.queryByText('Pulling down')).not.toBeInTheDocument();
@@ -354,7 +389,7 @@ describe('with the backend views', () => {
     it('a live state without phase (before end) shows the rep with no phase and no bar', async () => {
       const { api } = await openReps();
       push(api, { kind: 'state', state: { ...rep('ui-rep-state'), phase: null, progress_pct: 40 } });
-      expect(screen.getByText('of 10').parentElement).toHaveTextContent('3 of 10');
+      expect(screen.getByText('of 15').parentElement).toHaveTextContent('3 of 15');
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
       expect(screen.queryByText('No signal from the sensor')).not.toBeInTheDocument();
       expect(screen.queryByText('Final count')).not.toBeInTheDocument();
@@ -362,9 +397,9 @@ describe('with the backend views', () => {
 
     it('a rep past the total shows the number without "of N"', async () => {
       const { api } = await openReps();
-      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), rep: 11 } });
-      expect(screen.getByText('11')).toBeInTheDocument();
-      expect(screen.queryByText('of 10')).not.toBeInTheDocument();
+      push(api, { kind: 'state', state: { ...rep('ui-rep-state'), rep_in_set: 16 } });
+      expect(screen.getByText('16')).toBeInTheDocument();
+      expect(screen.queryByText('of 15')).not.toBeInTheDocument();
     });
 
     it('lost before any count: says it is reconnecting and draws no number', async () => {

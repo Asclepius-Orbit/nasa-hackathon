@@ -94,7 +94,11 @@ export function SessionView(): React.JSX.Element {
               <div className={styles.load}>
                 {session.band !== null && <span>{copy.band(session.band.color, session.band.nominalKg)}</span>}
                 {session.stretchedCm !== null && <span>{copy.stretched(session.stretchedCm)}</span>}
-                {session.totalReps !== null && <span>{copy.reps(session.totalReps)}</span>}
+                {session.plannedSets !== null && session.repsPerSet !== null ? (
+                  <span>{copy.sets(session.plannedSets, session.repsPerSet)}</span>
+                ) : (
+                  session.totalReps !== null && <span>{copy.reps(session.totalReps)}</span>
+                )}
               </div>
               {session.startedAt !== null && (
                 <p className={styles.late}>

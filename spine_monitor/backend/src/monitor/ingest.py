@@ -4,7 +4,7 @@ Every message is validated with `spine_contracts.validation` (the full JSON Sche
 conditional rules Pydantic does not capture) and the ids of the payload must match those of the
 topic: a message cannot write on behalf of another astronaut or device. Whatever fails is stored in
 `rejected_messages` (bounded) and logged; ingestion never crashes because of a message.
-A new imu_l3 chunk of a known session is also told to the live repetition counter, after it is stored.
+A new imu_t9 chunk of a known session is also told to the live repetition counter, after it is stored.
 
 `Bus` keeps the connection (reconnection with backoff, persistent session so QoS 1 messages are not
 lost during an outage) and publishes the commands of `Control`.

@@ -13,7 +13,7 @@ _BASE = StretchChunk.model_validate(
         "schema_version": "1.0.0",
         "astronaut_id": "AST-01",
         "device_id": "wb-01",
-        "stream_id": "stretch_lumbar",
+        "stream_id": "stretch_spine",
         "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
         "source": "device",
         "boot_id": 7,
@@ -30,7 +30,7 @@ _BASE = StretchChunk.model_validate(
 )
 
 
-def chunk(seq: int, *, stream: str = "stretch_lumbar", boot: int = 7, n: int = 4, dropped: int = 0, tag: int = 0, received_s: int = 0) -> StretchChunk:
+def chunk(seq: int, *, stream: str = "stretch_spine", boot: int = 7, n: int = 4, dropped: int = 0, tag: int = 0, received_s: int = 0) -> StretchChunk:
     # `tag` distingue copias con el mismo (stream, boot, seq) para ver cuál gana.
     return _BASE.model_copy(
         update={
@@ -54,7 +54,7 @@ def test_sorts_by_stream_then_boot_then_seq():
 
     result = order_chunks(chunks)
 
-    assert keys(result) == [("b", 3, 0), ("b", 7, 1), ("stretch_lumbar", 7, 0), ("stretch_lumbar", 7, 1), ("stretch_lumbar", 7, 2)]
+    assert keys(result) == [("b", 3, 0), ("b", 7, 1), ("stretch_spine", 7, 0), ("stretch_spine", 7, 1), ("stretch_spine", 7, 2)]
 
 
 def test_contiguous_stream_is_one_segment_without_incidents():
@@ -62,7 +62,7 @@ def test_contiguous_stream_is_one_segment_without_incidents():
 
     assert len(result.segments) == 1
     segment = result.segments[0]
-    assert (segment.stream_id, segment.boot_id) == ("stretch_lumbar", 7)
+    assert (segment.stream_id, segment.boot_id) == ("stretch_spine", 7)
     assert [c.seq for c in segment.chunks] == [0, 1, 2]
     assert segment.present_samples == 12
     assert segment.expected_samples == 12
@@ -76,13 +76,13 @@ def test_duplicate_keeps_first_occurrence_and_is_counted():
 
     assert result.segments[0].chunks[0] is first
     assert [c.seq for c in result.segments[0].chunks] == [0, 1]
-    assert result.incidents == (Incident(IncidentKind.DUPLICATE, "stretch_lumbar", 7, seq=0, chunks=2, samples=0),)
+    assert result.incidents == (Incident(IncidentKind.DUPLICATE, "stretch_spine", 7, seq=0, chunks=2, samples=0),)
 
 
 def test_seq_gap_counts_missing_chunks_and_estimates_samples_from_previous_chunk():
     result = order_chunks([chunk(0, n=5), chunk(3, n=4)])
 
-    assert result.incidents == (Incident(IncidentKind.SEQ_GAP, "stretch_lumbar", 7, seq=1, chunks=2, samples=10),)
+    assert result.incidents == (Incident(IncidentKind.SEQ_GAP, "stretch_spine", 7, seq=1, chunks=2, samples=10),)
     segment = result.segments[0]
     assert segment.present_samples == 9
     assert segment.missing_samples == 10
@@ -99,7 +99,7 @@ def test_a_window_starting_mid_stream_is_not_a_gap():
 def test_dropped_samples_are_missing_but_not_present():
     result = order_chunks([chunk(0, n=4, dropped=2), chunk(1)])
 
-    assert result.incidents == (Incident(IncidentKind.DROPPED_SAMPLES, "stretch_lumbar", 7, seq=0, chunks=0, samples=2),)
+    assert result.incidents == (Incident(IncidentKind.DROPPED_SAMPLES, "stretch_spine", 7, seq=0, chunks=0, samples=2),)
     segment = result.segments[0]
     assert segment.present_samples == 8
     assert segment.missing_samples == 2
@@ -121,7 +121,7 @@ def test_each_boot_is_an_independent_segment_and_the_restart_is_reported():
     result = order_chunks(new + old)
 
     assert [(s.boot_id, [c.seq for c in s.chunks]) for s in result.segments] == [(3, [0, 1]), (99, [5, 6])]
-    assert result.incidents == (Incident(IncidentKind.DEVICE_RESTART, "stretch_lumbar", 3, seq=0, chunks=0, samples=0),)
+    assert result.incidents == (Incident(IncidentKind.DEVICE_RESTART, "stretch_spine", 3, seq=0, chunks=0, samples=0),)
 
 
 def test_restarts_are_per_stream():

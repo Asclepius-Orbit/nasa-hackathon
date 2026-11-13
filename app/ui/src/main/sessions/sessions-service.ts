@@ -75,7 +75,7 @@ export function createSessionsService({
       if (members === null) return { ok: false, reason: 'unavailable' };
       const harnessId = members.find((m) => m.id === id)?.harnessId ?? null;
       if (harnessId === null) return { ok: false, reason: 'no_harness' };
-      const { session_type: sessionType, load_declared: load, planned_reps: reps, streams } = PROTOCOLS[protocolId];
+      const { session_type: sessionType, load_declared: load, planned_reps: reps, planned_sets: sets, reps_per_set: repsPerSet, streams } = PROTOCOLS[protocolId];
       // No mission_context: the backend takes it from today's daily context (none stored: a 422, `invalid`).
       const body = {
         device_id: harnessId,
@@ -83,6 +83,8 @@ export function createSessionsService({
         session_type: sessionType,
         ...(load === undefined ? {} : { load_declared: load }),
         ...(reps === undefined ? {} : { planned_reps: reps }),
+        ...(sets === undefined ? {} : { planned_sets: sets }),
+        ...(repsPerSet === undefined ? {} : { reps_per_set: repsPerSet }),
         streams,
       };
       return writer.send({ method: 'POST', path: `/ui/crew/${encodeURIComponent(id)}/sessions`, astronautId: id, body, schema: startedSchema });

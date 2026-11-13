@@ -24,7 +24,7 @@ def start(**fields: Any) -> dict[str, Any]:
 
 
 def calibrate(**fields: Any) -> dict[str, Any]:
-    body = {**start(), "type": "calibrate", "calibration_type": "stretch", "stream_ids": ["stretch_lumbar"], **fields}
+    body = {**start(), "type": "calibrate", "calibration_type": "stretch", "stream_ids": ["stretch_spine"], **fields}
     del body["session_type"], body["protocol_id"]
     return body
 
@@ -35,10 +35,10 @@ def read(payload: dict[str, Any] | bytes) -> commands.Incoming | None:
 
 
 def test_a_valid_command_is_parsed() -> None:
-    incoming = read(start(stream_ids=["imu_l3"], max_duration_s=60))
+    incoming = read(start(stream_ids=["imu_t9"], max_duration_s=60))
     assert incoming is not None and incoming.rejection is None
     assert incoming.command_id == CID
-    assert isinstance(incoming.command, StartSessionCommand) and incoming.command.stream_ids == ["imu_l3"]
+    assert isinstance(incoming.command, StartSessionCommand) and incoming.command.stream_ids == ["imu_t9"]
 
 
 @pytest.mark.parametrize(

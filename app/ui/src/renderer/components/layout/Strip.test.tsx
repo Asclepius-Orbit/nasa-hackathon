@@ -105,7 +105,7 @@ it('shows a weak battery reading, degraded status and weak streams as data from 
   const api = new FakeAsclepiusApi();
   api.viewData.strip = example<StripView>('ui-strip');
   renderInWorld(<Strip />, { api, data: new RealDataSource(api.views, api.reps, api) });
-  expect(await screen.findByText('18 %, degraded, Stretch cord L1 to L5 stalled')).toBeInTheDocument();
+  expect(await screen.findByText('18 %, degraded, Stretch cord C3 to S1 stalled')).toBeInTheDocument();
   expect(screen.getByText('Down, back in 12 min (simulated)')).toBeInTheDocument();
   expect(screen.getByText('87')).toBeInTheDocument();
   expect(screen.getByText('In flight, microgravity')).toBeInTheDocument();

@@ -64,7 +64,7 @@
     },
     "mark_event": {
       "title": "MarkEventCommand",
-      "description": "Timestamp an event inside a running session (start/end of a repetition, MVC effort...). The device stamps the event on its monotonic clock when it receives the command.",
+      "description": "Timestamp an event inside a running session (start/end of a set or of a repetition, MVC effort...). The device stamps the event on its monotonic clock when it receives the command.",
       "allOf": [
         { "$ref": "#/$defs/command_base" },
         {
@@ -73,6 +73,7 @@
             "type": { "const": "mark_event" },
             "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
             "event_type": { "$ref": "../domain/session.schema.json#/$defs/event_type" },
+            "set_index": { "type": "integer", "minimum": 1, "description": "Set (1-based) the event belongs to." },
             "rep_index": { "type": "integer", "minimum": 1 },
             "note": { "type": "string", "maxLength": 200 }
           },

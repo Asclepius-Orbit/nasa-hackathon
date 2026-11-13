@@ -27,7 +27,7 @@ def test_example_loads():
     assert [m.astronaut_id for m in config.crew] == ["AST-01", "AST-02"]
     assert [s.phase for s in config.segments] == [MissionPhase.PREFLIGHT, MissionPhase.INFLIGHT, MissionPhase.POSTFLIGHT]
     assert config.segments[1].gravity_environment is GravityEnvironment.MICROGRAVITY
-    assert config.device.stream("imu_l3").stream_kind is StreamKind.IMU
+    assert config.device.stream("imu_t9").stream_kind is StreamKind.IMU
     assert config.protocol("lat_pulldown_standing_v1").session_type == "exercise"
     assert config.signals.samples_per_chunk(config.signals.emg.sample_rate_hz) == 100
     background = config.schedule.background
@@ -115,7 +115,7 @@ def test_times_must_be_strings(raw):
         (lambda d: d["faults"]["quality"]["motion_artifact"].update(band_low_hz=30.0), "band_low_hz must be"),
         (lambda d: d["faults"]["quality"]["sensor_warmup"].pop("decay_fraction"), "decay_fraction"),
         (lambda d: d["schedule"]["sessions"][0].update(protocol_id="nope_v1"), "unknown protocol_id"),
-        (lambda d: d["schedule"]["sessions"][0].update(time_utc="05:00"), "power window"),
+        (lambda d: d["schedule"]["sessions"][1].update(time_utc="05:00"), "power window"),
         (lambda d: d["schedule"]["background"]["streams"].append("emg_lat_left"), "EMG stream"),
         (lambda d: d["protocols"]["spine_length_rest_v1"]["streams"].append("emg_nope"), "unknown streams"),
         (lambda d: d["daily_context"]["exercise"].pop("inflight"), "missing phases"),

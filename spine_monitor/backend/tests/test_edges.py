@@ -11,7 +11,7 @@ from monitor.db import Store, utc_key
 from monitor.ingest import Bus, Ingest, _as_bytes
 from monitor.main import create_app
 from monitor.settings import AppSettings
-from spine_contracts import topics
+from spine_contracts import topics, validation
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
@@ -99,9 +99,7 @@ async def test_max_duration_must_be_a_positive_integer(harness, value):
 async def test_max_duration_and_explicit_mission_context_reach_the_command(harness):
     context = {"phase": "inflight", "gravity_environment": "microgravity", "mission_day": 12}
 
-    response = await harness.http.post(
-        f"/ui/crew/{harness.astronaut_id}/sessions", json=harness.plan(max_duration_s=300, mission_context=context)
-    )
+    response = await harness.http.post(f"/ui/crew/{harness.astronaut_id}/sessions", json=harness.plan(max_duration_s=300, mission_context=context))
 
     assert response.status_code == 202, response.text
     assert response.json()["session"]["mission_context"] == context
@@ -234,9 +232,7 @@ async def test_event_note_and_calibration_duration_reach_the_bus(harness):
     session_id, _ = await harness.start_session()
 
     await harness.http.post(f"/ui/sessions/{session_id}/events", json={"event_type": "note", "note": "itchy electrode"})
-    await harness.http.post(
-        f"/ui/sessions/{session_id}/calibrations", json={"calibration_type": "imu", "stream_ids": ["imu_l3"], "duration_s": 5}
-    )
+    await harness.http.post(f"/ui/sessions/{session_id}/calibrations", json={"calibration_type": "imu", "stream_ids": ["imu_t9"], "duration_s": 5})
 
     assert harness.mqtt.commands("mark_event")[0]["note"] == "itchy electrode"
     assert "rep_index" not in harness.mqtt.commands("mark_event")[0]
@@ -261,7 +257,7 @@ async def test_calibration_ack_without_result_changes_nothing(harness):
     await harness.setup_astronaut()
     session_id, _ = await harness.start_session()
     before = (await harness.http.get(f"/ui/sessions/{session_id}")).json()["session"]["streams"]
-    body = {"calibration_type": "stretch", "stream_ids": ["stretch_lumbar"]}
+    body = {"calibration_type": "stretch", "stream_ids": ["stretch_spine"]}
     command = (await harness.http.post(f"/ui/sessions/{session_id}/calibrations", json=body)).json()["command"]
 
     await harness.ack(command, "completed")
@@ -272,7 +268,7 @@ async def test_calibration_ack_without_result_changes_nothing(harness):
 async def test_calibration_of_several_streams_uses_the_known_entity(harness):
     await harness.setup_astronaut()
     session_id, _ = await harness.start_session()
-    body = {"calibration_type": "emg_mvc", "stream_ids": ["emg_lat_left", "imu_l3"]}
+    body = {"calibration_type": "emg_mvc", "stream_ids": ["emg_lat_left", "imu_t9"]}
     command = (await harness.http.post(f"/ui/sessions/{session_id}/calibrations", json=body)).json()["command"]
 
     await harness.ack(command, "completed", result={"calibration_id": "0b9e6a10-1111-4222-8333-444455556677"})
@@ -288,7 +284,7 @@ async def test_calibration_of_an_ended_session_is_not_linked(harness):
     await harness.stop_session(session_id, start)
     calibration = harness.example("domain/calibration.stretch") | {"calibration_id": "0b9e6a10-1111-4222-8333-444455556688", "session_id": session_id}
 
-    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_lumbar"), calibration)
+    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_spine"), calibration)
     await harness.settle()
 
     streams = (await harness.http.get(f"/ui/sessions/{session_id}")).json()["session"]["streams"]
@@ -358,7 +354,7 @@ async def test_internal_errors_are_recorded_and_ingestion_goes_on(harness, monke
 
     monkeypatch.setattr(harness.store, "add_chunk", broken)
     chunk = harness.example("telemetry/stream-chunk.stretch")
-    harness.mqtt.deliver(topics.stream(harness.astronaut_id, harness.device_id, "stretch_lumbar"), chunk)
+    harness.mqtt.deliver(topics.stream(harness.astronaut_id, harness.device_id, "stretch_spine"), chunk)
     await harness.settle()
 
     assert harness.runtime.ingest.counts["rejected"] == 1
@@ -370,7 +366,7 @@ async def test_chunk_of_a_session_on_another_device_is_rejected(harness):
     session_id, _ = await harness.start_session()
     chunk = harness.example("telemetry/stream-chunk.stretch") | {"session_id": session_id, "device_id": "wb-02"}
 
-    harness.mqtt.deliver(topics.stream(harness.astronaut_id, "wb-02", "stretch_lumbar"), chunk)
+    harness.mqtt.deliver(topics.stream(harness.astronaut_id, "wb-02", "stretch_spine"), chunk)
     await harness.settle()
 
     assert harness.store.rejected_count() == 1
@@ -381,7 +377,7 @@ async def test_unknown_session_chunks_can_be_dropped(tmp_path):
     ingest = Ingest(store, control=None, store_unknown_session_chunks=False)  # pyright: ignore[reportArgumentType]
     chunk = json.loads(json.dumps(_example_chunk()))
 
-    ingest.handle(topics.stream("AST-01", "wb-01", "stretch_lumbar"), json.dumps(chunk).encode())
+    ingest.handle(topics.stream("AST-01", "wb-01", "stretch_spine"), json.dumps(chunk).encode())
 
     assert ingest.counts["dropped"] == 1
     assert store.session_chunks("AST-01", chunk["session_id"]) == []
@@ -399,7 +395,7 @@ async def test_calibration_without_session_is_only_stored(harness):
     calibration = harness.example("domain/calibration.stretch")
     del calibration["session_id"]
 
-    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_lumbar"), calibration)
+    harness.mqtt.deliver(topics.calibration(harness.astronaut_id, harness.device_id, "stretch_spine"), calibration)
     await harness.settle()
 
     assert harness.store.calibrations({calibration["calibration_id"]}) == [calibration]
@@ -473,3 +469,50 @@ def test_lifespan_starts_and_stops_the_bus(tmp_path):
             if client.get("/health").json()["mqtt_connected"]:
                 break
         assert client.get("/health").json()["mqtt_connected"] is True
+
+
+async def test_set_events_carry_their_set_and_reach_the_bus_and_the_session(harness):
+    await harness.setup_astronaut()
+    session_id, _ = await harness.start_session()
+
+    start = await harness.http.post(f"/ui/sessions/{session_id}/events", json={"event_type": "set_start", "set_index": 2})
+    rep = await harness.http.post(f"/ui/sessions/{session_id}/events", json={"event_type": "rep_start", "set_index": 2, "rep_index": 16})
+    assert (start.status_code, rep.status_code) == (202, 202)
+
+    sent = harness.mqtt.commands("mark_event")
+    assert validation.errors("telemetry/command", sent[0]) == []
+    assert (sent[0]["event_type"], sent[0]["set_index"], "rep_index" in sent[0]) == ("set_start", 2, False)
+    assert (sent[1]["set_index"], sent[1]["rep_index"]) == (2, 16)
+
+    await harness.ack(rep.json()["command"], "completed")
+    events = (await harness.http.get(f"/ui/sessions/{session_id}")).json()["session"]["events"]
+    assert events[-1]["set_index"] == 2 and events[-1]["rep_index"] == 16
+
+
+async def test_a_set_index_below_one_is_refused(harness):
+    await harness.setup_astronaut()
+    session_id, _ = await harness.start_session()
+    refused = await harness.http.post(f"/ui/sessions/{session_id}/events", json={"event_type": "set_end", "set_index": 0})
+    assert refused.status_code == 422
+
+
+async def test_a_spine_check_bracketing_an_exercise_session_keeps_its_phase_and_link(harness):
+    await harness.setup_astronaut()
+    exercise_id, start = await harness.start_session()
+    await harness.stop_session(exercise_id, start)
+    check = harness.example("domain/session.spine-check-post")
+    plan = {k: check[k] for k in ("device_id", "session_type", "protocol_id", "phase", "streams")}
+
+    session_id, _ = await harness.start_session(plan={**plan, "related_session_id": exercise_id})
+
+    stored = (await harness.http.get(f"/ui/sessions/{session_id}")).json()["session"]
+    assert (stored["phase"], stored["related_session_id"]) == ("post", exercise_id)
+
+
+async def test_a_spine_check_cannot_carry_sets_nor_a_link_without_phase(harness):
+    await harness.setup_astronaut()
+    check = harness.example("domain/session.spine-check-post")
+    plan = {k: check[k] for k in ("device_id", "session_type", "protocol_id", "streams")}
+    for extra in ({"planned_sets": 4}, {"related_session_id": check["related_session_id"]}):
+        response = await harness.http.post(f"/ui/crew/{harness.astronaut_id}/sessions", json={**plan, **extra})
+        assert response.status_code == 422

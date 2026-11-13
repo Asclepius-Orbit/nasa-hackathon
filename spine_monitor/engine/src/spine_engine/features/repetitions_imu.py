@@ -48,6 +48,8 @@ NOISE_K_PEAK = 8.0
 NOISE_K_EDGE = 3.0
 # Dos picos del mismo signo más cercanos que esto son el mismo lóbulo.
 MIN_PEAK_SEPARATION_S = 0.25
+# Una pausa entre repeticiones más larga que esta vez la mediana de las pausas es un descanso entre series.
+SET_GAP_FACTOR = 5.0
 # MAD -> sigma para ruido gaussiano; las diferencias de ruido blanco tienen sigma·√2.
 _MAD_TO_SIGMA = 1.4826
 _GYRO_AXES = ("gyro_x", "gyro_y", "gyro_z")
@@ -76,13 +78,17 @@ def detect_imu_windows(context: ExtractionContext) -> tuple[RepWindow, ...]:
 
 def _windows(spans: Sequence[tuple[datetime, datetime]]) -> tuple[RepWindow, ...]:
     last = len(spans) - 1
+    gaps = [(spans[i + 1][0] - spans[i][1]).total_seconds() for i in range(last)]
+    # sin eventos no hay set_*: una pausa mucho mayor que la habitual entre repeticiones es el descanso entre series
+    typical = statistics.median(gaps) if gaps else 0.0
+    between_sets = [typical > 0.0 and gap > SET_GAP_FACTOR * typical for gap in gaps]
     return tuple(
         RepWindow(
             index=i + 1,
             start=start,
             end=end,
-            rest_start=end if i < last else None,
-            rest_end=spans[i + 1][0] if i < last else None,
+            rest_start=end if i < last and not between_sets[i] else None,
+            rest_end=spans[i + 1][0] if i < last and not between_sets[i] else None,
         )
         for i, (start, end) in enumerate(spans)
     )
@@ -102,7 +108,18 @@ def _segment_spans(context: ExtractionContext, segment: Segment) -> list[tuple[d
         start, end = samples.times[out.first], samples.ends[back.last]
         if end > start:
             spans.append((start, end))
-    return spans
+    return _merge_touching(spans)
+
+
+def _merge_touching(spans: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
+    """Una repetición que el ruido parte en dos pares ida/vuelta pegados es una sola: sin reposo entre ellos no hay dos."""
+    merged: list[tuple[datetime, datetime]] = []
+    for start, end in spans:
+        if merged and (start - merged[-1][1]).total_seconds() < MIN_PEAK_SEPARATION_S:
+            merged[-1] = (merged[-1][0], end)
+        else:
+            merged.append((start, end))
+    return merged
 
 
 def _dominant_axis(axes: Sequence[list[float]]) -> list[float] | None:

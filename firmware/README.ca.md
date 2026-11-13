@@ -29,6 +29,8 @@ firmware/
 
 Els tres elèctrodes de l'EMG (2 diferencials + referència) van al mòdul, no a l'Arduino.
 
+Colocació (protocol estandarditzat de politja al pit): el MPU-6050 va a T9 i el cordó elàstic va de C3 a S1 (~650 mm en repòs, PENDENT mesura Aguado amb ohmímetre). El protocol declara dos mòduls EMG (dorsal ample esquerre i dret), però el maquinari actual té un sol canal EMG (A0) i el gateway en publica un (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) fins que Polfer confirmi el maquinari (#13). El format de trama sèrie no canvia.
+
 ### Alimentació del mòdul EMG (a confirmar)
 
 Els pins del mòdul són `+Vs`, `GND`, `-Vs` i `SIG`. És molt probable que el mòdul necessiti

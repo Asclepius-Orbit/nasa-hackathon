@@ -61,6 +61,6 @@ describe('mock protocol values against the catalog', () => {
   it('the rest text of the finish stage says the catalog rest_seconds (120 s is "2 min")', () => {
     expect(entry?.rest_seconds).toBeDefined();
     const minutes = (entry?.rest_seconds ?? 0) / 60;
-    expect(stages.finish.lede).toContain(`stand still for ${String(minutes)} min.`);
+    expect(stages.finish.lede(entry?.rest_seconds ?? null)).toContain(`stand still for ${String(minutes)} min.`);
   });
 });

@@ -1,5 +1,13 @@
 /** Copy of the session screen (mock: SESSION). Session data (title, load, steps) comes from the DataSource. */
 
+/** 120 -> "2 min", 90 -> "1 min 30 s", 45 -> "45 s". */
+export function restDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `${String(rest)} s`;
+  return rest === 0 ? `${String(minutes)} min` : `${String(minutes)} min ${String(rest)} s`;
+}
+
 export const session = {
   loadError: 'The session could not be loaded.',
   loading: 'Loading the session.',
@@ -164,7 +172,9 @@ export const stages = {
   },
   finish: {
     title: '5. Rest and finish',
-    lede: 'Let the band go slack and stand still for 2 min. The stretch cord needs time to settle before its last reading.',
+    /** The rest comes from the protocol (`restSeconds`), so the text never repeats the catalog value. */
+    lede: (restSeconds: number | null): string =>
+      `Let the band go slack and stand still${restSeconds === null ? '' : ` for ${restDuration(restSeconds)}`}. The stretch cord needs time to settle before its last reading.`,
     resting: 'Resting',
     noRest: 'This protocol has no rest period.',
     finish: 'Finish session',

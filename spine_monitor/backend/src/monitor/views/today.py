@@ -57,7 +57,7 @@ def _trust(assessment: Mapping[str, Any]) -> dict[str, Any]:
 def build_today(
     assessment: Mapping[str, Any] | None,
     lumbar: LumbarDelta | None,
-    session_in_progress: tuple[SessionLike, int | None] | None,
+    session_in_progress: tuple[SessionLike, Mapping[str, Any] | None] | None,
     also_today: Sequence[str],
     now: datetime,
     stale_session_hours: float,

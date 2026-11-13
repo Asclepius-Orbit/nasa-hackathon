@@ -274,6 +274,26 @@ services:
       SPINE_TEST_MQTT_DEVICE_PASSWORD: "${SPINE_MQTT_ITEST_DEVICE_PASSWORD:?run sh app/mosquitto/setup.sh}"
     profiles: ["quality"]
 
+  ui:
+    # The Electron app on a virtual display, shown in the browser: http://localhost:6080/vnc.html (profile "ui").
+    # Reaches the backend through a loopback forward (the app only accepts loopback URLs).
+    build:
+      context: ./ui
+    image: spine-ui:dev
+    environment:
+      ASCLEPIUS_BACKEND_TOKEN: "${SPINE_APP_UI_TOKEN:-}"
+      SPINE_UI_VNC_PASSWORD: "${SPINE_UI_VNC_PASSWORD:-}"
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - ui_data:/home/node/.config
+    shm_size: 512m
+    depends_on:
+      backend:
+        condition: service_started
+    profiles: ["ui"]
+    restart: unless-stopped
+
   ui-quality:
     # Gate of app/ui (pnpm check). The repo is mounted whole: check:types reads spine_monitor/contracts/schemas/v1.
     # node_modules lives in a named volume so the host's (Windows) one is never reused across platforms.
@@ -308,4 +328,5 @@ volumes:
   backend_data:
   agent_data:
   ui_node_modules:
+  ui_data:
   ollama-models:

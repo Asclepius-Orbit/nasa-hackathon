@@ -58,6 +58,25 @@ in its own Compose project (`asclepius-e2e`, thrown away with `down -v` afterwar
 simulated harness, builds with `--mode e2e-real` (real data source, demo crew), runs `e2e/real.spec.ts` and always takes
 the stack down (`E2E_REAL_KEEP=1` keeps it). It needs Docker, `sh`, and ports 1883, 8000 and 8001 free.
 
+## Run the UI in Docker
+
+The `ui` profile runs the packaged Electron app on a virtual display (Xvfb) and serves it in the browser through noVNC.
+Electron is a desktop app (the renderer talks to the main process over IPC), so it cannot be a static site. Start it with
+the rest of the stack and open <http://localhost:6080/vnc.html>:
+
+```bash
+sh app/mosquitto/setup.sh                                          # once: broker credentials in app/.env
+export SPINE_APP_UI_TOKEN="$(openssl rand -hex 24)"
+export SPINE_UI_VNC_PASSWORD="$(openssl rand -hex 4)"             # save this password for noVNC
+docker compose -f app/docker-compose.yml --profile sim --profile ui up -d --build
+```
+
+The container forwards `127.0.0.1:8000` to the backend service, because the main process only accepts loopback URLs, and
+shares `SPINE_APP_UI_TOKEN` with the backend. Both variables are required for the UI profile; use the same values on
+subsequent starts. noVNC asks for `SPINE_UI_VNC_PASSWORD` (VNC uses eight characters). Crew and PIN state live in the `ui_data` volume. Chromium runs
+with `--no-sandbox` (the container is the boundary) and `--password-store=basic` (no keyring). Pass
+`--build-arg BUILD_MODE=e2e-real` to seed the demo crew.
+
 ## Scripts
 
 | Script | What it does |

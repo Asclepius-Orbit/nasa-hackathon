@@ -296,6 +296,22 @@ async def test_no_subprocess_is_left_running_after_the_session(tmp_path: Path, p
 
 @pytest.mark.integration
 @pytest.mark.anyio
+async def test_the_server_subprocess_sees_the_app_and_engine_urls_of_this_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env_wrapper_args: Callable[[Path], list[str]]
+):
+    # The stdio client starts the server with a sanitized environment: without forwarding, `--dataset http` would
+    # always read the default URLs, whatever the agent's environment says (e.g. in docker compose).
+    monkeypatch.setenv("SPINE_APP_URL", "http://read-api.test:8002")
+    monkeypatch.setenv("SPINE_ENGINE_URL", "http://engine.test:8001")
+    env_file = tmp_path / "server.env"
+    agent = build_agent(_settings(mcp_args=env_wrapper_args(env_file)), model=FunctionModel(stream_function=amber_script()))
+    async with ChatSession(agent, FakeStatusSource(), "AST-01") as session:
+        await _collect(session, "Why am I amber?")
+    assert env_file.read_text().splitlines() == ["http://read-api.test:8002", "http://engine.test:8001"]
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
 async def test_server_stderr_goes_to_the_log_file_not_the_console(tmp_path: Path, capfd: pytest.CaptureFixture[str], noisy_server_args: list[str]):
     log = tmp_path / "mcp.log"
     agent = build_agent(_settings(mcp_args=noisy_server_args), model=FunctionModel(stream_function=amber_script()), log_file=log)

@@ -24,6 +24,14 @@ SLOW_WRAPPER = (
     "import runpy, sys, time; time.sleep(6); sys.argv = [sys.argv[0], '--dataset', 'examples']; runpy.run_module('spine_mcp_server', run_name='__main__')"
 )
 
+# Same, but first writes the app and engine URLs the subprocess sees in its environment (one per line, empty when unset)
+# to the file named by argv[1].
+ENV_WRAPPER = (
+    "import os, runpy, sys; "
+    "open(sys.argv[1], 'w').write(os.environ.get('SPINE_APP_URL', '') + chr(10) + os.environ.get('SPINE_ENGINE_URL', '')); "
+    "sys.argv = [sys.argv[0], '--dataset', 'examples']; runpy.run_module('spine_mcp_server', run_name='__main__')"
+)
+
 
 @pytest.fixture
 def anyio_backend() -> str:
@@ -70,6 +78,12 @@ def pid_alive() -> Callable[[int], bool]:
 def pid_wrapper_args() -> Callable[[Path], list[str]]:
     """MCP args that launch the real server and record its PID in the given file."""
     return lambda pid_file: ["-c", PID_WRAPPER, str(pid_file)]
+
+
+@pytest.fixture
+def env_wrapper_args() -> Callable[[Path], list[str]]:
+    """MCP args that launch the real server and record in the given file the SPINE_APP_URL and SPINE_ENGINE_URL it sees."""
+    return lambda env_file: ["-c", ENV_WRAPPER, str(env_file)]
 
 
 @pytest.fixture

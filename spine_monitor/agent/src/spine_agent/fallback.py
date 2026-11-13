@@ -19,7 +19,7 @@ import anyio
 from mcp.client.client import Client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
-from spine_agent.settings import AgentSettings
+from spine_agent.settings import AgentSettings, mcp_server_env
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class McpStatusSource:
     """Implements `spine_agent.ports.StatusSource` with the `get_current_status` and `explain_assessment` MCP tools."""
 
     def __init__(self, settings: AgentSettings, *, timeout_s: float = DEFAULT_TIMEOUT_S) -> None:
-        self._params = StdioServerParameters(command=settings.mcp_command, args=list(settings.mcp_args))
+        self._params = StdioServerParameters(command=settings.mcp_command, args=list(settings.mcp_args), env=mcp_server_env())
         self._timeout_s = timeout_s
 
     async def current_status(self, astronaut_id: str) -> dict[str, Any] | None:

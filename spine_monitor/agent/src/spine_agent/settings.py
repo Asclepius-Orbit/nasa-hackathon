@@ -1,10 +1,21 @@
 """Agent settings: local LLM endpoint, sampling, MCP server launch and the chat HTTP server. SPINE_AGENT_* variables or `.env`."""
 
+import os
 import sys
 from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from spine_mcp_server import APP_URL_ENV, ENGINE_URL_ENV
+
+# Variables of this process that the MCP server subprocess must see. The stdio client starts it with a sanitized
+# environment (PATH, HOME...), so without forwarding them `--dataset http` would always read its default URLs.
+MCP_SERVER_ENV = (APP_URL_ENV, ENGINE_URL_ENV)
+
+
+def mcp_server_env() -> dict[str, str]:
+    """The app and engine URLs set in this process, to add to the environment of the MCP server subprocess."""
+    return {name: os.environ[name] for name in MCP_SERVER_ENV if name in os.environ}
 
 
 class AgentSettings(BaseSettings):

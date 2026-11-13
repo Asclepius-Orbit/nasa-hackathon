@@ -314,6 +314,11 @@ def test_lat_pulldown_protocol_states_the_provisional_rhythm_values():
     assert "#106" in entry["notes"] and "provisional" in entry["notes"]
 
 
+def test_rest_seconds_is_marked_as_provisional_pending_aguado():
+    notes = _protocols()["lat_pulldown_standing_v1"]["notes"]
+    assert "rest_seconds" in notes and "PENDIENTE medición Aguado" in notes and "#106" in notes
+
+
 def test_spine_check_protocol_has_null_rhythm_values():
     entry = _protocols()["spine_length_rest_v1"]
     assert all(field in entry and entry[field] is None for field in RHYTHM_FIELDS)

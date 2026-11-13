@@ -328,7 +328,9 @@ class Control:
         row = self._store.session(session_id)
         if row is None or row.state not in ("starting", "running"):
             return False
-        streams = [{**s, "calibration_id": calibration_id} if s["stream_id"] == stream_id else s for s in row.payload["streams"]]
+        streams = [
+            {**s, "calibration_id": calibration_id} if s["stream_id"] == stream_id else s for s in row.payload["streams"]
+        ]
         if streams == row.payload["streams"]:
             return False
         self._store.update_session(session_id, {**row.payload, "streams": streams})

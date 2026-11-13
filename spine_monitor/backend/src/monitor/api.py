@@ -504,7 +504,9 @@ def build_router(
         return list(tasks_for(daily_due, odi_due, baseline_pending, session_today))
 
     @router.get("/crew/{astronaut_id}/views/strip")
-    async def strip_view(astronaut_id: str, device_id: Annotated[str | None, Query(pattern=f"^{topics.DEVICE_ID.pattern}$")] = None) -> dict[str, Any]:
+    async def strip_view(
+        astronaut_id: str, device_id: Annotated[str | None, Query(pattern=f"^{topics.DEVICE_ID.pattern}$")] = None
+    ) -> dict[str, Any]:
         _astronaut(astronaut_id)
         view = build_strip(
             astronaut_id,

@@ -359,7 +359,9 @@ class Store:
             "INSERT INTO rejected_messages (topic, received_at, error, payload) VALUES (?, ?, ?, ?)",
             (topic, utc_key(datetime.now(UTC)), error[:1000], text),
         )
-        self._db.execute("DELETE FROM rejected_messages WHERE id <= (SELECT MAX(id) FROM rejected_messages) - ?", (REJECTED_KEEP,))
+        self._db.execute(
+            "DELETE FROM rejected_messages WHERE id <= (SELECT MAX(id) FROM rejected_messages) - ?", (REJECTED_KEEP,)
+        )
 
     def rejected_count(self) -> int:
         return self._db.execute("SELECT COUNT(*) FROM rejected_messages").fetchone()[0]
@@ -427,7 +429,8 @@ class Store:
             return []
         marks = ",".join("?" * len(boot_ids))
         return self._all(
-            f"SELECT payload FROM clock_syncs WHERE astronaut_id = ? AND device_id = ? AND boot_id IN ({marks}) ORDER BY boot_id, device_ms",
+            f"SELECT payload FROM clock_syncs WHERE astronaut_id = ? AND device_id = ? AND boot_id IN ({marks}) "
+            "ORDER BY boot_id, device_ms",
             astronaut_id,
             device_id,
             *sorted(boot_ids),
@@ -516,7 +519,9 @@ class Store:
         """Sessions of any astronaut in one of `states`, oldest first."""
         wanted = list(states)
         marks = ",".join("?" * len(wanted))
-        rows = self._db.execute(f"SELECT payload, state, error FROM sessions WHERE state IN ({marks}) ORDER BY started_at, session_id", wanted).fetchall()
+        rows = self._db.execute(
+            f"SELECT payload, state, error FROM sessions WHERE state IN ({marks}) ORDER BY started_at, session_id", wanted
+        ).fetchall()
         return [SessionRow(json.loads(row["payload"]), row["state"], row["error"]) for row in rows]
 
     def latest_session(self, astronaut_id: str) -> SessionRow | None:
@@ -560,7 +565,9 @@ class Store:
             cursor = self._db.execute("UPDATE commands SET state = ? WHERE command_id = ?", (state, command_id))
         else:
             marks = ",".join("?" * len(only_if))
-            cursor = self._db.execute(f"UPDATE commands SET state = ? WHERE command_id = ? AND state IN ({marks})", (state, command_id, *only_if))
+            cursor = self._db.execute(
+                f"UPDATE commands SET state = ? WHERE command_id = ? AND state IN ({marks})", (state, command_id, *only_if)
+            )
         return cursor.rowcount == 1
 
     def add_ack(self, ack: dict[str, Any]) -> bool:
@@ -693,22 +700,16 @@ class Store:
         )
 
     def create_profile(self, profile: dict[str, Any]) -> bool:
-        return (
-            self._db.execute(
-                "INSERT INTO profiles VALUES (?, ?, ?) ON CONFLICT (astronaut_id) DO NOTHING",
-                (profile["astronaut_id"], utc_key(profile["updated_at"]), _dumps(profile)),
-            ).rowcount
-            == 1
-        )
+        return self._db.execute(
+            "INSERT INTO profiles VALUES (?, ?, ?) ON CONFLICT (astronaut_id) DO NOTHING",
+            (profile["astronaut_id"], utc_key(profile["updated_at"]), _dumps(profile)),
+        ).rowcount == 1
 
     def replace_profile_if_unchanged(self, profile: dict[str, Any], expected: dict[str, Any]) -> bool:
-        return (
-            self._db.execute(
-                "UPDATE profiles SET updated_at = ?, payload = ? WHERE astronaut_id = ? AND payload = ?",
-                (utc_key(profile["updated_at"]), _dumps(profile), profile["astronaut_id"], _dumps(expected)),
-            ).rowcount
-            == 1
-        )
+        return self._db.execute(
+            "UPDATE profiles SET updated_at = ?, payload = ? WHERE astronaut_id = ? AND payload = ?",
+            (utc_key(profile["updated_at"]), _dumps(profile), profile["astronaut_id"], _dumps(expected)),
+        ).rowcount == 1
 
     def profile(self, astronaut_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM profiles WHERE astronaut_id = ?", astronaut_id)
@@ -755,13 +756,10 @@ class Store:
 
     def replace_daily_context_if_unchanged(self, context: dict[str, Any], expected: dict[str, Any]) -> bool:
         """Replace only the exact version read by the caller, atomically."""
-        return (
-            self._db.execute(
-                "UPDATE daily_context SET payload = ? WHERE astronaut_id = ? AND date = ? AND payload = ?",
-                (_dumps(context), context["astronaut_id"], context["date"], _dumps(expected)),
-            ).rowcount
-            == 1
-        )
+        return self._db.execute(
+            "UPDATE daily_context SET payload = ? WHERE astronaut_id = ? AND date = ? AND payload = ?",
+            (_dumps(context), context["astronaut_id"], context["date"], _dumps(expected)),
+        ).rowcount == 1
 
     def create_daily_context(self, context: dict[str, Any]) -> bool:
         """Stores the context only when none is stored for that astronaut and day, in one statement. False when one was."""
@@ -806,7 +804,10 @@ class Store:
             FROM ids ORDER BY ids.astronaut_id
             """
         )
-        return [{"astronaut_id": r[0], "registered": bool(r[1]), "has_profile": bool(r[2]), "has_baseline": bool(r[3]), "sessions": r[4]} for r in rows]
+        return [
+            {"astronaut_id": r[0], "registered": bool(r[1]), "has_profile": bool(r[2]), "has_baseline": bool(r[3]), "sessions": r[4]}
+            for r in rows
+        ]
 
     def put_contact(self, contact: dict[str, Any]) -> None:
         self._db.execute(
@@ -821,7 +822,9 @@ class Store:
         """Contacts of the astronaut, oldest first; within [start, end] when given."""
         low = "" if start is None else utc_key(start)
         high = "~" if end is None else utc_key(end)
-        return self._all("SELECT payload FROM medical_contacts WHERE astronaut_id = ? AND at >= ? AND at <= ? ORDER BY at", astronaut_id, low, high)
+        return self._all(
+            "SELECT payload FROM medical_contacts WHERE astronaut_id = ? AND at >= ? AND at <= ? ORDER BY at", astronaut_id, low, high
+        )
 
     # --- retention and export ------------------------------------------------------------------------
 
@@ -862,7 +865,8 @@ class Store:
             "profile": self.profile(astronaut_id),
             "daily_contexts": every("daily_context", "date"),
             "sessions": [
-                {"session": json.loads(r["payload"]), "state": r["state"], "error": r["error"], "chunks_purged_at": r["chunks_purged_at"]} for r in sessions
+                {"session": json.loads(r["payload"]), "state": r["state"], "error": r["error"], "chunks_purged_at": r["chunks_purged_at"]}
+                for r in sessions
             ],
             "feature_sets": every("feature_sets", "anchor_at"),
             "baselines": every("baselines", "version"),

@@ -43,16 +43,21 @@ El protocolo declara dos canales EMG, pero el firmware y el gateway reales publi
 
 ## Datos sin validar y dónde se cambian
 
-Los datos que Aguado aún no ha validado (issue #106) se cambian en un solo lugar de configuración, no en el código. Un test cruza la misión del simulador con el catálogo, así que olvidar una copia falla en CI.
+Los datos que Aguado aún no ha validado (issue #106) tienen una fuente única por valor. Cambiar la fuente propaga el valor solo cuando la columna «Se actualiza a mano» está vacía; en el resto, la lista es cerrada y un test falla si una copia diverge. Todos siguen provisionales («PENDIENTE medición Aguado»): al cambiar un valor, mantén o actualiza la marca según corresponda.
 
-| Dato | Valor provisional | Dónde se cambia |
-|---|---|---|
-| Descanso entre series | 30 s | `rest_between_sets_s` en `protocol-catalog.json` (backend y UI); `rest_between_sets_s` de `lat_pulldown_standing_v1` en `example-mission.yaml`; copia en `app/ui/src/main/sessions/protocols.ts` si es necesario |
-| Series, repeticiones, banda | 4 × 15, verde, 25 kg | `protocol-catalog.json`; `example-mission.yaml` (`planned_sets`, `reps_per_set`, `load`); `protocols.ts` |
-| Ritmo («moderado») | 3,0 s por repetición y 0,6 s entre repeticiones en el simulador | `rep_duration_s`, `rest_between_reps_s` en `example-mission.yaml` |
-| Longitud del cordón en reposo | 650 mm | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` (gateway); calibración de `example-mission.yaml` y `calibration.stretch.json` |
-| Curva del cordón | factores 1,0 / 1,25 / 1,5 / 1,75 / 2,0 sobre R0 y L0 | `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (gateway, lista JSON); curva de `example-mission.yaml` |
-| Espera de recuperación del cordón | 120 s | `recovery_wait_s` en `example-mission.yaml` y `calibration.stretch.json` |
-| Separación de electrodos, tramo, GND | 10 cm, T11-L2, cresta ilíaca | `placement` de `session.exercise.json` y de `emgLat` en `protocols.ts`; `example-mission.yaml` |
-| MVC | sin procedimiento | `emg_mvc` de `example-mission.yaml` (`window_ms`, `n_trials`); `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` (gateway) |
-| Textos de colocación y etiquetas de la UI | provisionales | `app/ui/src/renderer/strings/` |
+## Dónde se cambia cada valor
+
+| Valor (provisional) | Fuente única | Se actualiza a mano (lista cerrada) | Test que falla si diverge |
+|---|---|---|---|
+| Descanso entre series (30 s), series y repeticiones (4 × 15), banda (verde, 25 kg) | `protocol-catalog.json` | `example-mission.yaml` (`planned_sets`, `reps_per_set`, `rest_between_sets_s`, `load`); `app/ui/src/main/sessions/protocols.ts` (banda, series, reps; no lleva el descanso); mocks de `app/ui/src/renderer/data/mock/` | `contracts/tests/test_catalog.py` (cruce misión↔catálogo); `protocols.test.ts`; `protocol-values.test.ts` (mocks) |
+| Descanso al terminar (`rest_seconds`, 120 s) | `protocol-catalog.json` | mocks de la UI; texto «2 min» de `strings/session.ts` (estático) | `protocol-values.test.ts` |
+| Ritmo (`rep_duration_s` 3,0 s, `rest_between_reps_s` 0,6 s), `gap_s` (30 s) y `rom_deg` (30°) | `protocol-catalog.json` | `example-mission.yaml` (`rep_duration_s`, `rest_between_reps_s`, `rom_deg`, `bracket.gap_s`) | `contracts/tests/test_catalog.py`; `physiology/tests/test_protocol_sets.py` |
+| Longitud del cordón en reposo (650 mm; 666 mm del segundo astronauta) | `example-mission.yaml` (por astronauta, simulador) | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` (gateway, dispositivo real); `calibration.stretch.json`; `features-request.json`; READMEs de gateway, contracts y firmware | `engine/tests/test_features_stretch_simulator.py` lee la misión; el gateway y los ejemplos no tienen cruce |
+| Curva del cordón | `example-mission.yaml` (simulador) y `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (gateway, 1,0 / 1,25 / 1,5 / 1,75 / 2,0) | Son dos curvas distintas hoy (tabla de 4 puntos frente a factores lineales); no se derivan una de otra | `gateway/tests/test_calibration.py`; `physiology/tests/test_signals_stretch.py` |
+| Espera de recuperación del cordón (120 s) y fracción de recuperación (0,1) | `engine/src/spine_engine/settings.py` (valores por defecto del motor); `recovery_wait_s` de la calibración manda si llega | `example-mission.yaml` (`recovery_wait_s`), `calibration.stretch.json`, `features-request.json`, README del engine en/es/ca | `engine/tests/test_settings.py` (fija 120 y 0,1 y que `StretchFamily` usa el mismo valor) |
+| Ventana MVC (250 ms) y `n_trials` (3) | `example-mission.yaml` (`emg_mvc`, simulador) | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` (gateway); ejemplos `calibration.emg-mvc*.json`; READMEs del gateway | `gateway/tests/test_settings.py` (solo el gateway) |
+| Separación de electrodos, tramo, GND (10 cm, T11-L2, cresta ilíaca) e IMU (T9) | `session.exercise.json` / `example-mission.yaml` | `protocols.ts`; `strings/codes.ts` (texto) | `protocols.test.ts` (solo `streams`) |
+| Textos de colocación y etiquetas de la UI | `app/ui/src/renderer/strings/` | todo a mano, y README/firmware en es/ca | ninguno |
+| Pesos de rango, cortes de triaje | `engine/src/spine_engine/risk.py`, `triage-policy.json` | tablas del README del engine | `engine/tests/test_default_triage_policy.py` (marca «provisional») |
+
+Qué se regenera: `protocol-catalog.json` no entra en los modelos Python ni en `v1.ts`; si cambia un schema, `uv run python contracts/scripts/generate_models.py` y `pnpm run gen:types`. Qué no cubre ningún test: los valores por defecto del gateway frente a la misión, y las notas en prosa de los README.

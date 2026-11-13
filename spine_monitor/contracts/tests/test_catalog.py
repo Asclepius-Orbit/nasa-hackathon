@@ -229,3 +229,22 @@ def test_whole_spine_cord_and_t9_imu_features_are_in_the_feature_catalog():
     for feature_id in ("stretch.full_spine.peak_elongation_mm", "stretch.full_spine.elongation_mm", "imu.t9.sagittal.rom_deg"):
         assert is_known(feature_id), feature_id
     assert is_known("imu.c3.sagittal.rom_deg") and is_known("imu.c4.sagittal.rom_deg")
+
+
+def _feature_notes(feature_id: str) -> str:
+    return next(entry for entry in load_catalog()["entries"] if entry["feature_id"] == feature_id).get("notes", "")
+
+
+def test_mvc_features_say_the_mvc_procedure_is_pending():
+    for feature_id in ("emg.{muscle}.{side}.rms_pct_mvc", "emg.{muscle}.{side}.peak_pct_mvc"):
+        assert "PENDIENTE Aguado" in _feature_notes(feature_id), feature_id
+
+
+def test_stretch_notes_state_what_350_ohm_means():
+    notes = _feature_notes("stretch.{spine_region}.elongation_mm")
+    assert "350 ohm" in notes and "per inch" in notes and "not a 2.54 cm deformation" in notes
+
+
+def test_symmetry_and_imu_notes_reflect_the_standard_protocol():
+    assert "#13" in _feature_notes("emg.{muscle}.symmetry_index_pct")
+    assert "T9" in _feature_notes("imu.{spine_level}.{anatomical_plane}.rom_deg")

@@ -13,7 +13,7 @@
       "risk_direction": "unspecified",
       "ranges": null,
       "status": "proposed",
-      "notes": "Depends on electrode placement and skin: compare through %MVC when possible."
+      "notes": "Depends on electrode placement and skin: compare through %MVC when possible. Standard placement: each latissimus dorsi over T11-L2, ~10 cm between electrodes, ground on the iliac crest."
     },
     {
       "feature_id": "emg.{muscle}.{side}.rms_pct_mvc",
@@ -25,7 +25,8 @@
       "requires": ["emg_mvc_calibration"],
       "risk_direction": "unspecified",
       "ranges": null,
-      "status": "proposed"
+      "status": "proposed",
+      "notes": "PENDIENTE Aguado: the MVC procedure is not yet defined in the protocol, so this feature stays unusable until it is."
     },
     {
       "feature_id": "emg.{muscle}.{side}.peak_pct_mvc",
@@ -37,7 +38,8 @@
       "requires": ["emg_mvc_calibration"],
       "risk_direction": "unspecified",
       "ranges": null,
-      "status": "proposed"
+      "status": "proposed",
+      "notes": "PENDIENTE Aguado: the MVC procedure is not yet defined in the protocol, so this feature stays unusable until it is."
     },
     {
       "feature_id": "emg.{muscle}.{side}.median_freq_hz",
@@ -86,7 +88,7 @@
       "risk_direction": "unspecified",
       "ranges": null,
       "status": "proposed",
-      "notes": "Needs one EMG channel per side."
+      "notes": "Needs one EMG channel per side. The protocol declares both latissimus dorsi, but the current hardware publishes one channel until the hardware is confirmed (#13)."
     },
     {
       "feature_id": "stretch.{spine_region}.elongation_mm",
@@ -99,7 +101,7 @@
       "risk_direction": "unspecified",
       "ranges": null,
       "status": "proposed",
-      "notes": "Cord response is non-linear and recovers slowly (1-2 min): measure after the recovery wait."
+      "notes": "Cord response is non-linear and recovers slowly (1-2 min): measure after the recovery wait. Elongation comes from the resistance change against the rest resistance R0 through a measured curve; a resistance of 350 ohm is the cord's resistance per inch at rest, not a 2.54 cm deformation. Standard protocol: cord C3-C4 to L5-S1 (~650 mm, PENDIENTE medición Aguado)."
     },
     {
       "feature_id": "stretch.{spine_region}.elongation_pct",
@@ -171,7 +173,8 @@
       "requires": ["imu_calibration"],
       "risk_direction": "unspecified",
       "ranges": null,
-      "status": "proposed"
+      "status": "proposed",
+      "notes": "Standard protocol: the IMU sits at T9 (imu.t9.*), with the subject standing."
     },
     {
       "feature_id": "imu.{spine_level}.{anatomical_plane}.peak_angular_velocity_dps",

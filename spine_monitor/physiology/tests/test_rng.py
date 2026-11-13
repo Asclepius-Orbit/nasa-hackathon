@@ -61,13 +61,13 @@ def test_bad_key_is_rejected(key):
 
 
 def test_uuid_format_and_determinism():
-    value = derive_uuid(42, "AST-01", 0, "am_spine_check")
+    value = derive_uuid(42, "AST-01", 0, "pre_spine_check")
     assert UUID.fullmatch(value)
     assert value[14] == "4"  # versión 4
     assert value[19] in "89ab"  # variante RFC 4122
-    assert value == derive_uuid(42, "AST-01", 0, "am_spine_check")
-    assert value != derive_uuid(42, "AST-01", 1, "am_spine_check")
-    assert value != derive_uuid(43, "AST-01", 0, "am_spine_check")
+    assert value == derive_uuid(42, "AST-01", 0, "pre_spine_check")
+    assert value != derive_uuid(42, "AST-01", 1, "pre_spine_check")
+    assert value != derive_uuid(43, "AST-01", 0, "pre_spine_check")
 
 
 def test_uuids_are_unique_over_many_keys():

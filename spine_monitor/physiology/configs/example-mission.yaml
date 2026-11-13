@@ -18,8 +18,8 @@ crew:
     latent_multipliers: { spine_elongation: 1.0, muscle_deconditioning: 1.0, rom_motor_control: 1.0, pain_stiffness: 1.0 }
     exercise_adherence: 1.0
     baseline:
-      cord_rest_length_mm: 400.0
-      emg_mvc_rms_mv: { emg_lat_left: 1.85, emg_lat_right: 1.80 }
+      cord_rest_length_mm: 650.0     # PENDIENTE medición Aguado: cordón C3-C4 a L5-S1, ~650 mm en reposo
+      emg_mvc_rms_mv: { emg_lat_left: 1.85, emg_lat_right: 1.80 }   # pending Aguado
     profile:
       date_of_birth: 1988-04-12
       sex_at_birth: female
@@ -35,8 +35,8 @@ crew:
     latent_multipliers: { spine_elongation: 1.2, muscle_deconditioning: 1.3, rom_motor_control: 0.9, pain_stiffness: 1.5 }
     exercise_adherence: 0.8
     baseline:
-      cord_rest_length_mm: 410.0
-      emg_mvc_rms_mv: { emg_lat_left: 2.10, emg_lat_right: 2.25 }
+      cord_rest_length_mm: 666.0     # PENDIENTE medición Aguado
+      emg_mvc_rms_mv: { emg_lat_left: 2.10, emg_lat_right: 2.25 }   # pending Aguado
     profile:
       date_of_birth: 1981-09-30
       sex_at_birth: male
@@ -58,47 +58,55 @@ device:
   temperature_c: { mean: 31.0, sd: 0.8 }
   status_interval_s: 30.0
   clock_sync_interval_s: 60.0
+  # Colocación estándar (#12, Aguado): EMG en cada dorsal ancho (electrodos separados ~10 cm, T11 a L2, tierra en
+  # la cresta ilíaca), IMU en T9 y cordón de C3-C4 a L5-S1 (~65 cm).
   streams:
     - stream_id: emg_lat_left
       stream_kind: emg
-      placement: { muscle: latissimus_dorsi, side: left }
+      placement: { muscle: latissimus_dorsi, side: left, electrode_spacing_cm: 10.0, span: { from_level: t11, to_level: l2 }, ground: { location: iliac_crest } }
     - stream_id: emg_lat_right
       stream_kind: emg
-      placement: { muscle: latissimus_dorsi, side: right }
-    - stream_id: imu_l3
+      placement: { muscle: latissimus_dorsi, side: right, electrode_spacing_cm: 10.0, span: { from_level: t11, to_level: l2 }, ground: { location: iliac_crest } }
+    - stream_id: imu_t9
       stream_kind: imu
-      placement: { spine_level: l3 }
-    - stream_id: stretch_lumbar
+      placement: { spine_level: t9 }
+    - stream_id: stretch_spine
       stream_kind: stretch
-      placement: { spine_region: lumbar, span: { from_level: l1, to_level: l5 } }
+      placement: { spine_region: full_spine, span: { from_level: c3, to_level: s1 } }
 
 protocols:
   lat_pulldown_standing_v1:
     session_type: exercise
-    streams: [emg_lat_left, emg_lat_right, imu_l3, stretch_lumbar]
+    streams: [emg_lat_left, emg_lat_right, imu_t9, stretch_spine]
+    # Polea de pie con banda verde (25 kg nominal), 4 series x 15 reps (60 en total), tempo moderado, agarre
+    # prono, ~5 min. rest_between_sets_s es un valor provisional: el protocolo solo dice "recuperaciones muy cortas".
     lead_in_s: 10.0
-    planned_reps: 10
-    rep_duration_s: 4.0
-    rest_between_reps_s: 4.0
-    lead_out_s: 120.0
+    planned_sets: 4
+    reps_per_set: 15
+    rep_duration_s: 3.0
+    rest_between_reps_s: 0.6
+    rest_between_sets_s: 30.0
+    lead_out_s: 15.0
     pct_mvc: 45.0
     rom_deg: 30.0
     plane: sagittal
     load:
       type: elastic_band
-      nominal_kg: 15.0
+      nominal_kg: 25.0
       band_stretch_cm: 40.0
-      band_id: blue
+      band_id: green
+      description: Standing, band anchored overhead, pronated grip.
   spine_length_rest_v1:
     session_type: spine_check
-    streams: [imu_l3, stretch_lumbar]
+    streams: [stretch_spine]
     duration_s: 120.0
 
 schedule:
   sessions:
-    - { name: am_spine_check, protocol_id: spine_length_rest_v1, time_utc: "07:00", start_jitter_s: 300.0, phases: [preflight, inflight, postflight], every_n_days: 1 }
+    # El spine_check de pie va justo antes (pre) y justo después (post) del ejercicio, a `gap_s` de él.
+    - { name: pre_spine_check, protocol_id: spine_length_rest_v1, bracket: { phase: pre, of: lat_pulldown, gap_s: 30.0 }, phases: [preflight, inflight, postflight], every_n_days: 1 }
     - { name: lat_pulldown, protocol_id: lat_pulldown_standing_v1, time_utc: "10:00", start_jitter_s: 600.0, phases: [preflight, inflight, postflight], every_n_days: 1 }
-    - { name: pm_spine_check, protocol_id: spine_length_rest_v1, time_utc: "21:30", start_jitter_s: 300.0, phases: [preflight, inflight, postflight], every_n_days: 1 }
+    - { name: post_spine_check, protocol_id: spine_length_rest_v1, bracket: { phase: post, of: lat_pulldown, gap_s: 30.0 }, phases: [preflight, inflight, postflight], every_n_days: 1 }
   background:
     enabled: true
     name: background
@@ -107,7 +115,7 @@ schedule:
     # (the background has its own chunk size: at 1000 ms every hour is 3 600 chunks per stream, not 36 000).
     start_time_utc: "09:30"
     end_time_utc: "10:30"
-    streams: [imu_l3, stretch_lumbar]
+    streams: [imu_t9, stretch_spine]
     sample_rates_hz: { imu: 10.0, stretch: 10.0 }
     chunk_ms: 1000.0
     bends_per_hour: 6.0
@@ -160,7 +168,7 @@ signals:
     filter_order: 4
     noise_rms_mv: 0.01
     rest_pct_mvc: 2.0
-    fatigue_per_rep: 0.03
+    fatigue_per_rep: 0.008         # 60 reps por sesion (antes 10): sin saturar la fatiga
     fatigue_band_shift: 0.3
     deconditioning_pct_mvc_gain: 0.5
     deconditioning_fatigue_gain: 1.0
@@ -182,11 +190,13 @@ signals:
     tremor_dps_per_unit: 4.0
   stretch:
     sample_rate_hz: 20.0
+    # PENDIENTE medición Aguado: mismas resistencias y forma que antes, longitudes escaladas (x1.625) al cordón
+    # de ~650 mm; la curva real se medirá con polímetro.
     curve:
-      - { resistance_ohm: 5400.0, length_mm: 360.0 }
-      - { resistance_ohm: 6012.0, length_mm: 400.0 }
-      - { resistance_ohm: 6790.0, length_mm: 450.0 }
-      - { resistance_ohm: 7560.0, length_mm: 500.0 }
+      - { resistance_ohm: 5400.0, length_mm: 585.0 }
+      - { resistance_ohm: 6012.0, length_mm: 650.0 }
+      - { resistance_ohm: 6790.0, length_mm: 731.0 }
+      - { resistance_ohm: 7560.0, length_mm: 812.0 }
     circuit: { adc_bits: 12, vref_v: 3.3, series_resistor_ohm: 10000.0, input_pin: GPIO35 }
     adc_noise_counts: 1.5
     hysteresis_tau_s: 90.0

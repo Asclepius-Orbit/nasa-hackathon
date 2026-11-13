@@ -41,7 +41,7 @@ def test_topic_only_for_mqtt_kinds():
 
 
 def test_calibrations_travel_over_mqtt_and_must_be_retained():
-    topic = topics.calibration("AST-01", "sim-01", "stretch_lumbar")
+    topic = topics.calibration("AST-01", "sim-01", "stretch_spine")
     Envelope(EnvelopeKind.CALIBRATION, topic, {}, AT, True, "AST-01", 0)
     with pytest.raises(ValueError, match="need a topic"):
         Envelope(EnvelopeKind.CALIBRATION, None, {}, AT, True, "AST-01", 0)

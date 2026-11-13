@@ -5,6 +5,7 @@ Cada rama del árbol se identifica por una tupla de claves, por convención
 - `("AST-01", 12, "latent")`                      latente del día 12
 - `("AST-01", 12, "lat_pulldown", "emg_lat_left", "signal")`  señal de un stream en una sesión
 - `("AST-01", 12, "device")`                      plan de arranques/reinicios del día
+- `("AST-01", 12, "pre_spine_check")`             slot del spine_check justo antes del ejercicio (id de sesión; sin rama "plan": no tiene jitter)
 
 La semilla de una rama depende solo de (semilla global, claves): cualquier rama se regenera sola, sin
 recorrer las anteriores, e igual sea cual sea el sink o la velocidad. Los UUID y los boot_id también se

@@ -281,7 +281,7 @@ def test_stop_completes_the_session_and_background_pauses_and_resumes_with_conti
         h = Harness()
         await h.run(4)
         before = len(h.client.published)
-        await h.send(start(1, stream_ids=["imu_l3", "stretch_lumbar"]))
+        await h.send(start(1, stream_ids=["imu_t9", "stretch_spine"]))
         await h.run(6)
         await h.send(stop(2))
         after_stop = len(h.client.published)
@@ -300,7 +300,7 @@ def test_stop_completes_the_session_and_background_pauses_and_resumes_with_conti
         for stream, seq in seqs_per_stream(chunks(h.client)).items():
             assert seq == list(range(len(seq))), stream
         # Y los tramos no se solapan en el tiempo del dispositivo.
-        for stream in ("imu_l3", "stretch_lumbar"):
+        for stream in ("imu_t9", "stretch_spine"):
             t0 = [c["t0_device_ms"] for c in chunks(h.client) if c["stream_id"] == stream]
             assert t0 == sorted(t0)
         assert_all_valid(h.client)
@@ -361,7 +361,7 @@ def test_mark_event_needs_the_running_session():
 def test_calibrate_completes_with_a_calibration_id_used_by_the_next_session():
     async def scenario():
         h = Harness()
-        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], duration_s=2)
+        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"], duration_s=2)
         await h.send(cal)
         assert [a["status"] for a in h.client.acks(cal["command_id"])] == ["accepted"]
         await h.run(3)
@@ -407,7 +407,7 @@ def test_every_chunk_citing_a_calibration_comes_after_its_retained_calibration()
         # El fondo cita la calibración programada de la misión: ya está retained antes de su primer chunk.
         scheduled = {c["calibration_id"] for c in chunks(h.client) if "calibration_id" in c}
         assert len(scheduled) == 1 and h.client.on("calibration")[0].payload["calibration_id"] in scheduled
-        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"])
+        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"])
         await h.send(cal)
         live = h.client.acks(cal["command_id"])[-1]["result"]["calibration_id"]
         await h.run(3)
@@ -436,7 +436,7 @@ def test_calibrate_while_background_runs_moves_its_chunks_to_the_new_calibration
         block_s = h.config.device.status_interval_s  # un bloque en vivo = un intervalo de estado
         await h.run(5)
         (old,) = {c["calibration_id"] for c in chunks(h.client) if c["stream_kind"] == "stretch"}
-        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"])
+        cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"])
         await h.send(cal)
         accepted, completed = h.client.acks(cal["command_id"])
         new = completed["result"]["calibration_id"]
@@ -449,7 +449,7 @@ def test_calibrate_while_background_runs_moves_its_chunks_to_the_new_calibration
         first_new = ids.index(new)
         assert set(ids[:first_new]) <= {old} and set(ids[first_new:]) == {new} and len(ids) - first_new >= block_s / 2
         # La retained del stream pasa de la anterior a la nueva y no vuelve atrás (antes se republicaba la vieja).
-        topic = topics.calibration(AST, DEV, "stretch_lumbar")
+        topic = topics.calibration(AST, DEV, "stretch_spine")
         assert [p.payload["calibration_id"] for p in h.client.on("calibration") if p.topic == topic] == [old, new]
         assert_retained_calibrations_never_regress(h.client.published)
         assert assert_calibrations_resolvable(h.client.published, superseded_ok=True) > 0
@@ -464,15 +464,15 @@ def test_a_calibrate_superseded_before_it_completes_is_not_published_but_keeps_i
         h = Harness()
         await h.run(3)
         (scheduled,) = {c["calibration_id"] for c in chunks(h.client) if c["stream_kind"] == "stretch"}
-        slow = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"], duration_s=10)
-        fast = command("calibrate", 2, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_lumbar"])
+        slow = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"], duration_s=10)
+        fast = command("calibrate", 2, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"])
         await h.send(slow)
         await h.send(fast)
         await h.run(h.config.device.status_interval_s + 10)
         slow_completed = h.client.acks(slow["command_id"])[-1]
         fast_id = h.client.acks(fast["command_id"])[-1]["result"]["calibration_id"]
         assert slow_completed["status"] == "completed" and slow_completed["result"]["calibration_id"] not in (fast_id, scheduled)
-        topic = topics.calibration(AST, DEV, "stretch_lumbar")
+        topic = topics.calibration(AST, DEV, "stretch_spine")
         assert [p.payload["calibration_id"] for p in h.client.on("calibration") if p.topic == topic] == [scheduled, fast_id]
         assert stretch_ids_after(h.client, 0)[-1] == fast_id
         assert_retained_calibrations_never_regress(h.client.published)
@@ -488,7 +488,7 @@ def test_status_last_seq_never_reports_an_unpublished_seq():
     async def scenario():
         h = Harness()
         await h.run(20)
-        await h.send(start(1, stream_ids=["imu_l3", "stretch_lumbar", "emg_lat_left"]))
+        await h.send(start(1, stream_ids=["imu_t9", "stretch_spine", "emg_lat_left"]))
         await h.run(25)
         await h.send(stop(2))
         await h.run(30)
@@ -507,7 +507,7 @@ def test_status_last_seq_never_reports_an_unpublished_seq():
         assert statuses >= 3
         device = h.gateway._units[0].device
         boot = h.client.on("status")[-1].payload["boot_id"]
-        assert any(device.next_seq(boot, s) - 1 > seen[(boot, s)] for s in ("imu_l3", "stretch_lumbar"))  # hay anticipo
+        assert any(device.next_seq(boot, s) - 1 > seen[(boot, s)] for s in ("imu_t9", "stretch_spine"))  # hay anticipo
 
     go(scenario())
 
@@ -543,7 +543,7 @@ def test_each_source_paces_the_loop_with_its_own_chunk():
         session = [s for s, in_session in sleeps if in_session]
         assert session and max(session) <= 0.5
         assert max(background) <= 1.0 and max(background) > 0.5  # el fondo no se despierta cada 500 ms
-        t0 = [c["t0_device_ms"] for c in chunks(client) if c["stream_id"] == "imu_l3" and c["session_id"] != SESSION][:4]
+        t0 = [c["t0_device_ms"] for c in chunks(client) if c["stream_id"] == "imu_t9" and c["session_id"] != SESSION][:4]
         assert len(t0) == 4 and all(abs(b - a - 1000) <= 2 for a, b in itertools.pairwise(t0))
         assert_all_valid(client)
 
@@ -724,8 +724,8 @@ def test_huge_durations_are_rejected_before_touching_state():
         h = Harness()
         await h.run(2)
         await h.send(start(1, max_duration_s=10**12))
-        await h.send(command("calibrate", 2, session_id=SESSION, calibration_type="imu", stream_ids=["imu_l3"], duration_s=1e300))
-        await h.send(command("calibrate", 3, session_id=SESSION, calibration_type="imu", stream_ids=["imu_l3"], duration_s=1e999))
+        await h.send(command("calibrate", 2, session_id=SESSION, calibration_type="imu", stream_ids=["imu_t9"], duration_s=1e300))
+        await h.send(command("calibrate", 3, session_id=SESSION, calibration_type="imu", stream_ids=["imu_t9"], duration_s=1e999))
         for n in (1, 2, 3):
             (ack,) = h.client.acks(start(n)["command_id"])
             assert ack["status"] == "rejected" and ack["error"]["code"] == "invalid_command"
@@ -771,7 +771,8 @@ def test_device_recharges_after_its_power_window():
         raw["device"].update(power_on_time_utc="09:00", power_off_time_utc="09:00:20")
         raw["schedule"]["background"].update(start_time_utc="09:00", end_time_utc="09:00:20")
         for s in raw["schedule"]["sessions"]:
-            s["time_utc"] = "09:00:10"
+            if "bracket" not in s:
+                s["time_utc"] = "09:00:10"
 
     async def scenario():
         h = Harness(make_config(short_day))
@@ -1132,7 +1133,7 @@ def test_commands_that_need_the_device_are_rejected_while_it_reboots():
         h.clock.now = reboot.at + timedelta(seconds=5)
         assert h.gateway._units[0].device.plan.epoch_at(h.clock.now) is None
         await h.send(start(1))
-        await h.send(command("calibrate", 2, session_id=SESSION, calibration_type="imu", stream_ids=["imu_l3"]))
+        await h.send(command("calibrate", 2, session_id=SESSION, calibration_type="imu", stream_ids=["imu_t9"]))
         offline = {"code": "device_offline", "message": "the device is rebooting"}
         assert [(a["status"], a["error"]) for a in h.client.acks(start(1)["command_id"])] == [("rejected", offline)]
         assert [(a["status"], a["error"]) for a in h.client.acks(command("calibrate", 2)["command_id"])] == [("rejected", offline)]
@@ -1161,6 +1162,6 @@ def test_a_session_with_max_duration_streams_until_then():
         session = chunks(h.client, SESSION)
         ends = [datetime.fromisoformat(c["received_at"]) for c in session]
         assert max(ends) >= T0 + timedelta(seconds=2)  # no se corta nada mas empezar
-        assert len({c["seq"] for c in session if c["stream_id"] == "imu_l3"}) >= 5
+        assert len({c["seq"] for c in session if c["stream_id"] == "imu_t9"}) >= 5
 
     go(scenario())

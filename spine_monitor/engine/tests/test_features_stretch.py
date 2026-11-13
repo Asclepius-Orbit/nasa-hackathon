@@ -21,7 +21,7 @@ from spine_engine.features.calibrations import CalibrationResolution, Calibratio
 from spine_engine.features.context import ExtractionContext, build_context
 from spine_engine.features.registry import ComputedFeature, FamilyResult
 from spine_engine.features.repetitions import RepetitionService, RepWindow, RepWindows
-from spine_engine.features.stretch import RECOVERY_FRACTION, StretchFamily
+from spine_engine.features.stretch import StretchFamily
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "features-request.json"
 T0 = datetime(2026, 11, 13, 10, 3, 0, 100000, tzinfo=UTC)  # UTC de la ancla de reloj del ejemplo (device 180000 ms)
@@ -511,7 +511,7 @@ def test_when_the_repetitions_cover_every_sample_the_passive_features_are_no_dat
 
 def recovering_reps(offset: int, *, rest: int = 40, low: float = 0.0, with_rest: bool = True) -> tuple[tuple[RepWindow, ...], list[float]]:
     """Dos repeticiones iguales: activa de 10 muestras a 10 mm y luego ``rest`` muestras a 5 mm hasta ``offset``
-    (muestras desde el fin de la activa) y a ``low`` mm desde ahí. El umbral es ``RECOVERY_FRACTION`` · 10 mm."""
+    (muestras desde el fin de la activa) y a ``low`` mm desde ahí. El umbral es la fracción por defecto (0,1) · 10 mm."""
     period = 10 + rest
     signal = ([10.0] * 10 + [5.0] * offset + [low] * (rest - offset)) * 2
     reps = tuple(window(i + 1, i * period, i * period + 10, i * period + period if with_rest else None) for i in range(2))
@@ -584,7 +584,6 @@ def test_recovered_means_at_or_below_a_tenth_of_the_repetition_peak(low: float, 
 
     result = family_for(*reps).extract(make_context(signal))
 
-    assert RECOVERY_FRACTION == 0.1
     if recovers:
         assert computed(result)[fid("recovery_time_s")].value == pytest.approx(0.3)
     else:

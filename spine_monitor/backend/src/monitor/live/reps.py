@@ -68,24 +68,24 @@ class RepDetectorParams:
     def default(cls) -> Self:
         """Values justified by `physiology/configs/example-mission.yaml` (placeholders, not clinical references).
 
-        The simulated rep is a minimum-jerk 0 -> rom_deg (30) -> 0 in rep_duration_s (4), so the rate peaks at
-        1.875 * 30 / 2 = 28 dps. At rest there is a bias (up to 0.3 dps), gyro_noise_dps (0.05) and white tremor
+        The simulated rep is a minimum-jerk 0 -> rom_deg (30) -> 0 in rep_duration_s (3), so the rate peaks at
+        1.875 * 30 / 1.5 = 37.5 dps. The thresholds below are local to this module (not read from the protocol catalog). At rest there is a bias (up to 0.3 dps), gyro_noise_dps (0.05) and white tremor
         with an observed standard deviation of up to 0.6 dps, about 0.18 dps once smoothed with the tau below.
 
-        - on_dps 6: about a fifth of the peak, and 10 times the raw tremor.
-        - low_dps 1.5: 8 standard deviations of the smoothed tremor, about 5 % of the peak.
+        - on_dps 6: about a sixth of the peak, and 10 times the raw tremor.
+        - low_dps 1.5: 8 standard deviations of the smoothed tremor, about 4 % of the peak.
         - on_hold_s, reversal_hold_s, settle_s 0.1: two smoothing time constants, so that a tremor spike cannot pass.
-        - calm_end_s 1: 10 times settle_s, and half of the 2 s half rep, whose return never pauses in the simulator.
-        - max_gap_s 2: as long as a half rep, so the phase is unknown after it; live packet loss loses single 0.1 s chunks.
-        - return_tolerance_deg 3: 10 % of rom_deg; several times the expected drift of a 4 s integration.
+        - calm_end_s 1: 10 times settle_s, and two thirds of the 1.5 s half rep, whose return never pauses in the simulator.
+        - max_gap_s 2: a little longer than a 1.5 s half rep, so the phase is unknown after it; live packet loss loses single 0.1 s chunks.
+        - return_tolerance_deg 3: 10 % of rom_deg; several times the expected drift of a 3 s integration.
         - smoothing_tau_s 0.05: short against a 2 s half rep; it adds negligible delay.
-        - bias_tau_s 2, bias_settle_s 1: well inside rest_between_reps_s (4) and lead_in_s (10).
+        - bias_tau_s 2, bias_settle_s 1: well inside lead_in_s (10); the 0.6 s rest_between_reps_s is too short for it, see below.
         - still_std_dps 1.5: over 1 s windows of 16 simulated sessions, at rest it reached 1.12 at most, inside a rep 2.03 at least.
         - The standard protocol has 3 s reps with a pause of only 0.6 s between reps (30 s between sets): a rep that does not come back
           to 0 deg, or whose pause is shorter than calm_end_s, ends when the next pull begins (rate in the pulling direction for on_hold_s).
           bias_settle_s stays at 1 s on purpose: a shorter still window can be found at the turn of a slow rep. After a reboot inside a set
           (pauses of 0.6 s) the count resumes with the next set.
-        - max_rep_s 12: 3 times rep_duration_s, so an honest slow rep survives, and a stuck counter costs under 2 cycles of 8 s.
+        - max_rep_s 12: 4 times rep_duration_s, so an honest slow rep survives, and a stuck counter costs under 4 cycles of 3.6 s.
         """
         return cls(
             on_dps=6.0,

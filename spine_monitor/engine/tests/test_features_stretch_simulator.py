@@ -36,7 +36,16 @@ ALL_STREAMS = ("emg_lat_left", "emg_lat_right", "imu_t9", STRETCH)
 SEEDS = [7, 20261113]
 GRAVITIES = ["earth_1g", "microgravity"]
 EXERCISE, SPINE_CHECK, BACKGROUND = "lat_pulldown", "pre_spine_check", "background"
-REST_LENGTH_MM = 650.0  # baseline.cord_rest_length_mm del astronauta AST-01 en example-mission.yaml
+
+
+def _rest_length_mm() -> float:
+    import yaml
+
+    raw = yaml.safe_load(_MISSION.read_text(encoding="utf-8"))
+    return next(a for a in raw["crew"] if a["astronaut_id"] == "AST-01")["baseline"]["cord_rest_length_mm"]
+
+
+REST_LENGTH_MM = _rest_length_mm()  # baseline.cord_rest_length_mm del astronauta AST-01 en example-mission.yaml
 
 # Tolerancias frente a la verdad; observado en las 4 combinaciones semilla x gravedad.
 # Pico y rango por repetición: la verdad es la longitud real sin ruido ni histéresis, la extracción ve el ruido ADC (el

@@ -1,7 +1,10 @@
+import inspect
+
 import pytest
 from pydantic import ValidationError
 from spine_contracts import AssessmentDomain
-from spine_engine.settings import EngineSettings
+from spine_engine.features.stretch import StretchFamily
+from spine_engine.settings import DEFAULT_STRETCH_RECOVERY_FRACTION, EngineSettings
 
 
 def test_domains_left_out_of_the_weights_default_to_one():
@@ -34,3 +37,17 @@ def test_stretch_protocol_settings_are_configurable(monkeypatch):
     settings = EngineSettings(_env_file=None)
     assert settings.stretch_recovery_wait_s == 30
     assert settings.stretch_recovery_fraction == 0.25
+
+
+def test_provisional_recovery_defaults_are_pinned_by_name():
+    settings = EngineSettings(_env_file=None)
+
+    assert settings.stretch_recovery_wait_s == 120.0
+    assert settings.stretch_recovery_fraction == 0.1
+    assert DEFAULT_STRETCH_RECOVERY_FRACTION == 0.1
+
+
+def test_stretch_family_without_a_fraction_uses_the_settings_default():
+    default = inspect.signature(StretchFamily.__init__).parameters["recovery_fraction"].default
+
+    assert default == EngineSettings(_env_file=None).stretch_recovery_fraction

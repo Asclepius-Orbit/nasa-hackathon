@@ -17,11 +17,11 @@ from spine_engine.features.registry import default_registry
 
 # vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
 _MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
-ROM = "imu.l3.sagittal.rom_deg"
-PEAK = "imu.l3.sagittal.peak_angular_velocity_dps"
-ACCEL = "imu.l3.accel_rms_g"
+ROM = "imu.t9.sagittal.rom_deg"
+PEAK = "imu.t9.sagittal.peak_angular_velocity_dps"
+ACCEL = "imu.t9.accel_rms_g"
 PLANES = ("sagittal", "frontal", "transverse")
-ALL_IDS = (*(f"imu.l3.{p}.{n}" for p in PLANES for n in ("rom_deg", "peak_angular_velocity_dps")), ACCEL)
+ALL_IDS = (*(f"imu.t9.{p}.{n}" for p in PLANES for n in ("rom_deg", "peak_angular_velocity_dps")), ACCEL)
 
 # ROM: el sesgo residual de la calibración (error de medida del simulador) se integra durante la rep. Error
 # observado 0,07 % (semilla 7) y 0,10 % (semilla 20261113), igual en 1 g y microgravedad; umbral con margen > 4x.
@@ -41,7 +41,7 @@ def _mission_config(*, background: bool) -> Any:
     raw["start_mission_day"] = 1
     raw["segments"] = [{"days": 1, "phase": "inflight", "gravity_environment": "microgravity"}]
     raw["device"].update(power_on_time_utc="09:55", power_off_time_utc="10:40")
-    raw["protocols"]["lat_pulldown_standing_v1"].update(streams=["imu_l3"], lead_out_s=10.0)
+    raw["protocols"]["lat_pulldown_standing_v1"].update(streams=["imu_t9"], lead_out_s=10.0)
     raw["schedule"]["sessions"] = [{**s, "start_jitter_s": 60.0} for s in raw["schedule"]["sessions"] if s["name"] == "lat_pulldown"]
     # la verdad es el modelo sin fallos de calidad (artefactos, bajo SNR...): esos los refleja la calidad común
     for fault in raw["faults"]["quality"].values():

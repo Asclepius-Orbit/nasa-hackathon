@@ -191,15 +191,15 @@ def test_composite_with_enough_reps_returns_values_with_catalog_units():
     assert [s for s in result.get("skipped", []) if s["feature_id"].startswith("exercise.")] == []
 
 
-def test_composite_with_the_example_single_rep_skips_everything_as_too_few_repetitions():
+def test_composite_with_the_example_two_rep_events_computes_over_those_two_reps():
+    # el ejemplo abreviado trae solo los eventos de las repeticiones 1 y 15 (set 1): dos ventanas
     request = FeaturesRequest.model_validate(json.loads(_EXAMPLE.read_text(encoding="utf-8")))
 
     result = extract_json(request)
 
-    assert not [f for f in result["features"] if f["feature_id"].startswith("exercise.")]
-    assert sorted((s["feature_id"], s["reason"]) for s in result["skipped"] if s["feature_id"] in ALL_IDS) == sorted(
-        (i, "too_few_repetitions") for i in ALL_IDS
-    )
+    exercise = {f["feature_id"]: f for f in result["features"] if f["feature_id"].startswith("exercise.")}
+    assert exercise["exercise.rep_count"]["value"] == 2
+    assert not [s for s in result["skipped"] if s["feature_id"] in ALL_IDS]
 
 
 def test_composite_without_any_events_does_not_fail():

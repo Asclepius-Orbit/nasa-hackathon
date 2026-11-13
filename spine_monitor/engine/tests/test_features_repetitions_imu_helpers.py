@@ -349,7 +349,7 @@ def _chunk(t0_device_ms: int, seq: int, rate: float, gyro: dict[str, list[float]
         "schema_version": "1.0.0",
         "astronaut_id": "AST-01",
         "device_id": "wb-01",
-        "stream_id": "imu_l3",
+        "stream_id": "imu_t9",
         "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
         "source": "device",
         "boot_id": BOOT,
@@ -386,7 +386,7 @@ class _Context:
 
 
 def _segment(*chunks: ImuChunk) -> Segment:
-    return Segment("imu_l3", BOOT, tuple(chunks), sum(c.n_samples for c in chunks), 0)
+    return Segment("imu_t9", BOOT, tuple(chunks), sum(c.n_samples for c in chunks), 0)
 
 
 def _spans(*chunks: ImuChunk) -> list[tuple[datetime, datetime]]:
@@ -431,7 +431,7 @@ def test_dominant_axis_keeps_axes_whose_energy_is_below_one():
 def test_segment_spans_without_a_clock_anchor_for_the_boot_gives_nothing():
     signal = pad([2.0, 4.0, 2.0], [-2.0, -4.0, -2.0])
     chunk = _chunk(1000, 0, 10.0, {"gyro_y": signal})
-    segment = Segment("imu_l3", BOOT + 1, (chunk,), len(signal), 0)
+    segment = Segment("imu_t9", BOOT + 1, (chunk,), len(signal), 0)
     assert _segment_spans(cast("ExtractionContext", _Context()), segment) == []
 
 
@@ -442,8 +442,8 @@ def test_detect_imu_windows_skips_a_declared_stream_without_chunks_and_uses_the_
     raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] != "imu"] + [chunk]
     raw["clock_syncs"] = [_SYNC]
     raw["session"]["events"] = []
-    declared = next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_l3")
-    # "imu_a0" ordena antes que "imu_l3", está declarado y no trae chunks
+    declared = next(s for s in raw["session"]["streams"] if s["stream_id"] == "imu_t9")
+    # "imu_a0" ordena antes que "imu_t9", está declarado y no trae chunks
     raw["session"]["streams"].append({**declared, "stream_id": "imu_a0"})
     context = build_context(FeaturesRequest.model_validate(raw))
 

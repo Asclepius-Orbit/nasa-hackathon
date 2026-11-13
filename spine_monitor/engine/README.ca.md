@@ -76,7 +76,7 @@ El compost omple `unit` des del catàleg de features i la qualitat sobre els str
 
 L'origen, en aquest ordre:
 
-1. Els esdeveniments `rep_start`/`rep_end` de la sessió (que registra la comanda `mark_event`), ordenats per temps i aparellats per ordre. Els orfes, els duplicats i les finestres amb fi <= inici es descarten.
+1. Els esdeveniments `rep_start`/`rep_end` de la sessió (que registra la comanda `mark_event`), ordenats per temps i aparellats per ordre. Els orfes, els duplicats i les finestres amb fi <= inici es descarten. `rep_index` compta al llarg de tota la sessió, no per sèrie; `set_start`/`set_end`/`rest_start` només separen sèries, així que el descans entre sèries mai no és un repòs entre repeticions (l'última repetició d'una sèrie no té finestra de repòs; el suport IMU aplica la mateixa regla a les pauses de més de 5 vegades l'habitual).
 2. Si no en queda cap de vàlida, recurs de reserva per IMU que usa només el giroscopi (en microgravetat l'acceleròmetre no veu la gravetat): lòbuls de velocitat angular de signe contrari a l'eix dominant, per `boot_id`, amb rellotge UTC. Sense senyal no retorna res.
 3. Si tampoc hi ha res, no hi ha repeticions.
 

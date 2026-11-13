@@ -22,7 +22,7 @@ COUNT = "exercise.rep_count"
 MEAN = "exercise.rep_duration_s_mean"
 CV = "exercise.rep_duration_cv_pct"
 ALL_IDS = (COUNT, MEAN, CV)
-REP_DURATION_S = 4.0  # rep_duration_s del protocolo de example-mission.yaml
+REP_DURATION_S = 3.0  # rep_duration_s del protocolo de example-mission.yaml
 
 # Con eventos la duración es exacta (los eventos son la verdad del calendario): tolerancia de redondeo.
 EVENTS_MEAN_ABS_TOLERANCE_S = 1e-6
@@ -37,7 +37,7 @@ SEEDS = [7, 20261113]
 GRAVITIES = ["earth_1g", "microgravity"]
 
 
-def _mission_config(planned_reps: int | None = None) -> Any:
+def _mission_config(single_rep: bool = False) -> Any:
     import yaml
     from spine_physiology.config import MissionConfig
 
@@ -45,22 +45,22 @@ def _mission_config(planned_reps: int | None = None) -> Any:
     raw["start_mission_day"] = 1
     raw["segments"] = [{"days": 1, "phase": "inflight", "gravity_environment": "microgravity"}]
     raw["device"].update(power_on_time_utc="09:55", power_off_time_utc="10:40")
-    raw["protocols"]["lat_pulldown_standing_v1"].update(streams=["imu_l3"], lead_out_s=10.0)
-    if planned_reps is not None:
-        raw["protocols"]["lat_pulldown_standing_v1"]["planned_reps"] = planned_reps
+    raw["protocols"]["lat_pulldown_standing_v1"].update(streams=["imu_t9"], lead_out_s=10.0)
+    if single_rep:
+        raw["protocols"]["lat_pulldown_standing_v1"].update(planned_sets=1, reps_per_set=1)
     raw["schedule"]["sessions"] = [{**s, "start_jitter_s": 60.0} for s in raw["schedule"]["sessions"] if s["name"] == "lat_pulldown"]
     raw["schedule"]["background"].update(enabled=False, start_time_utc="09:56", end_time_utc="09:57")
     return MissionConfig.model_validate(raw)
 
 
-def _simulate(seed: int, gravity: str, *, with_events: bool, planned_reps: int | None = None) -> tuple[FeaturesRequest, dict[str, float]]:
+def _simulate(seed: int, gravity: str, *, with_events: bool, single_rep: bool = False) -> tuple[FeaturesRequest, dict[str, float]]:
     """Petición de features de una sesión simulada y las features esperadas (verdad) del simulador."""
     from spine_contracts.models.common_schema import GravityEnvironment
     from spine_physiology import MissionGenerator
     from spine_physiology.envelope import EnvelopeKind
     from spine_physiology.sessions import SessionRef
 
-    config = _mission_config(planned_reps)
+    config = _mission_config(single_rep)
     generator = MissionGenerator(config, seed)
     ref = SessionRef(config.crew[0].astronaut_id, 0, "lat_pulldown")
     messages = list(generator.session_messages(ref, gravity_environment=GravityEnvironment(gravity)))
@@ -154,7 +154,7 @@ def test_known_unequal_durations_give_an_exact_cv(seed: int):
 @pytest.mark.integration
 @pytest.mark.parametrize("with_events", [True, False])
 def test_a_single_rep_session_skips_all_three_as_too_few_repetitions(with_events: bool):
-    request, truth = _simulate(7, "earth_1g", with_events=with_events, planned_reps=1)
+    request, truth = _simulate(7, "earth_1g", with_events=with_events, single_rep=True)
     assert truth[COUNT] == 1.0
 
     result = _extract(request)

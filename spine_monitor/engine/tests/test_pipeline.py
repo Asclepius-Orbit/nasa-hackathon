@@ -107,11 +107,11 @@ def test_calibration_expired_counts_as_missing_data():
 
 def test_insufficient_sample_rate_counts_as_missing_data():
     req = request()
-    req.feature_sets[0].skipped = [SkippedItem(feature_id="imu.l3.sagittal.rom_deg", reason="insufficient_sample_rate")]
+    req.feature_sets[0].skipped = [SkippedItem(feature_id="imu.t9.sagittal.rom_deg", reason="insufficient_sample_rate")]
 
     completeness = stub_pipeline().evaluate(req).completeness
 
-    assert MissingItem(what="imu.l3.sagittal.rom_deg", reason=MissingReason.NO_DATA) in completeness.missing
+    assert MissingItem(what="imu.t9.sagittal.rom_deg", reason=MissingReason.NO_DATA) in completeness.missing
 
 
 def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
@@ -191,7 +191,7 @@ class FakeBaseline:
 
     def deviations(self, baseline, feature_sets):
         self.calls.append((baseline, list(feature_sets)))
-        return [Deviation(feature_id="stretch.lumbar.peak_elongation_mm", value=1.0, score=9.0)]
+        return [Deviation(feature_id="stretch.full_spine.peak_elongation_mm", value=1.0, score=9.0)]
 
 
 class FakeRisk:
@@ -201,7 +201,7 @@ class FakeRisk:
     def score(self, deviations, completeness):
         self.received = list(deviations)
         self.completeness = completeness
-        drivers = [Driver(feature_id="stretch.lumbar.peak_elongation_mm", value=1.0, contribution=0.9)]
+        drivers = [Driver(feature_id="stretch.full_spine.peak_elongation_mm", value=1.0, contribution=0.9)]
         return RiskResult(score=0.9, drivers=drivers, confidence=0.7)
 
 
@@ -226,7 +226,7 @@ def test_pipeline_wires_custom_implementations():
 
     assessment = AssessmentPipeline(baseline, risk, triage).evaluate(req)
 
-    deviations = [Deviation(feature_id="stretch.lumbar.peak_elongation_mm", value=1.0, score=9.0)]
+    deviations = [Deviation(feature_id="stretch.full_spine.peak_elongation_mm", value=1.0, score=9.0)]
     assert baseline.calls[0][0] == req.baseline
     assert baseline.calls[0][1][:-1] == req.feature_sets
     assert baseline.calls[0][1][-1].session_id is None
@@ -237,7 +237,7 @@ def test_pipeline_wires_custom_implementations():
     assert assessment.level == Level.RED
     assert assessment.risk_score == 0.9
     assert assessment.confidence == 0.7
-    assert assessment.drivers[0].feature_id == "stretch.lumbar.peak_elongation_mm"
+    assert assessment.drivers[0].feature_id == "stretch.full_spine.peak_elongation_mm"
     assert assessment.recommendations == ["REC_X"]
     assert assessment.fired_rules[0].overrides_model
     assert assessment.escalation.required
@@ -293,7 +293,7 @@ def test_null_baseline_falls_back_to_the_earth_entry_for_other_gravity():
     by_feature = {d.feature_id: d for d in NullBaselineStrategy().deviations(req.baseline, req.feature_sets)}
 
     # in-flight 31.0 deg vs earth baseline mean 28.1
-    assert by_feature["imu.l3.sagittal.rom_deg"] == Deviation("imu.l3.sagittal.rom_deg", 31.0, 31.0 - 28.1)
+    assert by_feature["imu.t9.sagittal.rom_deg"] == Deviation("imu.t9.sagittal.rom_deg", 31.0, 31.0 - 28.1)
     assert "exercise.rep_count" not in by_feature
 
 
@@ -304,7 +304,7 @@ def test_null_baseline_prefers_the_entry_of_the_same_gravity():
 
     result = {d.feature_id: d for d in NullBaselineStrategy().deviations(req.baseline, req.feature_sets)}
 
-    assert result["imu.l3.sagittal.rom_deg"].score == 31.0 - 30.0
+    assert result["imu.t9.sagittal.rom_deg"].score == 31.0 - 30.0
 
 
 def test_null_baseline_uses_the_latest_value_of_each_feature():

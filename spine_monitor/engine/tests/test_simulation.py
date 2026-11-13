@@ -15,7 +15,7 @@ from spine_engine.simulation import apply_overrides
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "simulate-request.json"
 REQUEST = SimulateRequest.model_validate(json.loads(EXAMPLE.read_text(encoding="utf-8")))
-PEAK = "stretch.lumbar.peak_elongation_mm"
+PEAK = "stretch.full_spine.peak_elongation_mm"
 
 
 def _with_history() -> AssessRequest:

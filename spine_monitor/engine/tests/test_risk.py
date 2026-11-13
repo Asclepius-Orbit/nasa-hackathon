@@ -5,9 +5,9 @@ from spine_contracts import AssessmentDomain
 from spine_engine.interfaces import Deviation
 from spine_engine.risk import DeviationRiskModel
 
-STRETCH = "stretch.lumbar.peak_elongation_mm"
+STRETCH = "stretch.full_spine.peak_elongation_mm"
 EMG = "emg.latissimus_dorsi.left.rms_pct_mvc"
-IMU = "imu.l3.sagittal.rom_deg"
+IMU = "imu.t9.sagittal.rom_deg"
 WEIGHTS = {
     AssessmentDomain.SPINE_LENGTH: 1.0,
     AssessmentDomain.MUSCLE: 0.5,

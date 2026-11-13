@@ -28,17 +28,17 @@ T0 = datetime(2026, 11, 13, 10, 3, 0, 100000, tzinfo=UTC)  # UTC de la ancla de 
 ANCHOR_DEVICE_MS = 180_000
 BOOT = 2893746120
 RATE_HZ = 10.0
-STREAM = "stretch_lumbar"
+STREAM = "stretch_spine"
 CAL_ID = "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f11"
 OTHER_CAL_ID = "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f99"
-PREFIX = "stretch.lumbar"
+PREFIX = "stretch.full_spine"
 NAMES = ("elongation_mm", "elongation_pct", "peak_elongation_mm", "range_mm", "recovery_time_s", "rest_resistance_ohm")
 CALIBRATED = ("elongation_mm", "elongation_pct", "peak_elongation_mm", "range_mm", "recovery_time_s")
 PER_REP = ("peak_elongation_mm", "range_mm", "recovery_time_s")
 DEFAULT_WAIT_S = 2.0
 
 
-def fid(name: str, region: str = "lumbar") -> str:
+def fid(name: str, region: str = "full_spine") -> str:
     return f"stretch.{region}.{name}"
 
 
@@ -146,7 +146,7 @@ def make_context(
     *,
     counts: list[int] | None = None,
     circuit: dict[str, Any] | None = None,
-    region: str = "lumbar",
+    region: str = "full_spine",
     session_calibration_id: str | None = CAL_ID,
     chunk_calibration_id: str | None = None,
 ) -> ExtractionContext:

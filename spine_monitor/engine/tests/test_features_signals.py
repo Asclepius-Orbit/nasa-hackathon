@@ -28,7 +28,7 @@ def _chunk(t0_device_ms: int, seq: int, rate: float, gyro: dict[str, list[float]
         "schema_version": "1.0.0",
         "astronaut_id": "AST-01",
         "device_id": "wb-01",
-        "stream_id": "imu_l3",
+        "stream_id": "imu_t9",
         "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
         "source": "device",
         "boot_id": boot_id,
@@ -64,7 +64,7 @@ CLOCK = DeviceClock.from_syncs([_sync(BOOT, 1000, T0)])
 
 
 def _segment(*chunks: ImuChunk, boot_id: int = BOOT) -> Segment:
-    return Segment("imu_l3", boot_id, tuple(chunks), sum(c.n_samples for c in chunks), 0)
+    return Segment("imu_t9", boot_id, tuple(chunks), sum(c.n_samples for c in chunks), 0)
 
 
 def test_the_whole_segment_gives_utc_instants_sample_ends_and_values_per_channel():

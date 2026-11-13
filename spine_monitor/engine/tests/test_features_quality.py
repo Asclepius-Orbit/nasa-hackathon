@@ -25,7 +25,7 @@ _GQ = {"score": 1.0, "flags": [], "assessed_by": "gateway"}
 def stretch(counts: list[int], *, adc_bits: int | None = 12, seq: int = 0, dropped: int = 0, boot: int = 7) -> StretchChunk:
     payload = {
         **_COMMON,
-        "stream_id": "stretch_lumbar",
+        "stream_id": "stretch_spine",
         "seq": seq,
         "boot_id": boot,
         "sample_rate_hz": 20,
@@ -47,7 +47,7 @@ def imu(accel_x: list[float], gyro_z: list[float] | None = None, *, accel_range:
     config = {k: v for k, v in {"accel_range_g": accel_range, "gyro_range_dps": gyro_range}.items() if v is not None}
     payload = {
         **_COMMON,
-        "stream_id": "imu_l3",
+        "stream_id": "imu_t9",
         "sample_rate_hz": 100,
         "n_samples": n,
         "stream_kind": "imu",

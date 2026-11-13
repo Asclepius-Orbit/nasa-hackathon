@@ -79,9 +79,9 @@ def test_calibration_of_another_stream_does_not_apply():
 
 
 def test_calibration_of_another_kind_does_not_apply():
-    # imu_l3 es un stream IMU: una calibración emg_mvc con su stream_id no le sirve.
+    # imu_t9 es un stream IMU: una calibración emg_mvc con su stream_id no le sirve.
     imu_id = "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f13"
-    resolution = resolve_calibration(request(calibration(imu_id, "imu_l3")), "imu_l3", at=AT)
+    resolution = resolve_calibration(request(calibration(imu_id, "imu_t9")), "imu_t9", at=AT)
 
     assert resolution.status is CalibrationStatus.MISSING
 

@@ -47,6 +47,29 @@ def test_rest_goes_from_each_rep_end_to_the_next_rep_start():
     assert second.rest is None
 
 
+def test_the_rest_between_sets_is_not_a_rest_between_reps():
+    events = [
+        ev("set_start", 0),
+        ev("rep_start", 1, 1),
+        ev("rep_end", 4, 1),
+        ev("rep_start", 5, 2),
+        ev("rep_end", 8, 2),
+        ev("set_end", 8.5),
+        ev("rest_start", 8.7),
+        ev("rest_end", 38),
+        ev("set_start", 38.5),
+        ev("rep_start", 39, 3),
+        ev("rep_end", 42, 3),
+    ]
+
+    first, second, third = detect_from_events(events)
+
+    assert [w.index for w in (first, second, third)] == [1, 2, 3]
+    assert first.rest == (at(4), at(5))
+    assert second.rest is None  # último de su serie: el descanso largo no cuenta
+    assert third.rest is None
+
+
 def test_the_last_rep_rests_until_a_later_rest_end_event():
     *_, last = detect_from_events([ev("rep_start", 1), ev("rep_end", 4), ev("rest_end", 10)])
 

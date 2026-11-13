@@ -144,6 +144,7 @@ Totes les variables porten el prefix `SPINE_GATEWAY_` i són opcionals; `.env.ex
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Guany del mòdul EMG; els mV es divideixen per ell. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | Què lliura el mòdul EMG a l'ADC: `raw`, `rectified` o `envelope`. El valor per defecte és una suposició, no està confirmat amb la placa (vegeu a sota). |
 | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Longitud (mm) del cordó en repòs, usada pel calibratge `stretch`. PENDENT mesura Aguado (ohmímetre): marcador de ~650 mm per al cordó C3->S1 (#12). |
+| `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` | `[1.0, 1.25, 1.5, 1.75, 2.0]` | Punts de la corba del cordó com a múltiples de (R0, L0), en llista JSON: comença a 1.0 i creix estrictament. PENDENT mesura Aguado (ohmímetre): valor per defecte sense mesurar. |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Finestra (ms) de l'RMS lliscant del calibratge `emg_mvc`. |
 
 El protocol declara dos mòduls EMG (dorsal ample esquerre/dret) però el maquinari i el gateway actuals en publiquen un (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) fins que Polfer confirmi el maquinari (#13).

@@ -144,6 +144,7 @@ All variables have the prefix `SPINE_GATEWAY_` and are optional; `.env.example` 
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Gain of the EMG module; mV are divided by it. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | What the EMG module delivers to the ADC: `raw`, `rectified` or `envelope`. The default is an assumption, not confirmed with the board (see below). |
 | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Length (mm) of the cord at rest, used by the `stretch` calibration. PENDING Aguado's ohmmeter measurement: ~650 mm placeholder for the C3->S1 cord (#12). |
+| `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` | `[1.0, 1.25, 1.5, 1.75, 2.0]` | Points of the cord curve as multiples of (R0, L0), as a JSON list: it starts at 1.0 and rises strictly. PENDING Aguado's ohmmeter measurement: unmeasured default. |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Window (ms) of the sliding RMS of the `emg_mvc` calibration. |
 
 The protocol declares two EMG modules (left/right latissimus) but the current hardware and gateway publish one (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) until Polfer confirms the hardware (#13).

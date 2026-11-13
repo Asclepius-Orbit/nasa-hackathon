@@ -20,7 +20,7 @@ def test_defaults():
     assert s.temperature == 0.2
     assert s.request_timeout_s == 60.0
     assert s.mcp_command == sys.executable
-    assert s.mcp_args == ["-m", "spine_mcp_server"]
+    assert s.mcp_args == ["-m", "spine_mcp_server", "--dataset", "demo"]
     assert s.mcp_log_file is None
 
 

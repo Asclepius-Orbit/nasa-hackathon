@@ -11,10 +11,10 @@ from mcp.client.client import Client
 from monitor.db import Store
 from monitor.readonly import create_read_app
 from monitor.settings import AppSettings
-from spine_contracts import SCHEMA_VERSION, AssessRequest, Explanation, History, SelfReportList, SessionList, SimulateRequest, SimulateResponse, Status
+from spine_contracts import AssessRequest, Explanation, History, SelfReportList, SessionList, SimulateRequest, SimulateResponse, Status
 from spine_mcp_server.errors import UpstreamError
-from spine_mcp_server.http_client import HttpAppReader, HttpAssessBaseSource, UnavailableSimulator
-from spine_mcp_server.mocks import EXAMPLES_DIR, ExampleAppReader, ExampleAssessBaseSource
+from spine_mcp_server.http_client import HttpAppReader, HttpAssessBaseSource
+from spine_mcp_server.mocks import EXAMPLES_DIR, ExampleAppReader
 from spine_mcp_server.server import create_server
 
 AST = "AST-01"
@@ -443,20 +443,6 @@ def test_out_of_range_limit_is_422(real):
     error = raises(lambda: real.get_sessions(AST, FROM, TO, 0))
 
     assert error.status == 422
-
-
-def _simulate_request():
-    return SimulateRequest(schema_version=SCHEMA_VERSION, base=ExampleAssessBaseSource().get_base(AST), overrides=[], project_days=None)
-
-
-def test_unavailable_simulator_raises_501_explaining_the_missing_endpoint():
-    with pytest.raises(UpstreamError) as caught:
-        UnavailableSimulator().simulate(_simulate_request())
-    assert caught.value.status == 501
-    assert caught.value.title == "Simulation not available"
-    assert "no endpoint for this yet" in str(caught.value)
-    assert "http mode" in str(caught.value)
-    assert "#" not in str(caught.value)
 
 
 def _base_source(handler) -> HttpAssessBaseSource:

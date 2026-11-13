@@ -18,7 +18,7 @@ class AgentSettings(BaseSettings):
 
     # How the agent launches the MCP server (stdio).
     mcp_command: str = sys.executable
-    mcp_args: list[str] = ["-m", "spine_mcp_server"]
+    mcp_args: list[str] = ["-m", "spine_mcp_server", "--dataset", "demo"]
     mcp_log_file: Path | None = None  # where the server subprocess writes its stderr; None: the chat CLI discards it
 
     # Chat HTTP+SSE server (`spine-agent-http`, contracts/agent-openapi.yaml). Loopback only by default.

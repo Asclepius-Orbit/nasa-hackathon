@@ -287,7 +287,7 @@ async def test_multi_turn_repl_passes_the_history_to_the_second_question():
         prompts = [p.content for m in messages if isinstance(m, ModelRequest) for p in m.parts if isinstance(p, UserPromptPart)]
         yield f"seen {len(prompts)}: " + " | ".join(str(p) for p in prompts)
 
-    settings = AgentSettings(mcp_command=sys.executable, mcp_args=["-m", "spine_mcp_server"])
+    settings = AgentSettings(mcp_command=sys.executable, mcp_args=["-m", "spine_mcp_server", "--dataset", "demo"])
     agent = build_agent(settings, model=FunctionModel(stream_function=stream))
     out = Out()
     async with ChatSession(agent, _NoStatus(), "AST-01") as session:

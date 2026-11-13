@@ -161,13 +161,3 @@ class HttpSimulator:
         except ValidationError:
             raise UpstreamError(status, "Engine API request rejected", f"HTTP {status}") from None
         raise UpstreamError(problem.status, problem.title, _detail(problem))
-
-
-_NOT_IMPLEMENTED_DETAIL = "The app API has no endpoint for this yet, so {what} is not available in http mode."
-
-
-class UnavailableSimulator:
-    """`Simulator` del modo http: la API de la app aún no expone la simulación."""
-
-    def simulate(self, request: SimulateRequest) -> SimulateResponse:
-        raise UpstreamError(501, "Simulation not available", _NOT_IMPLEMENTED_DETAIL.format(what="the simulator"))

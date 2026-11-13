@@ -1,4 +1,4 @@
-"""Servidor MCP de Asclepius Orbit (stdio). Habla con datos de demo o con los ejemplos de los contratos, según `--dataset`."""
+"""Servidor MCP de Asclepius Orbit (stdio). Por defecto usa la app y el motor reales por http; `--dataset` elige demo o ejemplos."""
 
 import argparse
 import os
@@ -35,10 +35,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         choices=("demo", "examples", "http"),
-        default="demo",
-        help="demo: 14 días de AST-01 relativos al reloj (por defecto); examples: la foto única de los ejemplos de los contratos; "
-        f"http: la API de lectura de la app en {APP_URL_ENV} (por defecto {DEFAULT_APP_URL}) y el motor en {ENGINE_URL_ENV} "
-        f"(por defecto {DEFAULT_ENGINE_URL}).",
+        default="http",
+        help=f"http (por defecto): la API de lectura de la app en {APP_URL_ENV} (por defecto {DEFAULT_APP_URL}) y el motor en {ENGINE_URL_ENV} "
+        f"(por defecto {DEFAULT_ENGINE_URL}); demo: 14 días de AST-01 relativos al reloj; examples: la foto única de los ejemplos de los contratos.",
     )
     parser.add_argument("--now", type=_aware_iso, default=None, help="Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z).")
     return parser.parse_args(argv)

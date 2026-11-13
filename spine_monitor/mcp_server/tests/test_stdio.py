@@ -21,7 +21,7 @@ def anyio_backend() -> str:
 @pytest.mark.integration
 @pytest.mark.anyio
 async def test_stdio_server_lists_the_seven_tools_and_answers_get_current_status():
-    params = StdioServerParameters(command=sys.executable, args=["-m", "spine_mcp_server"])
+    params = StdioServerParameters(command=sys.executable, args=["-m", "spine_mcp_server", "--dataset", "demo"])
     # El stderr del servidor se descarta: el predeterminado (`sys.stderr`) puede estar cerrado bajo la captura de pytest o de mutmut.
     with anyio.fail_after(TIMEOUT_SECONDS), open(os.devnull, "w") as errlog:
         async with Client(stdio_client(params, errlog=errlog)) as client:

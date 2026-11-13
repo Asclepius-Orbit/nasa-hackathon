@@ -12,7 +12,7 @@ import spine_mcp_server
 from mcp.client.client import Client
 from mcp.server.mcpserver import MCPServer
 from spine_mcp_server import _aware_iso, build_server, parse_args  # pyright: ignore[reportPrivateUsage] -- se prueba el conversor de `--now`
-from spine_mcp_server.http_client import HttpAppReader, HttpSimulator
+from spine_mcp_server.http_client import HttpAppReader, HttpAssessBaseSource, HttpSimulator
 from spine_mcp_server.mocks import EXAMPLES_DIR
 
 real_client = httpx.Client
@@ -25,9 +25,9 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-def test_defaults_are_the_demo_dataset_and_no_pinned_clock():
+def test_defaults_are_the_http_dataset_and_no_pinned_clock():
     args = parse_args([])
-    assert args.dataset == "demo"
+    assert args.dataset == "http"
     assert args.now is None
     assert sorted(vars(args)) == ["dataset", "now"]
 
@@ -93,9 +93,8 @@ def test_help_documents_every_option_choice_and_text(monkeypatch: pytest.MonkeyP
     assert "Servidor MCP de Asclepius Orbit por stdio." in out
     assert "--dataset {demo,examples,http}" in out
     assert (
-        "demo: 14 días de AST-01 relativos al reloj (por defecto); examples: la foto única de los ejemplos de los contratos; "
-        "http: la API de lectura de la app en SPINE_APP_URL (por defecto http://127.0.0.1:8002) y el motor en SPINE_ENGINE_URL "
-        "(por defecto http://127.0.0.1:8001)." in out
+        "http (por defecto): la API de lectura de la app en SPINE_APP_URL (por defecto http://127.0.0.1:8002) y el motor en SPINE_ENGINE_URL "
+        "(por defecto http://127.0.0.1:8001); demo: 14 días de AST-01 relativos al reloj; examples: la foto única de los ejemplos de los contratos." in out
     )
     assert "--now NOW" in out
     assert "Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z)." in out
@@ -159,7 +158,7 @@ async def _status(argv: list[str]) -> dict[str, object]:
 async def test_demo_without_now_reads_the_wall_clock_in_utc(monkeypatch: pytest.MonkeyPatch):
     _FrozenClock.asked = []
     monkeypatch.setattr(spine_mcp_server, "datetime", _FrozenClock)
-    status = await _status([])
+    status = await _status(["--dataset", "demo"])
     assert _FrozenClock.asked == [UTC]
     assert status["generated_at"] == "2026-11-13T12:00:00Z"  # 12:59:59 redondea a la hora
     assert status["latest_assessment"]["as_of"] == "2026-11-13T12:00:00Z"  # pyright: ignore[reportIndexIssue,reportArgumentType] -- JSON anidado sin tipar
@@ -170,7 +169,7 @@ async def test_demo_without_now_reads_the_wall_clock_in_utc(monkeypatch: pytest.
 async def test_pinned_now_wins_over_the_clock(monkeypatch: pytest.MonkeyPatch):
     _FrozenClock.asked = []
     monkeypatch.setattr(spine_mcp_server, "datetime", _FrozenClock)
-    status = await _status(["--now", "2026-11-06T09:30:00Z"])
+    status = await _status(["--dataset", "demo", "--now", "2026-11-06T09:30:00Z"])
     assert _FrozenClock.asked == []
     assert status["generated_at"] == "2026-11-06T09:00:00Z"
 
@@ -187,7 +186,7 @@ async def test_examples_dataset_serves_the_contract_example_without_touching_the
 @pytest.mark.integration
 @pytest.mark.anyio
 async def test_demo_server_wires_the_demo_simulator_and_assess_base():
-    async with Client(build_server(["--now", "2026-11-13T12:00:00Z"])) as client:
+    async with Client(build_server(["--dataset", "demo", "--now", "2026-11-13T12:00:00Z"])) as client:
         result = await client.call_tool(
             "simulate_scenario", {"astronaut_id": AST, "overrides": [{"feature_id": "stretch.full_spine.peak_elongation_mm", "mode": "add", "value": 5}]}
         )
@@ -269,6 +268,30 @@ async def test_http_dataset_simulation_takes_the_base_from_the_app_and_posts_it_
     assert seen == [("GET", "http://app.test:9000/crew/AST-01/assess-base"), ("POST", "http://engine.test:9001/simulate")]
 
 
+def _base_source(server: MCPServer) -> HttpAssessBaseSource:
+    closure = server._tool_manager._tools["simulate_scenario"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- se comprueba el cableado
+    assert closure is not None
+    sources = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpAssessBaseSource)]
+    assert len(sources) == 1
+    return sources[0]
+
+
+def test_default_server_is_wired_to_the_real_engine_and_app_over_http(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SPINE_APP_URL", raising=False)
+    monkeypatch.delenv("SPINE_ENGINE_URL", raising=False)
+    server = build_server([])
+    assert _reader(server)._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba el cableado por defecto
+    assert _simulator(server)._base == "http://127.0.0.1:8001"  # pyright: ignore[reportPrivateUsage] -- se comprueba el cableado por defecto
+    assert _base_source(server)._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba el cableado por defecto
+
+
+def test_explicit_demo_server_is_not_wired_over_http():
+    server = build_server(["--dataset", "demo", "--now", "2026-11-13T12:00:00Z"])
+    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- se comprueba el cableado
+    assert closure is not None
+    assert not any(isinstance(cell.cell_contents, HttpAppReader) for cell in closure)
+
+
 def test_http_dataset_defaults_to_the_local_app_url(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("SPINE_APP_URL", raising=False)
     assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
@@ -291,5 +314,5 @@ def test_http_dataset_reads_the_env_var_when_building_not_when_importing(monkeyp
 @pytest.mark.anyio
 async def test_spine_app_url_is_ignored_by_the_demo_dataset(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SPINE_APP_URL", "http://unreachable.invalid")
-    status = await _status(["--now", "2026-11-13T12:00:00Z"])
+    status = await _status(["--dataset", "demo", "--now", "2026-11-13T12:00:00Z"])
     assert status["generated_at"] == "2026-11-13T12:00:00Z"

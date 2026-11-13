@@ -8,7 +8,7 @@ Dueño: B5. Debe implementar, con los modelos de spine_contracts (`source: simul
   `daily_context.medication` (umbral sobre pain_stiffness del día + probabilidad, `taken_at` a su hora).
 - `build_daily_self_report`: uno cada día, a `self_report.time_utc` + jitter; NRS de dolor y rigidez
   desde el latente pain_stiffness, peor 24 h, localizaciones si NRS >= umbral, sueño con penalización por
-  dolor, red_flags siempre presente (lista vacía = preguntado y ninguna). ODI semanal: aplazado.
+  dolor, red_flags siempre presente (lista vacía = preguntado y ninguna). ODI semanal: informativo (el simulador no lo genera y nunca puntúa riesgo).
 Todo lo que pasa por `errors(...)` de `spine_contracts.validation` debe salir sin errores.
 """
 

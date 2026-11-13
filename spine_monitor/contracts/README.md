@@ -28,7 +28,7 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 - **EMG** (1 differential channel, mV, 1000 Hz): muscle activity, to compare Earth vs microgravity for the same standardised exercise.
 - **IMU MPU-6050** (accel in g, gyro in deg/s, 100 Hz by default): movement of the back during the exercise.
 - **Stretch cord** (ADC counts, ohm, derived length in mm, 20 Hz): elongation of the spine.
-- **Self-report**: pain (NRS 0-10), location, stiffness, sleep, weekly Oswestry, red flags.
+- **Self-report**: pain (NRS 0-10), location, stiffness, sleep, weekly Oswestry, red flags. The Oswestry is stored and shown (Oswestry screen, history) but does not score risk: the engine, the risk model and the rules ignore it. Whether it goes in the Houston summary is pending (#85); `ground-summary` has no ODI field for now.
 - **Context**: mission phase, gravity environment, medication, exercise and countermeasures.
 - **Profile**: age, sex at birth, anthropometry, spine and space history, fitness.
 

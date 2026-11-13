@@ -192,6 +192,6 @@ Els tests que necessiten un broker real porten el marcador `mosquitto` i es salt
 ## Límits coneguts
 
 - Volum del fons: amb `schedule.background.chunk_ms` a 1000 ms, cada hora de fons són uns 3 600 chunks per stream (10 vegades menys que amb chunks de 100 ms); continua creixent amb la finestra. La configuració d'exemple limita el fons a una hora al dia.
-- El qüestionari ODI setmanal està ajornat: només es genera l'autoinforme diari.
+- El qüestionari ODI setmanal és informatiu: el simulador no el genera i mai puntua risc; només es genera l'autoinforme diari.
 - Sessions, autoinformes, context diari, perfils i veritat de terreny no tenen topic MQTT: només existeixen en JSONL (els objectes de domini mai van al bus). Els calibratges sí que van al bus.
 - Tots els números de la configuració d'exemple són placeholders, no referències clíniques.

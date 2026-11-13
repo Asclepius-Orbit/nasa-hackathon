@@ -192,6 +192,6 @@ Los tests que necesitan un broker real llevan el marcador `mosquitto` y se salta
 ## Límites conocidos
 
 - Volumen del fondo: con `schedule.background.chunk_ms` a 1000 ms, cada hora de fondo son unos 3 600 chunks por stream (10 veces menos que con chunks de 100 ms); sigue creciendo con la ventana. La configuración de ejemplo limita el fondo a una hora al día.
-- El cuestionario ODI semanal está aplazado: solo se genera el autoinforme diario.
+- El cuestionario ODI semanal es informativo: el simulador no lo genera y nunca puntúa riesgo; solo se genera el autoinforme diario.
 - Sesiones, autoinformes, contexto diario, perfiles y verdad de terreno no tienen topic MQTT: solo existen en JSONL (los objetos de dominio nunca van al bus). Las calibraciones sí van al bus.
 - Todos los números de la configuración de ejemplo son placeholders, no referencias clínicas.

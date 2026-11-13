@@ -41,7 +41,7 @@ cd spine_monitor
 uv run spine-agent --astronaut AST-01
 ```
 
-`AST-01` es el astronauta de demo del servidor MCP (`--dataset demo`): sus datos se generan en relación con el reloj (14 días, en ámbar los últimos 6). El agente lanza el servidor MCP con `--dataset demo` por defecto; para chatear contra la app y el motor reales define `SPINE_AGENT_MCP_ARGS='["-m","spine_mcp_server","--dataset","http"]'`. Prueba con `¿Por qué estoy en ámbar?`, `¿Cómo ha cambiado mi estado esta semana?` o `¿Qué pasaría si mantengo esta carga 30 días?`. `--astronaut` es obligatorio. `--model` cambia el modelo.
+Por defecto el agente lanza el servidor MCP con `--dataset http`, que lee el read-api de la app y el motor reales, así que ambos deben estar en marcha (`SPINE_APP_URL` y `SPINE_ENGINE_URL` se reenvían al subproceso MCP). `AST-01` es el astronauta de demo del servidor MCP (`--dataset demo`): sus datos se generan en relación con el reloj (14 días, en ámbar los últimos 6); para chatear contra él define `SPINE_AGENT_MCP_ARGS='["-m","spine_mcp_server","--dataset","demo"]'`. Prueba con `¿Por qué estoy en ámbar?`, `¿Cómo ha cambiado mi estado esta semana?` o `¿Qué pasaría si mantengo esta carga 30 días?`. `--astronaut` es obligatorio. `--model` cambia el modelo.
 
 - `ollama-pull` descarga solo los modelos de `SPINE_AGENT_LLM_MODELS` (tags separados por espacios, por defecto `qwen3.5:4b`) que falten en el volumen, así que repetir `up` es inmediato. Compose lee `.env` desde `app/`: copia `.env.example` a `app/.env` para cambiarlo (el ejemplo lista los tres modelos del benchmark, unos 16 GB).
 - `docker compose ... down` conserva los modelos; `down -v` borra el volumen y obliga a descargar de nuevo.
@@ -55,7 +55,7 @@ uv run spine-agent --astronaut AST-01
 | `SPINE_AGENT_MODEL` | `qwen3.5:4b` | Tag del modelo |
 | `SPINE_AGENT_TEMPERATURE` | `0.2` | Entre 0 y 2 |
 | `SPINE_AGENT_REQUEST_TIMEOUT_S` | `60` | Tiempo máximo de la petición al modelo, en segundos |
-| `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | este Python / `["-m","spine_mcp_server","--dataset","demo"]` | Cómo se lanza el servidor MCP (args en JSON); por defecto usa los datos de demo; usa `"--dataset","http"` para la app y el motor reales o `"--dataset","examples"` para los ejemplos estáticos de los contratos |
+| `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | este Python / `["-m","spine_mcp_server","--dataset","http"]` | Cómo se lanza el servidor MCP (args en JSON); por defecto lee la app y el motor reales (deben estar en marcha; `SPINE_APP_URL` y `SPINE_ENGINE_URL` se reenvían); usa `"--dataset","demo"` para los datos de demo relativos al reloj (`AST-01`) o `"--dataset","examples"` para los ejemplos estáticos de los contratos |
 | `SPINE_AGENT_MCP_LOG_FILE` | ninguno | Dónde va el log del servidor MCP; se descarta por defecto para que no se mezcle con el chat |
 | `SPINE_AGENT_HTTP_HOST` / `SPINE_AGENT_HTTP_PORT` | `127.0.0.1` / `8003` | Dirección del servidor HTTP de chat |
 | `SPINE_AGENT_HTTP_TOKEN` | ninguno | Token Bearer del servidor HTTP de chat, compartido con el proceso principal de Electron |

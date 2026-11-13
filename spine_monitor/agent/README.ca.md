@@ -41,7 +41,7 @@ cd spine_monitor
 uv run spine-agent --astronaut AST-01
 ```
 
-`AST-01` és l'astronauta de demo del servidor MCP (`--dataset demo`): les seves dades es generen en relació amb el rellotge (14 dies, en ambre els últims 6). L'agent llança el servidor MCP amb `--dataset demo` per defecte; per xatejar contra l'app i el motor reals defineix `SPINE_AGENT_MCP_ARGS='["-m","spine_mcp_server","--dataset","http"]'`. Prova amb `Per què estic en ambre?`, `Com ha canviat el meu estat aquesta setmana?` o `Què passaria si mantinc aquesta càrrega 30 dies?`. `--astronaut` és obligatori. `--model` canvia el model.
+Per defecte l'agent llança el servidor MCP amb `--dataset http`, que llegeix el read-api de l'app i el motor reals, així que tots dos han d'estar en marxa (`SPINE_APP_URL` i `SPINE_ENGINE_URL` es reenvien al subprocés MCP). `AST-01` és l'astronauta de demo del servidor MCP (`--dataset demo`): les seves dades es generen en relació amb el rellotge (14 dies, en ambre els últims 6); per xatejar-hi defineix `SPINE_AGENT_MCP_ARGS='["-m","spine_mcp_server","--dataset","demo"]'`. Prova amb `Per què estic en ambre?`, `Com ha canviat el meu estat aquesta setmana?` o `Què passaria si mantinc aquesta càrrega 30 dies?`. `--astronaut` és obligatori. `--model` canvia el model.
 
 - `ollama-pull` descarrega només els models de `SPINE_AGENT_LLM_MODELS` (etiquetes separades per espais, per defecte `qwen3.5:4b`) que manquin al volum, així que repetir `up` és immediat. Compose llegeix `.env` des d'`app/`: copia `.env.example` a `app/.env` per canviar-ho (l'exemple llista els tres models del benchmark, uns 16 GB).
 - `docker compose ... down` conserva els models; `down -v` esborra el volum i obliga a descarregar de nou.
@@ -55,7 +55,7 @@ uv run spine-agent --astronaut AST-01
 | `SPINE_AGENT_MODEL` | `qwen3.5:4b` | Etiqueta del model |
 | `SPINE_AGENT_TEMPERATURE` | `0.2` | Entre 0 i 2 |
 | `SPINE_AGENT_REQUEST_TIMEOUT_S` | `60` | Temps màxim de la petició al model, en segons |
-| `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | aquest Python / `["-m","spine_mcp_server","--dataset","demo"]` | Com es llança el servidor MCP (args en JSON); per defecte fa servir les dades de demo; fes servir `"--dataset","http"` per a l'app i el motor reals o `"--dataset","examples"` per als exemples estàtics dels contractes |
+| `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | aquest Python / `["-m","spine_mcp_server","--dataset","http"]` | Com es llança el servidor MCP (args en JSON); per defecte llegeix l'app i el motor reals (han d'estar en marxa; `SPINE_APP_URL` i `SPINE_ENGINE_URL` es reenvien); fes servir `"--dataset","demo"` per a les dades de demo relatives al rellotge (`AST-01`) o `"--dataset","examples"` per als exemples estàtics dels contractes |
 | `SPINE_AGENT_MCP_LOG_FILE` | cap | On va el log del servidor MCP; es descarta per defecte perquè no es barregi amb el xat |
 | `SPINE_AGENT_HTTP_HOST` / `SPINE_AGENT_HTTP_PORT` | `127.0.0.1` / `8003` | Adreça del servidor HTTP de xat |
 | `SPINE_AGENT_HTTP_TOKEN` | cap | Token Bearer del servidor HTTP de xat, compartit amb el procés principal d'Electron |

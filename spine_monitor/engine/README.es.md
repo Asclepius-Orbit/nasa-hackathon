@@ -68,6 +68,30 @@ Antes de ejecutar las familias, el motor prepara una sola vez un `ExtractionCont
 
 El compuesto rellena `unit` desde el catálogo de features y la calidad sobre los streams que cada feature declaró usar. Un id fuera del catálogo es un error de programación de la familia y lanza `UnknownFeatureIdError`. Lo que no se puede calcular va a `skipped` con motivo: `stream_missing` (stream declarado sin chunks), `no_calibration`, `calibration_expired` y `no_data` (cobertura 0, sin UTC o valor no finito), entre otros; la petición nunca se rechaza por incoherente. `features` y `skipped` salen ordenadas, así que el resultado no depende del orden de registro.
 
+### Features implementadas y validación contra el simulador
+
+Features implementadas por familia (los IDs se expanden con la colocación de los streams; las unidades salen del catálogo de features):
+
+| Familia | Features |
+|---|---|
+| `exercise` | `exercise.rep_count`, `exercise.rep_duration_s_mean`, `exercise.rep_duration_cv_pct` |
+| `emg` | `emg.{muscle}.{side}.rms_mv`, `rest_rms_mv`, `rms_pct_mvc`, `peak_pct_mvc` y `emg.{muscle}.symmetry_index_pct` |
+| `emg_spectral` | `emg.{muscle}.{side}.median_freq_hz`, `median_freq_slope_hz_per_rep` |
+| `imu` | `imu.{level}.{plane}.rom_deg`, `peak_angular_velocity_dps` (sagital, frontal y transversal) y `imu.{level}.accel_rms_g` |
+| `stretch` | `stretch.{spine_region}.elongation_mm`, `elongation_pct`, `peak_elongation_mm`, `range_mm`, `recovery_time_s`, `rest_resistance_ohm` |
+
+Todas se validan de extremo a extremo contra la verdad de referencia del simulador (`expected_features`): las sesiones generadas por `spine_physiology` pasan por `CompositeFeatureExtractor(default_registry())` y cada valor se compara con la verdad bajo una tolerancia explícita, para dos semillas y para gravedad terrestre y microgravedad (`engine/tests/test_features_*_simulator.py`). La verdad es el modelo sin ruido de sensor, así que las tolerancias absorben el ruido, la calibración medida y la histéresis simulada. El simulador no publica verdad para `stretch.{spine_region}.recovery_time_s`, así que esa solo se comprueba por plausibilidad.
+
+Los casos de fallo también se construyen a partir de la salida del simulador, y cada uno debe terminar en `skipped` con el motivo correcto, sin inventar nada:
+
+- sin calibración: `no_calibration` (el cordón conserva `rest_resistance_ohm`, que no necesita ninguna; la IMU no conserva nada);
+- EMG enviado como envolvente: `signal_not_raw` para las features espectrales;
+- un stream ausente: `stream_missing` exactamente para las features de ese stream, el resto sin cambios;
+- huecos de seq (los `lost_chunks` de la verdad): las features se siguen calculando, marcadas con `packet_gap` y con la cobertura como puntuación de calidad, no se omiten;
+- IMU a 10 Hz: las features se siguen calculando cerca de la verdad; la frecuencia de muestreo nunca las omite, así que no se emite `insufficient_sample_rate`.
+
+Una última prueba cierra el bucle: sesiones normales simuladas pasan por `POST /features`, `POST /baseline` construye el baseline a partir de esos conjuntos de features, y `POST /assess` de una sesión normal más muestra riesgo cero y ningún driver (un desplazamiento sostenido de las mismas sesiones sí se desvía, como control).
+
 ### Repeticiones y la familia `exercise`
 
 `exercise.rep_count`, `exercise.rep_duration_s_mean` y `exercise.rep_duration_cv_pct` (CV en %, desviación típica muestral n-1) necesitan al menos 2 repeticiones válidas. Con menos, las tres salen en `skipped` con `too_few_repetitions`.

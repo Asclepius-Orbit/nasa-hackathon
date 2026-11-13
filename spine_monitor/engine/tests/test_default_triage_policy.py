@@ -141,10 +141,12 @@ def test_recommendation_ids_are_known_to_the_ui():
     assert used <= known
 
 
-def test_no_production_module_defines_rule_ids_besides_builtins():
-    found: dict[str, set[str]] = {}
-    for path in PACKAGE.rglob("*.py"):
-        ids = set(re.findall(r"RULE_[A-Z0-9_]+", path.read_text(encoding="utf-8")))
-        if ids:
-            found[path.name] = ids
-    assert found == {"triage.py": {"RULE_UNKNOWN_RED_FLAG", "RULE_INCOMPLETE_DATA"}}
+# Reglas ficticias que solo existen como fixtures de test.
+FICTIONAL_RULE_IDS = {"RULE_EXAMPLE", "RULE_TEST", "RULE_OPERATOR", "RULE_PAIN"}
+
+
+def test_the_default_policy_has_no_fictional_example_rules():
+    # No se escanea el código fuente: mutmut lo reescribe con sus mutantes y el texto deja de ser el original.
+    ids = {rule.rule_id for rule in PolicyConfig.default().rules}
+    assert ids == {rule["rule_id"] for rule in RULES}
+    assert not ids & FICTIONAL_RULE_IDS

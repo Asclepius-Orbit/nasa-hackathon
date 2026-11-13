@@ -46,8 +46,14 @@ def _completeness(feature_sets: Sequence[FeatureSet], deviations: Sequence[Devia
     """Qué parte de lo esperado se pudo evaluar. Lo que falta nunca cuenta como verde."""
     compared = {d.feature_id for d in deviations}
     present = {f.feature_id for fs in feature_sets for f in fs.features}
-    skipped = {s.feature_id: s.reason for fs in feature_sets for s in fs.skipped or []} if feature_sets else {}
-    missing = [MissingItem(what=fid, reason=_MISSING_REASON_BY_SKIP[reason.value]) for fid, reason in skipped.items()]
+    # The request's sets are merged: a feature that any set computed is never missing because another set skipped it.
+    # When several sets skip a feature and none computes it, the reason with the smallest value wins, whatever the set order.
+    skipped: dict[str, str] = {}
+    for fs in feature_sets:
+        for item in fs.skipped or []:
+            if item.feature_id not in present:
+                skipped[item.feature_id] = min(item.reason.value, skipped.get(item.feature_id, item.reason.value))
+    missing = [MissingItem(what=fid, reason=_MISSING_REASON_BY_SKIP[reason]) for fid, reason in sorted(skipped.items())]
     missing += [MissingItem(what=fid, reason=MissingReason.NO_BASELINE) for fid in sorted(present - compared)]
     expected = len(present | set(skipped))
     return Completeness(score=len(compared) / expected if expected else 0.0, missing=missing)

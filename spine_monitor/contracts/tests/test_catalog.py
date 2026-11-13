@@ -74,6 +74,7 @@ def test_features_removed_by_clinical_decision_stay_out_of_the_catalog():
     # Aguado retiró estas features; no deben volver al catálogo (ni como plantilla ni como id concreto)
     removed = {
         "imu.l3.sagittal.smoothness_sparc",
+        "imu.t9.sagittal.smoothness_sparc",
         "symptoms.pain_nrs_7d_max",
         "symptoms.odi_pct",
     }

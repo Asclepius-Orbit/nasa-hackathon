@@ -1,0 +1,109 @@
+{
+  "source": "provisional, pendiente de Aguado: risk cutoffs are placeholders, not a clinical validation; global-risk cutoffs for triage levels must be decided with clinical judgement (#53)",
+  "amber_cutoff": 0.3,
+  "red_cutoff": 0.8,
+  "unknown_flag_urgency": "immediate",
+  "rules": [
+    {
+      "rule_id": "RULE_RED_FLAG_BLADDER_OR_BOWEL",
+      "datum": "red_flag",
+      "key": "bladder_or_bowel_dysfunction",
+      "level": "red",
+      "urgency": "immediate",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: sphincter dysfunction is a textbook cauda equina warning sign; any report escalates at once"
+    },
+    {
+      "rule_id": "RULE_RED_FLAG_SADDLE_NUMBNESS",
+      "datum": "red_flag",
+      "key": "saddle_numbness",
+      "level": "red",
+      "urgency": "immediate",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: saddle anaesthesia is a textbook cauda equina warning sign; any report escalates at once"
+    },
+    {
+      "rule_id": "RULE_RED_FLAG_LEG_WEAKNESS",
+      "datum": "red_flag",
+      "key": "leg_weakness",
+      "level": "red",
+      "urgency": "immediate",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: motor deficit suggests significant nerve root or cord compromise; treated like the cauda equina signs"
+    },
+    {
+      "rule_id": "RULE_RED_FLAG_FEVER_WITH_BACK_PAIN",
+      "datum": "red_flag",
+      "key": "fever_with_back_pain",
+      "level": "red",
+      "urgency": "immediate",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: fever with back pain can indicate spinal infection; treated as an emergency pending clinical review"
+    },
+    {
+      "rule_id": "RULE_RED_FLAG_TRAUMA",
+      "datum": "red_flag",
+      "key": "trauma_event",
+      "level": "red",
+      "urgency": "priority",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: a trauma event with back symptoms may imply fracture or injury; priority review, urgency level to be set by Aguado"
+    },
+    {
+      "rule_id": "RULE_RED_FLAG_RADIATING_LEG_PAIN",
+      "datum": "red_flag",
+      "key": "radiating_leg_pain",
+      "level": "amber",
+      "urgency": "priority",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: radicular pain suggests nerve root irritation; flagged for priority medical review without forcing red"
+    },
+    {
+      "rule_id": "RULE_RED_FLAG_NUMBNESS_OR_TINGLING",
+      "datum": "red_flag",
+      "key": "numbness_or_tingling",
+      "level": "amber",
+      "urgency": "priority",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: sensory symptoms suggest nerve involvement; flagged for priority medical review without forcing red"
+    },
+    {
+      "rule_id": "RULE_RED_FLAG_SEVERE_NIGHT_PAIN",
+      "datum": "red_flag",
+      "key": "severe_night_pain",
+      "level": "amber",
+      "urgency": "priority",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: non-mechanical night pain is a conventional red flag for serious pathology; flagged for priority review"
+    },
+    {
+      "rule_id": "RULE_SELF_REPORT_PAIN_SEVERE",
+      "datum": "self_report",
+      "key": "pain_nrs",
+      "operator": ">=",
+      "threshold": 7,
+      "level": "amber",
+      "domain": "symptoms",
+      "recommendations": [
+        "REC_CONTACT_FLIGHT_SURGEON"
+      ],
+      "source": "provisional, pendiente de Aguado: a pain NRS of 7 or more on the 0-10 scale is the usual convention for severe pain; cutoff to be confirmed"
+    }
+  ]
+}

@@ -21,7 +21,7 @@ The contract is `contracts/openapi.yaml`; bodies and errors are the JSON Schemas
 | `GET /health` | - | `{"status": "ok"}` | real |
 | `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | registered families: `exercise`, `emg`, `imu`, `emg_spectral` and `stretch` |
 | `POST /baseline` | `BaselineRequest` (feature sets of the reference sessions) | `Baseline` | real |
-| `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison and generic risk model (`risk_score`, `confidence`, `drivers`); null triage (level always green) |
+| `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison and generic risk model (`risk_score`, `confidence`, `drivers`); provisional declarative triage (default policy, see Declarative triage) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | applies `overrides` (`set`, `add`, `scale`) to the latest value of each feature, optionally projects trends and re-assesses |
 
 When `project_days` is provided, the engine orders each feature's observations by `computed_at`, applies the overrides to its latest value, fits a linear regression to the resulting history, and projects from that latest value over the requested number of days before re-assessment. The horizon must not exceed the time span of any feature with at least two distinct observation times; otherwise the request returns an error. Features with fewer than two distinct times retain their latest value and are listed in `projection.unprojected_features`. The optional `projection` response object also reports `project_days`. The result is hypothetical, not a clinical forecast. Without `project_days`, simulation retains its existing override-only behavior and omits `projection`.
@@ -140,6 +140,24 @@ uv run pytest engine
 ```
 # Declarative triage
 
-`SPINE_ENGINE_TRIAGE_POLICY_FILE` optionally points to a JSON policy. Without a file, risk has a provisional green model level, incomplete inputs raise the global level to amber, and unrecognized red flags require immediate escalation and raise it to red. Reports after `as_of` are ignored. A missing feature also raises its identifiable domain to amber. No clinical cutoffs or clinical rules are supplied: these require clinical review in #53.
+The engine ships a **provisional** default policy, `src/spine_engine/triage-policy.json` (packaged with the engine, loaded by `PolicyConfig.default()`). Aguado has not delivered clinical rules yet: every rule and cutoff below carries a `source` starting with "provisional, pendiente de Aguado" and none of it is a clinical validation. `SPINE_ENGINE_TRIAGE_POLICY_FILE` optionally points to a JSON policy that replaces the default entirely; `stub_pipeline` keeps the null models (level always green).
 
-The JSON object accepts `amber_cutoff` and `red_cutoff` together (inclusive, between 0 and 1), `unknown_flag_urgency`, and a `rules` array. Each rule contains `rule_id`, `datum` (`risk`, `deviation`, `self_report`, or `red_flag`), `key`, `operator`, `threshold`, `level`, `domain`, `recommendations`, and optional `urgency`; flag rules require an urgency. Self-report keys are `pain_nrs`, `pain_nrs_worst_24h`, and `stiffness_nrs`. Examples belong in tests and are fictional.
+Behaviour: risk at or above `red_cutoff` gives a red model level, at or above `amber_cutoff` amber, otherwise green (cutoffs are inclusive). Incomplete inputs raise the global level to amber, and unrecognized red flags require immediate escalation and raise it to red (these two built-in rules are `RULE_UNKNOWN_RED_FLAG` and `RULE_INCOMPLETE_DATA`). Reports after `as_of` are ignored. A missing feature also raises its identifiable domain to amber.
+
+The JSON object accepts `amber_cutoff` and `red_cutoff` together (inclusive, between 0 and 1), `unknown_flag_urgency`, an optional `source`, and a `rules` array. Each rule contains `rule_id`, `datum` (`risk`, `deviation`, `self_report`, or `red_flag`), `key`, `operator`, `threshold`, `level`, `domain`, `recommendations`, optional `urgency`, and optional `source`; flag rules require an urgency. Self-report keys are `pain_nrs`, `pain_nrs_worst_24h`, and `stiffness_nrs`. Fictional example rules live only in tests.
+
+Default cutoffs: `amber_cutoff` 0.3, `red_cutoff` 0.8, `unknown_flag_urgency` `immediate`. They are placeholders: the real global-risk cutoffs for the triage levels must be decided with clinical judgement, and until then any cutoff configuration is provisional.
+
+| Rule | Datum | Level | Urgency | Recommendations | Provisional basis |
+|---|---|---|---|---|---|
+| `RULE_RED_FLAG_BLADDER_OR_BOWEL` | red_flag `bladder_or_bowel_dysfunction` | red | immediate | `REC_CONTACT_FLIGHT_SURGEON` | sphincter dysfunction is a textbook cauda equina warning sign; any report escalates at once |
+| `RULE_RED_FLAG_SADDLE_NUMBNESS` | red_flag `saddle_numbness` | red | immediate | `REC_CONTACT_FLIGHT_SURGEON` | saddle anaesthesia is a textbook cauda equina warning sign; any report escalates at once |
+| `RULE_RED_FLAG_LEG_WEAKNESS` | red_flag `leg_weakness` | red | immediate | `REC_CONTACT_FLIGHT_SURGEON` | motor deficit suggests significant nerve root or cord compromise; treated like the cauda equina signs |
+| `RULE_RED_FLAG_FEVER_WITH_BACK_PAIN` | red_flag `fever_with_back_pain` | red | immediate | `REC_CONTACT_FLIGHT_SURGEON` | fever with back pain can indicate spinal infection; treated as an emergency pending clinical review |
+| `RULE_RED_FLAG_TRAUMA` | red_flag `trauma_event` | red | priority | `REC_CONTACT_FLIGHT_SURGEON` | a trauma event with back symptoms may imply fracture or injury; priority review, urgency level to be set by Aguado |
+| `RULE_RED_FLAG_RADIATING_LEG_PAIN` | red_flag `radiating_leg_pain` | amber | priority | `REC_CONTACT_FLIGHT_SURGEON` | radicular pain suggests nerve root irritation; flagged for priority medical review without forcing red |
+| `RULE_RED_FLAG_NUMBNESS_OR_TINGLING` | red_flag `numbness_or_tingling` | amber | priority | `REC_CONTACT_FLIGHT_SURGEON` | sensory symptoms suggest nerve involvement; flagged for priority medical review without forcing red |
+| `RULE_RED_FLAG_SEVERE_NIGHT_PAIN` | red_flag `severe_night_pain` | amber | priority | `REC_CONTACT_FLIGHT_SURGEON` | non-mechanical night pain is a conventional red flag for serious pathology; flagged for priority review |
+| `RULE_SELF_REPORT_PAIN_SEVERE` | self_report `pain_nrs` >= 7 | amber | - | `REC_CONTACT_FLIGHT_SURGEON` | a pain NRS of 7 or more on the 0-10 scale is the usual convention for severe pain; cutoff to be confirmed |
+
+All recommendation codes reuse ids the UI already renders. What Aguado must confirm: the risk cutoffs, the level and urgency of each red flag (in particular `trauma_event` and the three amber flags), the pain threshold, whether further rules (deviation- or risk-based) and further recommendation codes are needed, and the wording of each recommendation.

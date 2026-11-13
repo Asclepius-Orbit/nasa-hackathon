@@ -34,7 +34,7 @@ def default_baseline_strategy(settings: EngineSettings) -> StatisticalBaselineSt
 def default_pipeline(settings: EngineSettings) -> AssessmentPipeline:
     """Construye la evaluación estadística y la política de triaje configurable."""
     risk = DeviationRiskModel(settings.risk_domain_weights, settings.risk_persistence_points, settings.risk_saturation, catalog)
-    config = PolicyConfig.from_file(settings.triage_policy_file) if settings.triage_policy_file else PolicyConfig()
+    config = PolicyConfig.from_file(settings.triage_policy_file) if settings.triage_policy_file else PolicyConfig.default()
     return AssessmentPipeline(default_baseline_strategy(settings), risk, DeclarativeTriagePolicy(config))
 
 

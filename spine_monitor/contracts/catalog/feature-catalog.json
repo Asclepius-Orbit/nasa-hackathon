@@ -1,6 +1,6 @@
 {
   "$schema": "./feature-catalog.schema.json",
-  "catalog_version": "0.2.0",
+  "catalog_version": "0.3.0",
   "entries": [
     {
       "feature_id": "emg.{muscle}.{side}.rms_mv",
@@ -150,6 +150,32 @@
       "risk_direction": "higher_is_worse",
       "ranges": null,
       "status": "proposed"
+    },
+    {
+      "feature_id": "stretch.{spine_region}.straight_resistance_ohm",
+      "label": "Cord resistance with straight back",
+      "description": "Mean cord resistance during a straight-back measurement, compared with the astronaut's Earth reference for the same posture.",
+      "domain": "spine_length",
+      "unit": "ohm",
+      "inputs": ["stretch"],
+      "requires": [],
+      "risk_direction": "none",
+      "ranges": null,
+      "status": "proposed",
+      "notes": "The reported normal value is 4500 ohm; it is descriptive, not a clinical threshold or a replacement for the personal baseline."
+    },
+    {
+      "feature_id": "stretch.{spine_region}.max_flexion_resistance_ohm",
+      "label": "Cord resistance at maximum back flexion",
+      "description": "Mean cord resistance during a maximum-back-flexion measurement, compared with the astronaut's Earth reference for the same posture.",
+      "domain": "spine_length",
+      "unit": "ohm",
+      "inputs": ["stretch"],
+      "requires": [],
+      "risk_direction": "none",
+      "ranges": null,
+      "status": "proposed",
+      "notes": "The reported normal value is 5650 ohm; it is descriptive, not a clinical threshold or a replacement for the personal baseline."
     },
     {
       "feature_id": "stretch.{spine_region}.rest_resistance_ohm",

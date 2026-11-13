@@ -712,7 +712,7 @@ def test_catalog_entries_without_a_risk_direction_have_no_ranges(entry):
 
 
 def test_catalog_version_marks_the_provisional_values():
-    assert load_catalog()["catalog_version"] == "0.2.0"
+    assert load_catalog()["catalog_version"] == "0.3.0"
 
 
 def test_catalog_carries_provisional_directions_and_ranges_for_the_risk_layer():

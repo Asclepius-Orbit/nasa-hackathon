@@ -132,6 +132,8 @@ It needs the raw EMG signal: the spectrum of a rectified or envelope signal does
 
 ### The strap (`stretch`) family
 
+The `spine_resistance_straight_v1` and `spine_resistance_max_flexion_v1` protocols produce `stretch.{spine_region}.straight_resistance_ohm` and `stretch.{spine_region}.max_flexion_resistance_ohm` respectively: the mean of valid samples in ohms, without length calibration. Each session emits only its posture feature. Comparison requires the personal Earth baseline for the same protocol, even if a microgravity baseline exists; without the Earth entry it is not compared. The reported reference values are 4,500 Ω straight and 5,650 Ω flexed, without clinical thresholds. They cannot convert resistance to length: the measured resistance-to-length curve is still missing. Periodic follow-up and capture of both postures require further integration. These new features do not yet have simulator ground truth.
+
 Computed from ADC counts, so it needs no raw signal beyond the chunk. For each declared stretch stream with a `spine_region`:
 
 - **Resistance:** with the chunk's `circuit` (`adc_bits`, `vref_v`, `series_resistor_ohm`) the divider `Vout = vref * R / (R + Rs)` is inverted to a resistance. Without `circuit`, the `resistance_ohm` derived in the chunk is used; with neither, the feature goes to `skipped`.

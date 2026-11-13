@@ -42,6 +42,7 @@ Data belongs to a **session**: `exercise` (standardised protocol, e.g. standing 
 - **IMU:** `imu_t9`, at T9.
 - **Stretch cord:** `stretch_spine`, region `full_spine`, spanning C3-C4 to L5-S1 (about 650 mm); its features are `stretch.full_spine.*`.
 - **Spine checks:** `spine_length_rest_v1`, standing, just before (`phase: pre`) and just after (`phase: post`) the exercise; `related_session_id` is the exercise session they bracket.
+- **Posture resistance checks:** `spine_resistance_straight_v1` and `spine_resistance_max_flexion_v1` capture the straight and maximally curved back separately. Establish each astronaut's reference on Earth and repeat periodically in flight. The reported normal values are 4,500 Ω and 5,650 Ω respectively; they are informational, not clinical thresholds. The resistance-to-length curve remains pending measurement.
 
 ## Conventions
 - Field names and descriptions in English, `snake_case`.

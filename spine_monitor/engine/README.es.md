@@ -80,7 +80,7 @@ Features implementadas por familia (los IDs se expanden con la colocación de lo
 | `imu` | `imu.{level}.{plane}.rom_deg`, `peak_angular_velocity_dps` (sagital, frontal y transversal) y `imu.{level}.accel_rms_g` |
 | `stretch` | `stretch.{spine_region}.elongation_mm`, `elongation_pct`, `peak_elongation_mm`, `range_mm`, `recovery_time_s`, `rest_resistance_ohm` |
 
-Todas se validan de extremo a extremo contra la verdad de referencia del simulador (`expected_features`): las sesiones generadas por `spine_physiology` pasan por `CompositeFeatureExtractor(default_registry())` y cada valor se compara con la verdad bajo una tolerancia explícita, para dos semillas y para gravedad terrestre y microgravedad (`engine/tests/test_features_*_simulator.py`). La verdad es el modelo sin ruido de sensor, así que las tolerancias absorben el ruido, la calibración medida y la histéresis simulada. El simulador no publica verdad para `stretch.{spine_region}.recovery_time_s`, así que esa solo se comprueba por plausibilidad.
+Las features originales se validan de extremo a extremo contra la verdad de referencia del simulador (`expected_features`): las sesiones generadas por `spine_physiology` pasan por `CompositeFeatureExtractor(default_registry())` y cada valor se compara con la verdad bajo una tolerancia explícita, para dos semillas y para gravedad terrestre y microgravedad (`engine/tests/test_features_*_simulator.py`). La verdad es el modelo sin ruido de sensor, así que las tolerancias absorben el ruido, la calibración medida y la histéresis simulada. El simulador no publica verdad para `stretch.{spine_region}.recovery_time_s`, así que esa solo se comprueba por plausibilidad.
 
 Los casos de fallo también se construyen a partir de la salida del simulador, y cada uno debe terminar en `skipped` con el motivo correcto, sin inventar nada:
 
@@ -131,6 +131,8 @@ Para cada stream EMG declarado con músculo y lado, `emg.{muscle}.{side}.median_
 Necesita el EMG crudo: el espectro de una señal rectificada o de envolvente no describe el músculo. Si los chunks del stream son rectificados o envolvente, ambas features van a `skipped` con `signal_not_raw`. Los demás motivos son `too_few_repetitions` (menos de 2 repeticiones válidas, así que no hay pendiente), `stream_missing` (stream declarado sin chunks) y `no_data` (repeticiones sin muestras suficientes). Nunca lanza. Se registra en `default_registry()` antes de `stretch`.
 
 ### La familia del cordón (`stretch`)
+
+Los protocolos `spine_resistance_straight_v1` y `spine_resistance_max_flexion_v1` producen respectivamente `stretch.{spine_region}.straight_resistance_ohm` y `stretch.{spine_region}.max_flexion_resistance_ohm`: la media de las muestras válidas en ohmios, sin calibración de longitud. Cada sesión emite solo la feature de su postura. La comparación requiere la baseline terrestre personal del mismo protocolo, incluso si existe una baseline en microgravedad; si falta la terrestre no se compara. Los valores de referencia comunicados son 4.500 Ω recta y 5.650 Ω curvada, sin umbrales clínicos. No permiten convertir a longitud: falta la curva medida resistencia-longitud. El seguimiento periódico y la captura de ambas posturas requieren integración adicional. Estas features nuevas aún no tienen verdad de referencia en el simulador.
 
 Se calcula desde cuentas ADC, así que no necesita señal cruda más allá del chunk. Para cada stream de estiramiento declarado con `spine_region`:
 

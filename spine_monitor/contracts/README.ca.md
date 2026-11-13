@@ -42,6 +42,7 @@ Les dades pertanyen a una **sessió**: `exercise` (protocol estandarditzat, p. e
 - **IMU:** `imu_t9`, a T9.
 - **Cordó elàstic:** `stretch_spine`, regió `full_spine`, de C3-C4 a L5-S1 (uns 650 mm); les seves features són `stretch.full_spine.*`.
 - **Spine checks:** `spine_length_rest_v1`, dret, just abans (`phase: pre`) i just després (`phase: post`) de l'exercici; `related_session_id` és la sessió d'exercici que emmarquen.
+- **Resistència per postura:** `spine_resistance_straight_v1` i `spine_resistance_max_flexion_v1` registren separadament l'esquena recta i la màxima flexió. La referència de cada astronauta s'estableix a la Terra i es repeteix periòdicament durant el vol. Els valors normals comunicats són 4.500 Ω i 5.650 Ω, respectivament; són informatius, no llindars clínics. La corba resistència-longitud encara està pendent de mesurar.
 
 ## Convencions
 - Camps i descripcions en anglès, `snake_case`.

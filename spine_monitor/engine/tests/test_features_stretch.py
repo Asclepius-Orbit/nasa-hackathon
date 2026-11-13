@@ -175,6 +175,29 @@ def skipped(result: FamilyResult) -> dict[str, Reason]:
     return {s.feature_id: s.reason for s in result.skipped}
 
 
+@pytest.mark.parametrize(("protocol", "name", "resistance"), [
+    ("spine_resistance_straight_v1", "straight_resistance_ohm", 4500.0),
+    ("spine_resistance_max_flexion_v1", "max_flexion_resistance_ohm", 5650.0),
+])
+def test_posture_resistance_needs_no_length_calibration(protocol: str, name: str, resistance: float):
+    context = make_context([resistance] * 10, [])
+    context = dataclasses.replace(context, session=context.session.model_copy(update={"protocol_id": protocol}))
+    result = family_for().extract(context)
+    assert values(result)[fid(name)] == resistance
+    assert computed(result)[fid(name)].n == 10
+    assert set(values(result)) == {fid(name)}
+    assert skipped(result) == {}
+    other = "max_flexion_resistance_ohm" if name == "straight_resistance_ohm" else "straight_resistance_ohm"
+    assert fid(other) not in values(result)
+    assert fid(other) not in skipped(result)
+
+
+def test_posture_resistance_without_samples_is_skipped():
+    context = make_context(counts=[500] * 10, calibrations=[])
+    context = dataclasses.replace(context, session=context.session.model_copy(update={"protocol_id": "spine_resistance_straight_v1"}))
+    assert skipped(family_for().extract(context))[fid("straight_resistance_ohm")] is Reason.NO_DATA
+
+
 # --- sin repeticiones: lo pasivo -----------------------------------------------------------------------------
 
 
@@ -182,7 +205,8 @@ def test_the_family_declares_every_concrete_catalog_id_of_the_stretch_features()
     family = family_for()
 
     assert family.family == "stretch"
-    assert tuple(family.feature_ids) == tuple(i for name in NAMES for i in expand_template(f"stretch.{{spine_region}}.{name}"))
+    names = (*NAMES, "straight_resistance_ohm", "max_flexion_resistance_ohm")
+    assert tuple(family.feature_ids) == tuple(i for name in names for i in expand_template(f"stretch.{{spine_region}}.{name}"))
     assert set(family.feature_ids) <= set(all_feature_ids())
     assert fid("elongation_mm", "cervical") in family.feature_ids
 

@@ -72,6 +72,15 @@ def test_is_known():
     assert not is_known("nope.nothing")
 
 
+def test_posture_resistance_features_and_protocols_are_separate():
+    for posture in ("straight", "max_flexion"):
+        feature_id = f"stretch.full_spine.{posture}_resistance_ohm"
+        assert unit_for(feature_id) == "ohm"
+        assert risk_direction(feature_id) == "none"
+        assert ranges(feature_id) is None
+        assert f"spine_resistance_{posture}_v1" in _protocols()
+
+
 def test_features_removed_by_clinical_decision_stay_out_of_the_catalog():
     # Aguado retiró estas features; no deben volver al catálogo (ni como plantilla ni como id concreto)
     removed = {
@@ -331,4 +340,4 @@ def test_protocol_catalog_requires_and_bounds_the_rhythm_values():
     for field in RHYTHM_FIELDS:
         assert not validator.is_valid({**catalog, "entries": [{k: v for k, v in entry.items() if k != field}]}), field
         assert not validator.is_valid({**catalog, "entries": [{**entry, field: -1}]}), field
-    assert catalog["catalog_version"] == "0.3.0"
+    assert catalog["catalog_version"] == "0.4.0"

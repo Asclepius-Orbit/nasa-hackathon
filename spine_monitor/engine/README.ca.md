@@ -80,7 +80,7 @@ Features implementades per família (els IDs s'expandeixen amb la col·locació 
 | `imu` | `imu.{level}.{plane}.rom_deg`, `peak_angular_velocity_dps` (sagital, frontal i transversal) i `imu.{level}.accel_rms_g` |
 | `stretch` | `stretch.{spine_region}.elongation_mm`, `elongation_pct`, `peak_elongation_mm`, `range_mm`, `recovery_time_s`, `rest_resistance_ohm` |
 
-Totes es validen de cap a cap contra la veritat de referència del simulador (`expected_features`): les sessions generades per `spine_physiology` passen per `CompositeFeatureExtractor(default_registry())` i cada valor es compara amb la veritat sota una tolerància explícita, per a dues llavors i per a gravetat terrestre i microgravetat (`engine/tests/test_features_*_simulator.py`). La veritat és el model sense soroll de sensor, així que les toleràncies absorbeixen el soroll, el calibratge mesurat i la histèresi simulada. El simulador no publica veritat per a `stretch.{spine_region}.recovery_time_s`, així que aquesta només es comprova per plausibilitat.
+Les features originals es validen de cap a cap contra la veritat de referència del simulador (`expected_features`): les sessions generades per `spine_physiology` passen per `CompositeFeatureExtractor(default_registry())` i cada valor es compara amb la veritat sota una tolerància explícita, per a dues llavors i per a gravetat terrestre i microgravetat (`engine/tests/test_features_*_simulator.py`). La veritat és el model sense soroll de sensor, així que les toleràncies absorbeixen el soroll, el calibratge mesurat i la histèresi simulada. El simulador no publica veritat per a `stretch.{spine_region}.recovery_time_s`, així que aquesta només es comprova per plausibilitat.
 
 Els casos de fallada també es construeixen a partir de la sortida del simulador, i cadascun ha d'acabar a `skipped` amb el motiu correcte, sense inventar res:
 
@@ -131,6 +131,8 @@ Per a cada stream EMG declarat amb múscul i costat, `emg.{muscle}.{side}.median
 Necessita l'EMG cru: l'espectre d'un senyal rectificat o d'envolupant no descriu el múscul. Si els chunks del stream són rectificats o d'envolupant, totes dues features van a `skipped` amb `signal_not_raw`. Els altres motius són `too_few_repetitions` (menys de 2 repeticions vàlides, així que no hi ha pendent), `stream_missing` (stream declarat sense chunks) i `no_data` (repeticions sense prou mostres). Mai no llança. Es registra a `default_registry()` abans de `stretch`.
 
 ### La família del cordó (`stretch`)
+
+Els protocols `spine_resistance_straight_v1` i `spine_resistance_max_flexion_v1` produeixen respectivament `stretch.{spine_region}.straight_resistance_ohm` i `stretch.{spine_region}.max_flexion_resistance_ohm`: la mitjana de les mostres vàlides en ohms, sense calibratge de longitud. Cada sessió emet només la feature de la seva postura. La comparació requereix la baseline terrestre personal del mateix protocol, encara que existeixi una baseline en microgravetat; si falta la terrestre no es compara. Els valors de referència comunicats són 4.500 Ω recta i 5.650 Ω corbada, sense llindars clínics. No permeten convertir a longitud: falta la corba mesurada resistència-longitud. El seguiment periòdic i la captura de les dues postures requereixen integració addicional. Aquestes features noves encara no tenen veritat de referència al simulador.
 
 Es calcula des de comptes ADC, així que no necessita senyal crua més enllà del chunk. Per a cada stream d'estirament declarat amb `spine_region`:
 

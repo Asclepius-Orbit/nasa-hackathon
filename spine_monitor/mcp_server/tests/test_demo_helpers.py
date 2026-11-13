@@ -108,7 +108,7 @@ def test_z_pain_is_the_distance_to_2_in_1_2_units(mean: float, z: float):
 
 def test_stretch_baseline_entry_is_the_stretch_feature_of_the_example_baseline():
     entry = demo._stretch_baseline_entry()  # pyright: ignore[reportPrivateUsage] -- helper privado
-    assert entry["feature_id"] == "stretch.lumbar.peak_elongation_mm"
+    assert entry["feature_id"] == "stretch.full_spine.peak_elongation_mm"
 
 
 def test_freshness_age_is_in_hours_rounded_to_one_decimal_and_stale_is_strictly_greater():

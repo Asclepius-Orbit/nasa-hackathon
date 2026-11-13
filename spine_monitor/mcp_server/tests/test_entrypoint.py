@@ -189,7 +189,7 @@ async def test_examples_dataset_serves_the_contract_example_without_touching_the
 async def test_demo_server_wires_the_demo_simulator_and_assess_base():
     async with Client(build_server(["--now", "2026-11-13T12:00:00Z"])) as client:
         result = await client.call_tool(
-            "simulate_scenario", {"astronaut_id": AST, "overrides": [{"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "add", "value": 5}]}
+            "simulate_scenario", {"astronaut_id": AST, "overrides": [{"feature_id": "stretch.full_spine.peak_elongation_mm", "mode": "add", "value": 5}]}
         )
     assert result.structured_content is not None
     scenario = result.structured_content["scenario"]

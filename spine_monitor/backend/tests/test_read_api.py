@@ -332,7 +332,7 @@ def test_explanation_resolves_what_the_assessment_cites(full):
     assert body["assessment"] == example("domain/assessment.amber")
     assert body["baseline"] == {"baseline_id": BASELINE, "version": 1}
     # Only the entries of the drivers; symptoms.pain_nrs_7d_mean has no baseline entry.
-    assert [e["feature_id"] for e in body["baseline_entries"]] == ["stretch.lumbar.peak_elongation_mm"]
+    assert [e["feature_id"] for e in body["baseline_entries"]] == ["stretch.full_spine.peak_elongation_mm"]
     assert [f["session_id"] for f in body["feature_sets"]] == [INFLIGHT_SESSION]
     assert [r["report_id"] for r in body["self_reports"]] == [DAILY]
     assert body["unresolved"] == []

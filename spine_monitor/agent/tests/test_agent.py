@@ -60,7 +60,7 @@ AMBER_STATUS: dict[str, Any] = {
         "assessment_id": ASSESSMENT_ID,
         "level": "amber",
         "as_of": "2027-02-09T09:00:00Z",
-        "drivers": [{"feature_id": "stretch.lumbar.peak_elongation_mm", "value": 9.1, "unit": "mm"}],
+        "drivers": [{"feature_id": "stretch.full_spine.peak_elongation_mm", "value": 9.1, "unit": "mm"}],
     },
 }
 AMBER_EXPLANATION: dict[str, Any] = {"assessment": {"fired_rules": [{"rule_id": "RULE_SYMPTOM_PAIN_TREND", "description": "pain trend"}]}}

@@ -55,7 +55,7 @@ def test_an_anchor_without_timezone_is_refused():
         GroundWindows(anchor=datetime(2027, 1, 1), period_min=90, up_min=20)
 
 
-seconds_from_anchor = st.integers(min_value=-10**6, max_value=10**6)
+seconds_from_anchor = st.integers(min_value=-(10**6), max_value=10**6)
 
 
 def at_s(seconds: int) -> datetime:

@@ -29,6 +29,9 @@ Phase = Literal["pulling", "letting_up", "resting"]
 
 _GYRO_CHANNELS = ("gyro_x", "gyro_y", "gyro_z")
 _ZERO = (0.0, 0.0, 0.0)
+# Quality flags of the gyroscope that distort the angle: a rep seen through them is not a reference for the next ones.
+# `clock_uncertain` only says the timestamps are doubtful, not the signal.
+_DISTORTING_FLAGS = frozenset({"sensor_warmup", "low_snr", "clipping", "motion_artifact", "packet_gap"})
 
 
 class LastRep(TypedDict):
@@ -78,6 +81,10 @@ class RepDetectorParams:
         - smoothing_tau_s 0.05: short against a 2 s half rep; it adds negligible delay.
         - bias_tau_s 2, bias_settle_s 1: well inside rest_between_reps_s (4) and lead_in_s (10).
         - still_std_dps 1.5: over 1 s windows of 16 simulated sessions, at rest it reached 1.12 at most, inside a rep 2.03 at least.
+        - The standard protocol has 3 s reps with a pause of only 0.6 s between reps (30 s between sets): a rep that does not come back
+          to 0 deg, or whose pause is shorter than calm_end_s, ends when the next pull begins (rate in the pulling direction for on_hold_s).
+          bias_settle_s stays at 1 s on purpose: a shorter still window can be found at the turn of a slow rep. After a reboot inside a set
+          (pauses of 0.6 s) the count resumes with the next set.
         - max_rep_s 12: 3 times rep_duration_s, so an honest slow rep survives, and a stuck counter costs under 2 cycles of 8 s.
         """
         return cls(
@@ -97,6 +104,11 @@ class RepDetectorParams:
         )
 
 
+def _is_distorted(chunk: Mapping[str, Any]) -> bool:
+    flags = chunk.get("quality", {}).get("gyro", {}).get("flags", ())
+    return not _DISTORTING_FLAGS.isdisjoint(flags)
+
+
 class RepDetector:
     """Feed it the chunks of one IMU stream of one session; read the state with `snapshot()`."""
 
@@ -104,7 +116,8 @@ class RepDetector:
         self._params = params
         self._completed = 0
         self._last: LastRep | None = None
-        self._previous_peak: float | None = None
+        self._previous_peak: float | None = None  # peak of the last rep with no distorting quality flag
+        self._chunk_distorted = False
         self._boot: int | None = None
         self._retired_boots: set[int] = set()
         self._non_finite_logged = False
@@ -130,6 +143,9 @@ class RepDetector:
         self._candidate = _ZERO  # angle per axis since the trunk was last still: it picks the movement axis
         self._start_ms = self._last_ms
         self._since_ms: float | None = None  # start of the condition being held, whichever the phase
+        self._low_ms: float | None = None  # last sample with a low rate while letting up
+        self._rep_distorted = False
+        self._pull_since_ms: float | None = None  # start of the pulling-direction rate while letting up
         self._calm_since_ms: float | None = None  # start of the low rate while letting up
 
     def snapshot(self) -> RepSnapshot:
@@ -151,6 +167,9 @@ class RepDetector:
                 _log.warning("session %s: chunks with a non-finite gyro rate are dropped", chunk["session_id"])
             return False
         before = self.snapshot()
+        self._chunk_distorted = _is_distorted(chunk)
+        if self._chunk_distorted and self._phase != "resting":
+            self._rep_distorted = True
         boot: int = chunk["boot_id"]
         if boot != self._boot:
             self._change_boot(boot)
@@ -269,6 +288,7 @@ class RepDetector:
         self._peak = abs(self._angle)
         self._direction = 1.0 if self._angle >= 0.0 else -1.0
         self._phase = "pulling"
+        self._rep_distorted = self._chunk_distorted
         self._since_ms = None
 
     def _step_pulling(self, t_ms: float) -> None:
@@ -283,10 +303,14 @@ class RepDetector:
 
     def _step_letting_up(self, t_ms: float) -> None:
         params = self._params
+        if self._pulling_again(t_ms):
+            return
         if abs(self._smooth[self._axis]) >= params.low_dps:
-            self._calm_since_ms = None
+            if self._smooth[self._axis] * self._direction <= 0.0:
+                self._calm_since_ms = None  # still returning; a rate in the pulling direction keeps where the pause began
             self._since_ms = None
             return
+        self._low_ms = t_ms
         if self._calm_since_ms is None:
             self._calm_since_ms = t_ms
         if t_ms - self._calm_since_ms >= params.calm_end_s * 1000.0:
@@ -300,10 +324,29 @@ class RepDetector:
         if t_ms - self._since_ms >= params.settle_s * 1000.0:
             self._finish_rep(self._since_ms)
 
+    def _pulling_again(self, t_ms: float) -> bool:
+        """The rate is back in the pulling direction for `on_hold_s`: the rep ended without ever calming down (a pause shorter
+        than `calm_end_s`, or an angle that did not come back to 0), and the next one has begun. It ends where the rate last
+        was low, or where the return began, and the next rep is found by the resting state."""
+        params = self._params
+        if self._smooth[self._axis] * self._direction <= params.on_dps:
+            self._pull_since_ms = None
+            return False
+        if self._pull_since_ms is None:
+            self._pull_since_ms = t_ms
+        if t_ms - self._pull_since_ms < params.on_hold_s * 1000.0:
+            return False
+        end_ms = self._calm_since_ms if self._calm_since_ms is not None else self._pull_since_ms
+        next_start_ms = self._low_ms if self._low_ms is not None else end_ms  # the next rep began after the last still sample
+        self._finish_rep(end_ms)
+        self._start_ms = next_start_ms
+        return True
+
     def _finish_rep(self, end_ms: float) -> None:
         start_ms = self._start_ms
         assert start_ms is not None  # set while resting, before any rep can start
         self._completed += 1
         self._last = {"rep": self._completed, "duration_s": (end_ms - start_ms) / 1000.0}
-        self._previous_peak = self._peak
+        if not self._rep_distorted:
+            self._previous_peak = self._peak
         self._go_resting()

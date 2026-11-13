@@ -29,7 +29,7 @@ NOWS = [
 ]
 NOW = NOWS[0]
 TIMEOUT_SECONDS = 30
-OVERRIDE = {"feature_id": "stretch.lumbar.peak_elongation_mm", "mode": "add", "value": 5}
+OVERRIDE = {"feature_id": "stretch.full_spine.peak_elongation_mm", "mode": "add", "value": 5}
 
 pytestmark = pytest.mark.parametrize("now", NOWS, ids=lambda n: n.isoformat())
 
@@ -84,7 +84,7 @@ def test_latest_assessment_is_amber_and_as_of_now(now: datetime):
     assert latest.level == Level.AMBER
     assert latest.as_of == now.replace(minute=0)
     assert latest.trend is not None and latest.trend.projected_level == Level.RED
-    assert [d.feature_id for d in latest.drivers] == ["stretch.lumbar.peak_elongation_mm", "symptoms.pain_nrs_7d_mean"]
+    assert [d.feature_id for d in latest.drivers] == ["stretch.full_spine.peak_elongation_mm", "symptoms.pain_nrs_7d_mean"]
     assert all(d.deviation_z is not None and d.deviation_z > 1 for d in latest.drivers)
     assert [r.rule_id for r in latest.fired_rules] == ["RULE_SYMPTOM_PAIN_TREND"]
 

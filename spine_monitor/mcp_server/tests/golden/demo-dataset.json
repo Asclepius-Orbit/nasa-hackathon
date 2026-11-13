@@ -56,7 +56,7 @@
         ],
         "drivers": [
           {
-            "feature_id": "stretch.lumbar.peak_elongation_mm",
+            "feature_id": "stretch.full_spine.peak_elongation_mm",
             "value": 9.1,
             "unit": "mm",
             "deviation_z": 2.4,
@@ -118,15 +118,17 @@
           "phase": "inflight",
           "gravity_environment": "microgravity"
         },
+        "phase": "pre",
+        "related_session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
         "streams": [
           {
-            "stream_id": "stretch_lumbar",
+            "stream_id": "stretch_spine",
             "stream_kind": "stretch",
             "placement": {
-              "spine_region": "lumbar",
+              "spine_region": "full_spine",
               "span": {
-                "from_level": "l1",
-                "to_level": "l5"
+                "from_level": "c3",
+                "to_level": "s1"
               }
             },
             "sample_rate_hz": 20.0
@@ -181,14 +183,21 @@
               "last_seq": 1840
             },
             {
-              "stream_id": "imu_l3",
+              "stream_id": "emg_lat_right",
+              "stream_kind": "emg",
+              "state": "active",
+              "sample_rate_hz": 1000.0,
+              "last_seq": 1841
+            },
+            {
+              "stream_id": "imu_t9",
               "stream_kind": "imu",
               "state": "active",
               "sample_rate_hz": 100.0,
               "last_seq": 367
             },
             {
-              "stream_id": "stretch_lumbar",
+              "stream_id": "stretch_spine",
               "stream_kind": "stretch",
               "state": "active",
               "sample_rate_hz": 20.0,
@@ -233,17 +242,17 @@
     "history": {
       "feature_sets": {
         "count": 7,
-        "sha256": "f12298fa889fa40b759bfa9877fca306655e096c0a071ad749fd916d3dacee60"
+        "sha256": "09b617f54151855373967db99845282e32295674036baf74d3def01f63cc0861"
       },
       "assessments": {
         "count": 14,
-        "sha256": "adb4fef34a7566a8566a2e9ce31d27e7c3259952c4edfb4b61a6a4ce098779df"
+        "sha256": "36cc535ccbe2a5792acf7fbb5849e39793a1f4fcfc58dc912975e1dbd254a5ea"
       },
       "window": "701ad08ae7d945ee3dc50fd167d0fdb6c8e209ffe7eb006f36ce9201baf58a9b"
     },
     "sessions": {
       "count": 10,
-      "sha256": "3182902014de8f5821975097b784738ca1f77270efd3e14ec7873ac1d15af641"
+      "sha256": "c889c09352a53518ab5e5e8c39453a11dde10d7b0e5303d456b497f7b22bf57b"
     },
     "self_reports": {
       "count": 15,
@@ -252,25 +261,25 @@
     "explanations": {
       "count": 14,
       "by_assessment_id": {
-        "5026b82f-6a72-5800-8e44-e480136295a0": "952302899c7c5520254f132e05d88d0cbeb27634f1299ddb60aaf13e44df5067",
-        "a2c5f5a0-081d-554e-a11c-252e73d5f551": "c8c21a3a1fc8388d021557492cc073365a2f5793647018200afbe3f884e7dbd4",
-        "3eb8a29e-39bb-5186-a729-8e96659ebad0": "de211e343ebb3dc7590e71f2814f2d1e0b324bffbe501811ea82441ee75fc92f",
-        "9738d719-54c8-53fb-bec3-5b32b12064d4": "dcd0896152d86d7a0c9788923acfad2c82b3076ff23cbbd8bf55643db79dc228",
-        "afdbe69a-c2dd-52c3-b0b5-ae893917196b": "2e60af8a26ff4ce1e146c421cc4bf7e5c2efdd606f39f08a74470c350a3d3132",
-        "48590cae-a400-5966-bddc-6f12431f9d7b": "06f5409d6c6ccce65352b6b332ebc77982189de5f1aa99a7277870e40d5164e2",
-        "b14bdcc6-2fef-52ba-8adc-cc98ad293267": "448a6c8d2ca3a19e9c8cc131d91abf831b75f669fa65e17f07b60f955a728012",
-        "fb043f63-c513-5e55-abd2-91dc0052f5b3": "8bd4ca6e0ec735fada807325bd3ff7e0cdd4b388ebd319f1463a02cad73e57d0",
-        "8d0d37c7-de96-5acf-91bd-8a75994a1458": "b03f28a5edb2d8cafca8af921cd017902079f19ac9d5ab68118789bc241990f6",
-        "810bfda7-61cb-5c87-afbd-ceba0169a841": "a26076880d9fb54d13c18d80a52d5b8c5cbd48d920a5d235f0609beb3ac2a22d",
-        "84d713b9-3301-5793-82d5-20a68b70cc94": "b0507dfd2284c8e27e3f73ba13140d178f2bba95137a2e260d7c394c159c8366",
-        "812d8326-e904-526c-ac94-2bc75493157c": "c05e02445af5774cd0609623846edc0ce1282cb5fc92dc6f0c0c17264594a347",
-        "7bc10739-d3a9-56fb-8885-d145efef5993": "a7942c0a4308c3ba9ccff7f02498da5a4db9671c80341f6f3c61df06508b331a",
-        "727b3991-375f-5c07-8cdd-8c30937f2d19": "dcdc4639523bd56c3463bf064603c77c832b0a4286238a5d40f8bcc7fc44e7c4"
+        "5026b82f-6a72-5800-8e44-e480136295a0": "dcc1c767b85e80fd28b88aeb0a225170e4e00f0c1d8e61a79945a0c75fe9425a",
+        "a2c5f5a0-081d-554e-a11c-252e73d5f551": "be03c290f835d8d7527067bbd662001e20d9c6510d4dc3e2037d391b1d1d94b9",
+        "3eb8a29e-39bb-5186-a729-8e96659ebad0": "0e35436886f5b090bd2c46103ee493c7f315cfe9323d3a8b882ee09fed2e543b",
+        "9738d719-54c8-53fb-bec3-5b32b12064d4": "2004e6e35f34f3a1544a7f7952af9f35deff3c99734e5df1ffd93699a7f3ba08",
+        "afdbe69a-c2dd-52c3-b0b5-ae893917196b": "e0b43bcd04039ab394d6aaedef95a610d2f1507b0f596303b76fc1a7bd2bc205",
+        "48590cae-a400-5966-bddc-6f12431f9d7b": "49d24251d122f86e066f608828b7c8963d92010230f7ddc372bb644de9a7656f",
+        "b14bdcc6-2fef-52ba-8adc-cc98ad293267": "37cae6c89f5b339afce6b99d77b0cf79396c63c308429a0871c2ae96d73b9e5f",
+        "fb043f63-c513-5e55-abd2-91dc0052f5b3": "db5032c56cda13dda99fe20916374e14d2eca9312570d037724912c334c08d51",
+        "8d0d37c7-de96-5acf-91bd-8a75994a1458": "1c11ce415a706ef8f50e7c0a06090d745b1c16c127c9e9cc20393c37cc3a449b",
+        "810bfda7-61cb-5c87-afbd-ceba0169a841": "127dee2656d2e2f5179413c8949f7d89bf6edf316b92f252773db7a1b333f84f",
+        "84d713b9-3301-5793-82d5-20a68b70cc94": "833e7c0bfe8dbb6327a7ce1c733fa47a5e9c654a21ecae5b0232753d0bf684ca",
+        "812d8326-e904-526c-ac94-2bc75493157c": "69a42aab598be70b95879b031b84369c159978b6653278de50010938397faa22",
+        "7bc10739-d3a9-56fb-8885-d145efef5993": "281b3e451eea7fd8e3a70189e408424bafaaab0da44e66ddd3309ec16b8b079f",
+        "727b3991-375f-5c07-8cdd-8c30937f2d19": "f6ab09a69027362de97a82a944ae2c470973e9485bfa77b247a076621c7dd5f0"
       }
     },
     "assess_base": {
       "count": 3,
-      "sha256": "7a884ce3f9245ec9835e77083ebba94e2ccaeef538686f3d5225756cd059e2c3"
+      "sha256": "0888c40044c1eddea7aa36902b2f018f86e6afe312fe9528dbb17d012052b380"
     },
     "freshness": {
       "count": 4,
@@ -280,32 +289,32 @@
       "no_overrides": {
         "risk_score": 0.62,
         "level": "amber",
-        "sha256": "e8bfe33eb832cd187fbc52ed7b50c597aa139a06ef239c823b26f62a0b8a2367"
+        "sha256": "6b1c52b91d99b62fb81a8eb3449a445fd817ec290ea16fdebdde7a47eeb47a95"
       },
       "add_1mm": {
         "risk_score": 0.67,
         "level": "red",
-        "sha256": "024e390f189ce555ccd831a2d1a26ef1c106b7244e22c17623581ac238037938"
+        "sha256": "116341cbfe09e89667f1de34a07be6fd6935b0faae55accaef6f5c5f2c1a64f0"
       },
       "add_minus_2mm": {
         "risk_score": 0.52,
         "level": "amber",
-        "sha256": "351512243b87a87b577ce9e5e45c5aac4d2479ab0ee9ab78781b4e366ada2735"
+        "sha256": "a13a74a4e5b056e006c9346060f751fce541a0d5e5fd4c93f3ab0ba77a57d5c0"
       },
       "set_7_1mm": {
         "risk_score": 0.52,
         "level": "amber",
-        "sha256": "351512243b87a87b577ce9e5e45c5aac4d2479ab0ee9ab78781b4e366ada2735"
+        "sha256": "a13a74a4e5b056e006c9346060f751fce541a0d5e5fd4c93f3ab0ba77a57d5c0"
       },
       "scale_half": {
         "risk_score": 0.38,
         "level": "amber",
-        "sha256": "1204cce5f4e151fb9de8eea55004ed19bf2b9b9cbda6e781300486205625921b"
+        "sha256": "8bc2ed550a842fe5e83811f095a3bb69bd385cff4f7c77f20250a347d981ad9e"
       },
       "mixed_clamped_high": {
         "risk_score": 0.99,
         "level": "red",
-        "sha256": "ba662fb170b5354f543763927001fe8cc59ddfb939448f6724edfa77d5e93ee8"
+        "sha256": "8e30d4377ead61acea43b5351f2dbdd99200e9fc6c5de4db87ec314d81bd14d6"
       }
     }
   },
@@ -366,7 +375,7 @@
         ],
         "drivers": [
           {
-            "feature_id": "stretch.lumbar.peak_elongation_mm",
+            "feature_id": "stretch.full_spine.peak_elongation_mm",
             "value": 9.1,
             "unit": "mm",
             "deviation_z": 2.4,
@@ -428,15 +437,17 @@
           "phase": "inflight",
           "gravity_environment": "microgravity"
         },
+        "phase": "pre",
+        "related_session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
         "streams": [
           {
-            "stream_id": "stretch_lumbar",
+            "stream_id": "stretch_spine",
             "stream_kind": "stretch",
             "placement": {
-              "spine_region": "lumbar",
+              "spine_region": "full_spine",
               "span": {
-                "from_level": "l1",
-                "to_level": "l5"
+                "from_level": "c3",
+                "to_level": "s1"
               }
             },
             "sample_rate_hz": 20.0
@@ -491,14 +502,21 @@
               "last_seq": 1840
             },
             {
-              "stream_id": "imu_l3",
+              "stream_id": "emg_lat_right",
+              "stream_kind": "emg",
+              "state": "active",
+              "sample_rate_hz": 1000.0,
+              "last_seq": 1841
+            },
+            {
+              "stream_id": "imu_t9",
               "stream_kind": "imu",
               "state": "active",
               "sample_rate_hz": 100.0,
               "last_seq": 367
             },
             {
-              "stream_id": "stretch_lumbar",
+              "stream_id": "stretch_spine",
               "stream_kind": "stretch",
               "state": "active",
               "sample_rate_hz": 20.0,
@@ -543,17 +561,17 @@
     "history": {
       "feature_sets": {
         "count": 7,
-        "sha256": "6735b37d78ba1f44048368258e48de77f3c869fa9244bcc2d5fc8e6ee7beaf44"
+        "sha256": "ebbfd70ab8755e2c0cd42d365abe5e25ee52eb1ab76f987ae25c93747754edab"
       },
       "assessments": {
         "count": 14,
-        "sha256": "43f64e15501da0a9a687609f2c3d46cff1bee76f3e872f0f070ddfdd5695f1e2"
+        "sha256": "22c1559befa456952dfb6db2880ed28966a6166a282e389005b945d9f32d9dde"
       },
       "window": "e6b6ce8036708f4f3cdc977b400c88bf6ec5563e1f76e6295b01ab5602d9f3f8"
     },
     "sessions": {
       "count": 10,
-      "sha256": "4d5e119d9c4b500ef3ae6d4efe39438887cdac58fef87060e990ba5da4cc678c"
+      "sha256": "de5d5d1b15259ed65a5cfdf3bfb390333399819fb17ddec23ea40cbd4cd6acdf"
     },
     "self_reports": {
       "count": 15,
@@ -562,25 +580,25 @@
     "explanations": {
       "count": 14,
       "by_assessment_id": {
-        "11108713-e7a8-56ae-a408-96ba673b8c6f": "23f5544191dc07ccf4f077141f52bc50117a3edb4160832ad100a70f40f5b39c",
-        "b1fad69a-b1d5-528f-9e3c-4f6dfccdfb82": "3e3687970335f74870bc6e1b7f9a87bd10a358ca519c9c885e997c209e6b4928",
-        "6769d285-343a-50e3-85ab-6f27da3a874e": "fb2bdb94c1793b167012f9c582edaf4352371db2b70fe7588b167f8418ba428c",
-        "a75a092a-72cc-5118-8aa8-760ac1afb045": "633d44f68400948b87937908c3fb3924d2c3438aad2c8e901852709cc7b0c856",
-        "7234e5f9-b6d3-5666-9aa2-303dc1c9ae32": "0221f3169f05e29a528223001927a1ca9069dac10049e5197543446936266565",
-        "c4aeead6-419e-5641-b3fa-750f15f41eb3": "cbf909f7db2da26fd70df250ff920789323054e1c36c0c9eae3070508fdcb206",
-        "841c5658-f949-50ca-b577-c61ab1e5aae6": "be62abfbf453c8beea097aa8b770d4eefedf13010c3fac2e6d1119a8789d2f81",
-        "c07f6fc2-c9f1-5d3f-944a-558513e532c3": "3b4dcccc3d8b56d51c4fbf6cae38a1f2dc278b541180890bf4a237fe0fe0631a",
-        "aa1c4fc7-c654-54ea-84ff-a92a1794ff32": "ac56ffa105ffe6924b92e31444608c9e485dc89d4ea92cbaaf50b9eed62a49dc",
-        "0fbb4f2e-f9d3-5a68-93c6-3c37aaadb555": "ccb3225737a3bf078a394fe6a2bfe5def3d778aa87c30d7085fecbe2077adc71",
-        "75894157-5075-5502-af4c-abdf5ed27bea": "acd2eb115b056e1c55a1ea56f29da8a655e165ad54beae93c69742520204fb87",
-        "ef83ddf3-23d7-5b74-9a06-f46fa34284f4": "8e40273294968b3334bbe2ee1de2e2595eeb43dceb71171e88bef1150ba16ffa",
-        "e17d4732-74c8-56c9-b536-c5005ec2ccf1": "890a80d889e1afa1f734c9c083d800f136b2e5412d0933df8cd3d87a10914458",
-        "0bb74465-9791-5843-804d-042fbe6bc80b": "4db37fbfaf8243dc50e6c31d3f7fcf36654d6572b4fcad2cf47aea0d7c010e43"
+        "11108713-e7a8-56ae-a408-96ba673b8c6f": "85d28b0178b4e57d394ba75b86923ad669c264354466a687121e1fb4cf7e233a",
+        "b1fad69a-b1d5-528f-9e3c-4f6dfccdfb82": "6878a6bdcf26a8c367aabd283c6d39f119dc9225bf56ad792950254452ae479f",
+        "6769d285-343a-50e3-85ab-6f27da3a874e": "1461d91d5164d43d97cf9e6331d817bf375749e9b35b4ebb075553f56fe88955",
+        "a75a092a-72cc-5118-8aa8-760ac1afb045": "9b15092b600fb0eec30d2ae5ca30b2a3984ef857b66f7d0ae0e0ff26bafe5cc0",
+        "7234e5f9-b6d3-5666-9aa2-303dc1c9ae32": "3759cd4e6c9d920674861933a077d7d17b000c89c8ef296920fce7d31e3ec710",
+        "c4aeead6-419e-5641-b3fa-750f15f41eb3": "6ef679c3911d9da9999a072c76889047b546be17d9b1bdc109c37cff75e4698a",
+        "841c5658-f949-50ca-b577-c61ab1e5aae6": "9659838917b3f72653e8972c0318cfe56ebfd3c1aadf73fe9a851cefdf05135a",
+        "c07f6fc2-c9f1-5d3f-944a-558513e532c3": "e15ad1871f0588e0290e20a3da10032f8bb16e228ee3ede0ca3cc12022d9fac3",
+        "aa1c4fc7-c654-54ea-84ff-a92a1794ff32": "4f1434c9d60a4b6aedd4a2bc0136ff48033c3e8ff05a6e2449ea43caaaf32576",
+        "0fbb4f2e-f9d3-5a68-93c6-3c37aaadb555": "408787c571ff54427c757fa2eef27520fc4a234c7402f5325043ce21fdee1aa6",
+        "75894157-5075-5502-af4c-abdf5ed27bea": "7bdc08c462931a8003eecda81c9bb2b79adfd8bc611e3aeaee0c3172f652eb77",
+        "ef83ddf3-23d7-5b74-9a06-f46fa34284f4": "15967cd1df26224ca99696e0d1c748d6f5f916dbbb9024da016189b6e0f9c52a",
+        "e17d4732-74c8-56c9-b536-c5005ec2ccf1": "5945871e72dc4cabe8a9dc74a1c64127bc5b97765ffb44cee08b50dd7119863f",
+        "0bb74465-9791-5843-804d-042fbe6bc80b": "afbadada76546d74549cdf8d3d6e019738180d58ac9385303650c6aa1bab5b72"
       }
     },
     "assess_base": {
       "count": 3,
-      "sha256": "25af8b49b3a401538870b8ae9636d0996f6ea5d1b773f06e3810d7963c04345b"
+      "sha256": "a05dbfa1435b2d63d982b18745c6afcad401adc31c112b0a6583da5f89dad8fa"
     },
     "freshness": {
       "count": 4,
@@ -590,32 +608,32 @@
       "no_overrides": {
         "risk_score": 0.62,
         "level": "amber",
-        "sha256": "d7416ac59431fcc26956c1d05904a3bd9ac29d5c29ea5024d5ad11d308cc0f11"
+        "sha256": "a02ae2e9c788768d1eb11f37c43a49c818182ef6656a21680b1616f53a54addc"
       },
       "add_1mm": {
         "risk_score": 0.67,
         "level": "red",
-        "sha256": "ebceba0b536f3e869fa16340fb22172c73d0340d779fd5a64d91f79f6014b0d8"
+        "sha256": "6bd07b5a8700d2dcc0687782f8f61a255ef76fa1b86a48f229d9d96c1c84f644"
       },
       "add_minus_2mm": {
         "risk_score": 0.52,
         "level": "amber",
-        "sha256": "d29d4dcc1df9c1448720a35004792eb38e4c4482b90051f10a67daa11dbab903"
+        "sha256": "0f0bbf1e3fe75a03ec2675afd4a61214eaf461160963be7755dece0a3a7fca96"
       },
       "set_7_1mm": {
         "risk_score": 0.52,
         "level": "amber",
-        "sha256": "d29d4dcc1df9c1448720a35004792eb38e4c4482b90051f10a67daa11dbab903"
+        "sha256": "0f0bbf1e3fe75a03ec2675afd4a61214eaf461160963be7755dece0a3a7fca96"
       },
       "scale_half": {
         "risk_score": 0.38,
         "level": "amber",
-        "sha256": "25ce76feac0764d4c0c9168cd705c6e9a379da5a407a080bd8e65636bdae6a3e"
+        "sha256": "6d23c8a5bb0ee15f254746b41cdfcc21188ed39e4a932484b6a2b2dabd26e662"
       },
       "mixed_clamped_high": {
         "risk_score": 0.99,
         "level": "red",
-        "sha256": "e865dc97f870e4c586bcedd34b8098bbfec257df1bcf96550097819eda0677e9"
+        "sha256": "2457ca1aa48fe6ede2d9407e37c75699d644a260876c56ae62fbab57d96663f5"
       }
     }
   }

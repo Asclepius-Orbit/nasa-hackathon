@@ -140,7 +140,7 @@ def test_fallback_with_amber_status_quotes_level_and_drivers(status: dict[str, A
     reply = fallback_reply(status, None)
     assert "AST-01" in reply
     assert "amber" in reply.lower()
-    assert "stretch.lumbar.peak_elongation_mm: 9.1 mm" in reply
+    assert "stretch.full_spine.peak_elongation_mm: 9.1 mm" in reply
     assert "symptoms.pain_nrs_7d_mean: 5.1 nrs" in reply
     assert "RULE_SYMPTOM_PAIN_TREND" not in reply
     assert DISCLAIMER in reply
@@ -161,15 +161,15 @@ def test_fallback_reports_null_driver_value_as_not_available(status: dict[str, A
     broken = deepcopy(status)
     broken["latest_assessment"]["drivers"][0]["value"] = None
     reply = fallback_reply(broken, None)
-    assert "stretch.lumbar.peak_elongation_mm: not available" in reply
-    assert "stretch.lumbar.peak_elongation_mm: 0" not in reply
+    assert "stretch.full_spine.peak_elongation_mm: not available" in reply
+    assert "stretch.full_spine.peak_elongation_mm: 0" not in reply
 
 
 @pytest.mark.unit
 def test_fallback_with_missing_unit_omits_it(status: dict[str, Any]):
     broken = deepcopy(status)
     del broken["latest_assessment"]["drivers"][0]["unit"]
-    assert "stretch.lumbar.peak_elongation_mm: 9.1\n" in fallback_reply(broken, None) + "\n"
+    assert "stretch.full_spine.peak_elongation_mm: 9.1\n" in fallback_reply(broken, None) + "\n"
 
 
 @pytest.mark.unit

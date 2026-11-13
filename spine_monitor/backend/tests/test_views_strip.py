@@ -74,13 +74,13 @@ def test_a_fresh_device_is_not_stale_and_carries_its_timestamp() -> None:
 
 
 def test_an_old_device_still_appears_marked_stale_with_its_last_known_state() -> None:
-    streams = [{"stream_id": "stretch_lumbar", "stream_kind": "stretch", "state": "stalled"}]
+    streams = [{"stream_id": "stretch_spine", "stream_kind": "stretch", "state": "stalled"}]
     harness = strip([status(timestamp="2026-11-13T09:44:59Z", state="degraded", battery_pct=40, streams=streams)])["harness"]
 
     assert harness is not None
     assert (harness["stale"], harness["last_seen_at"]) == (True, "2026-11-13T09:44:59Z")
     assert (harness["device_id"], harness["battery_pct"], harness["degraded"]) == ("wb-01", 40, True)
-    assert harness["weak_streams"] == [{"stream": "stretch_lumbar", "state": "stalled"}]
+    assert harness["weak_streams"] == [{"stream": "stretch_spine", "state": "stalled"}]
 
 
 def test_a_stale_offline_device_is_still_null() -> None:
@@ -104,13 +104,13 @@ def test_offline_harness_is_null() -> None:
 
 def test_degraded_with_weak_streams_only_stalled_and_disabled() -> None:
     streams = [
-        {"stream_id": "stretch_lumbar", "stream_kind": "stretch", "state": "stalled"},
+        {"stream_id": "stretch_spine", "stream_kind": "stretch", "state": "stalled"},
         {"stream_id": "imu_trunk", "stream_kind": "imu", "state": "active"},
         {"stream_id": "emg_ld_r", "stream_kind": "emg", "state": "disabled"},
     ]
     harness = strip([status(state="degraded", streams=streams)])["harness"]
     assert harness["degraded"] is True
-    assert harness["weak_streams"] == [{"stream": "stretch_lumbar", "state": "stalled"}, {"stream": "emg_ld_r", "state": "disabled"}]
+    assert harness["weak_streams"] == [{"stream": "stretch_spine", "state": "stalled"}, {"stream": "emg_ld_r", "state": "disabled"}]
 
 
 def test_ok_status_is_not_degraded() -> None:
@@ -172,7 +172,7 @@ def test_minutes_since_nothing_is_null() -> None:
 
 
 def test_does_not_mutate_inputs() -> None:
-    statuses = [status(state="degraded", streams=[{"stream_id": "stretch_lumbar", "stream_kind": "stretch", "state": "stalled"}])]
+    statuses = [status(state="degraded", streams=[{"stream_id": "stretch_spine", "stream_kind": "stretch", "state": "stalled"}])]
     before = deepcopy(statuses)
     strip(statuses)
     assert statuses == before

@@ -36,9 +36,7 @@ async def test_daily_report_is_completed_validated_and_assessed(harness):
 async def test_red_flag_is_always_accepted_and_assessed(harness):
     await assessed_astronaut(harness)
 
-    response = await harness.http.post(
-        f"/ui/crew/{harness.astronaut_id}/self-reports", json={"kind": "red_flag", "red_flags": ["leg_weakness"]}
-    )
+    response = await harness.http.post(f"/ui/crew/{harness.astronaut_id}/self-reports", json={"kind": "red_flag", "red_flags": ["leg_weakness"]})
 
     assert response.status_code == 201
     # The app's job is to assess right away with the report in the input; the escalation rule itself
@@ -181,7 +179,6 @@ async def test_health_reports_the_bus(harness):
 
     assert body["status"] == "ok"
     assert body["mqtt_connected"] is True
-
 
 
 async def test_daily_context_etag_rejects_stale_update(harness):

@@ -44,7 +44,7 @@ _PAIN_Z_SCALE = 1.2
 # Dolor NRS del autoinforme diario por día t (sube de ~2 a 5).
 _PAIN = [2, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5]
 _RISK_PER_STRETCH_MM = 0.052
-_STRETCH_ID = "stretch.lumbar.peak_elongation_mm"
+_STRETCH_ID = "stretch.full_spine.peak_elongation_mm"
 _PAIN_ID = "symptoms.pain_nrs_7d_mean"
 
 
@@ -143,6 +143,8 @@ class _Timeline:
 def _exercise_session(tl: _Timeline, k: int) -> dict[str, Any]:
     session = _template("app/session-list.json")["items"][0]
     start = tl.exercise_start(k)
+    example_start = datetime.fromisoformat(session["started_at"])
+    offsets = [(datetime.fromisoformat(event["timestamp"]) - example_start).total_seconds() for event in session["events"]]
     session.update(
         session_id=_uuid("session", _iso(start)),
         source="simulator",
@@ -150,7 +152,7 @@ def _exercise_session(tl: _Timeline, k: int) -> dict[str, Any]:
         ended_at=_iso(tl.exercise_end(k)),
         mission_context={"phase": "inflight", "gravity_environment": "microgravity"},
     )
-    for event, offset in zip(session["events"], (39.5, 43.1), strict=True):
+    for event, offset in zip(session["events"], offsets, strict=True):
         event["timestamp"] = (start + timedelta(seconds=offset)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     return session
 
@@ -174,7 +176,7 @@ def _feature_set(tl: _Timeline, k: int) -> dict[str, Any]:
     values = {
         "emg.latissimus_dorsi.left.rms_pct_mvc": round(41.0 + 0.5 * t, 1),
         "emg.latissimus_dorsi.left.median_freq_hz": round(87.3 - 0.65 * t, 1),
-        "imu.l3.sagittal.rom_deg": round(28.4 + 0.2167 * t, 1),
+        "imu.t9.sagittal.rom_deg": round(28.4 + 0.2167 * t, 1),
         _STRETCH_ID: _stretch(t),
     }
     for feature in template["features"]:
@@ -377,7 +379,7 @@ def build_demo_app_reader(now: datetime) -> ExampleAppReader:
 
 
 class _DemoSimulator:
-    """`Simulator` de demo: la referencia es la última valoración y el escenario mueve el riesgo según los overrides de `stretch.lumbar.peak_elongation_mm`.
+    """`Simulator` de demo: la referencia es la última valoración y el escenario mueve el riesgo según los overrides de `stretch.full_spine.peak_elongation_mm`.
 
     No es el motor: es una aproximación lineal (`_RISK_PER_STRETCH_MM` por mm de elongación extra) para que la demo responda a «¿y si...?».
     Los overrides de otras features no cambian el escenario.

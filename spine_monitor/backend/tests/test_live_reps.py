@@ -46,7 +46,7 @@ def _cached_chunks(day: int, astronaut: str = "AST-01", session_id: str = SESSIO
     plan = plan_device_live(config, config.seed, astronaut, boot_at=start - timedelta(hours=1), horizon=timedelta(hours=1))
     stream = MissionGenerator(config).live_session(
         astronaut_id=astronaut, day=day, device=SimDevice(config, plan), session_id=session_id, session_type="exercise",
-        protocol_id=PROTOCOL_ID, stream_ids=("imu_l3",), start=start,
+        protocol_id=PROTOCOL_ID, stream_ids=("imu_t9",), start=start,
     )  # fmt: skip
     chunks: list[Chunk] = []
     for envelope in stream:
@@ -128,10 +128,11 @@ def test_lead_in_without_movement_never_invents_a_rep(day: int) -> None:
 
 
 def test_a_fault_during_a_rep_does_not_freeze_the_counter() -> None:
-    """Real session where low_snr hits rep 7: its angle never gets back to 0, and the counter used to stay there."""
+    """Real session where low_snr hits a rep: its angle never gets back to 0, and the counter used to stay there."""
     chunks = _cached_chunks(0, "AST-02", "aaaaaaaa-bbbb-4ccc-8ddd-000000000000")
-    rep7 = rep_schedule(_protocol())[6]
-    assert any("low_snr" in c["quality"]["gyro"]["flags"] and rep7.start_s <= _elapsed_s(c, chunks[0]) <= rep7.end_s for c in chunks)
+    assert any(
+        "low_snr" in c["quality"]["gyro"]["flags"] and rep.start_s <= _elapsed_s(c, chunks[0]) <= rep.end_s for c in chunks for rep in rep_schedule(_protocol())
+    )
     detector = RepDetector(RepDetectorParams.default())
     completed: set[int] = set()
     for chunk in chunks:
@@ -202,8 +203,10 @@ def test_new_boot_restarts_the_integration_and_keeps_the_counter() -> None:
     before = detector.snapshot()
     assert (before["rep"], before["phase"]) == (3, "pulling")
 
-    # Reboot in the middle of rep 3; the device comes back in the rest before rep 4, with t0 and seq restarted.
-    resume = _chunk_index_after(chunks, schedule[3].start_s - 2.0)
+    # Reboot in the middle of rep 3; the device comes back in the rest before the next set (the pause between reps, 0.6 s, is too
+    # short for the second of stillness that gives the first bias estimate), with t0 and seq restarted.
+    next_set = next(rep for rep in schedule if rep.set_index == 2)
+    resume = _chunk_index_after(chunks, next_set.start_s - 2.0)
     rebooted = [
         {**c, "boot_id": chunks[0]["boot_id"] + 1, "t0_device_ms": c["t0_device_ms"] - chunks[resume]["t0_device_ms"] + 5, "seq": i}
         for i, c in enumerate(chunks[resume:])
@@ -217,7 +220,7 @@ def test_new_boot_restarts_the_integration_and_keeps_the_counter() -> None:
     for chunk in rebooted[1:]:
         detector.feed(chunk)
     final = detector.snapshot()
-    assert final["rep"] == _protocol().planned_reps
+    assert final["rep"] == 3 + sum(1 for rep in schedule if rep.set_index >= 2)  # the rest of set 1 went by with the sensor off
     assert final["phase"] == "resting"
     assert final["last"] is not None
     assert final["last"]["duration_s"] == pytest.approx(_protocol().rep_duration_s, abs=DURATION_TOLERANCE_S)
@@ -259,7 +262,7 @@ def _rechunk(samples: list[Sample], sizes: list[int]) -> Iterable[Chunk]:
 @cache
 def _three_reps() -> tuple[Sample, ...]:
     chunks = _cached_chunks(INFLIGHT_DAY)
-    end = rep_schedule(_protocol())[2].end_s + 2.0
+    end = rep_schedule(_protocol())[2].end_s + 0.3  # before the 4th rep: the pause between reps is 0.6 s
     return tuple(_samples(c for c in chunks if _elapsed_s(c, chunks[0]) < end))
 
 
@@ -284,7 +287,11 @@ def _signal(segments: list[tuple[float, float]], *, axis: int = 2, bias: tuple[f
     rates = [rate for duration_s, rate in segments for _ in range(round(duration_s * 1000 / PERIOD_MS))]
     return [
         {
-            "stream_kind": "imu", "boot_id": 1, "t0_device_ms": i * PERIOD_MS, "sample_rate_hz": 1000.0 / PERIOD_MS, "n_samples": 1,
+            "stream_kind": "imu",
+            "boot_id": 1,
+            "t0_device_ms": i * PERIOD_MS,
+            "sample_rate_hz": 1000.0 / PERIOD_MS,
+            "n_samples": 1,
             "data": {name: [bias[n] + (rate if n == axis else 0.0)] for n, name in enumerate(GYRO_AXES)},
         }  # fmt: skip
         for i, rate in enumerate(rates)
@@ -492,7 +499,8 @@ def test_a_real_session_cut_in_the_middle_of_a_rep_counts_the_rest_of_them() -> 
     first_rep = rep_schedule(_protocol())[0]
     cut = chunks[_chunk_index_after(chunks, first_rep.start_s + 0.5) :]
     detector = _run(cut)
-    expected = _protocol().planned_reps - 1
+    # The boot starts moving: the first still second is the pause between sets, so the rest of set 1 is not counted.
+    expected = sum(1 for rep in rep_schedule(_protocol()) if rep.set_index >= 2)
     assert (detector.snapshot()["rep"], detector.snapshot()["phase"]) == (expected, "resting")
     durations = _durations(cut)
     assert sorted(durations) == list(range(1, expected + 1))
@@ -548,3 +556,48 @@ def test_a_chunk_with_a_non_finite_rate_is_dropped_whole_and_logged_once(caplog)
     records = [record for record in caplog.records if "non-finite" in record.getMessage()]
     assert len(records) == 1
     assert SESSION_ID in records[0].getMessage()
+
+
+def test_a_short_return_followed_by_a_short_pause_does_not_swallow_the_next_rep() -> None:
+    """A rep that does not come back to 0 deg (a fault) and a pause shorter than calm_end_s (0.6 s in the standard protocol)
+    must end by itself when the next pull begins, so the next rep is counted and not merged into it."""
+    segments = [(2.0, 0.0), (1.5, 20.0), (1.5, -12.0), (0.6, 0.0), (1.5, 20.0), (1.5, -20.0), (0.6, 0.0), (1.5, 20.0), (1.5, -20.0), (2.0, 0.0)]
+    detector = _run(_signal(segments))
+    snapshot = detector.snapshot()
+    assert (snapshot["rep"], snapshot["phase"]) == (3, "resting")
+    assert snapshot["last"] is not None and snapshot["last"]["rep"] == 3
+
+
+def _flag(chunks: list[Chunk], flags: list[str], *, from_s: float, to_s: float) -> list[Chunk]:
+    return [
+        {**c, "quality": {"gyro": {"flags": flags}}} if from_s <= c["t0_device_ms"] / 1000.0 <= to_s else c
+        for c in chunks
+    ]  # fmt: skip
+
+
+def _progress_peaks(chunks: list[Chunk]) -> dict[int, float]:
+    detector = RepDetector(RepDetectorParams.default())
+    peaks: dict[int, float] = {}
+    for chunk in chunks:
+        detector.feed(chunk)
+        snap = detector.snapshot()
+        if snap["progress_pct"] is not None:
+            peaks[snap["rep"]] = max(peaks.get(snap["rep"], 0.0), snap["progress_pct"])
+    return peaks
+
+
+# rep 1 (30 deg) at 2.0-5.0 s, rep 2 (60 deg: a distorted one) at 5.6-8.6 s, rep 3 (30 deg) at 9.2-12.2 s
+DISTORTED_REPS = [(2.0, 0.0), (1.5, 20.0), (1.5, -20.0), (0.6, 0.0), (1.5, 40.0), (1.5, -40.0), (0.6, 0.0), (1.5, 20.0), (1.5, -20.0), (2.0, 0.0)]
+
+
+@pytest.mark.parametrize("flag", ["sensor_warmup", "low_snr", "clipping", "motion_artifact", "packet_gap"])
+def test_a_rep_with_a_distorting_quality_flag_is_not_a_reference_for_the_progress(flag: str) -> None:
+    chunks = _flag(_signal(DISTORTED_REPS), [flag], from_s=6.0, to_s=7.0)
+    peaks = _progress_peaks(chunks)
+    assert peaks[2] == pytest.approx(100.0)  # measured against the clean rep 1 (30 deg), not against itself
+    assert peaks[3] == pytest.approx(100.0, abs=3.0)  # and rep 3 against rep 1, not against the 60 deg of the distorted rep 2
+
+
+def test_a_rep_with_only_clock_uncertain_still_counts_as_a_reference() -> None:
+    chunks = _flag(_signal(DISTORTED_REPS), ["clock_uncertain"], from_s=6.0, to_s=7.0)
+    assert _progress_peaks(chunks)[3] == pytest.approx(50.0, abs=3.0)  # against the 60 deg of rep 2

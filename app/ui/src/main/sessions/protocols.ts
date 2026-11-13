@@ -48,7 +48,7 @@ const emgLat = (side: 'left' | 'right'): StreamDeclaration => ({
   sample_rate_hz: 1000,
 });
 
-export const PROTOCOLS: Readonly<Record<ProtocolId, ProtocolTemplate>> = Object.freeze({
+export const PROTOCOLS: Readonly<Record<ProtocolId | 'spine_resistance_straight_v1' | 'spine_resistance_max_flexion_v1', ProtocolTemplate>> = Object.freeze({
   lat_pulldown_standing_v1: {
     session_type: 'exercise',
     load_declared: { type: 'elastic_band', nominal_kg: 25, band_id: 'green' },
@@ -63,4 +63,6 @@ export const PROTOCOLS: Readonly<Record<ProtocolId, ProtocolTemplate>> = Object.
     ],
   },
   spine_length_rest_v1: { session_type: 'spine_check', streams: [STRETCH_SPINE] },
+  spine_resistance_straight_v1: { session_type: 'spine_check', streams: [STRETCH_SPINE] },
+  spine_resistance_max_flexion_v1: { session_type: 'spine_check', streams: [STRETCH_SPINE] },
 });

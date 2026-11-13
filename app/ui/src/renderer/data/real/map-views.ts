@@ -56,7 +56,11 @@ export function toToday(view: TodayView): TodayData {
     sessionInProgress:
       running === null
         ? null
-        : { sessionId: running.session_id, protocolId: running.protocol_id, startedAt: running.started_at, totalReps: running.total_reps },
+        : { sessionId: running.session_id, protocolId: running.protocol_id, startedAt: running.started_at,
+            plannedSets: running.planned_sets,
+            repsPerSet: running.reps_per_set,
+            totalReps: running.total_reps,
+          },
   };
 }
 
@@ -105,7 +109,10 @@ export function toSession(view: SessionView): SessionData {
     state: view.state,
     protocolId: view.protocol_id,
     band: band === null ? null : { color: band.color, nominalKg: band.nominal_kg },
+    plannedSets: view.planned_sets,
+    repsPerSet: view.reps_per_set,
     totalReps: view.total_reps,
+    restBetweenSetsS: view.rest_between_sets_s,
     restSeconds: view.rest_seconds,
     fitItems: view.fit_items,
     startedAt: view.started_at,
@@ -122,6 +129,10 @@ export function toRepState(view: RepStateView): RepState {
   return {
     rep: view.rep,
     total: view.total,
+    set: view.set,
+    setsTotal: view.sets_total,
+    repsPerSet: view.reps_per_set,
+    repInSet: view.rep_in_set,
     phase: view.phase,
     barPercent: view.progress_pct,
     last: view.last === null ? null : { rep: view.last.rep, seconds: view.last.duration_s },
@@ -137,7 +148,7 @@ export function toEndedRepState(view: RepStateView): RepState {
 /** The last known counter when the stream drops: no phase and no bar (they would be stale), flagged `lost`. Before any state there is nothing to keep, so `null`: no rep 0 is invented. */
 export function toLostRepState(previous: RepState | null): RepState | null {
   if (previous === null) return null;
-  return { rep: previous.rep, total: previous.total, phase: null, barPercent: null, last: previous.last, signal: 'lost' };
+  return { ...previous, phase: null, barPercent: null, signal: 'lost' };
 }
 
 /** The Houston screen: the summary and link of `/houston` plus the queue of `/outbox`. Codes and nulls pass through. */

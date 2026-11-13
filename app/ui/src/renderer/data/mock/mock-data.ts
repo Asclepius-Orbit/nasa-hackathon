@@ -15,8 +15,8 @@ export function todayData(now: Date): TodayData {
     level: 'amber',
     recommendations: ['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01'],
     reasons: [
-      { featureId: 'stretch.lumbar.peak_elongation_mm', deviationZ: 2.4, contribution: 0.31 },
-      { featureId: 'imu.l3.sagittal.rom_deg', deviationZ: -1.5, contribution: 0.22 },
+      { featureId: 'stretch.full_spine.peak_elongation_mm', deviationZ: 2.4, contribution: 0.31 },
+      { featureId: 'imu.t9.sagittal.rom_deg', deviationZ: -1.5, contribution: 0.22 },
       { featureId: 'symptoms.pain_nrs_7d_mean', deviationZ: 1.8, contribution: 0.18 },
     ],
     trust: {
@@ -32,7 +32,7 @@ export function todayData(now: Date): TodayData {
     alsoToday: ['TASK_DAILY_REPORT', 'TASK_ODI'],
     lumbarLengthMm: 2.1,
     lumbarMeasuredAt: new Date(now.getTime() - MEASURED_MIN_AGO * MS_PER_MINUTE).toISOString(),
-    sessionInProgress: { sessionId: SESSION_ID, protocolId: 'lat_pulldown_standing_v1', startedAt, totalReps: 10 },
+    sessionInProgress: { sessionId: SESSION_ID, protocolId: 'lat_pulldown_standing_v1', startedAt, plannedSets: 4, repsPerSet: 15, totalReps: 60 },
   };
 }
 
@@ -92,10 +92,13 @@ export const SESSION: SessionData = {
   sessionId: SESSION_ID,
   state: 'running',
   protocolId: 'lat_pulldown_standing_v1',
-  band: { color: 'blue', nominalKg: 15 },
-  totalReps: 10,
+  band: { color: 'green', nominalKg: 25 },
+  plannedSets: 4,
+  repsPerSet: 15,
+  totalReps: 60,
+  restBetweenSetsS: 30,
   restSeconds: 120,
-  fitItems: ['skin', 'emg', 'imu', 'cord'],
+  fitItems: ['skin', 'emg', 'ground', 'imu', 'cord'],
   startedAt: '2026-11-05T13:38:00Z',
   steps: [
     { id: 'fit', status: 'done' },
@@ -107,8 +110,8 @@ export const SESSION: SessionData = {
   sensorChecks: [
     { stream: 'emg_lat_left', status: 'good', state: 'active' },
     { stream: 'emg_lat_right', status: 'weak', state: 'stalled' },
-    { stream: 'imu_l3', status: 'good', state: 'active' },
-    { stream: 'stretch_lumbar', status: 'good', state: 'active' },
+    { stream: 'imu_t9', status: 'good', state: 'active' },
+    { stream: 'stretch_spine', status: 'good', state: 'active' },
   ],
   calibration: { commandId: 'c0ffee00-0000-4000-8000-000000000004', acked: true, ackedAt: '2026-11-05T13:37:00Z' },
   stretchedCm: null,

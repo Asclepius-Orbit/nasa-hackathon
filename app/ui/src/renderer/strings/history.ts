@@ -10,7 +10,7 @@ export const history = {
   loading: 'Loading history',
   loadFailed: 'The history could not be loaded.',
   lengthTitle: 'Lumbar length change',
-  lengthSub: 'Stretch cord L1 to L5, in mm, against your preflight reference in 1 g.',
+  lengthSub: 'Stretch cord C3 to S1, in mm, against your preflight reference in 1 g.',
   legendRange: 'Your preflight range',
   legendValue: 'Session value',
   legendNoData: 'No data',

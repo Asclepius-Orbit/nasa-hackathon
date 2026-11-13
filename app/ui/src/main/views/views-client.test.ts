@@ -28,7 +28,7 @@ const BODIES = {
     session_id: SESSION,
     astronaut_id: ASTRONAUT,
     state: 'created',
-    protocol_id: 'stretch.lumbar',
+    protocol_id: 'lat_pulldown_standing_v1',
   },
 };
 

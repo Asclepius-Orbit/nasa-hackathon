@@ -24,7 +24,7 @@ it('describes the harness battery and its weak channels', () => {
   expect(harnessValue(null, '')).toBe('Not paired yet');
 });
 it('shows a stale harness as last seen, never its old battery, degraded flag or streams as current', () => {
-  const stale = { batteryPct: 18, degraded: true, weakStreams: [{ stream: 'stretch_lumbar', state: 'stalled' }], stale: true };
+  const stale = { batteryPct: 18, degraded: true, weakStreams: [{ stream: 'stretch_spine', state: 'stalled' }], stale: true };
   expect(harnessValue(stale, '3 Nov 09:58')).toBe('Last seen 3 Nov 09:58 GMT');
 });
 it('labels levels, with no-data explicit', () => {

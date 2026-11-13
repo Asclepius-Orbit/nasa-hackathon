@@ -54,9 +54,11 @@ export const today = {
 export const confidenceValue = (pct: number): string => `${String(pct)} %`;
 export const minutesAgo = (min: number): string => `${String(min)} min ago`;
 
-/** Session in progress with no live rep count: only what the contract gives (start and planned reps). */
-export const inProgressSince = (sinceGmt: string, total: number | null): string =>
-  total === null ? `In progress since ${sinceGmt} GMT.` : `In progress since ${sinceGmt} GMT, ${String(total)} reps.`;
+/** Session in progress with no live rep count: only what the contract gives (start, planned sets and reps). */
+export const inProgressSince = (sinceGmt: string, sets: number | null, repsPerSet: number | null, total: number | null): string => {
+  if (sets !== null && repsPerSet !== null) return `In progress since ${sinceGmt} GMT, ${String(sets)} sets of ${String(repsPerSet)} reps.`;
+  return total === null ? `In progress since ${sinceGmt} GMT.` : `In progress since ${sinceGmt} GMT, ${String(total)} reps.`;
+};
 
 export const inProgressLine = (sinceGmt: string, rep: number, total: number | null): string =>
   total === null || rep > total
@@ -65,8 +67,8 @@ export const inProgressLine = (sinceGmt: string, rep: number, total: number | nu
 
 export const spine = {
   label: (length: string): string =>
-    `Side view of the spine. Lumbar length ${length} against the preflight profile. EMG over the latissimus dorsi on both sides, IMU at L3, stretch cord from L1 to L5.`,
-  caption: 'Side view, back to the right. The cord measures length from L1 to L5; the curve comes from the IMU at L3.',
+    `Side view of the spine. Lumbar length ${length} against the preflight profile. EMG over the latissimus dorsi on both sides, ground on the iliac crest, IMU at T9, stretch cord from C3 to S1.`,
+  caption: 'Side view, back to the right. The cord measures length from C3 to S1; the curve comes from the IMU at T9.',
   noLength: 'No data',
   measured: (day: string): string => `Lumbar length measured ${day}.`,
   cervical: 'Cervical',
@@ -75,9 +77,11 @@ export const spine = {
   emgWhere1: 'latissimus',
   emgWhere2: 'dorsi, L and R',
   cord: 'Stretch cord',
-  cordWhere: 'L1 to L5',
+  cordWhere: 'C3 to S1',
+  gnd: 'GND',
+  gndWhere: 'iliac crest',
   imu: 'IMU',
-  imuWhere: 'at L3',
+  imuWhere: 'at T9',
   preflight: 'Preflight',
   today: 'Today',
 } as const;

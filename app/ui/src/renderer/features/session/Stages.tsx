@@ -113,10 +113,20 @@ export function RepsStage({
       </Panel>
     );
   }
-  return <CountedReps update={update} action={action} onArtifact={onArtifact} />;
+  return <CountedReps update={update} restBetweenSetsS={session.restBetweenSetsS} action={action} onArtifact={onArtifact} />;
 }
 
-function CountedReps({ update, action, onArtifact }: { update: RepsUpdate | null; action: StageAction; onArtifact: () => void }): React.JSX.Element {
+function CountedReps({
+  update,
+  restBetweenSetsS,
+  action,
+  onArtifact,
+}: {
+  update: RepsUpdate | null;
+  restBetweenSetsS: number | null;
+  action: StageAction;
+  onArtifact: () => void;
+}): React.JSX.Element {
   const copy = stages.reps;
   useSessionRecheck(update?.kind === 'locked' ? new Error('locked') : null);
   if (update?.kind === 'unavailable') {
@@ -149,9 +159,17 @@ function CountedReps({ update, action, onArtifact }: { update: RepsUpdate | null
   const { state } = update;
   const ended = state.signal === 'ended';
   const live = state.signal === 'ok';
-  const phaseText = { pulling: copy.pulling, letting_up: copy.lettingUp, resting: copy.resting } as const;
-  // A rep past the planned total ("11 of 10") would contradict itself: the number stands alone.
-  const total = state.total !== null && state.rep <= state.total ? state.total : null;
+  // Sets are known: the big number is the rep inside its set. Otherwise it is the rep of the whole session.
+  const { setsTotal, repsPerSet } = state;
+  const inSets = setsTotal !== null && repsPerSet !== null;
+  const started = state.set > 0 && state.set <= (setsTotal ?? 0);
+  // Resting on the last rep of a set that is not the last one: the recovery between sets, not between reps.
+  const betweenSets = inSets && state.phase === 'resting' && state.repInSet === repsPerSet && state.set < setsTotal;
+  const phaseText = { pulling: copy.pulling, letting_up: copy.lettingUp, resting: betweenSets ? copy.restingBetweenSets : copy.resting } as const;
+  const shown = inSets ? state.repInSet : state.rep;
+  const planned = inSets ? repsPerSet : state.total;
+  // A rep past the planned number ("11 of 10") would contradict itself: the number stands alone.
+  const total = planned !== null && shown <= planned ? planned : null;
   return (
     <Panel className={styles.stage} aria-live="polite" role={live || ended ? undefined : 'status'}>
       {!live && !ended && (
@@ -162,7 +180,7 @@ function CountedReps({ update, action, onArtifact }: { update: RepsUpdate | null
       )}
       <div className={styles.repLine} data-live={live}>
         <span className={styles.repCount}>
-          {state.rep}
+          {shown}
           {total !== null && (
             <>
               {' '}
@@ -174,6 +192,18 @@ function CountedReps({ update, action, onArtifact }: { update: RepsUpdate | null
         {ended && <span className={styles.stale}>{copy.finalCount}</span>}
         {!live && !ended && <span className={styles.stale}>{copy.stale}</span>}
       </div>
+      {inSets && started && (
+        <p className={styles.setLine}>
+          {betweenSets ? (
+            <span>{copy.setDone(state.set, setsTotal, restBetweenSetsS, state.set + 1)}</span>
+          ) : (
+            <>
+              <span>{copy.set(state.set, setsTotal)}</span>
+              {state.total !== null && state.rep <= state.total && <span>{copy.inTotal(state.rep, state.total)}</span>}
+            </>
+          )}
+        </p>
+      )}
       {live && state.phase !== null && state.barPercent !== null && (
         <div
           role="progressbar"

@@ -7,7 +7,15 @@ const PREFLIGHT_SPACING = 31;
 const L1_Y = 306;
 const MIN_MM = -6;
 const MAX_MM = 5;
+/** The cord starts at C3-C4, above the first drawn thoracic vertebra, and ends at L5-S1, just below L5. */
+const CORD_TOP_Y = 38;
+const CORD_X_TOP = 172;
+const T9_Y = 190;
+const IMU_X = 190;
+const IMU_SIZE = 18;
+const GND_X = 214;
 const LUMBAR_X = [174, 165, 158, 155, 156] as const;
+/** Thoracic vertebrae T4 to T12 (top to bottom): [cx, cy, rx, ry]. The IMU sits on T9, the sixth. */
 const THORACIC = [
   [146, 52, 13, 8],
   [143, 78, 13, 8],
@@ -20,7 +28,7 @@ const THORACIC = [
   [180, 274, 18, 10],
 ] as const;
 
-/** Vertical centres of L1 to L5 for a lumbar length change, clamped so the column never leaves the figure. */
+/** Vertical centres of the drawn lumbar vertebrae (L1 to L5) for a lumbar length change, clamped so the column never leaves the figure. */
 export function lumbarCentres(lumbarLengthMm: number): number[] {
   const mm = Math.min(MAX_MM, Math.max(MIN_MM, lumbarLengthMm));
   return LUMBAR_X.map((_, i) => L1_Y + i * (PREFLIGHT_SPACING + mm));
@@ -34,9 +42,9 @@ export function SpineFigure({ lumbarLengthMm, measuredNote = null }: { lumbarLen
   const { formatLength } = useSettings();
   const length = lumbarLengthMm === null ? spine.noLength : formatLength(lumbarLengthMm);
   const y = lumbarCentres(lumbarLengthMm ?? 0);
-  const [l1, , l3, l4, l5] = y as [number, number, number, number, number];
-  const cordTop = l1 - 6;
-  const cordBottom = l5 + 5;
+  const [, , l3, l4, l5] = y as [number, number, number, number, number];
+  const cordTop = CORD_TOP_Y;
+  const cordBottom = l5 + 8;
   const cordY = (f: number): number => cordTop + (cordBottom - cordTop) * f;
   return (
     <figure className={styles.figure}>
@@ -59,25 +67,37 @@ export function SpineFigure({ lumbarLengthMm, measuredNote = null }: { lumbarLen
         </g>
         <path className={styles.sacrum} d="M158 466 C 165 490, 170 510, 172 534" />
         <path className={styles.preflight} d="M150 44 C 140 84, 140 112, 150 142 S 190 250, 178 296 S 118 372, 132 424 S 164 484, 172 514" />
-        <path className={styles.cord} d={`M206 ${n(cordTop)} C 196 ${n(cordY(0.32))}, 186 ${n(cordY(0.65))}, 188 ${n(cordBottom)}`} />
-        <rect className={styles.imu} x="176" y={n(l3 - 9)} width="18" height="18" rx="3" />
-        <circle className={styles.emg} cx="214" cy="232" r="9" />
+        <path
+          className={styles.cord}
+          data-sensor="cord"
+          d={`M${String(CORD_X_TOP)} ${n(cordTop)} C 166 ${n(cordY(0.2))}, 172 ${n(cordY(0.32))}, 190 ${n(cordY(0.42))} S 214 ${n(cordY(0.62))}, 206 ${n(cordY(0.76))} S 188 ${n(l3 + 30)}, 190 ${n(cordBottom)}`}
+        />
+        <rect className={styles.imu} data-sensor="imu" x={IMU_X} y={T9_Y - IMU_SIZE / 2} width={IMU_SIZE} height={IMU_SIZE} rx="3" />
+        <circle className={styles.emg} cx="214" cy="270" r="9" />
+        <circle className={styles.gnd} data-sensor="gnd" cx={GND_X} cy={n(l4 + 6)} r="6" />
         <g className={styles.leader}>
-          <path d="M223 232 H 250" />
-          <path d={`M200 ${n(cordY(0.2))} L 250 ${n(cordTop + 18)}`} />
-          <path d={`M194 ${n(l3)} H 250`} />
+          <path d="M223 270 H 250" />
+          <path d={`M${String(GND_X + 6)} ${n(l4 + 6)} H 250`} />
+          <path d={`M176 ${n(cordY(0.04))} L 250 ${n(cordTop + 18)}`} />
+          <path d={`M${String(IMU_X + IMU_SIZE)} ${String(T9_Y)} H 250`} />
           <path d="M134 52 H 84" />
           <path d={`M132 ${n(l4)} H 92`} />
         </g>
         <g className={styles.labels}>
-          <text x="254" y="228" className={styles.strong}>
+          <text x="254" y="266" className={styles.strong}>
             {spine.emg}
           </text>
-          <text x="254" y="244" className={styles.muted}>
+          <text x="254" y="282" className={styles.muted}>
             {spine.emgWhere1}
           </text>
-          <text x="254" y="258" className={styles.muted}>
+          <text x="254" y="296" className={styles.muted}>
             {spine.emgWhere2}
+          </text>
+          <text x="254" y={n(l4 + 2)} className={styles.strong}>
+            {spine.gnd}
+          </text>
+          <text x="254" y={n(l4 + 18)} className={styles.muted}>
+            {spine.gndWhere}
           </text>
           <text x="254" y={n(cordTop + 14)} className={styles.strong}>
             {spine.cord}
@@ -88,10 +108,10 @@ export function SpineFigure({ lumbarLengthMm, measuredNote = null }: { lumbarLen
           <text x="254" y={n(cordTop + 46)} className={styles.value}>
             {length}
           </text>
-          <text x="254" y={n(l3 - 4)} className={styles.strong}>
+          <text x="254" y={String(T9_Y - 4)} className={styles.strong}>
             {spine.imu}
           </text>
-          <text x="254" y={n(l3 + 12)} className={styles.muted}>
+          <text x="254" y={String(T9_Y + 12)} className={styles.muted}>
             {spine.imuWhere}
           </text>
           <text x="16" y="56" className={styles.muted}>

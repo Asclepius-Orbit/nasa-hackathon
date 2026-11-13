@@ -101,14 +101,14 @@ describe('today, report, session, baseline, oswestry, first day', () => {
     expect(today.level).toBe('amber');
     expect(today.recommendations).toEqual(['REC_LUMBAR_STAB_01', 'REC_SESSION_REPEAT_01']);
     expect(today.reasons.map((r) => r.featureId)).toEqual([
-      'stretch.lumbar.peak_elongation_mm',
-      'imu.l3.sagittal.rom_deg',
+      'stretch.full_spine.peak_elongation_mm',
+      'imu.t9.sagittal.rom_deg',
       'symptoms.pain_nrs_7d_mean',
     ]);
     expect(today.trust).toMatchObject({ confidencePct: 70, dataAvailable: 8, dataTotal: 10, assessedAt: '2026-11-05T12:58:00.000Z' });
     expect(today.lumbarLengthMm).toBe(2.1);
     expect(today.lumbarMeasuredAt).toBe('2026-11-05T13:20:00.000Z');
-    expect(today.sessionInProgress).toMatchObject({ protocolId: 'lat_pulldown_standing_v1', startedAt: '2026-11-05T13:38:00.000Z', totalReps: 10 });
+    expect(today.sessionInProgress).toMatchObject({ protocolId: 'lat_pulldown_standing_v1', startedAt: '2026-11-05T13:38:00.000Z', plannedSets: 4, repsPerSet: 15, totalReps: 60 });
     expect(today.alsoToday).toEqual(['TASK_DAILY_REPORT', 'TASK_ODI']);
   });
 
@@ -116,9 +116,12 @@ describe('today, report, session, baseline, oswestry, first day', () => {
     const s = await data.getSession();
     expect(s).toMatchObject({
       protocolId: 'lat_pulldown_standing_v1',
-      band: { color: 'blue', nominalKg: 15 },
+      band: { color: 'green', nominalKg: 25 },
       stretchedCm: null,
-      totalReps: 10,
+      plannedSets: 4,
+      repsPerSet: 15,
+      totalReps: 60,
+      restBetweenSetsS: 30,
       plannedAt: null,
     });
     expect(s?.steps.map((x) => x.status)).toEqual(['done', 'done', 'done', 'now', 'todo']);
@@ -240,9 +243,21 @@ describe('subscribeReps', () => {
     return { states, stop };
   }
 
-  it('starts at rep 4 of 10, pulling down, last rep 3', () => {
+  it('starts at rep 4 of 60 (set 1 of 4, rep 4 of 15), pulling down, last rep 3', () => {
     const { states } = collect();
-    expect(states).toEqual([{ rep: 4, total: 10, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' }]);
+    expect(states).toEqual([
+      { rep: 4, total: 60, set: 1, setsTotal: 4, repsPerSet: 15, repInSet: 4, phase: 'pulling', barPercent: 60, last: { rep: 3, seconds: 2.3 }, signal: 'ok' },
+    ]);
+  });
+
+  it('rests between two sets on the last rep of the set, then starts the next set at its first rep', () => {
+    const { states } = collect();
+    scheduler.advance(450 * 120);
+    expect(states.at(-1)).toMatchObject({ rep: 15, set: 1, repInSet: 15, phase: 'resting', barPercent: null, last: { rep: 15, seconds: 2.4 } });
+    scheduler.advance(450 * 5);
+    expect(states.at(-1)).toMatchObject({ rep: 15, set: 1, repInSet: 15, phase: 'resting' });
+    scheduler.advance(450);
+    expect(states.at(-1)).toMatchObject({ rep: 16, set: 2, repInSet: 1, phase: 'pulling', last: { rep: 15, seconds: 2.4 } });
   });
 
   it('moves the bar every 450 ms and switches phase at half a cycle', () => {
@@ -255,12 +270,12 @@ describe('subscribeReps', () => {
     expect(states.at(-1)).toMatchObject({ phase: 'letting_up', barPercent: 80 });
   });
 
-  it('counts a rep after a full cycle and stops counting at 10', () => {
+  it('counts a rep after a full cycle and stops counting at the 60th', () => {
     const { states } = collect();
     scheduler.advance(450 * 10);
     expect(states.at(-1)).toMatchObject({ rep: 5, last: { rep: 4, seconds: 2.4 } });
-    scheduler.advance(450 * 10 * 20);
-    expect(states.at(-1)).toMatchObject({ rep: 10 });
+    scheduler.advance(450 * 10 * 100);
+    expect(states.at(-1)).toMatchObject({ rep: 60, set: 4, repInSet: 15 });
   });
 
   it('shares one timer between subscribers and stops it when the last one leaves', () => {

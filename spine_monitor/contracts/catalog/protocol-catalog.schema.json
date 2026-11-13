@@ -59,6 +59,26 @@
           "type": ["integer", "null"],
           "minimum": 0
         },
+        "rep_duration_s": {
+          "description": "Duration of one repetition, in seconds; null for protocols without repetitions. Provisional until Aguado measures it (#106).",
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0
+        },
+        "rest_between_reps_s": {
+          "description": "Pause between two repetitions of a set, in seconds; null for protocols without repetitions. Provisional until Aguado measures it (#106).",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "gap_s": {
+          "description": "Gap, in seconds, between the exercise and the spine check that brackets it (before and after); null for protocols that are not bracketed. Provisional until Aguado measures it (#106).",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "rom_deg": {
+          "description": "Nominal range of motion of the exercise, in degrees; null for protocols without a movement. Provisional until Aguado measures it (#106).",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
         "rest_seconds": {
           "description": "Rest before finishing the session, after the last set; null when the protocol has no rest.",
           "type": ["integer", "null"],
@@ -96,6 +116,7 @@
       },
       "required": [
         "protocol_id", "band", "planned_sets", "reps_per_set", "total_reps", "rest_between_sets_s", "rest_seconds",
+        "rep_duration_s", "rest_between_reps_s", "gap_s", "rom_deg",
         "grip", "tempo", "posture", "fit_items"
       ],
       "additionalProperties": false

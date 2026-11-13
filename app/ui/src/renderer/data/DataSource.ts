@@ -7,6 +7,7 @@ import type {
   DailyContextFields,
   DailyReportFields,
   DeviceStatus,
+  HoustonReportResult,
   OdiAnswer,
   ProfileFields,
   ProtocolId,
@@ -81,6 +82,13 @@ export interface DataSource {
   sendUrgentReport(crewId: string, codes: readonly string[]): Promise<void>;
   /** Logs a call to the crew medical officer, with the session it relates to if any (shows in the Stop screen). */
   logCrewMedicalOfficerCall(sessionId: string | null): Promise<ContactEntry>;
+  /** True when `generateHoustonReport` really makes the PDF; the demo cannot, and Today then says so instead of faking a file. */
+  readonly generatesHoustonReport: boolean;
+  /**
+   * Makes the weekly PDF for Houston (last 7 days), asks where to save it, writes it and opens it. Never rejects: the
+   * outcome is `saved`, `cancelled` or `error`. It is a separate deliverable and does not touch the daily summary.
+   */
+  generateHoustonReport(): Promise<HoustonReportResult>;
   /** The stored profile, or `null` when none is stored yet. Rejects with the bridge error (`locked`, `not_found`, `unavailable`). */
   getProfile(): Promise<AstronautProfile | null>;
   /** Stores the edited part of the profile. Only `ok: true` means stored; a refusal comes back as a result, not a rejection. */

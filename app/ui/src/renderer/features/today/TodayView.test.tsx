@@ -431,3 +431,41 @@ it('shows no profile notice when reading the profile is rejected', async () => {
   });
   expect(screen.queryByText('Add your profile so your assessments can start')).not.toBeInTheDocument();
 });
+
+describe('report for Houston', () => {
+  const NAME = 'houston-report-AST-01-2026-11-01_2026-11-07.pdf';
+
+  function real(api: FakeAsclepiusApi): void {
+    api.viewData.today = example<TodayViewPayload>('ui-today');
+    setup({ api, data: new RealDataSource(api.views, api.reps, api) });
+  }
+  const findButton = (): Promise<HTMLElement> => screen.findByRole('button', { name: 'Generate report for Houston' });
+
+  it('saves the weekly PDF on click, says what was saved, and keeps it apart from the daily summary', async () => {
+    const api = new FakeAsclepiusApi();
+    real(api);
+    await userEvent.click(await findButton());
+    expect(await screen.findByText(`Saved as ${NAME} and opened.`)).toBeInTheDocument();
+    expect(api.calls.filter((c) => c === 'houstonReport.generate')).toHaveLength(1);
+    expect(screen.getByText(/separate file: the daily summary on the Houston screen is not changed/)).toBeInTheDocument();
+  });
+
+  it('says clearly that nothing was saved when it fails or is cancelled, and can be tried again', async () => {
+    const api = new FakeAsclepiusApi();
+    api.houstonReportResult = { status: 'error', reason: 'unavailable' };
+    real(api);
+    await userEvent.click(await findButton());
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nothing was saved. Try again.');
+    expect(await findButton()).toBeEnabled();
+    api.houstonReportResult = { status: 'cancelled' };
+    await userEvent.click(await findButton());
+    expect(await screen.findByText('Not saved: the save window was closed. Nothing was written.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('is off in the demo, with the reason, instead of faking a file', async () => {
+    setup();
+    expect(await findButton()).toBeDisabled();
+    expect(screen.getByText(/Not available in the demo/)).toBeInTheDocument();
+  });
+});

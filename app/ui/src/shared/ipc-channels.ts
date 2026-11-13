@@ -41,6 +41,7 @@ export const IPC_CHANNELS = Object.freeze({
   viewsSession: 'asclepius:views:session',
   viewsHouston: 'asclepius:views:houston',
   viewsOutbox: 'asclepius:views:outbox',
+  houstonReportGenerate: 'asclepius:houston-report:generate',
   repsSubscribe: 'asclepius:reps:subscribe',
   repsUnsubscribe: 'asclepius:reps:unsubscribe',
 } as const);

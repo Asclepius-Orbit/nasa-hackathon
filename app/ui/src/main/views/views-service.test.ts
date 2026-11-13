@@ -31,6 +31,10 @@ function fakeClient(): { client: ViewsClient; calls: string[] } {
     session: (astronautId, id) => view('session', astronautId, id),
     houston: (id) => view('houston', id),
     outbox: (id) => view('outbox', id),
+    houstonReport: async (id) => {
+      await view('houston-report', id);
+      return { fileName: 'houston-report.pdf', bytes: new Uint8Array() };
+    },
   };
   return { client, calls };
 }
@@ -67,6 +71,7 @@ describe('createViewsService', () => {
     await service.session(SESSION);
     await service.houston();
     await service.outbox();
+    await service.houstonReport();
     expect(calls).toEqual([
       'strip:"AST-01","wb-01"',
       'today:"AST-01"',
@@ -75,6 +80,7 @@ describe('createViewsService', () => {
       `session:"AST-01","${SESSION}"`,
       'houston:"AST-01"',
       'outbox:"AST-01"',
+      'houston-report:"AST-01"',
     ]);
   });
 

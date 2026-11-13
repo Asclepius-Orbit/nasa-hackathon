@@ -72,6 +72,10 @@ const api: AsclepiusApi = Object.freeze({
     list: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.contactsList)),
     logOfficerCall: (input) => ipcRenderer.invoke(IPC_CHANNELS.contactsLogOfficerCall, input),
   } satisfies AsclepiusApi['contacts']),
+  // Never rejects: the main process answers with a HoustonReportResult (saved, cancelled or error).
+  houstonReport: Object.freeze({
+    generate: () => ipcRenderer.invoke(IPC_CHANNELS.houstonReportGenerate),
+  } satisfies AsclepiusApi['houstonReport']),
   // Chat with the agent, same bridge rules as the live counter below.
   chat: Object.freeze(createChatBridge(ipcRenderer)),
   // Live push. The bridge hands the callback plain events only: never `ipcRenderer` or Electron's event object.

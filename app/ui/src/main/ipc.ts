@@ -43,6 +43,7 @@ import type { IpcEventLike } from './security/app-url';
 import type { SessionsService } from './sessions/sessions-service';
 import type { CrewStore } from './store/crew-store';
 import type { SettingsStore } from './store/settings-store';
+import type { HoustonReportService } from './views/houston-report-service';
 import type { RepsService } from './views/reps-service';
 import { ViewsError } from './views/views-error';
 import type { ViewsService } from './views/views-service';
@@ -67,6 +68,7 @@ export interface IpcServices {
   urgent: UrgentService;
   contacts: ContactsService;
   chat: ChatService;
+  houstonReport: HoustonReportService;
 }
 
 class UnavailableError extends Error {
@@ -82,7 +84,7 @@ function orUnavailable<T>(value: T | null): T {
 
 export function registerIpc(
   ipcMain: IpcMainLike,
-  { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts, chat }: IpcServices,
+  { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts, chat, houstonReport }: IpcServices,
   isTrustedSender: (event: IpcEventLike) => boolean,
   logError: (error: unknown) => void = console.error,
 ): void {
@@ -188,6 +190,8 @@ export function registerIpc(
   withInput(IPC_CHANNELS.urgentSend, urgentInputSchema, (input) => urgent.send(input));
   withoutInput(IPC_CHANNELS.contactsList, () => contacts.list());
   withInput(IPC_CHANNELS.contactsLogOfficerCall, logOfficerCallInputSchema, (input) => contacts.logOfficerCall(input));
+  // Resolves with a HoustonReportResult (saved, cancelled or error); the service itself never throws.
+  withoutInput(IPC_CHANNELS.houstonReportGenerate, () => houstonReport.generate());
   // Live push: the handlers only start and stop it; events travel on `IPC_EVENT_CHANNELS.repsEvent` (see RepsService).
   withInput(IPC_CHANNELS.repsSubscribe, sessionInputSchema, ({ sessionId }, event) => reps.subscribe(event.sender, sessionId));
   withInput(IPC_CHANNELS.repsUnsubscribe, repsUnsubscribeInputSchema, ({ subscriptionId }, event) => {

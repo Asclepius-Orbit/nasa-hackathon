@@ -442,6 +442,17 @@ describe('Stopped screen data', () => {
   });
 });
 
+describe('Houston report', () => {
+  it('passes the outcome of the bridge through, and a failing bridge is an error, never a rejection', async () => {
+    expect(data.generatesHoustonReport).toBe(true);
+    expect(await data.generateHoustonReport()).toMatchObject({ status: 'saved', opened: true });
+    api.houstonReportResult = { status: 'cancelled' };
+    expect(await data.generateHoustonReport()).toEqual({ status: 'cancelled' });
+    api.rejecting.add('houstonReport.generate');
+    expect(await data.generateHoustonReport()).toEqual({ status: 'error', reason: 'unavailable' });
+  });
+});
+
 describe('reports and urgent', () => {
   const fields = { pain_nrs: 3, stiffness_nrs: 2, pain_locations: [], sleep_hours: null, sleep_quality_nrs: null, red_flags: [], exercise: null };
 

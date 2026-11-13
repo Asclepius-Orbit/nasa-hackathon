@@ -4,9 +4,10 @@
 // constants (`import.meta.env`), never on Electron's "is packaged" flag, which only reflects the exe name. Production
 // bundles therefore do not contain that code at all; `pnpm check:bundle` verifies it.
 import { readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { app, BrowserWindow, ipcMain, Menu, protocol, safeStorage, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, safeStorage, session, shell } from 'electron';
 
 import { authStateSchema, createAuthService } from './auth/auth-service';
 import { createPinHasher } from './auth/pin';
@@ -33,6 +34,7 @@ import { createChatService } from './chat/chat-service';
 import { createChatStreamClient } from './chat/chat-stream';
 import { resolveAgentToken, resolveBackendToken } from './views/backend-auth';
 import { BACKEND_URL_ENV, resolveBackendUrl } from './views/backend-url';
+import { createHoustonReportService } from './views/houston-report-service';
 import { createRepsService } from './views/reps-service';
 import { createRecordsClient } from './views/records-client';
 import { createRepsStreamClient } from './views/reps-stream';
@@ -137,9 +139,20 @@ if (!app.requestSingleInstanceLock()) {
     const reports = createReportsService({ auth, records, writer, dailyContext });
     const urgent = createUrgentService({ auth, crew, writer, now: Date.now });
     const contacts = createContactsService({ auth, records, writer });
+    const houstonReport = createHoustonReportService({
+      views,
+      // The save dialog belongs to the window that asked, so it cannot hide behind it.
+      showSaveDialog: (defaultName) => {
+        const options = { title: 'Save the report for Houston', defaultPath: defaultName, filters: [{ name: 'PDF', extensions: ['pdf'] }] };
+        return mainWindow === null ? dialog.showSaveDialog(options) : dialog.showSaveDialog(mainWindow, options);
+      },
+      writeFile: (path, bytes) => writeFile(path, bytes),
+      openPath: (path) => shell.openPath(path),
+      logError: console.error,
+    });
     registerIpc(
       ipcMain,
-      { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts, chat },
+      { crew, auth, settings, views, reps, profile, dailyContext, devices, harness, sessions, reports, urgent, contacts, chat, houstonReport },
       createSenderGuard(policy),
     );
 

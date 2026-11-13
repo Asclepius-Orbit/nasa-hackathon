@@ -7,7 +7,7 @@ import type { BaselineView, HistoryView, HoustonView, OutboxView, SessionView, S
 import type { FirstDayResult, ViewRange } from '../../shared/api';
 import type { AuthService } from '../auth/auth-service';
 import type { CrewStore } from '../store/crew-store';
-import type { ViewsClient } from './views-client';
+import type { HoustonReportPdf, ViewsClient } from './views-client';
 import { ViewsError } from './views-error';
 
 export interface ViewsService {
@@ -20,6 +20,8 @@ export interface ViewsService {
   session(sessionId: string): Promise<SessionView>;
   houston(): Promise<HoustonView>;
   outbox(): Promise<OutboxView>;
+  /** The weekly PDF for Houston of the unlocked astronaut. */
+  houstonReport(): Promise<HoustonReportPdf>;
 }
 
 export interface ViewsServiceOptions {
@@ -62,6 +64,7 @@ export function createViewsService({ auth, crew, client }: ViewsServiceOptions):
     },
     houston: async () => client.houston(await astronaut()),
     outbox: async () => client.outbox(await astronaut()),
+    houstonReport: async () => client.houstonReport(await astronaut()),
     async session(sessionId) {
       return client.session(await astronaut(), sessionId);
     },

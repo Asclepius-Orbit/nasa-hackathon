@@ -22,6 +22,7 @@ import { createReportsService } from './reports/reports-service';
 import { createUrgentService } from './reports/urgent-service';
 import { createSessionsService } from './sessions/sessions-service';
 import type { ChatService } from './chat/chat-service';
+import { createHoustonReportService } from './views/houston-report-service';
 import type { RepsService } from './views/reps-service';
 import type { ViewsClient } from './views/views-client';
 import { ViewsError } from './views/views-error';
@@ -85,6 +86,8 @@ let fs: FlakyFs;
 let ipc: FakeIpcMain;
 let services: IpcServices;
 let logged: unknown[];
+/** What the fake save dialog was offered and what was written. */
+let saved: { dialogs: string[]; written: [string, number][] };
 /** Fake of the backend HTTP client: remembers the arguments and answers (or fails) as told. */
 let backend: { calls: unknown[][]; failWith: Error | null };
 /** Fake of the repetition service: remembers what the handlers ask of it. */
@@ -154,6 +157,10 @@ function fakeViewsClient(): ViewsClient {
     session: (astronautId, id) => view('session', astronautId, id),
     houston: (id) => view('houston', id),
     outbox: (id) => view('outbox', id),
+    houstonReport: (id) => {
+      backend.calls.push(['houstonReport', id]);
+      return Promise.resolve({ fileName: 'houston-report.pdf', bytes: new Uint8Array([1]) });
+    },
   };
 }
 
@@ -177,6 +184,7 @@ beforeEach(async () => {
   const views = createViewsService({ auth, crew, client: fakeViewsClient() });
   records = new FakeBackend();
   ensured = [];
+  saved = { dialogs: [], written: [] };
   const clock = new FakeClock();
   const dailyContextService = createDailyContextService({ auth, records: records.records, writer: records.writer, now: clock.now });
   const dailyContext = {
@@ -201,6 +209,18 @@ beforeEach(async () => {
     reports: createReportsService({ auth, records: records.records, writer: records.writer, dailyContext }),
     urgent: createUrgentService({ auth, crew, writer: records.writer, now: clock.now }),
     contacts: createContactsService({ auth, records: records.records, writer: records.writer }),
+    houstonReport: createHoustonReportService({
+      views,
+      showSaveDialog: (name) => {
+        saved.dialogs.push(name);
+        return Promise.resolve({ canceled: false, filePath: join('chosen', name) });
+      },
+      writeFile: (path, bytes) => {
+        saved.written.push([path, bytes.length]);
+        return Promise.resolve();
+      },
+      openPath: () => Promise.resolve(''),
+    }),
   };
   ipc = new FakeIpcMain();
   logged = [];
@@ -249,6 +269,8 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.viewsHouston, ['AST-02']],
     [IPC_CHANNELS.viewsOutbox, [{ astronautId: 'AST-02' }]],
     [IPC_CHANNELS.viewsToday, [{}]],
+    [IPC_CHANNELS.houstonReportGenerate, ['AST-02']],
+    [IPC_CHANNELS.houstonReportGenerate, [{ path: '/tmp/x.pdf' }]],
     [IPC_CHANNELS.viewsBaseline, ['AST-02']],
     [IPC_CHANNELS.viewsFirstDay, [{ astronautId: 'AST-02' }]],
     [IPC_CHANNELS.viewsHistory, []],
@@ -443,6 +465,14 @@ describe('views channels', () => {
       ['houston', 'AST-01'],
       ['outbox', 'AST-01'],
     ]);
+  });
+
+  it('generates the Houston report for the unlocked astronaut and saves it where the dialog says, never as a rejection', async () => {
+    expect(await call(IPC_CHANNELS.houstonReportGenerate)).toEqual({ status: 'error', reason: 'locked' });
+    await unlock();
+    expect(await call(IPC_CHANNELS.houstonReportGenerate)).toEqual({ status: 'saved', fileName: 'houston-report.pdf', opened: true });
+    expect(backend.calls).toEqual([['houstonReport', 'AST-01']]);
+    expect(saved).toEqual({ dialogs: ['houston-report.pdf'], written: [[join('chosen', 'houston-report.pdf'), 1]] });
   });
 
   it('adds the crew first name to first-day', async () => {

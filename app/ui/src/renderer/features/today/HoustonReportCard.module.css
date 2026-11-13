@@ -1,0 +1,6 @@
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l); padding: 18px 20px; margin: 16px 0; }
+.card h2 { color: var(--muted); font-size: 1rem; margin: 0 0 6px; }
+.card p { margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 1rem; }
+.note:empty { margin: 0; }
+.note[data-failed="true"] { color: var(--urgent); font-weight: 700; }

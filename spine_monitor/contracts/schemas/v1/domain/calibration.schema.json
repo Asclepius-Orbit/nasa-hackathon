@@ -35,7 +35,7 @@
     },
     "stretch_calibration": {
       "title": "StretchCalibration",
-      "description": "Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDIENTE medición Aguado: until the cord is measured with an ohmmeter, curve and rest values are placeholders.",
+      "description": "Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. A resistance of 350 ohm is the resistance of one inch of cord at rest, not a 2.54 cm deformation: elongation is derived from the change against rest_resistance_ohm through the measured curve. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDIENTE medición Aguado: until the cord is measured with an ohmmeter, curve and rest values are placeholders.",
       "allOf": [
         { "$ref": "#/$defs/calibration_base" },
         {

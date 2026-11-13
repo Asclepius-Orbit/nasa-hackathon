@@ -15,6 +15,13 @@ from spine_contracts import topics
 from spine_contracts.models.common_schema import Muscle, Side
 from spine_contracts.models.telemetry.stream_chunk_schema import SignalKind
 
+DEFAULT_STRETCH_CURVE_FACTORS = (1.0, 1.25, 1.5, 1.75, 2.0)
+"""Curva "Adafruit 519 escalada desde R0": aproximación lineal R = R0 · L / L0 con puntos en L0 · factor.
+
+Valor por defecto sin medir (PENDIENTE medición Aguado); se cambia con SPINE_GATEWAY_STRETCH_CURVE_FACTORS al medir el
+cordón. El cordón no es lineal y tiene histéresis.
+"""
+
 
 def _matches(kind: str, value: str, pattern: re.Pattern[str]) -> str:
     # Mismas expresiones que usa `topics` para construir topics: un id válido aquí nunca rompe un topic.
@@ -85,8 +92,18 @@ class GatewaySettings(BaseSettings):
     # PENDIENTE medición Aguado (ohmímetro): ~650 mm es el cordón C3->S1 del protocolo (region full_spine), un marcador de
     # posición hasta que se mida; la curva por defecto de calibration.py tampoco está medida.
     stretch_rest_length_mm: float = Field(default=650.0, gt=0)
+    # Puntos de la curva del cordón como múltiplos de (R0, L0): el primero es 1.0 (el reposo) y crecen estrictamente.
+    # PENDIENTE medición Aguado: valor por defecto sin medir. En .env como lista JSON: [1.0, 1.25, 1.5].
+    stretch_curve_factors: tuple[float, ...] = DEFAULT_STRETCH_CURVE_FACTORS
     # Ventana (ms) del RMS deslizante de la calibración emg_mvc; 250 ms como el ejemplo del contrato.
     emg_mvc_window_ms: int = Field(default=250, gt=0)
+
+    @field_validator("stretch_curve_factors")
+    @classmethod
+    def _stretch_curve_factors(cls, value: tuple[float, ...]) -> tuple[float, ...]:
+        if len(value) < 2 or value[0] != 1.0 or any(b <= a for a, b in zip(value, value[1:], strict=False)):
+            raise ValueError("stretch_curve_factors must have at least two points, start at 1.0 and rise strictly")
+        return value
 
     @field_validator("astronaut_id")
     @classmethod

@@ -144,6 +144,7 @@ Todas las variables llevan el prefijo `SPINE_GATEWAY_` y son opcionales; `.env.e
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Ganancia del módulo EMG; los mV se dividen entre ella. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | Qué entrega el módulo EMG al ADC: `raw`, `rectified` o `envelope`. El valor por defecto es una suposición, no está confirmado con la placa (ver abajo). |
 | `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Longitud (mm) del cordón en reposo, usada por la calibración `stretch`. PENDIENTE medición Aguado (ohmímetro): marcador de ~650 mm para el cordón C3->S1 (#12). |
+| `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` | `[1.0, 1.25, 1.5, 1.75, 2.0]` | Puntos de la curva del cordón como múltiplos de (R0, L0), en lista JSON: empieza en 1.0 y crece estrictamente. PENDIENTE medición Aguado (ohmímetro): valor por defecto sin medir. |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Ventana (ms) del RMS deslizante de la calibración `emg_mvc`. |
 
 El protocolo declara dos módulos EMG (dorsal ancho izquierdo/derecho) pero el hardware y el gateway actuales publican uno (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) hasta que Polfer confirme el hardware (#13).

@@ -66,6 +66,7 @@ the first start without one. `/health` and the read-only API need no token.
 | POST | `/ui/sessions/{session_id}/stop` | `stop_session` with a reason. `aborted_pain` takes an optional `rep_index` (422 with any other reason): the session gets a `pain_reported` event with the repetition and the instant, the ground summary of the day shows it (`pain_stop`) and an /assess is requested |
 | GET | `/ui/sessions/{session_id}/reps` | Server-sent events with the live repetition counter (`ui-openapi.yaml`): `state` at each change, `end` when the session ends |
 | GET | `/ui/commands/{command_id}` | Command state and acks (the UI polls it to move to the next step) |
+| GET | `/ui/crew/{astronaut_id}/houston-report.pdf?end=YYYY-MM-DD` | PDF report for Houston of the last 7 UTC days ending on `end` (default today; 422 `invalid_range` if in the future). `Content-Disposition: attachment; filename="houston-report-<id>-<start>_<end>.pdf"`. Only that week: daily reports, red flags and urgent symptoms as codes (never free-text notes), latest Oswestry (informative), sessions with their measures and the engine assessments (level, confidence, drivers, `REC_*`, escalation, `RULE_*`). No MCP or agent text and no profile data, only the pseudonymous id. An empty week still gives a PDF that says `No data` (never green). Built in `monitor/report/` (`week.py` pure data, `charts.py` matplotlib/Agg, `houston_pdf.py` reportlab) |
 | GET | `/health` | Liveness, MQTT connection and message counters |
 
 ## Read-only API for the MCP server (`readonly.py`)

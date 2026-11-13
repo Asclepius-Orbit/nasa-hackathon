@@ -18,10 +18,12 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
   PINs stay in the UI.
 - Medical contacts (`POST/GET /ui/crew/{id}/contacts`): calls to the crew medical officer; each one requeues the ground summary
   of its day. A stop for pain (`aborted_pain`, with the repetition) and an urgent report also requeue it and ask for /assess.
+- Houston weekly report (`GET /ui/crew/{id}/houston-report.pdf`, `ui-openapi.yaml`): PDF of the last seven UTC days, built by `monitor.report`.
 - Export (`GET /ui/crew/{id}/export`): everything stored for the astronaut but the raw chunks, for the ground or the end of the mission.
 - Every route needs the shared token and, when it is about one astronaut, that astronaut unlocked (`monitor.ui_auth`).
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -43,6 +45,8 @@ from monitor.ground.link import GroundWindows, link_state
 from monitor.live.stream import RepEventResponse, RepStream
 from monitor.live.tracker import has_live_reps
 from monitor.models import CalibrateBody, EventBody, StopBody
+from monitor.report.houston_pdf import render_pdf
+from monitor.report.week import build_week_report, week_start
 from monitor.settings import AppSettings
 from monitor.ui_auth import AuthProblem
 from monitor.views.baseline import build_baseline, build_first_day
@@ -599,6 +603,31 @@ def build_router(
         items = store.ground_outbox_items(astronaut_id, OUTBOX_VIEW_LIMIT)
         view = build_outbox(astronaut_id, items, link_state(views.ground_windows, clock()), store.last_ground_contact(astronaut_id))
         return _conforming("app/ui-outbox", view)
+
+    @router.get("/crew/{astronaut_id}/houston-report.pdf")
+    async def houston_report(astronaut_id: str, end: date | None = None) -> Response:
+        _astronaut(astronaut_id)
+        now = clock()
+        last = now.date() if end is None else end
+        if last > now.date():
+            raise Problem(422, f"end ({last}) is in the future", type_="invalid_range")
+        first = week_start(last)
+        start, stop = day_span(first, last)
+        launch = launch_date_of(store.profile(astronaut_id))
+        week = build_week_report(
+            astronaut_id,
+            first,
+            last,
+            now,
+            lambda day: None if launch is None else mission_day_of(launch, day),
+            store.assessments_between(astronaut_id, start, stop),
+            store.self_reports_between(astronaut_id, start, stop),
+            store.session_rows(astronaut_id, start=start, end=stop),
+            store.feature_sets_between(astronaut_id, start - _DAY, stop + _DAY),
+        )
+        pdf = await asyncio.to_thread(render_pdf, week)  # matplotlib and reportlab are CPU work: off the event loop
+        name = f"houston-report-{astronaut_id}-{first}_{last}.pdf"
+        return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     def known_session(session_id: str) -> SessionRow:
         try:

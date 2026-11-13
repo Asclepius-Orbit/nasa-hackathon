@@ -36,11 +36,14 @@ the rest of the stack and open <http://localhost:6080/vnc.html>:
 
 ```bash
 sh app/mosquitto/setup.sh                                          # once: broker credentials in app/.env
+export SPINE_APP_UI_TOKEN="$(openssl rand -hex 24)"
+export SPINE_UI_VNC_PASSWORD="$(openssl rand -hex 4)"             # save this password for noVNC
 docker compose -f app/docker-compose.yml --profile sim --profile ui up -d --build
 ```
 
 The container forwards `127.0.0.1:8000` to the backend service, because the main process only accepts loopback URLs, and
-reads the `/ui` token from the backend's data volume. Crew and PIN state live in the `ui_data` volume. Chromium runs
+shares `SPINE_APP_UI_TOKEN` with the backend. Both variables are required for the UI profile; use the same values on
+subsequent starts. noVNC asks for `SPINE_UI_VNC_PASSWORD` (VNC uses eight characters). Crew and PIN state live in the `ui_data` volume. Chromium runs
 with `--no-sandbox` (the container is the boundary) and `--password-store=basic` (no keyring). Pass
 `--build-arg BUILD_MODE=e2e-real` to seed the demo crew.
 

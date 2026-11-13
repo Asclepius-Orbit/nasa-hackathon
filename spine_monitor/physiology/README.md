@@ -25,7 +25,7 @@ Every numeric parameter, physiological or technical, is mandatory and comes from
 | `crew` | per astronaut: ids, `latent_multipliers`, `exercise_adherence`, baseline (cord rest length, EMG MVC per stream) and the `AstronautProfile` |
 | `device` | firmware, link, daily power on/off (UTC), battery, temperature, status and clock-sync intervals, streams with their placement |
 | `protocols` | exercise protocols (sets x reps per set, rest between sets, durations, %MVC, ROM, load; the example is the standing lat pulldown, green band 25 kg, 4 x 15) and spine-check protocols |
-| `schedule` | sessions per day (`time_utc`, jitter, phases, `every_n_days`; a spine check may instead use `bracket: {phase: pre|post, of, gap_s}` to run right before/after the exercise, linked to it by `phase` and `related_session_id`) and the optional background monitoring window (`background.chunk_ms`, required: chunk duration of the background IMU + stretch stream, separate from `signals.chunk_ms`; the example uses 1000 ms) |
+| `schedule` | sessions per day (`time_utc`, jitter, phases, `every_n_days`; a spine check may instead use `bracket: {phase: pre\|post, of, gap_s}` to run right before/after the exercise, linked to it by `phase` and `related_session_id`) and the optional background monitoring window (`background.chunk_ms`, required: chunk duration of the background IMU + stretch stream, separate from `signals.chunk_ms`; the example uses 1000 ms) |
 | `calibration` | stretch, EMG MVC and IMU calibrations: periodicity, noise, points |
 | `curves` | typical trajectory of the four daily latents by mission day (piecewise points), `daily_sd` and `dose_drift_per_day` |
 | `signals` | `chunk_ms` and the synthesis of EMG, IMU and stretch (rates, noise, filters, ADC, hysteresis...) |

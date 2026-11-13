@@ -57,7 +57,7 @@ the first start without one. `/health` and the read-only API need no token.
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Astronaut profile |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Daily context |
 | POST | `/ui/crew/{astronaut_id}/self-reports` | Daily, weekly ODI or red flag (with `other_symptoms`: `very_severe_pain`, `other`, kept apart from the red flags until Aguado decides how they are triaged); returns the report and the new assessment (or why it was skipped). Same `report_id` again is idempotent |
-| GET | `/ui/crew/{astronaut_id}/self-reports/due` | Whether the daily report and the weekly ODI are due; red flags are always available |
+| GET | `/ui/crew/{astronaut_id}/self-reports/due` | Whether the daily report and the weekly ODI are due; red flags are always available. The Oswestry is stored and shown (Oswestry screen, history) but does not score risk: the engine, the risk model and the rules ignore it. Whether it goes in the Houston summary is pending (#85); `ground-summary` has no ODI field for now |
 | POST | `/ui/crew/{astronaut_id}/sessions` | Session plan (device, type, protocol, streams, load...) -> `start_session`. `mission_context` defaults to today's daily context |
 | GET | `/ui/sessions/{session_id}` | Session, state (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) and feature set |
 | POST | `/ui/sessions/{session_id}/reprocess` | Only for `processing_failed` (409 otherwise, 404 unknown): resets the attempts, moves it to `ended` and processes it in the background. 202 `{"session": id, "state": "ended"}`. The only way to re-run a session that failed for good or before attempts were tracked |

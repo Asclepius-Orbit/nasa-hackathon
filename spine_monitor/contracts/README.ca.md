@@ -28,7 +28,7 @@ Contractes de dades compartits per tots els components: gateway del wearable, br
 - **EMG** (1 canal diferencial, mV, 1000 Hz): activitat muscular, per comparar Terra i microgravetat amb el mateix exercici estandarditzat.
 - **IMU MPU-6050** (accel en g, gyro en deg/s, 100 Hz per defecte): moviment de l'esquena durant l'exercici.
 - **Cordó d'estirament** (comptes ADC, ohm, longitud derivada en mm, 20 Hz): elongació de la columna.
-- **Autoinforme**: dolor (NRS 0-10), localització, rigidesa, son, Oswestry setmanal, banderes vermelles.
+- **Autoinforme**: dolor (NRS 0-10), localització, rigidesa, son, Oswestry setmanal, banderes vermelles. L'Oswestry es desa i es mostra (pantalla Oswestry, historial) però no puntua risc: el motor, el model de risc i les regles l'ignoren. Si entra al resum de Houston està pendent (#85); `ground-summary` no té camp d'ODI per ara.
 - **Context**: fase de missió, entorn de gravetat, medicació, exercici i contramesures.
 - **Perfil**: edat, sexe biològic, antropometria, història de columna i espacial, forma física.
 

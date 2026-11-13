@@ -179,7 +179,7 @@ export interface DailyReportFields {
   exercise: { modality: 'ared' | 'cevis' | 't2' | 'other'; duration_min: number } | null;
 }
 
-/** One answered Oswestry item: `score` 0-5. The item set is provisional; the engine does not use it (`symptoms.odi_pct` left the catalog in #11). */
+/** One answered Oswestry item: `score` 0-5. The item set is provisional; the engine does not use it. */
 export interface OdiAnswer {
   item_id: string;
   score: number;

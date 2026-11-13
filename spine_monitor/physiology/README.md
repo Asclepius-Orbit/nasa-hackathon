@@ -192,6 +192,6 @@ Tests that need a real broker are marked `mosquitto` and are skipped when nothin
 ## Known limits
 
 - Background volume: with `schedule.background.chunk_ms` at 1000 ms, every background hour is about 3 600 chunks per stream (10x fewer than with 100 ms chunks); it still scales with the window. The example config limits the background to one hour a day.
-- The weekly ODI questionnaire is deferred: only the daily self-report is generated.
+- The weekly ODI questionnaire is informational: the simulator does not generate it and it never scores risk; only the daily self-report is generated.
 - Sessions, self-reports, daily context, profiles and ground truth have no MQTT topic: they only exist in JSONL (domain objects never go to the bus). Calibrations do go to the bus.
 - Every number in the example config is a placeholder, not a clinical reference.

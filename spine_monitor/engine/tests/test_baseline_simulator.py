@@ -12,13 +12,14 @@ los tests no se importan entre sí por nombre.
 import copy
 import importlib.util
 import json
+from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from spine_contracts import catalog, validation
+from spine_contracts import Level, catalog, validation
 from spine_engine.api import create_default_app
 
 _SPEC = importlib.util.spec_from_file_location("_stretch_simulator", Path(__file__).with_name("test_features_stretch_simulator.py"))
@@ -77,19 +78,61 @@ def _split() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     return sets[:cut], sets[cut:]
 
 
-def _baseline(client: TestClient, feature_sets: list[dict[str, Any]]) -> dict[str, Any]:
-    response = client.post("/baseline", json={"schema_version": "1.0.0", "astronaut_id": feature_sets[0]["astronaut_id"], "feature_sets": feature_sets})
+def _baseline(client: TestClient, feature_sets: list[dict[str, Any]], self_reports: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    body = {"schema_version": "1.0.0", "astronaut_id": feature_sets[0]["astronaut_id"], "feature_sets": feature_sets}
+    if self_reports is not None:
+        body["self_reports"] = self_reports
+    response = client.post("/baseline", json=body)
     assert response.status_code == 200, response.text
     body = response.json()
     assert validation.errors("domain/baseline", body) == []
     return body
 
 
-def _assess(client: TestClient, baseline: dict[str, Any], feature_sets: list[dict[str, Any]]) -> dict[str, Any]:
+def _normal_context(feature_sets: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    """(daily self-reports, daily context, as_of) of the simulated days: the example's own report, repeated each day.
+
+    The report values and the context come from the contract example (no clinical value of its own); only the ids, the
+    timestamps and the gravity environment are adapted so that every day has one report before its sessions and the
+    baseline and the new session see the same normal self-reports.
+    """
+    example = json.loads(ASSESS_EXAMPLE.read_text(encoding="utf-8"))
+    ends = [datetime.fromisoformat(fs["window"]["end"]) for fs in feature_sets]
+    days = sorted({end.date() for end in ends})
+    reports = []
+    for index, day in enumerate(days):
+        report = copy.deepcopy(example["self_reports"][0])
+        report["report_id"] = f"5e1f0e90-0000-4000-8000-{index:012d}"
+        report["timestamp"] = datetime.combine(day, datetime.min.time(), tzinfo=ends[0].tzinfo).replace(hour=8).isoformat()
+        report.pop("mission_day", None)
+        reports.append(report)
+    as_of = max(ends) + timedelta(minutes=5)
+    context = copy.deepcopy(example["daily_context"][0])
+    context.update(date=as_of.date().isoformat(), gravity_environment=GRAVITY, phase="preflight")
+    context.pop("mission_day", None)
+    return reports, [context], as_of.isoformat()
+
+
+def _assess(
+    client: TestClient,
+    baseline: dict[str, Any],
+    feature_sets: list[dict[str, Any]],
+    *,
+    self_reports: list[dict[str, Any]] | None = None,
+    daily_context: list[dict[str, Any]] | None = None,
+    as_of: str | None = None,
+) -> dict[str, Any]:
     request = json.loads(ASSESS_EXAMPLE.read_text(encoding="utf-8"))
     request.update(baseline=baseline, feature_sets=feature_sets, astronaut_id=baseline["astronaut_id"])
     request.pop("self_reports", None)
     request.pop("daily_context", None)
+    request.pop("mission_day", None)
+    if self_reports is not None:
+        request["self_reports"] = self_reports
+    if daily_context is not None:
+        request["daily_context"] = daily_context
+    if as_of is not None:
+        request["as_of"] = as_of
     response = client.post("/assess", json=request)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -115,23 +158,48 @@ def test_the_baseline_is_built_from_the_extracted_features_of_the_normal_session
     assert baseline["version"] == 1
 
 
+def _missing(assessment: dict[str, Any]) -> list[str]:
+    return [item["what"] for item in assessment["completeness"]["missing"]]
+
+
 @pytest.mark.integration
-def test_a_further_normal_session_does_not_deviate_from_the_real_baseline() -> None:
+def test_a_further_normal_session_with_normal_self_reports_is_green_and_misses_nothing_computed_elsewhere() -> None:
     client = TestClient(create_default_app())
     reference, held_out = _split()
-    baseline = _baseline(client, reference)
+    reports, context, as_of = _normal_context([*reference, *held_out])
+    baseline = _baseline(client, reference, reports)
 
-    # como en el uso real, /assess recibe el histórico reciente y la sesión nueva
-    assessment = _assess(client, baseline, [*reference, *held_out])
+    # como en el uso real, /assess recibe el histórico reciente, la sesión nueva y los autoinformes
+    assessment = _assess(client, baseline, [*reference, *held_out], self_reports=reports, daily_context=context, as_of=as_of)
 
     assert assessment["risk_score"] == 0.0
     assert assessment["drivers"] == []
     assert assessment["based_on"]["baseline_id"] == baseline["baseline_id"]
-    # El nivel no es verde, pero no por desviación: la regla de datos incompletos salta porque la completitud < 1 (no hay
-    # autoinformes y cada spine_check omite las features de repeticiones que el ejercicio sí calcula). Ninguna otra regla.
-    assert {r["rule_id"] for r in assessment["fired_rules"]} <= {INCOMPLETE_DATA_RULE}
+    assert assessment["level"] == Level.GREEN.value
+    assert assessment["fired_rules"] == []
     evaluated = {d["domain"] for d in assessment["domains"] if d["evaluated"]}
     assert {"kinematics", "spine_length"} <= evaluated
+    missing = _missing(assessment)
+    assert not [what for what in missing if what.startswith(("exercise.", "imu."))]
+    # a feature one set skipped but another computed is not missing
+    computed = {f["feature_id"] for fs in [*reference, *held_out] for f in fs["features"]}
+    assert computed.isdisjoint(missing)
+
+
+@pytest.mark.integration
+def test_without_self_reports_only_the_symptom_features_are_missing() -> None:
+    client = TestClient(create_default_app())
+    reference, held_out = _split()
+    baseline = _baseline(client, reference)
+
+    assessment = _assess(client, baseline, [*reference, *held_out])
+
+    assert assessment["risk_score"] == 0.0
+    assert assessment["drivers"] == []
+    missing = _missing(assessment)
+    assert missing
+    assert all(what.startswith("symptoms.") for what in missing)
+    assert {r["rule_id"] for r in assessment["fired_rules"]} <= {INCOMPLETE_DATA_RULE}
 
 
 @pytest.mark.integration

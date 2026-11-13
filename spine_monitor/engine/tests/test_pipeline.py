@@ -107,11 +107,26 @@ def test_calibration_expired_counts_as_missing_data():
 
 def test_insufficient_sample_rate_counts_as_missing_data():
     req = request()
+    # The example set computes this feature, so it has to leave `features` for the skip to count.
+    req.feature_sets[0].features = [f for f in req.feature_sets[0].features if f.feature_id != "imu.t9.sagittal.rom_deg"]
     req.feature_sets[0].skipped = [SkippedItem(feature_id="imu.t9.sagittal.rom_deg", reason="insufficient_sample_rate")]
 
     completeness = stub_pipeline().evaluate(req).completeness
 
     assert MissingItem(what="imu.t9.sagittal.rom_deg", reason=MissingReason.NO_DATA) in completeness.missing
+
+
+def test_a_feature_computed_by_one_set_and_skipped_by_another_is_not_missing():
+    req = request()
+    computed_id = "emg.latissimus_dorsi.left.rms_pct_mvc"
+    assert computed_id in {f.feature_id for f in req.feature_sets[0].features}
+    sibling = req.feature_sets[0].model_copy(update={"features": [], "skipped": [SkippedItem(feature_id=computed_id, reason="stream_missing")]})
+    req.feature_sets.append(sibling)
+
+    completeness = stub_pipeline().evaluate(req).completeness
+
+    assert computed_id not in {item.what for item in completeness.missing}
+    assert completeness.score == pytest.approx(4 / 9)
 
 
 def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():

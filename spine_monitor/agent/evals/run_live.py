@@ -380,7 +380,8 @@ def _case_id(report_case: Any) -> str:
 
 
 async def _benchmark_model(model: str, base_url: str, repeat: int) -> tuple[list[RunRecord], list[Diagnostic]]:  # pragma: no cover  (real Ollama)
-    settings = AgentSettings(model=model, ollama_base_url=base_url)
+    # The eval expectations are demo-specific (AST-01 amber, fixed ids): pin the demo dataset, not the real app and engine.
+    settings = AgentSettings(model=model, ollama_base_url=base_url, mcp_args=["-m", "spine_mcp_server", "--dataset", "demo"])
     fallback = McpStatusSource(settings)
 
     async def task(inputs: EvalInput) -> AgentRun:

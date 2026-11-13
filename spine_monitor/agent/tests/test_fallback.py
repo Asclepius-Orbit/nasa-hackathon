@@ -74,3 +74,16 @@ async def test_no_subprocess_is_left_running(tmp_path: Path, pid_wrapper_args: C
     source = McpStatusSource(_settings(args=pid_wrapper_args(pid_file)))
     assert await source.current_status("AST-01") is not None
     assert not pid_alive(int(pid_file.read_text()))
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_the_server_subprocess_sees_the_app_and_engine_urls_of_this_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env_wrapper_args: Callable[[Path], list[str]]
+):
+    monkeypatch.setenv("SPINE_APP_URL", "http://read-api.test:8002")
+    monkeypatch.setenv("SPINE_ENGINE_URL", "http://engine.test:8001")
+    env_file = tmp_path / "server.env"
+    source = McpStatusSource(_settings(args=env_wrapper_args(env_file)))
+    assert await source.current_status("AST-01") is not None
+    assert env_file.read_text().splitlines() == ["http://read-api.test:8002", "http://engine.test:8001"]

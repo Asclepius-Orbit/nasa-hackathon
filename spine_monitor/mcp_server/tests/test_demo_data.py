@@ -211,9 +211,9 @@ async def test_tools_answer_over_the_demo_data_and_unknown_astronaut_is_a_tool_e
     assert not simulated.is_error, simulated.content
 
 
-def test_flags_default_to_the_demo_dataset_and_wall_clock(now: datetime):
+def test_flags_default_to_the_http_dataset_and_wall_clock(now: datetime):
     args = parse_args([])
-    assert (args.dataset, args.now) == ("demo", None)
+    assert (args.dataset, args.now) == ("http", None)
 
 
 def test_flags_pick_dataset_and_pin_the_clock(now: datetime):
@@ -232,7 +232,7 @@ def test_flags_reject_unknown_dataset_and_naive_or_malformed_clock(now: datetime
 @pytest.mark.integration
 @pytest.mark.anyio
 async def test_build_server_serves_the_pinned_demo_clock_or_the_examples(now: datetime):
-    async with Client(build_server(["--now", now.isoformat()])) as client:
+    async with Client(build_server(["--dataset", "demo", "--now", now.isoformat()])) as client:
         demo = await client.call_tool("get_current_status", {"astronaut_id": AST})
     async with Client(build_server(["--dataset", "examples"])) as client:
         examples = await client.call_tool("get_current_status", {"astronaut_id": AST})
@@ -251,21 +251,21 @@ def test_build_server_without_pinned_clock_uses_the_wall_clock(now: datetime, mo
 
     monkeypatch.setattr("spine_mcp_server.build_demo_app_reader", spy)
     before = datetime.now(UTC)
-    build_server([])
+    build_server(["--dataset", "demo"])
     assert before <= seen[0] <= datetime.now(UTC)
 
 
 def test_main_runs_the_server_over_stdio(now: datetime, monkeypatch: pytest.MonkeyPatch):
     ran: list[str] = []
     monkeypatch.setattr(MCPServer, "run", lambda self, transport: ran.append(transport))
-    main(["--now", now.isoformat()])
+    main(["--dataset", "demo", "--now", now.isoformat()])
     assert ran == ["stdio"]
 
 
 @pytest.mark.integration
 @pytest.mark.anyio
 async def test_stdio_server_serves_the_demo_dataset_at_the_pinned_clock(now: datetime):
-    params = StdioServerParameters(command=sys.executable, args=["-m", "spine_mcp_server", "--now", now.isoformat()])
+    params = StdioServerParameters(command=sys.executable, args=["-m", "spine_mcp_server", "--dataset", "demo", "--now", now.isoformat()])
     with anyio.fail_after(TIMEOUT_SECONDS), open(os.devnull, "w") as errlog:
         async with Client(stdio_client(params, errlog=errlog)) as client:
             tools = {tool.name for tool in (await client.list_tools()).tools}

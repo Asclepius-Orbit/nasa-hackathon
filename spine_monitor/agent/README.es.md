@@ -41,7 +41,7 @@ cd spine_monitor
 uv run spine-agent --astronaut AST-01
 ```
 
-`AST-01` es el astronauta de demo del servidor MCP: sus datos se generan en relación con el reloj (14 días, en ámbar los últimos 6). Prueba con `¿Por qué estoy en ámbar?`, `¿Cómo ha cambiado mi estado esta semana?` o `¿Qué pasaría si mantengo esta carga 30 días?`. `--astronaut` es obligatorio. `--model` cambia el modelo.
+Por defecto el agente lanza el servidor MCP con `--dataset http`, que lee el read-api de la app y el motor reales, así que ambos deben estar en marcha (`SPINE_APP_URL` y `SPINE_ENGINE_URL` se reenvían al subproceso MCP). `AST-01` es el astronauta de demo del servidor MCP (`--dataset demo`): sus datos se generan en relación con el reloj (14 días, en ámbar los últimos 6); para chatear contra él define `SPINE_AGENT_MCP_ARGS='["-m","spine_mcp_server","--dataset","demo"]'`. Prueba con `¿Por qué estoy en ámbar?`, `¿Cómo ha cambiado mi estado esta semana?` o `¿Qué pasaría si mantengo esta carga 30 días?`. `--astronaut` es obligatorio. `--model` cambia el modelo.
 
 - `ollama-pull` descarga solo los modelos de `SPINE_AGENT_LLM_MODELS` (tags separados por espacios, por defecto `qwen3.5:4b`) que falten en el volumen, así que repetir `up` es inmediato. Compose lee `.env` desde `app/`: copia `.env.example` a `app/.env` para cambiarlo (el ejemplo lista los tres modelos del benchmark, unos 16 GB).
 - `docker compose ... down` conserva los modelos; `down -v` borra el volumen y obliga a descargar de nuevo.
@@ -55,7 +55,7 @@ uv run spine-agent --astronaut AST-01
 | `SPINE_AGENT_MODEL` | `qwen3.5:4b` | Tag del modelo |
 | `SPINE_AGENT_TEMPERATURE` | `0.2` | Entre 0 y 2 |
 | `SPINE_AGENT_REQUEST_TIMEOUT_S` | `60` | Tiempo máximo de la petición al modelo, en segundos |
-| `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | este Python / `["-m","spine_mcp_server"]` | Cómo se lanza el servidor MCP (args en JSON); añade `"--dataset","examples"` para los ejemplos estáticos de los contratos |
+| `SPINE_AGENT_MCP_COMMAND` / `SPINE_AGENT_MCP_ARGS` | este Python / `["-m","spine_mcp_server","--dataset","http"]` | Cómo se lanza el servidor MCP (args en JSON); por defecto lee la app y el motor reales (deben estar en marcha; `SPINE_APP_URL` y `SPINE_ENGINE_URL` se reenvían); usa `"--dataset","demo"` para los datos de demo relativos al reloj (`AST-01`) o `"--dataset","examples"` para los ejemplos estáticos de los contratos |
 | `SPINE_AGENT_MCP_LOG_FILE` | ninguno | Dónde va el log del servidor MCP; se descarta por defecto para que no se mezcle con el chat |
 | `SPINE_AGENT_HTTP_HOST` / `SPINE_AGENT_HTTP_PORT` | `127.0.0.1` / `8003` | Dirección del servidor HTTP de chat |
 | `SPINE_AGENT_HTTP_TOKEN` | ninguno | Token Bearer del servidor HTTP de chat, compartido con el proceso principal de Electron |
@@ -105,7 +105,7 @@ Medido el 2026-11-06 con Ollama 0.40.14 **en Docker, solo CPU** (Intel Core Ultr
 | `gemma4:e4b` | 6,6 GB | 50 % (14/28) | 0,8 s / 51,5 s | 3,6 s | 6,8 | 28, primer prompt |
 | `qwen3.5:9b` | 6,6 GB | 68 % (19/28) | 40,0 s / 118,2 s | 51,6 s | 1,3 | 28, primer prompt |
 
-Los tokens/s son tokens de salida entre el tiempo dentro del stream del modelo, así que incluyen el procesamiento del prompt; por eso son bajos en CPU. **Las tres filas no son estrictamente comparables**: `gemma4:e4b` y `qwen3.5:9b` se midieron primero, con el primer prompt y 28 casos, y no se repitieron tras cambiar el prompt, el manejo de fechas y el dataset de demo (solo se volvió a medir el modelo elegido).
+Los tokens/s son tokens de salida entre el tiempo dentro del stream del modelo, así que incluyen el procesamiento del prompt; por eso son bajos en CPU. **Las tres filas no son estrictamente comparables**: `gemma4:e4b` y `qwen3.5:9b` se midieron primero, con el primer prompt y 28 casos, y no se repitieron tras cambiar el prompt, el manejo de fechas y el dataset de demo (solo se volvió a medir el modelo elegido). Todas las filas se midieron con el dataset de demo; una ejecución contra el motor real sigue pendiente.
 
 **Por qué `qwen3.5:4b`:** tiene el mejor acierto y gestiona bien los rechazos (trampas de diagnóstico 6/6, peticiones de escritura 4/4). `gemma4:e4b` es el más rápido, pero sus 0,8 s engañan: en 10 de sus 14 ejecuciones fallidas no llamó a ninguna tool y respondió sin leer datos, que es justo lo que este agente nunca debe hacer. `qwen3.5:9b` es más lento y salió peor (simulación 0/4).
 
@@ -118,4 +118,4 @@ Los tokens/s son tokens de salida entre el tiempo dentro del stream del modelo, 
 - **Un modelo de 4B a veces falla.** Puede saltarse una tool que debía llamar, presentar una simulación sin decir que es hipotética, calcular números que ninguna tool devolvió o intercambiar los dos periodos de una comparación. El fallback solo cubre un modelo no disponible, no uno que responde mal, y la regla «tool first» no la impone el código.
 - **Comprobaciones por palabras clave.** El post-filtro de diagnósticos y varios evaluadores usan listas de palabras en inglés, castellano y catalán: no detectan formulaciones que no estén en las listas, y una afirmación solo se puede corregir después de haberse mostrado.
 - **El catalán es más flojo** que el inglés y el castellano en los modelos pequeños (una ejecución entendió «Mart» como una hora del día y otra mezcló «ha millorat» con un empeoramiento).
-- **Datos de demo, no el motor real.** El triaje del motor sigue siendo un stub que siempre devuelve verde, así que «¿por qué estoy en ámbar?» solo funciona con los datos de demo del servidor MCP, y allí `simulate_scenario` es una aproximación lineal simple.
+- **Medido con datos de demo, aún no con el motor real.** Los evals offline y la tabla de modelos usan el dataset de demo (reloj fijo, y allí `simulate_scenario` es una aproximación lineal simple). El motor ya ejecuta el pipeline por defecto, pero su política de triaje es declarativa y provisional (el catálogo clínico está pendiente de revisión), y los evals no se han vuelto a ejecutar contra él.

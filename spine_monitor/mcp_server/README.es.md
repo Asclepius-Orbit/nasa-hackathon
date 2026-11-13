@@ -4,7 +4,7 @@
 
 ## Descripción
 
-Servidor MCP (stdio) que expone 7 herramientas de solo lectura y simulación al agente LLM local. Nunca escribe datos, nunca toca la base de datos de la app y nunca diagnostica. Por defecto funciona con mocks construidos a partir de los ejemplos del contrato (`spine_monitor/contracts/examples/valid/`); con `--dataset http` lee de la API de lectura real de la app. En ambos casos los datos entran detrás de tres Protocols (`AppReader`, `Simulator` y `AssessBaseSource` en `ports.py`), así que la fuente se puede sustituir.
+Servidor MCP (stdio) que expone 7 herramientas de solo lectura y simulación al agente LLM local. Nunca escribe datos, nunca toca la base de datos de la app y nunca diagnostica. Por defecto (`--dataset http`) lee de la API de lectura real de la app y simula con el motor real; `--dataset demo` y `--dataset examples` funcionan con datos generados y con los ejemplos del contrato (`spine_monitor/contracts/examples/valid/`). En todos los casos los datos entran detrás de tres Protocols (`AppReader`, `Simulator` y `AssessBaseSource` en `ports.py`), así que la fuente se puede sustituir.
 
 ## Ejecución
 
@@ -38,24 +38,33 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 - `start` y `end` son timestamps RFC 3339 con desfase UTC. `limit` va de 1 a 500.
 - `compare_periods` lee ambos periodos con `limit` 500 y calcula la comparación en el servidor. Los deltas son B menos A.
 - `overrides` es una lista opcional (vacía por defecto) de cambios con `feature_id`, `mode` (`set`, `add` o `scale`) y `value`; vacía u omitida significa sin cambios, así que se proyecta la trayectoria actual tal como está. `project_days` va de 1 a 365.
-- `simulate_scenario` es solo hipotético y nunca cambia datos reales. Con `--dataset http` su base es la petición de valoración que la app enviaría ahora al motor (`GET /crew/{astronaut_id}/assess-base`, `as_of` = el reloj de la app, últimos 14 días de datos); si la app no puede construirla (sin perfil, sin baseline o sin feature sets en la ventana) la herramienta devuelve un error 404 que nombra el motivo.
+- `simulate_scenario` es solo hipotético y nunca cambia datos reales. Con `--dataset http` su base es la petición de valoración que la app enviaría ahora al motor (`GET /crew/{astronaut_id}/assess-base`, `as_of` = el reloj de la app, últimos 14 días de datos); si la app no puede construirla (sin perfil, sin baseline o sin feature sets en la ventana) la herramienta devuelve un error 404 que nombra el motivo. En concreto, un astronauta sin feature sets en los últimos 14 días recibe un 404 `no_feature_sets`.
 
 ## Datasets
 
-`python -m spine_mcp_server` sirve por defecto un **dataset de demo**: los últimos 14 días del astronauta `AST-01`, generados en relación con el reloj para que los datos terminen siempre «ahora». Está en verde los primeros 8 días y en ámbar los últimos 6, con un risk score creciente (de 0,18 a 0,62), una evaluación al día, una sesión de ejercicio cada 2 días más algunos chequeos de columna, un autoinforme diario (dolor NRS de 2 a 5) y un informe ODI semanal. `explain_assessment` funciona para todas las evaluaciones de ese histórico, `compare_periods` tiene datos en las dos semanas y `simulate_scenario` responde a los «¿y si…?» con un modelo lineal simple sobre la elongación lumbar (una aproximación, no el motor). `AST-01` es el único astronauta; cualquier otro id devuelve un error de herramienta «not found».
+`python -m spine_mcp_server` lee por defecto la app y el motor reales (`--dataset http`). Las opciones son:
 
-Para leer la app real, usa `--dataset http`. Llama a la API de lectura de la app en `SPINE_APP_URL` (por defecto `http://127.0.0.1:8002`) y configura el simulador para llamar directamente al motor en `SPINE_ENGINE_URL` (por defecto `http://127.0.0.1:8001`). La base de valoración viene de la API de lectura de la app (`/crew/{astronaut_id}/assess-base`).
+### App y motor reales (por defecto)
+
+`--dataset http` llama a la API de lectura de la app en `SPINE_APP_URL` (por defecto `http://127.0.0.1:8002`) y el simulador llama directamente al motor (`/simulate`) en `SPINE_ENGINE_URL` (por defecto `http://127.0.0.1:8001`). La base de valoración viene de la API de lectura de la app (`/crew/{astronaut_id}/assess-base`). El motor ejecuta el pipeline por defecto con una política de triaje declarativa todavía provisional (su catálogo clínico está pendiente de revisión).
 
 ```bash
+uv run python -m spine_mcp_server                                    # igual que --dataset http
 SPINE_APP_URL=http://127.0.0.1:8002 uv run python -m spine_mcp_server --dataset http
 ```
 
+### Dataset de demo (opción)
+
+`--dataset demo` sirve un **dataset de demo**: los últimos 14 días del astronauta `AST-01`, generados en relación con el reloj para que los datos terminen siempre «ahora». Está en verde los primeros 8 días y en ámbar los últimos 6, con un risk score creciente (de 0,18 a 0,62), una evaluación al día, una sesión de ejercicio cada 2 días más algunos chequeos de columna, un autoinforme diario (dolor NRS de 2 a 5) y un informe ODI semanal. `explain_assessment` funciona para todas las evaluaciones de ese histórico, `compare_periods` tiene datos en las dos semanas y `simulate_scenario` responde a los «¿y si…?» con un modelo lineal simple sobre la elongación lumbar (una aproximación, no el motor). `AST-01` es el único astronauta; cualquier otro id devuelve un error de herramienta «not found». Su reloj es el de pared salvo que `--now` lo fije.
+
+### Opciones
+
 | Opción | Significado |
 |---|---|
-| `--dataset demo\|examples\|http` | `demo` (por defecto); `examples`: la foto estática única de `contracts/examples/valid/` que usan los tests de contratos; `http`: la API de lectura real de la app en `SPINE_APP_URL` |
+| `--dataset http\|demo\|examples` | `http` (por defecto): la API de lectura real de la app en `SPINE_APP_URL` y el motor real en `SPINE_ENGINE_URL`; `demo`: el dataset generado de 14 días de `AST-01`; `examples`: la foto estática única de `contracts/examples/valid/` que usan los tests de contratos |
 | `SPINE_APP_URL` | URL base de la API de lectura de la app que usa `http` (por defecto `http://127.0.0.1:8002`) |
 | `SPINE_ENGINE_URL` | URL base del motor que usa el simulador HTTP (por defecto `http://127.0.0.1:8001`) |
-| `--now 2026-11-13T12:00:00Z` | Fija el reloj del demo (ISO 8601 con zona horaria, redondeado a la hora) para demos y tests reproducibles; sin él se usa el reloj de pared |
+| `--now 2026-11-13T12:00:00Z` | Fija el reloj del demo (ISO 8601 con zona horaria, redondeado a la hora) para demos y tests reproducibles; solo afecta a `--dataset demo`; sin él se usa el reloj de pared |
 
 Los datos del demo se generan de forma determinista: el mismo `--now` da siempre los mismos payloads e ids.
 
@@ -83,7 +92,3 @@ El simulador aplica las mismas traducciones a los errores del motor, identificá
 - Si dos assessments comparten `as_of`, `latest` es el nivel más grave.
 - Los datos que faltan son `null`, nunca 0.
 - `warnings` marca los periodos vacíos (`period_a_empty`, `period_b_empty`) y los truncados (`period_a_truncated`, `period_b_truncated`).
-
-## Fuera de alcance por ahora
-
-- El demo sigue siendo el dataset por defecto hasta que el motor sea real.

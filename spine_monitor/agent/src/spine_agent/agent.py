@@ -27,7 +27,7 @@ from pydantic_ai.toolsets import AbstractToolset
 from spine_agent.guards import fallback_reply, find_diagnostic_terms
 from spine_agent.ports import StatusSource
 from spine_agent.prompts import SYSTEM_PROMPT, astronaut_instruction
-from spine_agent.settings import AgentSettings
+from spine_agent.settings import AgentSettings, mcp_server_env
 
 MID_STREAM_NOTICE = "The assistant failed mid-answer; falling back to the automatic summary."
 CORRECTION_NOTICE = (
@@ -96,6 +96,7 @@ def build_agent(
         transport = StdioTransport(
             command=settings.mcp_command,
             args=list(settings.mcp_args),
+            env=mcp_server_env(),
             log_file=log_file,
             keep_alive=False,  # the server subprocess ends when the toolset is exited; nothing outlives the session
         )

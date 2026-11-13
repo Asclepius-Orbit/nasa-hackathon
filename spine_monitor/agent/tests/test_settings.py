@@ -2,7 +2,7 @@ import sys
 
 import pytest
 from pydantic import ValidationError
-from spine_agent.settings import AgentSettings
+from spine_agent.settings import AgentSettings, mcp_server_env
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +20,7 @@ def test_defaults():
     assert s.temperature == 0.2
     assert s.request_timeout_s == 60.0
     assert s.mcp_command == sys.executable
-    assert s.mcp_args == ["-m", "spine_mcp_server"]
+    assert s.mcp_args == ["-m", "spine_mcp_server", "--dataset", "http"]
     assert s.mcp_log_file is None
 
 
@@ -68,3 +68,20 @@ def test_non_positive_timeout_is_rejected(monkeypatch: pytest.MonkeyPatch, value
     monkeypatch.setenv("SPINE_AGENT_REQUEST_TIMEOUT_S", value)
     with pytest.raises(ValidationError):
         AgentSettings()
+
+
+@pytest.mark.unit
+def test_the_mcp_server_inherits_the_app_and_engine_urls_that_are_set(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SPINE_APP_URL", "http://read-api:8002")
+    monkeypatch.setenv("SPINE_ENGINE_URL", "http://engine:8001")
+    monkeypatch.setenv("SPINE_AGENT_HTTP_TOKEN", "secret")  # nothing else of this process is forwarded
+    assert mcp_server_env() == {"SPINE_APP_URL": "http://read-api:8002", "SPINE_ENGINE_URL": "http://engine:8001"}
+
+
+@pytest.mark.unit
+def test_an_unset_url_is_not_forwarded_so_the_server_keeps_its_default(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SPINE_APP_URL", raising=False)
+    monkeypatch.setenv("SPINE_ENGINE_URL", "http://engine:8001")
+    assert mcp_server_env() == {"SPINE_ENGINE_URL": "http://engine:8001"}
+    monkeypatch.delenv("SPINE_ENGINE_URL")
+    assert mcp_server_env() == {}

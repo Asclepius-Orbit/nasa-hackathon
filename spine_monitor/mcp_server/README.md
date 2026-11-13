@@ -4,7 +4,7 @@
 
 ## Description
 
-MCP server (stdio) that exposes 7 read-only and simulation tools to the local LLM agent. It never writes data, never touches the app database and never diagnoses. By default it runs on mocks built from the contract examples (`spine_monitor/contracts/examples/valid/`); with `--dataset http` it reads from the real app read API. Either way the data comes in behind three Protocols (`AppReader`, `Simulator` and `AssessBaseSource` in `ports.py`), so the source can be swapped.
+MCP server (stdio) that exposes 7 read-only and simulation tools to the local LLM agent. It never writes data, never touches the app database and never diagnoses. By default (`--dataset http`) it reads from the real app read API and simulates through the real engine; `--dataset demo` and `--dataset examples` run on generated data and on the contract examples (`spine_monitor/contracts/examples/valid/`). In every case the data comes in behind three Protocols (`AppReader`, `Simulator` and `AssessBaseSource` in `ports.py`), so the source can be swapped.
 
 ## Run
 
@@ -38,24 +38,33 @@ pnpm dlx @modelcontextprotocol/inspector@2.14.0 uv run spine-mcp-server
 - `start` and `end` are RFC 3339 timestamps with a UTC offset. `limit` is 1 to 500.
 - `compare_periods` reads both periods with `limit` 500 and computes the comparison in the server. Deltas are B minus A.
 - `overrides` is an optional list (default empty) of changes with `feature_id`, `mode` (`set`, `add` or `scale`) and `value`; empty or omitted means no changes, so the current trajectory is projected as it is. `project_days` is 1 to 365.
-- `simulate_scenario` is hypothetical only and never changes real data. In `--dataset http` its base is the assessment request the app would send to the engine now (`GET /crew/{astronaut_id}/assess-base`, `as_of` = the app's clock, last 14 days of data); if the app cannot build it (no profile, no baseline or no feature sets in the window) the tool returns a 404 error naming the reason.
+- `simulate_scenario` is hypothetical only and never changes real data. In `--dataset http` its base is the assessment request the app would send to the engine now (`GET /crew/{astronaut_id}/assess-base`, `as_of` = the app's clock, last 14 days of data); if the app cannot build it (no profile, no baseline or no feature sets in the window) the tool returns a 404 error naming the reason. In particular, an astronaut with no feature sets in the last 14 days gets a 404 `no_feature_sets`.
 
 ## Datasets
 
-`python -m spine_mcp_server` serves a **demo dataset** by default: the last 14 days of astronaut `AST-01`, generated relative to the clock so the data always ends "now". It is green for the first 8 days and amber for the last 6, with a rising risk score (0.18 to 0.62), one assessment per day, an exercise session every 2 days plus a few spine checks, a daily self-report (pain NRS from 2 to 5) and one weekly ODI report. `explain_assessment` works for every assessment in that history, `compare_periods` has data in both weeks, and `simulate_scenario` answers what-if questions with a simple linear model on lumbar elongation (an approximation, not the engine). `AST-01` is the only astronaut; any other id returns a "not found" tool error.
+`python -m spine_mcp_server` reads the real app and engine by default (`--dataset http`). The options are:
 
-To read the real app instead, use `--dataset http`. It calls the app read API at `SPINE_APP_URL` (default `http://127.0.0.1:8002`) and configures the simulator to call the engine directly at `SPINE_ENGINE_URL` (default `http://127.0.0.1:8001`). The assessment base comes from the app read API (`/crew/{astronaut_id}/assess-base`).
+### Real app and engine (default)
+
+`--dataset http` calls the app read API at `SPINE_APP_URL` (default `http://127.0.0.1:8002`) and the simulator calls the engine (`/simulate`) directly at `SPINE_ENGINE_URL` (default `http://127.0.0.1:8001`). The assessment base comes from the app read API (`/crew/{astronaut_id}/assess-base`). The engine runs the default pipeline with a declarative triage policy that is still provisional (its clinical catalog is pending review).
 
 ```bash
+uv run python -m spine_mcp_server                                    # same as --dataset http
 SPINE_APP_URL=http://127.0.0.1:8002 uv run python -m spine_mcp_server --dataset http
 ```
 
+### Demo dataset (option)
+
+`--dataset demo` serves a **demo dataset**: the last 14 days of astronaut `AST-01`, generated relative to the clock so the data always ends "now". It is green for the first 8 days and amber for the last 6, with a rising risk score (0.18 to 0.62), one assessment per day, an exercise session every 2 days plus a few spine checks, a daily self-report (pain NRS from 2 to 5) and one weekly ODI report. `explain_assessment` works for every assessment in that history, `compare_periods` has data in both weeks, and `simulate_scenario` answers what-if questions with a simple linear model on lumbar elongation (an approximation, not the engine). `AST-01` is the only astronaut; any other id returns a "not found" tool error. Its clock is wall time unless `--now` pins it.
+
+### Options
+
 | Option | Meaning |
 |---|---|
-| `--dataset demo\|examples\|http` | `demo` (default); `examples`: the single static snapshot of `contracts/examples/valid/` that the contract tests use; `http`: the real app read API at `SPINE_APP_URL` |
+| `--dataset http\|demo\|examples` | `http` (default): the real app read API at `SPINE_APP_URL` and the real engine at `SPINE_ENGINE_URL`; `demo`: the generated 14-day dataset of `AST-01`; `examples`: the single static snapshot of `contracts/examples/valid/` that the contract tests use |
 | `SPINE_APP_URL` | Base URL of the app read API used by `http` (default `http://127.0.0.1:8002`) |
 | `SPINE_ENGINE_URL` | Base URL of the engine used by the HTTP simulator (default `http://127.0.0.1:8001`) |
-| `--now 2026-11-13T12:00:00Z` | Pins the demo clock (ISO 8601 with timezone, rounded down to the hour) for reproducible demos and tests; without it the wall clock is used |
+| `--now 2026-11-13T12:00:00Z` | Pins the demo clock (ISO 8601 with timezone, rounded down to the hour) for reproducible demos and tests; only affects `--dataset demo`; without it the wall clock is used |
 
 The demo data is generated deterministically: the same `--now` always yields the same payloads and ids.
 
@@ -83,7 +92,3 @@ The simulator applies the same mappings to engine errors, identifying the engine
 - If two assessments share `as_of`, `latest` is the worst level.
 - Missing data is `null`, never 0.
 - `warnings` flags empty periods (`period_a_empty`, `period_b_empty`) and truncated periods (`period_a_truncated`, `period_b_truncated`).
-
-## Out of scope for now
-
-- The demo stays the default dataset until the engine is real.

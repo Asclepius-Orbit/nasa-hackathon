@@ -126,21 +126,21 @@ def test_strategy_swaps_into_an_existing_pipeline_without_changing_it():
 
 def test_default_pipeline_scores_a_sustained_shift_with_the_configured_risk_model():
     req = request()
-    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 31.0, 31.2, 31.1, 31.3, 31.0])
+    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 25.0, 25.2, 25.1, 25.3, 25.0])
 
     assessment = default_pipeline(EngineSettings()).evaluate(req)
 
     assert 0.0 < assessment.risk_score < 1.0
     assert assessment.confidence == assessment.completeness.score
     drivers = {d.feature_id: d for d in assessment.drivers}
-    assert drivers[ROM].deviation_z is not None and drivers[ROM].deviation_z > 0
+    assert drivers[ROM].deviation_z is not None and drivers[ROM].deviation_z < 0
     assert sum(d.contribution for d in assessment.drivers) == pytest.approx(assessment.risk_score)
     assert validation.errors("domain/assessment", dump(assessment)) == []
 
 
 def test_risk_parameters_come_from_the_settings():
     req = request()
-    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 31.0, 31.2, 31.1, 31.3, 31.0])
+    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 25.0, 25.2, 25.1, 25.3, 25.0])
     # Only the ROM series (kinematics) is weighed; the other in-flight features are left out.
     weights = {**dict.fromkeys(AssessmentDomain, 0.0), AssessmentDomain.KINEMATICS: 1.0}
 
@@ -157,7 +157,7 @@ def test_risk_parameters_come_from_the_settings():
 
 def test_partial_risk_weights_keep_the_other_domains_scoring():
     req = request()
-    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 31.0, 31.2, 31.1, 31.3, 31.0])
+    req.feature_sets = with_history(req, [28.2, 28.0, 28.3, 25.0, 25.2, 25.1, 25.3, 25.0])
 
     assessment = default_pipeline(EngineSettings(_env_file=None, risk_domain_weights={AssessmentDomain.MUSCLE: 2.0})).evaluate(req)
 

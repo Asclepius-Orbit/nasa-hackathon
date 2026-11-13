@@ -1,9 +1,10 @@
 """Propiedades de la detección de repeticiones desde eventos (#41)."""
 
+import random
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 from spine_contracts.models.domain.session_schema import Event, EventType
 from spine_engine.features.repetitions import detect_from_events
@@ -21,7 +22,24 @@ events = st.lists(
 )
 
 
+def _at(event_type: EventType, second: int) -> Event:
+    return Event(event_type=event_type, timestamp=T0 + timedelta(seconds=second), device_ms=None, set_index=None, rep_index=None)
+
+
+# Un set_end entre dos repeticiones separa series: el hueco no es un reposo entre repeticiones (#12). Hypothesis lo
+# generaba solo de vez en cuando y el test fallaba de forma intermitente; el ejemplo lo fija.
+_BETWEEN_SETS = [
+    _at(EventType.REP_START, 0),
+    _at(EventType.REP_END, 1),
+    _at(EventType.SET_END, 1),
+    _at(EventType.REP_START, 2),
+    _at(EventType.REP_END, 3),
+]
+_REP_EVENTS = frozenset({EventType.REP_START, EventType.REP_END})
+
+
 @pytest.mark.property
+@example(_BETWEEN_SETS, random.Random(0))
 @given(events, st.randoms(use_true_random=False))
 def test_windows_are_ordered_disjoint_positive_and_consecutive(items: list[Event], rng):
     shuffled = list(items)
@@ -34,8 +52,12 @@ def test_windows_are_ordered_disjoint_positive_and_consecutive(items: list[Event
         assert window.duration_s > 0
     for before, after in zip(windows, windows[1:], strict=False):
         assert before.end <= after.start
-        assert before.rest_start == before.end
-        assert before.rest_end == after.start
+        if before.rest_start is None:  # entre series: sin reposo entre repeticiones
+            assert before.rest_end is None
+            assert any(e.event_type not in _REP_EVENTS for e in items)
+        else:
+            assert before.rest_start == before.end
+            assert before.rest_end == after.start
     if windows:
         assert windows[-1].rest_start is None or windows[-1].rest_start == windows[-1].end
 

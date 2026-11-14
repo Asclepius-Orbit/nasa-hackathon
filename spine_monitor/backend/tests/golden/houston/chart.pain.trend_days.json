@@ -1,0 +1,550 @@
+{
+ "axes": [
+  {
+   "bars": [],
+   "center_title": "",
+   "grid_ratios": [
+    5,
+    1.5
+   ],
+   "legend": {
+    "anchor": [
+     180.0,
+     271.230769,
+     0.0,
+     0.0
+    ],
+    "cols": 3,
+    "frame": false,
+    "handles": [
+     {
+      "color": "#1f5fbfff",
+      "linestyle": "-",
+      "marker": "o",
+      "markerfacecolor": "#1f5fbfff",
+      "markersize": 5.0,
+      "type": "Line2D"
+     },
+     {
+      "color": "#c2410cff",
+      "linestyle": "--",
+      "marker": "s",
+      "markerfacecolor": "#c2410cff",
+      "markersize": 4.5,
+      "type": "Line2D"
+     }
+    ],
+    "loc": 2,
+    "texts": [
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "Pain now",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "Worst in last 24 h",
+      "weight": "normal"
+     }
+    ]
+   },
+   "lines": [
+    {
+     "color": "#1f5fbfff",
+     "label": "Pain now",
+     "marker": "o",
+     "size": 5.0,
+     "style": "-",
+     "width": 2.0,
+     "x": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "y": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "zorder": 2
+    },
+    {
+     "color": "#c2410cff",
+     "label": "Worst in last 24 h",
+     "marker": "s",
+     "size": 4.5,
+     "style": "--",
+     "width": 1.5,
+     "x": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "y": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "zorder": 2
+    }
+   ],
+   "points": [],
+   "shared_x": [
+    true
+   ],
+   "slot": [
+    0,
+    1,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Pain reported by the astronaut (NRS 0-10)",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    6.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": false,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [],
+   "xticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "ylabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "Numeric rating scale",
+    "weight": "normal"
+   },
+   "ylim": [
+    -0.3,
+    10.6
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "4",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "6",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "8",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "10",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    0,
+    2,
+    4,
+    6,
+    8,
+    10
+   ]
+  },
+  {
+   "bars": [
+    {
+     "box": [
+      -0.47,
+      -0.5,
+      0.94,
+      1
+     ],
+     "edge": "#ffffffff",
+     "face": "#2f855aff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0.53,
+      -0.5,
+      0.94,
+      1
+     ],
+     "edge": "#ffffffff",
+     "face": "#d69e2eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      1.53,
+      -0.5,
+      0.94,
+      1
+     ],
+     "edge": "#ffffffff",
+     "face": "#a0aec0ff",
+     "hatch": "///",
+     "zorder": 1
+    },
+    {
+     "box": [
+      2.53,
+      -0.5,
+      0.94,
+      1
+     ],
+     "edge": "#ffffffff",
+     "face": "#a0aec0ff",
+     "hatch": "///",
+     "zorder": 1
+    },
+    {
+     "box": [
+      3.53,
+      -0.5,
+      0.94,
+      1
+     ],
+     "edge": "#ffffffff",
+     "face": "#a0aec0ff",
+     "hatch": "///",
+     "zorder": 1
+    },
+    {
+     "box": [
+      4.53,
+      -0.5,
+      0.94,
+      1
+     ],
+     "edge": "#ffffffff",
+     "face": "#a0aec0ff",
+     "hatch": "///",
+     "zorder": 1
+    },
+    {
+     "box": [
+      5.53,
+      -0.5,
+      0.94,
+      1
+     ],
+     "edge": "#ffffffff",
+     "face": "#a0aec0ff",
+     "hatch": "///",
+     "zorder": 1
+    }
+   ],
+   "center_title": "",
+   "grid_ratios": [
+    5,
+    1.5
+   ],
+   "legend": null,
+   "lines": [],
+   "points": [],
+   "shared_x": [
+    true
+   ],
+   "slot": [
+    1,
+    2,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     false,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [
+    {
+     "box": null,
+     "color": "#ffffffff",
+     "ha": "center",
+     "pos": [
+      0,
+      0
+     ],
+     "size": 6.5,
+     "text": "GREEN",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#1f2933ff",
+     "ha": "center",
+     "pos": [
+      1,
+      0
+     ],
+     "size": 6.5,
+     "text": "AMBER",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#1f2933ff",
+     "ha": "center",
+     "pos": [
+      2,
+      0
+     ],
+     "size": 6.5,
+     "text": "NO DATA",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#1f2933ff",
+     "ha": "center",
+     "pos": [
+      3,
+      0
+     ],
+     "size": 6.5,
+     "text": "NO DATA",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#1f2933ff",
+     "ha": "center",
+     "pos": [
+      4,
+      0
+     ],
+     "size": 6.5,
+     "text": "NO DATA",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#1f2933ff",
+     "ha": "center",
+     "pos": [
+      5,
+      0
+     ],
+     "size": 6.5,
+     "text": "NO DATA",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#1f2933ff",
+     "ha": "center",
+     "pos": [
+      6,
+      0
+     ],
+     "size": 6.5,
+     "text": "NO DATA",
+     "va": "center",
+     "weight": "bold"
+    }
+   ],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 8.5,
+    "text": "Risk level of the engine (last assessment of each day)",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    6.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": false,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Thu 04\nD83",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Fri 05\nD84",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Sat 06\nD85",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Sun 07\nD86",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Mon 08\nD87",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Tue 09\nD88",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Wed 10\nD89",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "ylabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "ylim": [
+    -0.5,
+    0.5
+   ],
+   "ytick_look": null,
+   "yticklabels": [],
+   "yticks": []
+  }
+ ],
+ "dpi": 200,
+ "face": "#ffffffff",
+ "layout": "ConstrainedLayoutEngine",
+ "size": [
+  7.2,
+  4.1
+ ]
+}

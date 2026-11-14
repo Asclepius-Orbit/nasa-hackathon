@@ -61,6 +61,7 @@ describe('IPC_CHANNELS', () => {
       'asclepius:views:session',
       'asclepius:views:houston',
       'asclepius:views:outbox',
+      'asclepius:houston-report:generate',
       'asclepius:reps:subscribe',
       'asclepius:reps:unsubscribe',
     ]);

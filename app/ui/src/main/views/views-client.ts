@@ -48,6 +48,25 @@ export interface ViewsClient {
   houston(astronautId: string): Promise<HoustonView>;
   /** Summaries queued for or sent to the ground station. */
   outbox(astronautId: string): Promise<OutboxView>;
+  /** The weekly PDF for Houston (the last 7 days up to today, UTC). `fileName` is safe to offer as a default: it never holds a path. */
+  houstonReport(astronautId: string): Promise<HoustonReportPdf>;
+}
+
+export interface HoustonReportPdf {
+  fileName: string;
+  bytes: Uint8Array;
+}
+
+/** The PDF is built on demand, so it gets more time than a view; and a hard cap so a runaway body cannot fill memory. */
+export const REPORT_TIMEOUT_MS = 30_000;
+export const MAX_REPORT_BYTES = 20 * 1024 * 1024;
+const REPORT_NAME = /^houston-report-[A-Za-z0-9_-]{1,40}-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.pdf$/u;
+const FALLBACK_REPORT_NAME = 'houston-report.pdf';
+
+/** The name from `Content-Disposition`, only if it is exactly the contract's shape; anything else (a path, odd characters) falls back. */
+function reportFileName(header: string | null): string {
+  const name = /filename="?([^";]+)"?/iu.exec(header ?? '')?.[1];
+  return name !== undefined && REPORT_NAME.test(name) ? name : FALLBACK_REPORT_NAME;
 }
 
 export interface ViewsClientOptions {
@@ -57,6 +76,8 @@ export interface ViewsClientOptions {
   timeoutMs?: number;
   /** Shared token of the /ui API (`backend-auth`); null sends none. */
   token?: string | null;
+  /** Time allowed for the weekly PDF (default `REPORT_TIMEOUT_MS`). */
+  reportTimeoutMs?: number;
 }
 
 const object = z.looseObject({});
@@ -90,6 +111,7 @@ export function createViewsClient({
   fetch: doFetch = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   token = null,
+  reportTimeoutMs = REPORT_TIMEOUT_MS,
 }: ViewsClientOptions): ViewsClient {
   const origin = parseBackendUrl(baseUrl);
   if (origin === null) throw new Error('backend URL must be an http(s) loopback origin');
@@ -123,7 +145,29 @@ export function createViewsClient({
   const crewPath = (astronautId: string, name: string): string =>
     `/ui/crew/${encodeURIComponent(astronautId)}/views/${name}`;
 
+  async function report(astronautId: string): Promise<HoustonReportPdf> {
+    try {
+      const response = await doFetch(`${base}/ui/crew/${encodeURIComponent(astronautId)}/houston-report.pdf`, {
+        method: 'GET',
+        headers: { accept: 'application/pdf', ...authHeaders(token, astronautId) },
+        redirect: 'error',
+        signal: AbortSignal.timeout(reportTimeoutMs),
+      });
+      if (response.status === 404) throw new ViewsError('not_found');
+      if (response.status !== 200) throw new ViewsError('unavailable');
+      if (!(response.headers.get('content-type') ?? '').toLowerCase().startsWith('application/pdf')) throw new ViewsError('unavailable');
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      // Nothing but a real PDF is ever offered for saving.
+      if (bytes.length > MAX_REPORT_BYTES || new TextDecoder().decode(bytes.subarray(0, 5)) !== '%PDF-') throw new ViewsError('unavailable');
+      return { fileName: reportFileName(response.headers.get('content-disposition')), bytes };
+    } catch (error) {
+      if (error instanceof ViewsError) throw error;
+      throw new ViewsError('unavailable', { cause: error });
+    }
+  }
+
   return {
+    houstonReport: report,
     strip(id, deviceId) {
       const suffix = deviceId === undefined ? '' : `?${new URLSearchParams({ device_id: deviceId }).toString()}`;
       return get(`${crewPath(id, 'strip')}${suffix}`, SCHEMAS.strip(id), id);

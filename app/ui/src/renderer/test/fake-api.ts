@@ -22,6 +22,7 @@ import type {
   DeviceStatus,
   FirstDayResult,
   HistoryView,
+  HoustonReportResult,
   HoustonView,
   OutboxView,
   PinResult,
@@ -200,6 +201,16 @@ export class FakeAsclepiusApi implements AsclepiusApi {
   urgent = {
     send: (input: UrgentInput): Promise<WriteResult<ReportSaved>> =>
       this.act('urgent.send', input, { reportId: 'urgent-1', assessmentLevel: 'red', assessmentSkipped: null, exercise: null }),
+  };
+
+  /** What `houstonReport.generate` answers; add `houstonReport.generate` to `rejecting` to make the bridge itself fail. */
+  houstonReportResult: HoustonReportResult = { status: 'saved', fileName: 'houston-report-AST-01-2026-11-01_2026-11-07.pdf', opened: true };
+  houstonReport = {
+    generate: (): Promise<HoustonReportResult> => {
+      this.calls.push('houstonReport.generate');
+      if (this.rejecting.has('houstonReport.generate')) return Promise.reject(new Error('bridge down'));
+      return Promise.resolve(this.houstonReportResult);
+    },
   };
 
   contacts = {

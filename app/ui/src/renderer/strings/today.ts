@@ -51,6 +51,24 @@ export const today = {
   alsoToday: 'Also today',
 } as const;
 
+/** The weekly PDF for Houston. A separate file from the daily summary on the Houston screen, which it does not replace or change. */
+export const houstonReport = {
+  title: 'Weekly report for Houston',
+  body: 'A PDF with your last seven days, to save and send to the flight surgeon. It is a separate file: the daily summary on the Houston screen is not changed by it.',
+  button: 'Generate report for Houston',
+  busy: 'Generating the report...',
+  demo: 'Not available in the demo: there is no backend to build the report.',
+  saved: (fileName: string, opened: boolean): string =>
+    opened ? `Saved as ${fileName} and opened.` : `Saved as ${fileName}. It could not be opened here: open it from the folder you chose.`,
+  cancelled: 'Not saved: the save window was closed. Nothing was written.',
+  errors: {
+    locked: 'The app is locked. Unlock it and try again. Nothing was saved.',
+    not_found: 'There is no report for you yet. Nothing was saved.',
+    unavailable: 'The report could not be made: the backend did not answer. Nothing was saved. Try again.',
+    write_failed: 'The report was made but could not be written there. Nothing was saved. Try again and choose another place.',
+  },
+} as const;
+
 export const confidenceValue = (pct: number): string => `${String(pct)} %`;
 export const minutesAgo = (min: number): string => `${String(min)} min ago`;
 

@@ -157,6 +157,16 @@ export interface StartedSession {
 export type StartSessionResult = WriteResult<StartedSession> | { ok: false; reason: 'no_harness' };
 
 /** Why a session is stopped (contract `end_reason`); `repIndex` (from 1) only with `aborted_pain`. */
+/**
+ * Outcome of generating the weekly PDF for Houston and saving it on this device. `saved` carries the file name only (the
+ * folder is the crew member's own business); `opened` is false when the PDF viewer could not be launched. `cancelled` is
+ * the save dialog being dismissed (nothing written). `error` says why nothing was saved; never shown as a success.
+ */
+export type HoustonReportResult =
+  | { status: 'saved'; fileName: string; opened: boolean }
+  | { status: 'cancelled' }
+  | { status: 'error'; reason: ViewsErrorCode | 'write_failed' };
+
 export type StopInput =
   | { sessionId: string; reason: 'completed' | 'aborted_by_user' | 'aborted_other' }
   | { sessionId: string; reason: 'aborted_pain'; repIndex: number | null };
@@ -325,6 +335,10 @@ export interface AsclepiusApi {
   contacts: {
     list(): Promise<MedicalContactEntry[]>;
     logOfficerCall(input: { sessionId: string | null }): Promise<WriteResult<MedicalContactEntry>>;
+  };
+  /** The weekly PDF for Houston: asks the backend, asks where to save it, writes it and opens it. Never rejects: see `HoustonReportResult`. */
+  houstonReport: {
+    generate(): Promise<HoustonReportResult>;
   };
   /** Chat with the spine agent, for the unlocked astronaut only. */
   chat: {

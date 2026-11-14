@@ -5,6 +5,7 @@ import type {
   DailyContext,
   DailyContextFields,
   DeviceStatus,
+  HoustonReportResult,
   ProfileFields,
   ProtocolId,
   ReportSaved,
@@ -290,6 +291,13 @@ export class MockDataSource implements DataSource {
 
   sendUrgentReport(): Promise<void> {
     return Promise.resolve();
+  }
+
+  /** The demo has no backend to build the PDF: it says so rather than saving an invented file. */
+  readonly generatesHoustonReport = false;
+
+  generateHoustonReport(): Promise<HoustonReportResult> {
+    return Promise.resolve({ status: 'error', reason: 'unavailable' });
   }
 
   logCrewMedicalOfficerCall(): Promise<ContactEntry> {

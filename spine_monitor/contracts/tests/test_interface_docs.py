@@ -183,6 +183,7 @@ SESSION_COMMANDS = [
 ]
 DUE_PATH = "/ui/crew/{astronaut_id}/self-reports/due"
 SESSION_PATH = "/ui/sessions/{session_id}"
+HOUSTON_REPORT_PATH = "/ui/crew/{astronaut_id}/houston-report.pdf"
 
 
 def test_ui_openapi_is_openapi_3_1():
@@ -190,7 +191,8 @@ def test_ui_openapi_is_openapi_3_1():
 
 
 def test_ui_openapi_paths_are_the_view_and_crew_data_endpoints():
-    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | {REPS_PATH, DEVICES_PATH, DUE_PATH, SESSION_PATH} | set(UI_CREW_DATA) | set(UI_ACTIONS)
+    others = {REPS_PATH, DEVICES_PATH, DUE_PATH, SESSION_PATH, HOUSTON_REPORT_PATH}
+    assert set(load("ui-openapi.yaml")["paths"]) == set(UI_VIEWS) | others | set(UI_CREW_DATA) | set(UI_ACTIONS)
 
 
 def test_ui_openapi_writes_only_the_crew_data_and_the_actions():
@@ -213,6 +215,18 @@ def test_ui_raw_session_carries_the_domain_session_and_its_state():
     answer = load("ui-openapi.yaml")["paths"][SESSION_PATH]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert answer["properties"]["session"] == {"$ref": "schemas/v1/domain/session.schema.json"}
     assert set(answer["required"]) == {"session", "state", "error", "feature_set"}
+
+
+def test_ui_houston_report_is_a_pdf_download_of_the_last_week():
+    document = load("ui-openapi.yaml")
+    item = document["paths"][HOUSTON_REPORT_PATH]["get"]
+    params = {p["name"]: p for p in (document["components"]["parameters"][r["$ref"].rsplit("/", 1)[1]] for r in item["parameters"])}
+    assert params["end"]["in"] == "query" and params["end"]["required"] is False
+    assert params["end"]["schema"] == {"$ref": "schemas/v1/common.schema.json#/$defs/date"}
+    ok = item["responses"]["200"]
+    assert ok["content"] == {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}
+    assert "attachment" in ok["headers"]["Content-Disposition"]["description"]
+    assert item["responses"]["422"] == {"$ref": "#/components/responses/Error"}
 
 
 def test_ui_reprocess_refuses_a_session_that_did_not_fail():

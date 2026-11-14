@@ -1,0 +1,274 @@
+{
+ "assessments": [
+  {
+   "as_of": "2027-02-04T09:00:00Z",
+   "confidence": 0.5,
+   "level": "red",
+   "risk_score": 0.9
+  },
+  {
+   "as_of": "2027-02-07T09:00:00Z",
+   "confidence": 0.74,
+   "level": "green",
+   "risk_score": null
+  },
+  {
+   "as_of": "2027-02-10T09:00:00Z",
+   "confidence": null,
+   "level": "amber",
+   "risk_score": 0.4
+  }
+ ],
+ "astronaut_id": "AST-01",
+ "days": [
+  {
+   "date": "2027-02-04",
+   "level": "red",
+   "mission_day": 83,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-05",
+   "level": "nodata",
+   "mission_day": 84,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-06",
+   "level": "nodata",
+   "mission_day": 85,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-07",
+   "level": "green",
+   "mission_day": 86,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-08",
+   "level": "nodata",
+   "mission_day": 87,
+   "other_symptoms": [],
+   "pain_nrs": 7,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 1,
+   "sessions": 0,
+   "sleep_hours": 5.5,
+   "stiffness_nrs": 6
+  },
+  {
+   "date": "2027-02-09",
+   "level": "nodata",
+   "mission_day": 88,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-10",
+   "level": "amber",
+   "mission_day": 89,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  }
+ ],
+ "end": "2027-02-10",
+ "generated_at": "2027-02-10T18:00:00Z",
+ "has_data": true,
+ "latest_assessment": {
+  "as_of": "2027-02-10T09:00:00Z",
+  "completeness": {
+   "missing": [
+    {
+     "reason": "sensor_offline",
+     "what": "emg.left"
+    },
+    {
+     "reason": "not_collected",
+     "what": "imu.trunk"
+    }
+   ],
+   "score": 0.5
+  },
+  "confidence": null,
+  "domains": [
+   {
+    "domain": "spine_length",
+    "evaluated": true,
+    "level": "green",
+    "score": 0.1234
+   },
+   {
+    "domain": "muscle",
+    "evaluated": false,
+    "level": "red",
+    "score": null
+   }
+  ],
+  "drivers": [
+   {
+    "contribution": 0.1,
+    "deviation_z": 2.0,
+    "feature_id": "f.0",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": -3.1,
+    "feature_id": "f.1",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": 0.4,
+    "feature_id": "f.2",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": null,
+    "feature_id": "f.3",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": 1.9,
+    "feature_id": "f.4",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": -0.2,
+    "feature_id": "f.5",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": 2.6,
+    "feature_id": "f.6",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": 1.0,
+    "feature_id": "f.7",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": -1.1,
+    "feature_id": "f.8",
+    "unit": "u",
+    "value": 1.0
+   },
+   {
+    "contribution": 0.1,
+    "deviation_z": 0.0,
+    "feature_id": "f.9",
+    "unit": "u",
+    "value": 1.0
+   }
+  ],
+  "escalation": {
+   "reasons": [
+    "RULE_B",
+    "RULE_A"
+   ],
+   "required": true,
+   "urgency": null
+  },
+  "fired_rules": [
+   {
+    "domain": "symptoms",
+    "level": "red",
+    "overrides_model": true,
+    "rule_id": "RULE_B"
+   },
+   {
+    "domain": "spine_length",
+    "level": "amber",
+    "overrides_model": false,
+    "rule_id": "RULE_A"
+   },
+   {
+    "domain": "symptoms",
+    "level": "red",
+    "overrides_model": true,
+    "rule_id": "RULE_B"
+   }
+  ],
+  "level": "amber",
+  "recommendations": [],
+  "risk_score": 0.4,
+  "trend": {
+   "projected_level": "green"
+  }
+ },
+ "mission_day": {
+  "end": 89,
+  "start": 83
+ },
+ "odi": null,
+ "pain": {
+  "daily_reports": 1,
+  "max": 7,
+  "max_worst_24h": null,
+  "mean": 7.0
+ },
+ "schema_version": "1.0.0",
+ "sessions": [],
+ "start": "2027-02-04",
+ "symptoms": {
+  "other_symptoms": [],
+  "red_flags": []
+ }
+}

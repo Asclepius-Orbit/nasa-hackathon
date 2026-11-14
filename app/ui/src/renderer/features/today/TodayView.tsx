@@ -23,6 +23,7 @@ import {
 import { ProfileNotice } from '../profile/ProfileNotice';
 import { useUrgent } from '../urgent/UrgentContext';
 import { gmtClock, gmtDay, isSameGmtDay, minutesSince } from './gmt';
+import { HoustonReportCard } from './HoustonReportCard';
 import { SpineFigure } from './SpineFigure';
 import styles from './TodayView.module.css';
 import { TodoRows } from './TodoRows';
@@ -217,6 +218,7 @@ export function TodayView(): React.JSX.Element {
             <Why today={data} />
             <h2>{copy.alsoToday}</h2>
             <TodoRows items={data.alsoToday} />
+            <HoustonReportCard />
           </div>
         </div>
       )}

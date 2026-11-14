@@ -256,3 +256,43 @@ describe('houston and outbox identity', () => {
     expect(await codeOf(call(createViewsClient({ baseUrl: BASE, fetch })))).toBe('unavailable');
   });
 });
+
+describe('createViewsClient houstonReport', () => {
+  const NAME = `houston-report-${ASTRONAUT}-2026-11-01_2026-11-07.pdf`;
+  const pdf = (headers: Record<string, string> = {}, body: string = '%PDF-1.7 body', status = 200): Response =>
+    new Response(body, {
+      status,
+      headers: { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="${NAME}"`, ...headers },
+    });
+
+  it('GETs the PDF path asking for application/pdf and returns the bytes with the name of the header', async () => {
+    const { fetch, calls } = fakeFetch(() => pdf());
+    const result = await createViewsClient({ baseUrl: BASE, fetch, token: 't' }).houstonReport(ASTRONAUT);
+    expect(calls[0]?.url).toBe(`${BASE}/ui/crew/${ASTRONAUT}/houston-report.pdf`);
+    expect(calls[0]?.init).toMatchObject({ method: 'GET', redirect: 'error', headers: { accept: 'application/pdf' } });
+    expect(result.fileName).toBe(NAME);
+    expect(new TextDecoder().decode(result.bytes)).toBe('%PDF-1.7 body');
+  });
+
+  it('falls back to a plain name when the header is missing or carries a path', async () => {
+    for (const disposition of ['attachment', 'attachment; filename="../../evil.pdf"', 'attachment; filename="C:\\x.pdf"']) {
+      const { fetch } = fakeFetch(() => pdf({ 'content-disposition': disposition }));
+      expect((await createViewsClient({ baseUrl: BASE, fetch }).houstonReport(ASTRONAUT)).fileName).toBe('houston-report.pdf');
+    }
+  });
+
+  it.each([
+    ['404', () => pdf({}, '', 404), 'not_found'],
+    ['500', () => pdf({}, '', 500), 'unavailable'],
+    ['a body that is not a PDF', () => pdf({}, '<html>'), 'unavailable'],
+    ['another content type', () => pdf({ 'content-type': 'application/json' }), 'unavailable'],
+  ])('maps %s to %s', async (_name, respond, code) => {
+    const { fetch } = fakeFetch(respond);
+    expect(await codeOf(createViewsClient({ baseUrl: BASE, fetch }).houstonReport(ASTRONAUT))).toBe(code);
+  });
+
+  it('maps a network failure to unavailable', async () => {
+    const fetch: ViewFetch = () => Promise.reject(new TypeError('fetch failed'));
+    expect(await codeOf(createViewsClient({ baseUrl: BASE, fetch }).houstonReport(ASTRONAUT))).toBe('unavailable');
+  });
+});

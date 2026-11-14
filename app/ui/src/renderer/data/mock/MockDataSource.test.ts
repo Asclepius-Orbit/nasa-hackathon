@@ -232,6 +232,11 @@ describe('reports in memory', () => {
     expect(source.sendsUrgentReports).toBe(true);
     await expect(source.sendUrgentReport('AST-01', ['leg_weakness'])).resolves.toBeUndefined();
   });
+
+  it('does not pretend to make the Houston PDF', async () => {
+    expect(data.generatesHoustonReport).toBe(false);
+    expect(await data.generateHoustonReport()).toEqual({ status: 'error', reason: 'unavailable' });
+  });
 });
 
 describe('subscribeReps', () => {

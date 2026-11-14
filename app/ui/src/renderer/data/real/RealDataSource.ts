@@ -8,6 +8,7 @@ import type {
   DailyContextFields,
   DailyReportFields,
   DeviceStatus,
+  HoustonReportResult,
   OdiAnswer,
   ProfileFields,
   ProtocolId,
@@ -58,7 +59,7 @@ export class RealDataSource implements DataSource {
   constructor(
     private readonly views: AsclepiusApi['views'],
     private readonly reps: AsclepiusApi['reps'],
-    private readonly account: Pick<AsclepiusApi, 'profile' | 'dailyContext' | 'devices' | 'sessions' | 'reports' | 'urgent' | 'contacts'>,
+    private readonly account: Pick<AsclepiusApi, 'profile' | 'dailyContext' | 'devices' | 'sessions' | 'reports' | 'urgent' | 'contacts' | 'houstonReport'>,
   ) {}
 
   private lastSessionId: string | null = null;
@@ -249,6 +250,17 @@ export class RealDataSource implements DataSource {
     });
     if (!result.ok) return refused(result);
     return undefined;
+  }
+
+  readonly generatesHoustonReport = true;
+
+  async generateHoustonReport(): Promise<HoustonReportResult> {
+    try {
+      return await this.account.houstonReport.generate();
+    } catch {
+      // The bridge itself failing is the same as the backend not answering: nothing was saved.
+      return { status: 'error', reason: 'unavailable' };
+    }
   }
 
   async logCrewMedicalOfficerCall(sessionId: string | null): Promise<ContactEntry> {

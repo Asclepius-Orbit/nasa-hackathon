@@ -670,6 +670,32 @@ paths:
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/houston-report.pdf:
+    get:
+      operationId: getHoustonWeeklyReport
+      summary: Weekly report for Houston (PDF)
+      description: |
+        PDF report of the last seven UTC days of the astronaut, ending on `end` (default today, UTC; up to now when it is today). It reads only that week, never the whole history: daily self-reports (pain, symptoms as codes), the red flags and urgent symptoms (codes, never free-text notes), the latest weekly Oswestry (informative), exercise sessions with their measures, and the engine assessments (level, confidence, drivers, `REC_*` recommendations, escalation and `RULE_*` rules). It leaves out the MCP and the LLM agent (chat, explanations) and any profile data: it carries only the pseudonymous `astronaut_id`. A week without data still gives a PDF that says so (level `nodata`, never green). The file is served as an attachment named `houston-report-<astronaut_id>-<start>_<end>.pdf`.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/ReportEnd'
+      responses:
+        '200':
+          description: The report.
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="houston-report-<astronaut_id>-<start>_<end>.pdf"`, with `start` and `end` the first and last UTC day of the week.'
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /ui/crew/{astronaut_id}/outbox:
     get:
       operationId: getOutboxView
@@ -816,6 +842,13 @@ components:
       description: Device to describe (the one paired in the app). Omitted, the device that reported last.
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/device_id'
+    ReportEnd:
+      name: end
+      in: query
+      required: false
+      description: Last day of the report week, inclusive (ISO 8601 date, UTC). Default today.
+      schema:
+        $ref: 'schemas/v1/common.schema.json#/$defs/date'
     FromDate:
       name: from
       in: query

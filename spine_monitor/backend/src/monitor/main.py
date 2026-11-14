@@ -134,7 +134,7 @@ def create_app(
     hub = RepHub(store, clock, no_signal_s=settings.live_no_signal_s)
     bus = Bus(factory, reconnect_min_s=settings.mqtt_reconnect_min_s, reconnect_max_s=settings.mqtt_reconnect_max_s)
     control = Control(store, bus, analysis.process_session, ack_timeout_s=settings.ack_timeout_s, clock=clock, on_session_closed=hub.finish)
-    ingest = Ingest(store, control, store_unknown_session_chunks=settings.store_unknown_session_chunks, live=hub)
+    ingest = Ingest(store, control, store_unknown_session_chunks=settings.store_unknown_session_chunks, live=hub, telemetry_source=settings.telemetry_source)
     reps = RepStream(hub, tick_s=settings.live_tick_s, heartbeat_s=settings.live_heartbeat_s)
     runtime = Runtime(store, bus, control, analysis, ingest, hub, reps, ground, sender, retrier, refresher)
 

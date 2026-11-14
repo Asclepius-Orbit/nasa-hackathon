@@ -270,7 +270,10 @@ async def test_stdio_server_serves_the_demo_dataset_at_the_pinned_clock(now: dat
         async with Client(stdio_client(params, errlog=errlog)) as client:
             tools = {tool.name for tool in (await client.list_tools()).tools}
             result = await client.call_tool("get_current_status", {"astronaut_id": AST})
-    assert len(tools) == 7
+    assert tools == {
+        "get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario",
+        "get_sessions", "get_self_reports", "search_evidence",
+    }
     assert result.structured_content is not None
     validate("app/status", result.structured_content)
     assert result.structured_content["latest_assessment"]["level"] == "amber"

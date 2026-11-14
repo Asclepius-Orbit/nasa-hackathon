@@ -30,6 +30,7 @@ def build_assess_request(store: Store, astronaut_id: str, as_of: datetime, windo
         return BuiltRequest(skipped="no_baseline")
     start = as_of - window
     feature_sets = store.feature_sets_between(astronaut_id, start, as_of)
+    feature_sets.extend(store.measured_windows(astronaut_id, as_of - timedelta(seconds=5), as_of))
     if not feature_sets:
         return BuiltRequest(skipped="no_feature_sets")
     contexts = store.daily_contexts_between(astronaut_id, start.date().isoformat(), as_of.date().isoformat())

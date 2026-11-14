@@ -161,7 +161,31 @@ class Analysis:
         if feature_set["astronaut_id"] != astronaut_id or feature_set["session_id"] != session_id:
             raise EngineError("engine returned a feature set of another session")
         self._store.put_feature_set(feature_set, phase=session["mission_context"]["phase"], anchor_at=session["started_at"])
+        self._store_measured_window(feature_set, chunks)
         return feature_set
+
+    def _store_measured_window(self, feature_set: dict[str, Any], chunks: list[dict[str, Any]]) -> None:
+        """Keep measured results apart from the full-session feature set, including incomplete results."""
+        ids = {"stretch.full_spine.resistance_change_pct", "imu.lumbar.sensor_x.orientation_deg", "emg.reference.normalized_amplitude"}
+        boots = {chunk["boot_id"] for chunk in chunks}
+        window = feature_set.get("window")
+        if len(boots) != 1 or not window:
+            return
+        end = datetime.fromisoformat(window["end"])
+        start = datetime.fromisoformat(window["start"])
+        if end - start < timedelta(seconds=5):
+            return
+        measurement_window = {"start": (end - timedelta(seconds=5)).isoformat(), "end": end.isoformat()}
+        def matches_window(feature: dict[str, Any]) -> bool:
+            span = feature.get("window")
+            return bool(span and datetime.fromisoformat(span["start"]) == end - timedelta(seconds=5) and datetime.fromisoformat(span["end"]) == end)
+
+        measured = [feature for feature in feature_set["features"] if feature["feature_id"] in ids and matches_window(feature)]
+        skipped = [item for item in feature_set.get("skipped", []) if item["feature_id"] in ids]
+        if not measured and not skipped:
+            return
+        result = {**feature_set, "window": measurement_window, "features": measured, "skipped": skipped}
+        self._store.put_measured_window(result, boot_id=next(iter(boots)))
 
     async def _rebuild_baseline(self, astronaut_id: str) -> dict[str, Any] | None:
         feature_sets = self._store.feature_sets_of_phase(astronaut_id, "preflight")

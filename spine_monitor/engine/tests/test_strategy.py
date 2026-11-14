@@ -64,6 +64,28 @@ def test_same_gravity_entry_is_preferred_over_earth():
     assert result[ROM].z == 0.0
 
 
+@pytest.mark.parametrize(("name", "protocol", "value"), [
+    ("straight_resistance_ohm", "spine_resistance_straight_v1", 4500.0),
+    ("max_flexion_resistance_ohm", "spine_resistance_max_flexion_v1", 5650.0),
+])
+def test_posture_resistance_always_compares_to_earth(name, protocol, value):
+    req = request()
+    feature_id = f"stretch.full_spine.{name}"
+    earth = req.baseline.entries[0].model_copy(update={
+        "feature_id": feature_id, "protocol_id": protocol, "gravity_environment": GravityEnvironment.EARTH_1G, "median": value,
+    })
+    space = earth.model_copy(update={"gravity_environment": GravityEnvironment.MICROGRAVITY, "median": value + 100})
+    req.baseline.entries = [earth, space]
+    feature_set = req.feature_sets[0]
+    feature_set.protocol_id = protocol
+    feature_set.features = [feature_set.features[0].model_copy(update={"feature_id": feature_id, "value": value + 100})]
+    result = by_feature(default_baseline_strategy(EngineSettings()).deviations(req.baseline, [feature_set]))
+    assert result[feature_id].reference_gravity == GravityEnvironment.EARTH_1G
+    assert result[feature_id].z == RobustZScorer().score(value + 100, earth)
+    req.baseline.entries = [space]
+    assert feature_id not in by_feature(default_baseline_strategy(EngineSettings()).deviations(req.baseline, [feature_set]))
+
+
 def test_a_sustained_shift_in_the_history_is_flagged_but_a_spike_is_not():
     req = request()
     strategy = default_baseline_strategy(EngineSettings())

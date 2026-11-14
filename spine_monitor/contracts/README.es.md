@@ -11,12 +11,12 @@ Contratos de datos compartidos por todos los componentes: gateway del wearable, 
 | `schemas/v1/common.schema.json` | Definiciones comunes: ids, enums, calidad, colocación |
 | `schemas/v1/telemetry/` | Mensajes MQTT: chunk de stream, estado del dispositivo, comando, ack de comando, sincronización de reloj. La entidad `domain/calibration` también se publica en el bus (ver Convenciones) |
 | `schemas/v1/domain/` | Entidades: sesión, calibración, perfil del astronauta, autoinforme, contexto diario, conjunto de features, baseline, evaluación |
-| `schemas/v1/engine/` | Cuerpos HTTP del motor: `/features`, `/baseline`, `/assess`, `/simulate`, errores |
+| `schemas/v1/engine/` | Cuerpos HTTP del motor: `/features`, `/baseline`, `/assess`, `/simulate`, `/stretch-estimate`, errores |
 | `schemas/v1/app/` | Cuerpos HTTP de la API de solo lectura de la app: estado, histórico, explicación, listas de evaluaciones, sesiones y autoinformes, errores; y las vistas de la UI de `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | Cuerpos HTTP de la API de chat del agente LLM (`agent-openapi.yaml`): la pregunta (`chat-request`) y los eventos SSE de la respuesta (`chat-event`) |
 | `catalog/feature-catalog.json` | Cada métrica derivada (feature) con unidad, entradas, requisitos, `risk_direction` y rangos. `catalog_version` 0.2.0: las direcciones y los rangos son **provisional, pendiente de Aguado** (el estado sigue en `proposed` y cada fuente de rango empieza por "provisional, pendiente de Aguado") hasta que Aguado los valide |
 | `catalog/protocol-catalog.json` | Datos fijos de cada protocolo (banda, series, repeticiones, descansos, agarre, tempo, postura, ids de colocación) que citan las vistas de la UI |
-| `catalog/calibration-defaults.json` | Defaults provisionales de las calibraciones del gateway (curva y reposo del cordón, ventana MVC del EMG), los mismos valores que la misión de ejemplo; PENDIENTE medición Aguado (#106) |
+| `catalog/calibration-defaults.json` | Defaults provisionales de las calibraciones del gateway (curva y reposo del cordón, ventana MVC del EMG), los mismos valores que la misión de ejemplo; curva sin validar para el montaje real (#106) |
 | `asyncapi.yaml` | Topics MQTT, dirección, QoS y retain (desde el punto de vista del gateway) |
 | `openapi.yaml` | API HTTP del motor |
 | `app-openapi.yaml` | API HTTP de solo lectura de la app (solo GET), la usa el servidor MCP |
@@ -42,6 +42,7 @@ Los datos pertenecen a una **sesión**: `exercise` (protocolo estandarizado, p. 
 - **IMU:** `imu_t9`, en T9.
 - **Cordón elástico:** `stretch_spine`, región `full_spine`, de C3-C4 a L5-S1 (unos 650 mm); sus features son `stretch.full_spine.*`.
 - **Spine checks:** `spine_length_rest_v1`, de pie, justo antes (`phase: pre`) y justo después (`phase: post`) del ejercicio; `related_session_id` es la sesión de ejercicio que enmarcan.
+- **Resistencia por postura:** `spine_resistance_straight_v1` y `spine_resistance_max_flexion_v1` registran por separado la espalda recta y la máxima flexión. La referencia de cada astronauta se establece en la Tierra y se repite periódicamente en vuelo. Los valores normales comunicados son 4.500 Ω y 5.650 Ω, respectivamente, con contactos separados 500 mm; son informativos, no umbrales clínicos. `catalog/cord-measurements.json` conserva las tres lecturas de mesa para cada longitud del cordón entero (1.000–1.400 mm), medidas entre contactos separados 100 mm. Puede estimarse la resistencia de 500 mm multiplicando por cinco la de 100 mm, suponiendo resistencia uniforme y contactos despreciables; es una hipótesis, no una medición ni una calibración validada.
 
 ## Convenciones
 - Campos y descripciones en inglés, `snake_case`.
@@ -81,7 +82,7 @@ validation.validate("telemetry/stream-chunk", dump(chunk))  # reglas completas, 
 Edita el schema, añade o actualiza su ejemplo, regenera, ejecuta los tests y avisa a los dueños de las demás capas. Las ampliaciones compatibles suben la versión menor; cualquier otra cosa, la mayor.
 
 ## Abierto
-- **Aguado:** validar el catálogo de features (ids, unidades, `risk_direction`, rangos y sus fuentes): los valores de `risk_direction` y los rangos de `catalog_version` 0.2.0 son provisionales y están pendientes de Aguado (#38; el índice de simetría izquierda-derecha, #106, no se toca); el conjunto reducido de ítems del ODI; la recuperación entre series (30 s es un valor provisional), el procedimiento de MVC y el estiramiento exacto de la banda; la medición del cordón (unos 650 mm, PENDIENTE medición Aguado: la curva resistencia-longitud es provisional hasta medirla con un óhmetro; no es lineal y tarda en recuperarse, así que la longitud sale de una curva medida).
+- **Aguado:** validar el catálogo de features (ids, unidades, `risk_direction`, rangos y sus fuentes): los valores de `risk_direction` y los rangos de `catalog_version` 0.2.0 son provisionales y están pendientes de Aguado (#38; el índice de simetría izquierda-derecha, #106, no se toca); el conjunto reducido de ítems del ODI; la recuperación entre series (30 s es un valor provisional), el procedimiento de MVC y el estiramiento exacto de la banda. Las mediciones del cordón están terminadas; la curva de ejemplo y la estimación para el montaje de 500 mm siguen sin validar.
 - **Polfer:** ¿el módulo EMG da la señal cruda o una envolvente? (las features espectrales necesitan cruda). Usar pines ADC1 del ESP32 (el ADC2 no funciona con Bluetooth/WiFi). El formato wearable→gateway es libre; el contrato empieza en MQTT. El gateway real usa el protocolo serie documentado en `spine_monitor/gateway/README.es.md` y `firmware/README.es.md`.
 - **Frecuencia de la IMU:** 100 Hz por defecto; 10 Hz se queda corta para suavidad y velocidad pico de una repetición de ~2 s.
 - Salidas de las herramientas MCP: `compare_periods` tiene su propio schema, `mcp/compare-periods` (lo calcula el servidor con dos llamadas a `/history`); las demás herramientas MCP reutilizan los schemas `app` y `engine`.

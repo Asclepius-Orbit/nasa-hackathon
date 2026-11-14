@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/stretch-estimate-response.schema.json",
+  "title": "StretchEstimateResponse",
+  "description": "Experimental estimate; this is not a measured length or a validated clinical result.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "estimated_length_mm": { "type": "number", "exclusiveMinimum": 0 },
+    "elongation_mm": { "type": "number" },
+    "model": { "const": "experimental_uniform_resistance_v1" }
+  },
+  "required": ["schema_version", "estimated_length_mm", "elongation_mm", "model"],
+  "additionalProperties": false
+}

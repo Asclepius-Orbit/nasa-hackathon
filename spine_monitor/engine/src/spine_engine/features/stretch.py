@@ -45,6 +45,10 @@ from spine_engine.features.stretch_curve import StretchCurveError, adc_to_resist
 from spine_engine.settings import DEFAULT_STRETCH_RECOVERY_FRACTION
 
 _NAMES = ("elongation_mm", "elongation_pct", "peak_elongation_mm", "range_mm", "recovery_time_s", "rest_resistance_ohm")
+_POSTURE_NAMES = {
+    "spine_resistance_straight_v1": "straight_resistance_ohm",
+    "spine_resistance_max_flexion_v1": "max_flexion_resistance_ohm",
+}
 _PER_REP = ("peak_elongation_mm", "range_mm", "recovery_time_s")
 _CALIBRATED = ("elongation_mm", "elongation_pct", *_PER_REP)
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -140,7 +144,7 @@ class StretchFamily:
     """Features del cordón por stream stretch declarado con ``placement.spine_region``."""
 
     family = "stretch"
-    feature_ids: Sequence[str] = tuple(i for name in _NAMES for i in expand_template(f"stretch.{{spine_region}}.{name}"))
+    feature_ids: Sequence[str] = tuple(i for name in (*_NAMES, *_POSTURE_NAMES.values()) for i in expand_template(f"stretch.{{spine_region}}.{name}"))
 
     def __init__(self, repetitions: RepetitionService, *, default_recovery_wait_s: float, recovery_fraction: float = DEFAULT_STRETCH_RECOVERY_FRACTION) -> None:
         self._repetitions = repetitions
@@ -154,7 +158,10 @@ class StretchFamily:
             region = stream.placement.spine_region
             if stream.stream_kind is StreamKind.STRETCH and region is not None:
                 outcomes = self._stream(context, stream.stream_id)
-                for name in _NAMES:
+                posture_name = _POSTURE_NAMES.get(context.session.protocol_id)
+                if posture_name is not None:
+                    outcomes[posture_name] = outcomes["rest_resistance_ohm"]
+                for name in ((posture_name,) if posture_name else _NAMES):
                     feature_id = f"stretch.{region.value}.{name}"
                     outcome = outcomes[name]
                     if isinstance(outcome, Reason):

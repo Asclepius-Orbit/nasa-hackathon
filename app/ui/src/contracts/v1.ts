@@ -969,6 +969,8 @@ export interface ContractsV1 {
   "engine/features-request"?: FeaturesRequest;
   "engine/simulate-request"?: SimulateRequest;
   "engine/simulate-response"?: SimulateResponse;
+  "engine/stretch-estimate-request"?: StretchEstimateRequest;
+  "engine/stretch-estimate-response"?: StretchEstimateResponse;
   "mcp/compare-periods"?: ComparePeriods;
   "telemetry/clock-sync"?: ClockSync;
   "telemetry/command-ack"?: CommandAck;
@@ -2990,6 +2992,30 @@ export interface SimulateResponse {
      */
     unprojected_features: string[];
   };
+}
+/**
+ * Experimental estimate using the astronaut's straight-back Earth reference and the current cord resistance. Both must be inside the experimental model's range; the measured reference length must be the distance between the back contacts. The model is not clinically validated.
+ */
+export interface StretchEstimateRequest {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  baseline_resistance_ohm: number;
+  current_resistance_ohm: number;
+  reference_length_mm: number;
+}
+/**
+ * Experimental estimate; this is not a measured length or a validated clinical result.
+ */
+export interface StretchEstimateResponse {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  estimated_length_mm: number;
+  elongation_mm: number;
+  model: "experimental_uniform_resistance_v1";
 }
 /**
  * Output of the MCP tool compare_periods. The MCP server calls GET /crew/{astronaut_id}/history twice (period A, period B) and computes this comparison; there is no HTTP endpoint for it. Every delta is B minus A (positive means B is higher than A; whether higher is better or worse depends on the feature). Absence is never good news: a missing value is null, never omitted and never 0. Check warnings before interpreting the numbers.

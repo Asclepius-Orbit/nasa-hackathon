@@ -41,6 +41,34 @@ def test_health(client):
     assert response.json() == {"status": "ok"}
 
 
+def test_stretch_estimate_uses_measured_trials_and_personal_baseline(client):
+    response = client.post("/stretch-estimate", json={
+        "schema_version": "1.0.0", "baseline_resistance_ohm": 4500,
+        "current_resistance_ohm": 5650, "reference_length_mm": 500,
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert validation.errors("engine/stretch-estimate-response", body) == []
+    assert body["model"] == "experimental_uniform_resistance_v1"
+    assert body["estimated_length_mm"] == pytest.approx(538.5723, abs=0.01)
+    assert body["elongation_mm"] == pytest.approx(38.5723, abs=0.01)
+
+
+@pytest.mark.parametrize("field", ["baseline_resistance_ohm", "current_resistance_ohm"])
+def test_stretch_estimate_rejects_out_of_range_without_extrapolating(client, field):
+    body = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500,
+            "current_resistance_ohm": 5650, "reference_length_mm": 500}
+    body[field] = 10000
+    response = client.post("/stretch-estimate", json=body)
+    assert_problem(response, 422, "invalid_request")
+
+
+def test_stretch_estimate_rejects_unrepresentable_scaling(client):
+    body = {"schema_version": "1.0.0", "baseline_resistance_ohm": 5e-324,
+            "current_resistance_ohm": 5e-324, "reference_length_mm": 5e-324}
+    assert_problem(client.post("/stretch-estimate", json=body), 422, "invalid_request")
+
+
 def test_features_extracts_stretch_and_computes_exercise_for_the_two_rep_example(client):
     request = example("features-request")
 

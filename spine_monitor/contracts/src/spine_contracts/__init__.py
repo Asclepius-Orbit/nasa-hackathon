@@ -84,6 +84,8 @@ from spine_contracts.models.engine.error_schema import ErrorResponse
 from spine_contracts.models.engine.features_request_schema import FeaturesRequest
 from spine_contracts.models.engine.simulate_request_schema import SimulateRequest
 from spine_contracts.models.engine.simulate_response_schema import SimulateResponse
+from spine_contracts.models.engine.stretch_estimate_request_schema import StretchEstimateRequest
+from spine_contracts.models.engine.stretch_estimate_response_schema import StretchEstimateResponse
 from spine_contracts.models.mcp.compare_periods_schema import ComparePeriods
 from spine_contracts.models.telemetry.clock_sync_schema import ClockSync
 from spine_contracts.models.telemetry.command_ack_schema import CommandAck
@@ -97,6 +99,8 @@ from spine_contracts.models.telemetry.device_status_schema import DeviceStatus
 from spine_contracts.models.telemetry.stream_chunk_schema import EmgChunk, ImuChunk, StretchChunk
 
 __all__ = [
+    "StretchEstimateRequest",
+    "StretchEstimateResponse",
     "SCHEMA_VERSION",
     "AnatomicalPlane",
     "AppErrorResponse",

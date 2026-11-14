@@ -69,7 +69,7 @@ def test_asyncapi_calibration_is_retained_qos1_with_the_calibration_schema():
 
 
 def test_openapi_paths_are_the_engine_endpoints():
-    assert set(load("openapi.yaml")["paths"]) == {"/health", "/features", "/baseline", "/assess", "/simulate"}
+    assert set(load("openapi.yaml")["paths"]) == {"/health", "/features", "/baseline", "/assess", "/simulate", "/stretch-estimate"}
 
 
 APP_PATHS = {

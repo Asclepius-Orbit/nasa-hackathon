@@ -8,6 +8,8 @@ Fuente: comentario de Aguado en la issue #12. Los valores viven en el contrato (
 |---|---|
 | `lat_pulldown_standing_v1` | Jalón al pecho de pie con banda elástica |
 | `spine_length_rest_v1` | `spine_check` pasivo, de pie, justo antes (`phase: pre`) y justo después (`phase: post`) del ejercicio; la sesión lleva `related_session_id` hacia la del ejercicio |
+| `spine_resistance_straight_v1` | Resistencia con la espalda recta; referencia personal en Tierra y seguimiento en vuelo |
+| `spine_resistance_max_flexion_v1` | Resistencia con la espalda en máxima flexión; referencia personal en Tierra y seguimiento en vuelo |
 
 ## Ejercicio (`lat_pulldown_standing_v1`)
 
@@ -31,7 +33,22 @@ Campos de `placement` para EMG: `electrode_spacing_cm`, `span` (T11→L2), `grou
 
 - La elongación sale del cambio de resistencia respecto a la resistencia en reposo `R0`, a través de una curva **medida**. El cordón no es lineal y tarda 1-2 minutos en recuperarse tras estirarse: `R0` se toma tras esa espera.
 - **350 Ω es la resistencia de una pulgada de cordón en reposo, no una deformación de 2,54 cm.** No se usa como factor de conversión de longitud.
-- **Pendiente de Aguado:** hasta que mida el cordón con óhmetro, la longitud en reposo (650 mm) y la curva son valores provisionales, marcados como «PENDIENTE medición Aguado» en los comentarios, los READMEs y el ejemplo de calibración. Cuando haya mediciones se abrirá una issue para actualizarlos.
+- Aguado y Polfer comunicaron 4.500 Ω con la espalda recta y 5.650 Ω en máxima flexión, con 50 cm entre los contactos del óhmetro. Son referencias informativas, no umbrales clínicos; cada astronauta se compara con su propia referencia terrestre por postura.
+- En una prueba de mesa distinta se estiró el cordón entero a cada longitud y se midió tres veces con los contactos separados 10 cm:
+
+| Longitud total | 1 | 2 | 3 |
+|---|---:|---:|---:|
+| 100 cm | 630 Ω | 780 Ω | 795 Ω |
+| 110 cm | 1.020 Ω | 1.165 Ω | 1.125 Ω |
+| 120 cm | 1.110 Ω | 1.255 Ω | 1.260 Ω |
+| 130 cm | 1.270 Ω | 1.320 Ω | 1.300 Ω |
+| 140 cm | 1.350 Ω | 1.355 Ω | 1.350 Ω |
+
+La longitud total de la tabla y la distancia entre contactos son magnitudes distintas. Como aproximación experimental, se promedian las tres resistencias de cada longitud, se multiplican por la distancia de referencia entre contactos dividida por 100 mm (factor 5 para los 500 mm comunicados) y se interpola por tramos, únicamente dentro del rango medido. Para estimar la longitud entre pinzas se usa `longitud de referencia × longitud total equivalente actual / longitud total equivalente en recta`; el cambio estimado se refiere a la postura recta individual medida en Tierra. El factor supone resistencia uniforme y resistencia de contacto despreciable; usa además la separación de referencia fija para escalar la resistencia aunque la separación pueda cambiar al estirar. Trasladar la proporción de longitud supone deformación uniforme y que las pinzas permanezcan fijas al material. Son hipótesis no validadas: la tabla no es una curva medida en el montaje de espalda y la estimación no es una medida clínica. Sin lectura recta personal o con alguna resistencia fuera del intervalo no hay estimación; no se extrapola. Las lecturas originales y el montaje están en `contracts/catalog/cord-measurements.json`.
+
+La longitud en reposo de 650 mm y la curva de calibración de ejemplo siguen siendo provisionales; falta medir o validar una calibración aplicable a la colocación real y el tiempo de recuperación (#106, #46). La captura y el seguimiento periódico de ambas posturas siguen en #122.
+
+Fuentes sobre el comportamiento del material: [fabricante del cordón Adafruit 519](https://www.adafruit.com/product/519) (respuesta no lineal y variación entre ejemplares) y [estudio sobre sensores elastoméricos conductores](https://advanced.onlinelibrary.wiley.com/doi/full/10.1002/admt.201700284) (dependencia de la resistividad e histéresis). No validan el modelo experimental ni sustituyen la calibración del montaje utilizado.
 
 ## MVC
 

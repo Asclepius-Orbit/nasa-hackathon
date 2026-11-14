@@ -19,6 +19,8 @@ from spine_contracts import (
     FeaturesRequest,
     SimulateRequest,
     SimulateResponse,
+    StretchEstimateRequest,
+    StretchEstimateResponse,
     dump,
     validation,
 )
@@ -29,6 +31,7 @@ from spine_engine.api.problems import problem, to_errors
 from spine_engine.errors import InsufficientDataError, InvalidOverrideError, UnknownFeatureError
 from spine_engine.factory import default_baseline_builder, default_pipeline
 from spine_engine.features.composite import CompositeFeatureExtractor
+from spine_engine.features.experimental_stretch_curve import estimate_contact_span_mm, measured_trials
 from spine_engine.features.registry import default_registry
 from spine_engine.interfaces import BaselineBuilder, FeatureExtractor
 from spine_engine.pipeline import AssessmentPipeline
@@ -126,6 +129,24 @@ def create_app(
     async def build_baseline(request: Request) -> JSONResponse:
         body = await _parse(request, "engine/baseline-request", BaselineRequest)
         return _json(baseline_builder.build(body))
+
+    @app.post("/stretch-estimate", operation_id="estimateStretch")
+    async def stretch_estimate(request: Request) -> JSONResponse:
+        """Estimación experimental aislada de la evaluación clínica."""
+        body = await _parse(request, "engine/stretch-estimate-request", StretchEstimateRequest)
+        spacing, trials = measured_trials()
+        try:
+            length = estimate_contact_span_mm(
+                body.current_resistance_ohm, body.baseline_resistance_ohm, trials, spacing, body.reference_length_mm
+            )
+        except ValueError:
+            return problem(Type.INVALID_REQUEST, TITLES[Type.INVALID_REQUEST], 422, "Inputs cannot be represented by the experimental model.")
+        if length is None:
+            return problem(Type.INVALID_REQUEST, TITLES[Type.INVALID_REQUEST], 422, "Resistance is outside the measured curve; extrapolation is not available.")
+        return _json(StretchEstimateResponse(
+            schema_version=SCHEMA_VERSION, estimated_length_mm=length,
+            elongation_mm=length - body.reference_length_mm, model="experimental_uniform_resistance_v1",
+        ))
 
     @app.post("/assess", operation_id="assess")
     async def assess(request: Request) -> JSONResponse:

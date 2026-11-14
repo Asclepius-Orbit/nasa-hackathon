@@ -21,6 +21,7 @@ The contract is `contracts/openapi.yaml`; bodies and errors are the JSON Schemas
 | `GET /health` | - | `{"status": "ok"}` | real |
 | `POST /features` | `FeaturesRequest` (raw session data) | `FeatureSet` | registered families: `exercise`, `emg`, `imu`, `emg_spectral` and `stretch` |
 | `POST /baseline` | `BaselineRequest` (feature sets of the reference sessions) | `Baseline` | real |
+| `POST /stretch-estimate` | `baseline_resistance_ohm`, `current_resistance_ohm`, `reference_length_mm` | `estimated_length_mm`, `elongation_mm`, `model` | approximate, no extrapolation or clinical interpretation |
 | `POST /assess` | `AssessRequest` | `Assessment` | real baseline comparison and generic risk model (`risk_score`, `confidence`, `drivers`); provisional declarative triage (default policy, see Declarative triage) |
 | `POST /simulate` | `SimulateRequest` | `SimulateResponse` | applies `overrides` (`set`, `add`, `scale`) to the latest value of each feature, optionally projects trends and re-assesses |
 
@@ -132,10 +133,15 @@ It needs the raw EMG signal: the spectrum of a rectified or envelope signal does
 
 ### The strap (`stretch`) family
 
+The `spine_resistance_straight_v1` and `spine_resistance_max_flexion_v1` protocols produce `stretch.{spine_region}.straight_resistance_ohm` and `stretch.{spine_region}.max_flexion_resistance_ohm` respectively: the mean of valid samples in ohms, without length calibration. Each session emits only its posture feature. Comparison requires the personal Earth baseline for the same protocol, even if a microgravity baseline exists; without the Earth entry it is not compared. The reported values are 4,500 Ω straight and 5,650 Ω flexed, with contacts 50 cm apart and no clinical thresholds. Periodic follow-up and capture of both postures require further integration. These new features do not yet have simulator ground truth.
+
+Aguado and Polfer also measured the whole cord stretched from 100 to 140 cm, three times at each length, with contacts 10 cm apart; the original data are in `contracts/catalog/cord-measurements.json` and `docs/protocolo-ejercicio.md`. The experimental model averages the three readings, scales resistance by reference contact distance / 100 mm (factor 5 for 500 mm) and interpolates piecewise within the measured range. It estimates length between contacts as `reference_length_mm × current equivalent total length / straight equivalent total length`, using the person's Earth straight reference and contact distance (500 mm in the reported measurements); resistance outside the range returns 422 without extrapolation. The factor assumes uniform resistance and negligible contact resistance, and approximates scaling using the fixed reference spacing even if it changes during stretch; the length ratio further assumes uniform strain and contacts fixed to the material. These assumptions are unvalidated; the estimate is not a clinical length or a measured back calibration. The example calibration curve remains provisional; a curve applicable to the 50 cm setup and recovery time remain outstanding (#106, #46).
+
 Computed from ADC counts, so it needs no raw signal beyond the chunk. For each declared stretch stream with a `spine_region`:
 
 - **Resistance:** with the chunk's `circuit` (`adc_bits`, `vref_v`, `series_resistor_ohm`) the divider `Vout = vref * R / (R + Rs)` is inverted to a resistance. Without `circuit`, the `resistance_ohm` derived in the chunk is used; with neither, the feature goes to `skipped`.
 - **Length:** the resistance becomes a length through the `piecewise_linear` curve of `calibration.stretch_calibration` (resistance to length, not linear). `elongation_mm` and `elongation_pct` are relative to its `rest_length_mm`.
+- **Calibration range:** interpolation for existing length features clamps to the nearest curve endpoint outside its range; only `/stretch-estimate` rejects values outside its experimental range, with 422.
 - **Features:** `stretch.{spine_region}.elongation_mm`, `elongation_pct`, `peak_elongation_mm`, `range_mm`, `recovery_time_s` (per repetition, reusing `RepetitionService`) and `rest_resistance_ohm` (the resistance at rest).
 - **Recovery wait:** the wait is `stretch_calibration.recovery_wait_s` when present; otherwise `SPINE_ENGINE_STRETCH_RECOVERY_WAIT_S` (default 120 s), PROVISIONAL until #46 (the protocol sets the real value).
 - **Calibration:** as everywhere, the chunk's `calibration_id` wins over the session's. No calibration: `skipped` with `no_calibration`; expired: `calibration_expired`.

@@ -41,6 +41,7 @@ def test_engine_answers_what_the_contract_promises(case: schemathesis.Case) -> N
 _DOMAIN_REJECTIONS = {
     "/baseline": {"insufficient_data"},
     "/simulate": {"unknown_feature", "invalid_request"},
+    "/stretch-estimate": {"invalid_request"},
 }
 
 
@@ -58,6 +59,7 @@ def _domain_rejections(case: schemathesis.Case, response) -> list:
     sigue validándose contra el schema de error. Lo mismo vale para POST /simulate: un override sobre una
     feature fuera del catálogo o sin valor en la base (`unknown_feature`) o con resultado no finito
     (`invalid_request`) es un rechazo de dominio que el schema de la petición no puede expresar. El acotado es
+    igual en /stretch-estimate: las resistencias deben estar dentro del dominio medido, que depende de la referencia.
     por operación: un `invalid_request` en /features, /baseline o /assess sería una divergencia entre el schema
     y Pydantic y debe fallar. Cualquier otro rechazo de datos válidos falla.
     """
@@ -76,6 +78,8 @@ def _domain_rejections(case: schemathesis.Case, response) -> list:
         ("/simulate", 422, "unknown_feature", True),
         ("/simulate", 422, "invalid_request", True),
         ("/simulate", 422, "insufficient_data", False),
+        ("/stretch-estimate", 422, "invalid_request", True),
+        ("/stretch-estimate", 422, "unknown_feature", False),
         ("/assess", 422, "invalid_request", False),
         ("/assess", 422, "insufficient_data", False),
         ("/features", 422, "invalid_request", False),

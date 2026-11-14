@@ -52,6 +52,32 @@ paths:
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
+  /stretch-estimate:
+    post:
+      operationId: estimateStretch
+      summary: Estimate cord elongation using the experimental model
+      description: Estimates the change from an astronaut's straight-back Earth reference, assuming uniform resistance and negligible contact resistance. The bench model is unvalidated; length is an estimate, not a clinical measurement. Both resistance values must fall inside the model range; values outside it return 422 rather than being clamped or extrapolated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/engine/stretch-estimate-request.schema.json'
+      responses:
+        '200':
+          description: Experimental estimated length and change in millimetres.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/engine/stretch-estimate-response.schema.json'
+        '422':
+          description: Invalid input or a resistance outside the model range.
+          content:
+            application/problem+json:
+              schema:
+                $ref: 'schemas/v1/engine/error.schema.json'
+        default:
+          $ref: '#/components/responses/Error'
   /baseline:
     post:
       operationId: buildBaseline

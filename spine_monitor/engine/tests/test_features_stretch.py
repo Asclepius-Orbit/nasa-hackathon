@@ -718,3 +718,42 @@ def test_measured_stretch_requires_straight_reference():
     assert next(f.value for f in result.computed if f.feature_id == STRETCH) == pytest.approx(4)
     unmarked = MeasuredFamily().extract(make_context([1040.0] * 50, [calibration()]))
     assert STRETCH in {s.feature_id for s in unmarked.skipped}
+
+
+def test_measured_stretch_rejects_missing_time_despite_full_sample_count():
+    from spine_engine.features.context import build_context
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    ctx = make_context([1040.0] * 50, [marked])
+    request = ctx.request.model_copy(deep=True)
+    request.chunks[1].t0_device_ms += 100
+    result = MeasuredFamily().extract(build_context(request))
+    assert STRETCH not in values(result)
+
+
+def test_measured_feature_keeps_its_five_second_window_in_session_aggregate():
+    from spine_contracts import Completeness, Level
+    from spine_engine.features.composite import CompositeFeatureExtractor
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.features.registry import ExtractorRegistry
+    from spine_engine.interfaces import RiskResult, TriageContext
+    from spine_engine.measurements import STRETCH, measurements
+    from spine_engine.triage import DeclarativeTriagePolicy, PolicyConfig
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    context = make_context([1000.0] * 50 + [1075.0] * 50, [marked])
+    registry = ExtractorRegistry()
+    registry.register(MeasuredFamily())
+    output = CompositeFeatureExtractor(registry).extract(context.request)
+    assert output.window.end - output.window.start == timedelta(seconds=10)
+    feature = next(f for f in output.features if f.feature_id == STRETCH)
+    assert feature.window.end - feature.window.start == timedelta(seconds=5)
+    assert measurements([output], output.window.end)[STRETCH] == pytest.approx(7.5)
+    decision = DeclarativeTriagePolicy(PolicyConfig()).decide(
+        TriageContext(RiskResult(0), [], Completeness(score=1, missing=[]), [], output.window.end, [output])
+    )
+    assert decision.level == Level.RED

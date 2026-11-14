@@ -48,7 +48,7 @@ def _mean(values: Sequence[float]) -> float:
 
 def _feature(feature_id: str, value: float, n: int) -> FeatureValue:
     quality = Quality(score=_QUALITY_SCORE, flags=[], assessed_by=AssessedBy.ENGINE)
-    return FeatureValue(feature_id=feature_id, value=value, unit=unit_for(feature_id), n=n, quality=quality)
+    return FeatureValue.model_validate({"feature_id": feature_id, "value": value, "unit": unit_for(feature_id), "n": n, "quality": quality})
 
 
 def _latest_gravity(daily_context: Sequence[DailyContext], astronaut_id: str, first: datetime, last: datetime) -> DailyContext | None:

@@ -7,6 +7,7 @@ llegan en #41-#45 y esta infraestructura no inventa ninguna.
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from spine_contracts import Quality
@@ -29,6 +30,7 @@ class ComputedFeature:
     streams: tuple[str, ...]
     n: int | None = None
     quality: Quality | None = None
+    window: tuple[datetime, datetime] | None = None
 
 
 @dataclass(frozen=True, slots=True)

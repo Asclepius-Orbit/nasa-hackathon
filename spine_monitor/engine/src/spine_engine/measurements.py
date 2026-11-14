@@ -20,12 +20,12 @@ def measurements(feature_sets: list[FeatureSet], as_of: datetime) -> dict[str, f
     """Select the newest usable five-second measurement for each sensor."""
     found: dict[str, tuple[datetime, float]] = {}
     for fs in feature_sets:
-        window = fs.window
-        if window is None or window.end - window.start != timedelta(seconds=5):
-            continue
-        if not as_of - timedelta(seconds=5) <= window.end <= as_of:
-            continue
         for f in fs.features:
+            window = f.window or fs.window
+            if window is None or window.end - window.start != timedelta(seconds=5):
+                continue
+            if not as_of - timedelta(seconds=5) <= window.end <= as_of:
+                continue
             if (f.feature_id not in UNITS or f.unit != UNITS[f.feature_id] or not math.isfinite(f.value)
                     or f.quality.score <= 0 or f.quality.flags):
                 continue

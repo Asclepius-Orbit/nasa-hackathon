@@ -575,3 +575,31 @@ def test_shifting_the_session_in_time_does_not_change_the_values(shift_s: int, s
             assert math.isnan(moved[feature_id])
         else:
             assert moved[feature_id] == pytest.approx(value)
+
+
+def test_measured_imu_requires_absolute_reference_and_fixed_mount():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import IMU
+
+    def edit(raw):
+        raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] == "imu"]
+        raw["session"]["streams"] = [s for s in raw["session"]["streams"] if s["stream_kind"] == "imu"]
+        raw["session"]["streams"][0]["placement"]["spine_level"] = "l1"
+        cal = imu_calibration(raw)
+        cal["spine_level"] = "l1"
+        cal["created_at"] = T0.isoformat()
+        cal["reference_orientation_x_deg"] = 30
+        cal["mounting"] = {"sensor_x": "left", "sensor_y": "anterior", "sensor_z": "cranial"}
+
+    ctx = make_context(chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 500)}), edit=edit)
+    result = MeasuredFamily().extract(ctx)
+    assert values(result)[IMU] == pytest.approx(35)
+    longer = make_context(chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 1000)}), edit=edit)
+    assert values(MeasuredFamily().extract(longer))[IMU] == pytest.approx(40)
+    gap_chunks = chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 1000)})
+    gap_chunks.pop(10)
+    with_gap = make_context(gap_chunks, edit=edit)
+    assert IMU in skipped(MeasuredFamily().extract(with_gap))
+    cal = ctx.calibrations["imu_t9"].calibration
+    cal.reference_orientation_x_deg = None
+    assert IMU in skipped(MeasuredFamily().extract(ctx))

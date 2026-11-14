@@ -650,3 +650,16 @@ def test_pct_mvc_is_inversely_linear_in_the_mvc(values: list[float], mvc: float,
     for name in ("rms_pct_mvc", "peak_pct_mvc"):
         assert scaled[f"{PREFIX_LEFT}.{name}"] == pytest.approx(base[f"{PREFIX_LEFT}.{name}"] / factor, rel=1e-9)
 
+
+
+def test_reference_emg_requires_a_full_marked_effort_window():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import EMG
+
+    cal = calibration(LEFT, "left", 2.0)
+    samples = {LEFT: [1.5] * 500}
+    events = [ev("reference_effort_start", 0, 1), ev("reference_effort_end", 500, 1)]
+    measured = MeasuredFamily().extract(make_context(samples, [cal], events=events))
+    assert computed(measured)[EMG].value == pytest.approx(1023 * 0.75)
+    resting = MeasuredFamily().extract(make_context(samples, [cal], events=[]))
+    assert EMG in skipped(resting)

@@ -86,4 +86,6 @@ class CompositeFeatureExtractor:
             return None
         quality = item.quality if item.quality is not None else assessment.to_quality()
         extra: dict[str, Any] = {} if item.n is None else {"n": item.n}  # n es opcional pero no admite null
+        if item.window is not None:
+            extra["window"] = {"start": item.window[0], "end": item.window[1]}
         return FeatureValue(feature_id=item.feature_id, value=item.value, unit=unit, quality=quality, **extra)

@@ -2,6 +2,16 @@
 
 # nasa-hackathon
 
+## Chat architecture
+
+```text
+Desktop UI -- HTTP POST /chat + SSE --> Agent HTTP server -- MCP --> MCP server --> backend read API
+                                            |
+                                            +--> Ollama (local LLM)
+```
+
+The UI calls the agent directly with a token and `X-Astronaut-Id`. Closing the connection cancels the response. The agent can provide a deterministic fallback when the LLM is unavailable. See the [agent API guide](spine_monitor/agent/README.md) and [OpenAPI contract](spine_monitor/contracts/agent-openapi.yaml).
+
 ## Anthropometry and offline evidence
 
 The [source inventory](docs/anthropometry-sources.md) records NASA design guidance and a related study, their populations, methods, page references, limitations and reuse status. NASA's approximately 3% of standing stature and 6% of sitting height are spacecraft design allowances, not clinical thresholds. An engine prediction is experimental: it depends on the individual terrestrial baseline in the same posture, sensor uncertainty and the stated assumptions; standing height, seated height and estimated cord length are different quantities.

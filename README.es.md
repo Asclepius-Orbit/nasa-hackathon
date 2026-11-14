@@ -2,6 +2,16 @@
 
 # nasa-hackathon
 
+## Arquitectura del chat
+
+```text
+UI de escritorio -- HTTP POST /chat + SSE --> Servidor HTTP del agente -- MCP --> Servidor MCP --> API de lectura del backend
+                                                        |
+                                                        +--> Ollama (LLM local)
+```
+
+La UI llama directamente al agente con un token y `X-Astronaut-Id`. Cerrar la conexión cancela la respuesta. El agente puede ofrecer una respuesta alternativa determinista si el LLM no está disponible. Consulta la [guía de la API del agente](spine_monitor/agent/README.es.md) y el [contrato OpenAPI](spine_monitor/contracts/agent-openapi.yaml).
+
 ## Antropometría y evidencia offline
 
 El [inventario de fuentes](docs/anthropometry-sources.md) recoge guías de diseño de NASA y un estudio relacionado, con población, método, páginas, limitaciones y condiciones de reutilización. Los valores de NASA de aproximadamente el 3 % de la estatura de pie y el 6 % de la altura sentada son márgenes de diseño de naves, no umbrales clínicos. Una predicción del motor es experimental: depende de la referencia terrestre individual en la misma postura, la incertidumbre del sensor y las hipótesis indicadas; estatura, altura sentada y longitud estimada del cordón son magnitudes distintas.

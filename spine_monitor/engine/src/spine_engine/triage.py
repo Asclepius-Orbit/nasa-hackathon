@@ -10,7 +10,9 @@ from spine_contracts import AssessmentDomain, DailySelfReport, Escalation, Fired
 from spine_contracts.models.domain.assessment_schema import Domain2, Evidence, Operator
 
 from spine_engine.interfaces import TriageContext, TriageDecision
+from spine_engine.features.symptoms import WINDOW
 from spine_engine.pipeline import domain_of
+from spine_engine.measurements import SOURCE, UNITS, classify, measurements
 
 _LEVEL = {Level.GREEN: 0, Level.AMBER: 1, Level.RED: 2}
 _URGENCY = {Urgency.ROUTINE: 0, Urgency.PRIORITY: 1, Urgency.IMMEDIATE: 2}
@@ -93,8 +95,20 @@ class DeclarativeTriagePolicy:
         recommendations: list[str] = []
         urgencies: list[Urgency] = []
         reasons: list[str] = []
-        flags = {flag.value for report in context.self_reports if report.timestamp <= context.as_of
-                 and isinstance(report, (DailySelfReport, RedFlagReport)) for flag in (report.red_flags or [])}
+        for key, value in measurements(list(context.feature_sets), context.as_of).items():
+            measured_level, category, operator, threshold = classify(key, value)
+            domain = domain_of(key)
+            assert domain is not None
+            level = max(level, measured_level, key=_LEVEL.__getitem__)
+            domain_levels[domain] = max(domain_levels[domain], measured_level, key=_LEVEL.__getitem__)
+            evidence = Evidence.model_validate({"datum": key, "value": value, "operator": operator,
+                                                "threshold": threshold, "unit": UNITS[key], "source": SOURCE})
+            fired.append(FiredRule(rule_id=f"RULE_MEASURED_{domain.value.upper()}_{category}",
+                domain=Domain2(domain.value), level=measured_level,
+                overrides_model=_LEVEL[measured_level] > _LEVEL[model_level], evidence=evidence))
+        reports = [report for report in context.self_reports if context.as_of - WINDOW <= report.timestamp <= context.as_of]
+        flags = {flag.value for report in reports
+                 if isinstance(report, (DailySelfReport, RedFlagReport)) for flag in (report.red_flags or [])}
         recognized: set[str] = set()
         for rule in self.config.rules:
             if rule.datum == "red_flag":
@@ -104,8 +118,7 @@ class DeclarativeTriagePolicy:
             elif rule.datum == "risk":
                 values = [context.risk.score]
             elif rule.datum == "self_report":
-                values = [float(value) for report in context.self_reports if report.kind == "daily"
-                          and report.timestamp <= context.as_of
+                values = [float(value) for report in reports if report.kind == "daily"
                           if (value := getattr(report, rule.key, None)) is not None]
             else:
                 values = [d.value for d in context.deviations if d.feature_id == rule.key]

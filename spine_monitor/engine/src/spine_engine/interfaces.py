@@ -80,6 +80,7 @@ class TriageContext:
     completeness: Completeness
     self_reports: Sequence[SelfReport]
     as_of: datetime
+    feature_sets: Sequence[FeatureSet] = ()
 
 
 class BaselineStrategy(Protocol):

@@ -76,6 +76,7 @@ def default_registry(settings: EngineSettings | None = None) -> ExtractorRegistr
     from spine_engine.features.emg_spectral import EmgSpectralFamily
     from spine_engine.features.exercise import ExerciseFamily
     from spine_engine.features.imu import ImuFamily
+    from spine_engine.features.measured import MeasuredFamily
     from spine_engine.features.repetitions import RepetitionService
     from spine_engine.features.repetitions_imu import detect_imu_windows
     from spine_engine.features.stretch import StretchFamily
@@ -92,4 +93,5 @@ def default_registry(settings: EngineSettings | None = None) -> ExtractorRegistr
     registry.register(
         StretchFamily(repetitions, default_recovery_wait_s=settings.stretch_recovery_wait_s, recovery_fraction=settings.stretch_recovery_fraction)
     )
+    registry.register(MeasuredFamily())
     return registry

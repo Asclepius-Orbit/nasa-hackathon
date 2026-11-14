@@ -16,8 +16,9 @@ from spine_contracts import (
 )
 
 from spine_engine.errors import InsufficientDataError
-from spine_engine.features.symptoms import symptom_feature_set
+from spine_engine.features.symptoms import WINDOW, symptom_feature_set
 from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriageContext, TriagePolicy
+from spine_engine.measurements import UNITS, measurements
 
 # Dominio de evaluación según el prefijo del feature_id (hasta que el catálogo lo diga).
 _DOMAIN_BY_PREFIX = {
@@ -43,9 +44,11 @@ def domain_of(feature_id: str) -> AssessmentDomain | None:
     return _DOMAIN_BY_PREFIX.get(feature_id.split(".", 1)[0])
 
 
-def _completeness(feature_sets: Sequence[FeatureSet], deviations: Sequence[Deviation]) -> Completeness:
+def _completeness(feature_sets: Sequence[FeatureSet], deviations: Sequence[Deviation], direct: dict[str, float] | None = None) -> Completeness:
     """Qué parte de lo esperado se pudo evaluar. Lo que falta nunca cuenta como verde."""
     compared = {d.feature_id for d in deviations}
+    if direct is not None:
+        compared = (compared - UNITS.keys()) | direct.keys()
     present = {f.feature_id for fs in feature_sets for f in fs.features}
     # The request's sets are merged: a feature that any set computed is never missing because another set skipped it.
     # When several sets skip a feature and none computes it, the reason with the smallest value wins, whatever the set order.
@@ -56,8 +59,12 @@ def _completeness(feature_sets: Sequence[FeatureSet], deviations: Sequence[Devia
                 skipped[item.feature_id] = min(item.reason.value, skipped.get(item.feature_id, item.reason.value))
     missing = [MissingItem(what=fid, reason=_MISSING_REASON_BY_SKIP[reason]) for fid, reason in sorted(skipped.items())]
     missing += [MissingItem(what=fid, reason=MissingReason.NO_BASELINE) for fid in sorted(present - compared)]
-    expected = len(present | set(skipped))
-    return Completeness(score=len(compared) / expected if expected else 0.0, missing=missing)
+    expected_ids = present | set(skipped)
+    if direct is not None:
+        expected_ids |= UNITS.keys()
+        missing = [m for m in missing if m.what not in UNITS]
+        missing += [MissingItem(what=key, reason=MissingReason.NO_DATA) for key in sorted(UNITS.keys() - direct.keys())]
+    return Completeness(score=len(compared & expected_ids) / len(expected_ids) if expected_ids else 0.0, missing=missing)
 
 
 class AssessmentPipeline:
@@ -80,12 +87,16 @@ class AssessmentPipeline:
         symptoms = symptom_feature_set(request.self_reports or [], request.daily_context or [], request.as_of, request.astronaut_id)
         feature_sets = [*request.feature_sets, symptoms]
         deviations = self._baseline_strategy.deviations(request.baseline, feature_sets)
-        completeness = _completeness(feature_sets, deviations)
+        direct = measurements(request.feature_sets, request.as_of)
+        direct_deviations = [Deviation(key, value, 0) for key, value in direct.items()]
+        completeness = _completeness(feature_sets, deviations, direct)
         risk = self._risk_model.score(deviations, completeness.score)
-        context = TriageContext(risk, deviations, completeness, request.self_reports or [], request.as_of)
+        reports = [r for r in request.self_reports or [] if r.astronaut_id == request.astronaut_id
+                   and request.as_of - WINDOW <= r.timestamp <= request.as_of]
+        context = TriageContext(risk, deviations, completeness, reports, request.as_of, request.feature_sets)
         triage = self._triage_policy.decide(context)
 
-        evaluated = {domain for d in deviations if (domain := domain_of(d.feature_id)) is not None}
+        evaluated = {domain for d in [*deviations, *direct_deviations] if (domain := domain_of(d.feature_id)) is not None}
         domains = [
             DomainAssessment(  # pyright: ignore[reportCallIssue]  # generated model: `score` has a positional Field default
                 domain=domain,
@@ -114,7 +125,7 @@ class AssessmentPipeline:
                 baseline_version=request.baseline.version,
                 # uniqueItems in the contract: a repeated input is listed once, in its first position.
                 session_ids=list(dict.fromkeys(fs.session_id for fs in request.feature_sets if fs.session_id is not None)),
-                self_report_ids=list(dict.fromkeys(report.report_id for report in request.self_reports or [])),
+                self_report_ids=list(dict.fromkeys(report.report_id for report in reports)),
             ),
         )
         # `dump` emite lo que se fijó: un `mission_day=None` explícito saldría como null y el schema pide un entero.

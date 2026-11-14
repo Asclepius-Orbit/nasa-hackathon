@@ -202,3 +202,15 @@ def test_rule_id_used_for_escalation_must_fit_a_reason():
         PolicyConfig(rules=[{"rule_id": "RULE_" + "A" * 196, "datum": "risk", "level": "red", "urgency": "priority"}])
     config = PolicyConfig(rules=[{"rule_id": "RULE_" + "A" * 195, "datum": "risk", "level": "red", "urgency": "priority"}])
     assert DeclarativeTriagePolicy(config).decide(context(1)).escalation.required
+
+def test_triage_ignores_stale_reports():
+    from datetime import timedelta
+    ctx = context()
+    report = DailySelfReport(schema_version="1.0.0", report_id="00000000-0000-0000-0000-000000000002",
+        astronaut_id="AST-01", timestamp=ctx.as_of - timedelta(days=7, seconds=1), source=Source.DEVICE,
+        kind="daily", pain_nrs=9, stiffness_nrs=2, red_flags=["leg_weakness"])
+    config = PolicyConfig(rules=[{"rule_id": "RULE_PAIN", "datum": "self_report", "key": "pain_nrs",
+                                  "threshold": 7, "level": "red", "domain": "symptoms"}])
+    result = DeclarativeTriagePolicy(config).decide(TriageContext(ctx.risk, [], ctx.completeness, [report], ctx.as_of))
+    assert result.level == Level.GREEN
+    assert not result.escalation.required

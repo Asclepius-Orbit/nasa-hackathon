@@ -706,3 +706,15 @@ def test_default_registry_includes_stretch():
     from spine_engine.features.registry import default_registry
 
     assert "stretch" in [family.family for family in default_registry()]
+
+
+def test_measured_stretch_requires_straight_reference():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    result = MeasuredFamily().extract(make_context([1040.0] * 50, [marked]))
+    assert next(f.value for f in result.computed if f.feature_id == STRETCH) == pytest.approx(4)
+    unmarked = MeasuredFamily().extract(make_context([1040.0] * 50, [calibration()]))
+    assert STRETCH in {s.feature_id for s in unmarked.skipped}

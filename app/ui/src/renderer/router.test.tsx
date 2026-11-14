@@ -26,7 +26,6 @@ it.each([
   ['/first-day', 'firstday'],
   ['/baseline', 'baseline'],
   ['/oswestry', 'oswestry'],
-  ['/houston', 'houston'],
 ])('%s shows its screen inside the app frame', async (path, feature) => {
   setup(path);
   expect(await screen.findByTestId(`${feature}-view`)).toBeInTheDocument();

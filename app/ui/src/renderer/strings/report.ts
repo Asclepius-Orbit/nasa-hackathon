@@ -35,6 +35,16 @@ export const report = {
     optional: "Optional. Saved with today's context.",
     device: 'Exercise device',
     duration: 'Exercise duration',
+    help: {
+      section: 'About exercise today',
+      sectionBody:
+        "Log the exercise session you did on the station today: which device and for how long. It is saved with today's context and helps the monitor read your back data. Leave it empty if you did not exercise yet.",
+      device: 'About the exercise device',
+      deviceBody:
+        'ARED is the resistive exercise device (weights). CEVIS is the cycle ergometer. T2 treadmill is the treadmill. "None yet" means no session so far today.',
+      duration: 'About exercise duration',
+      durationBody: 'Total minutes of the session. Needed once you pick a device; without it the exercise is not saved.',
+    },
   },
   save: 'Save daily report',
   left: {

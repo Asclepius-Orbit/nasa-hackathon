@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { InfoTip } from '../../components/ui/InfoTip';
 import { Scale } from '../../components/ui/Scale';
 import pick from '../../components/ui/Pick.module.css';
 import { useData } from '../../data/DataContext';
@@ -160,9 +161,22 @@ export function ReportView(): React.JSX.Element {
           <div className={styles.q}>
             <p className={styles.legend}>
               {copy.exercise.question} <span className={styles.opt}>{copy.exercise.optional}</span>
+              <InfoTip label={copy.exercise.help.section}>{copy.exercise.help.sectionBody}</InfoTip>
             </p>
-            <PickRow label={copy.exercise.device} options={form.exerciseKinds} selected={device} onSelect={setDevice} />
-            <PickRow label={copy.exercise.duration} options={form.exerciseMinutes} selected={minutes} onSelect={setMinutes} />
+            <PickRow
+              label={copy.exercise.device}
+              options={form.exerciseKinds}
+              selected={device}
+              onSelect={setDevice}
+              help={{ label: copy.exercise.help.device, body: copy.exercise.help.deviceBody }}
+            />
+            <PickRow
+              label={copy.exercise.duration}
+              options={form.exerciseMinutes}
+              selected={minutes}
+              onSelect={setMinutes}
+              help={{ label: copy.exercise.help.duration, body: copy.exercise.help.durationBody }}
+            />
           </div>
 
           </fieldset>

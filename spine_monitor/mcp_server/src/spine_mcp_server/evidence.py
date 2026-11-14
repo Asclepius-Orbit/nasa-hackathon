@@ -35,9 +35,14 @@ def _tokens(text: str) -> Counter[str]:
     return Counter(re.findall(r"[a-z0-9]+", text.lower()))
 
 
+def _corpus_bytes(corpus: Path) -> bytes:
+    """Use the same bytes after a Git checkout with LF or CRLF line endings."""
+    return corpus.read_bytes().replace(b"\r\n", b"\n")
+
+
 def build_index(corpus: Path, output: Path) -> None:
     """Prepare a reproducible sparse term-frequency vector index from the local corpus."""
-    raw = corpus.read_bytes()
+    raw = _corpus_bytes(corpus)
     passages = [Passage.model_validate(item) for item in json.loads(raw)]
     index = {"corpus_sha256": hashlib.sha256(raw).hexdigest(), "vectors": [_tokens(p.text) for p in passages]}
     output.write_text(json.dumps(index, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
@@ -55,7 +60,7 @@ class EvidenceIndex:
 
     def search(self, query: str, limit: int) -> list[Passage]:
         try:
-            raw = self.corpus.read_bytes()
+            raw = _corpus_bytes(self.corpus)
             data = json.loads(self.index.read_text(encoding="utf-8"))
             passages = [Passage.model_validate(item) for item in json.loads(raw)]
             vectors = data["vectors"]

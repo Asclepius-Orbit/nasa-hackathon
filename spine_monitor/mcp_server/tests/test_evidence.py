@@ -50,3 +50,15 @@ async def test_mcp_missing_resources_are_tool_errors(tmp_path, monkeypatch):
         result = await client.call_tool('search_evidence', {'query': 'height'})
     assert result.is_error
     assert 'offline evidence index' in result.content[0].text
+
+
+def test_index_accepts_corpus_with_different_line_endings(tmp_path):
+    from spine_mcp_server.evidence import build_index
+
+    source = EvidenceIndex.default().corpus.read_bytes().replace(b'\r\n', b'\n')
+    corpus = tmp_path / 'corpus.json'
+    index = tmp_path / 'index.json'
+    corpus.write_bytes(source)
+    build_index(corpus, index)
+    corpus.write_bytes(source.replace(b'\n', b'\r\n'))
+    assert EvidenceIndex(index, corpus).search('seated height', 2)

@@ -757,3 +757,45 @@ def test_measured_feature_keeps_its_five_second_window_in_session_aggregate():
         TriageContext(RiskResult(0), [], Completeness(score=1, missing=[]), [], output.window.end, [output])
     )
     assert decision.level == Level.RED
+
+
+def test_requested_window_can_assess_a_historical_five_seconds_without_aggregate_features():
+    from spine_contracts.models.engine.features_request_schema import RequestedWindow
+    from spine_engine.features.composite import CompositeFeatureExtractor
+    from spine_engine.features.registry import default_registry
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    context = make_context([1075.0] * 50 + [1000.0] * 50, [marked])
+    req = context.request.model_copy(update={"requested_window": RequestedWindow(start=at(0), end=at(50))})
+    result = CompositeFeatureExtractor(default_registry()).extract(req)
+    assert result.window.start == at(0) and result.window.end == at(50)
+    assert {f.feature_id: f.value for f in result.features}[STRETCH] == pytest.approx(7.5)
+    assert not any(f.feature_id.startswith("exercise.") for f in result.features)
+
+
+def test_requested_window_with_no_chunks_is_incomplete():
+    from spine_contracts.models.engine.features_request_schema import RequestedWindow
+    from spine_engine.features.composite import CompositeFeatureExtractor
+    from spine_engine.features.registry import default_registry
+    from spine_engine.measurements import UNITS
+
+    context = make_context([1000.0] * 50, [calibration()])
+    req = context.request.model_copy(update={"chunks": [], "requested_window": RequestedWindow(start=at(0), end=at(50))})
+    result = CompositeFeatureExtractor(default_registry()).extract(req)
+    assert result.features == []
+    assert {item.feature_id for item in result.skipped} == set(UNITS)
+    assert result.window.start == at(0) and result.window.end == at(50)
+
+
+def test_requested_window_truncates_future_samples_inside_a_chunk():
+    from spine_contracts.models.engine.features_request_schema import RequestedWindow
+    from spine_engine.features.context import build_context
+
+    context = make_context([1000.0] * 100, [calibration()])
+    req = context.request.model_copy(update={"requested_window": RequestedWindow(start=at(5), end=at(55))})
+    bounded = build_context(req)
+    chunks = [chunk for segment in bounded.segments(STREAM) for chunk in segment.chunks]
+    assert sum(chunk.n_samples for chunk in chunks) == 55
+    assert chunks[-1].n_samples == 5

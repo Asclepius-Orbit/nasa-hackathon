@@ -85,20 +85,53 @@ def _chunk_calibration_id(chunks: Iterable[StreamChunk]) -> str | None:
     return next((c.calibration_id for c in chunks if isinstance(c, StretchChunk) and c.calibration_id), None)
 
 
+def _before(chunks: Iterable[StreamChunk], clock: DeviceClock, end: datetime) -> list[StreamChunk]:
+    """Exclude samples at or after the requested end, including within a chunk."""
+    result: list[StreamChunk] = []
+    for chunk in chunks:
+        lo, hi = 0, chunk.n_samples
+        while lo < hi:
+            mid = (lo + hi) // 2
+            instant = clock.to_utc(chunk.boot_id, round(chunk.t0_device_ms + mid * 1000 / chunk.sample_rate_hz))
+            if instant is not None and instant < end:
+                lo = mid + 1
+            else:
+                hi = mid
+        if lo == 0:
+            continue
+        if lo == chunk.n_samples:
+            result.append(chunk)
+            continue
+        columns = {}
+        for name in type(chunk.data).model_fields:
+            value = getattr(chunk.data, name)
+            if isinstance(value, list):
+                columns[name] = value[:lo]
+            elif hasattr(value, "root") and isinstance(value.root, list):
+                columns[name] = value.model_copy(update={"root": value.root[:lo]})
+        result.append(chunk.model_copy(update={"n_samples": lo, "data": chunk.data.model_copy(update=columns)}))
+    return result
+
+
 def build_context(request: FeaturesRequest, *, clock_uncertain_ms: float | None = None) -> ExtractionContext:
     """Prepara el contexto: filtra por sesión y streams declarados, ordena, ajusta el reloj y resuelve calibraciones."""
     session = request.session
     declared = list(dict.fromkeys(s.stream_id for s in session.streams))
     chunks = [c for c in request.chunks if c.session_id == session.session_id and c.stream_id in declared]
+    syncs = request.clock_syncs
+    if request.requested_window is not None:
+        syncs = [sync for sync in syncs or [] if sync.utc <= request.requested_window.end]
+    clock = DeviceClock.from_syncs(syncs)
+    if request.requested_window is not None:
+        chunks = _before(chunks, clock, request.requested_window.end)
     ordered = order_chunks(chunks)
-    clock = DeviceClock.from_syncs(request.clock_syncs)
     window = _window(ordered.chunks(), clock)
     calibrations = {
         stream: resolve_calibration(
             request,
             stream,
             chunk_calibration_id=_chunk_calibration_id(c for segment in ordered.segments_for(stream) for c in segment.chunks),
-            at=window.end if window else None,
+            at=request.requested_window.end if request.requested_window else window.end if window else None,
         )
         for stream in declared
     }

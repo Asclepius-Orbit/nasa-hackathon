@@ -3041,11 +3041,22 @@ export interface FeaturesRequest {
   schema_version: string;
   session: Session;
   /**
-   * All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).
-   *
-   * @minItems 1
+   * Explicit UTC interval for a measured-window extraction. Both bounds are required; the engine verifies a five-second duration. Omit for the full-session feature extraction.
    */
-  chunks: [StreamChunk, ...StreamChunk[]];
+  requested_window?: {
+    /**
+     * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+     */
+    start: string;
+    /**
+     * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+     */
+    end: string;
+  };
+  /**
+   * All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).
+   */
+  chunks: StreamChunk[];
   /**
    * Every calibration referenced by session.streams[].calibration_id or by a chunk.
    */

@@ -7,10 +7,19 @@
   "properties": {
     "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
     "session": { "$ref": "../domain/session.schema.json" },
+    "requested_window": {
+      "description": "Explicit UTC interval for a measured-window extraction. Both bounds are required; the engine verifies a five-second duration. Omit for the full-session feature extraction.",
+      "type": "object",
+      "properties": {
+        "start": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "end": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
     "chunks": {
       "description": "All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).",
       "type": "array",
-      "minItems": 1,
       "items": { "$ref": "../telemetry/stream-chunk.schema.json" }
     },
     "calibrations": {
@@ -31,5 +40,7 @@
     }
   },
   "required": ["schema_version", "session", "chunks"],
+  "if": { "not": { "required": ["requested_window"] } },
+  "then": { "properties": { "chunks": { "minItems": 1 } } },
   "additionalProperties": false
 }

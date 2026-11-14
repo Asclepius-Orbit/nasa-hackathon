@@ -62,6 +62,17 @@ def test_feature_can_carry_its_own_window(validator_for):
     assert not validator.is_valid(feature_set)
 
 
+def test_explicit_measurement_window_can_represent_a_total_outage(validator_for):
+    request = load_json(EXAMPLES_DIR / "valid/engine/features-request.json")
+    request["chunks"] = []
+    validator = validator_for("engine/features-request")
+    assert not validator.is_valid(request)
+    request["requested_window"] = {"start": "2026-11-13T10:00:00Z", "end": "2026-11-13T10:00:05Z"}
+    assert validator.is_valid(request)
+    request["requested_window"].pop("end")
+    assert not validator.is_valid(request)
+
+
 def test_stretch_estimate_contract_rejects_invalid_inputs_and_extras(validator_for):
     request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500, "current_resistance_ohm": 5650, "reference_length_mm": 500}
     validator = validator_for("engine/stretch-estimate-request")

@@ -26,10 +26,16 @@ class MeasuredFamily:
     feature_ids: Sequence[str] = (STRETCH, IMU, EMG)
 
     def extract(self, context: ExtractionContext) -> FamilyResult:
+        requested = context.request.requested_window
         window = context.window
-        if window is None or window.end - window.start < timedelta(seconds=5):
+        if requested is not None:
+            if requested.end - requested.start != timedelta(seconds=5):
+                return FamilyResult(skipped=tuple(SkippedFeature(i, Reason.NO_DATA) for i in self.feature_ids))
+            window = Window(start=requested.start, end=requested.end)
+        elif window is None or window.end - window.start < timedelta(seconds=5):
             return FamilyResult()
-        window = Window(start=window.end - timedelta(seconds=5), end=window.end)
+        else:
+            window = Window(start=window.end - timedelta(seconds=5), end=window.end)
         computed = []
         skipped = []
         for key, kind in ((STRETCH, StreamKind.STRETCH), (IMU, StreamKind.IMU), (EMG, StreamKind.EMG)):
@@ -43,7 +49,8 @@ class MeasuredFamily:
             reference_calibration = None
             if key == STRETCH:
                 reference_calibration = _calibration(context, stream.stream_id)
-                if not isinstance(reference_calibration, StretchCalibration) or reference_calibration.reference_posture != "straight_back":
+                if (not isinstance(reference_calibration, StretchCalibration) or reference_calibration.reference_posture != "straight_back"
+                        or reference_calibration.created_at > window.start):
                     skipped.append(SkippedFeature(key, Reason.NO_CALIBRATION))
                     continue
             segments = context.segments(stream.stream_id)
@@ -68,7 +75,7 @@ class MeasuredFamily:
                 if isinstance(reference_calibration, StretchCalibration) and len(values) == expected:
                     value = 100 * (float(np.mean(values)) - reference_calibration.rest_resistance_ohm) / reference_calibration.rest_resistance_ohm
             elif key == EMG:
-                events = context.session.events or []
+                events = [event for event in context.session.events or [] if requested is None or event.timestamp <= window.end]
                 markers = sorted((e.timestamp, e.event_type.value) for e in events if e.event_type.value in {"reference_effort_start", "reference_effort_end"})
                 before = [m for m in markers if m[0] <= window.start]
                 after = [m for m in markers if m[0] >= window.end]
@@ -79,7 +86,7 @@ class MeasuredFamily:
                 pieces = _pieces(read_emg(context, stream.stream_id), [(window.start, window.end)])
                 count = sum(len(p.values) for p in pieces)
                 value = None
-                if reference_effort and isinstance(calibration, EmgMvcCalibration) and count == expected:
+                if reference_effort and isinstance(calibration, EmgMvcCalibration) and calibration.created_at <= window.start and count == expected:
                     value = 1023 * _rms(pieces) / calibration.mvc_rms_mv
             else:
                 resolution = context.calibration(stream.stream_id)

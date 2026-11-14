@@ -187,6 +187,52 @@ class Analysis:
         result = {**feature_set, "window": measurement_window, "features": measured, "skipped": skipped}
         self._store.put_measured_window(result, boot_id=next(iter(boots)))
 
+    async def process_measured_window(
+        self, session_id: str, boot_id: int, start: datetime, end: datetime, chunks: list[dict[str, Any]]
+    ) -> bool:
+        """Process one explicitly scheduled interval; callers supply only chunks no later than its end.
+
+        The caller owns clock mapping and ordering. Empty chunks represent a total outage. A repeated
+        interval is not assessed twice, and an old result is stored without creating a backdated alert.
+        """
+        if start.utcoffset() is None or end.utcoffset() is None or end - start != timedelta(seconds=5):
+            raise ValueError("measured window must be five seconds with timezone-aware bounds")
+        row = self._store.session(session_id)
+        if row is None:
+            raise ValueError("unknown session")
+        session = row.payload
+        astronaut_id = session["astronaut_id"]
+        if any(c["session_id"] != session_id or c["astronaut_id"] != astronaut_id or c["boot_id"] != boot_id for c in chunks):
+            raise ValueError("chunks must belong to the selected session, astronaut and boot")
+        calibration_ids = {s["calibration_id"] for s in session["streams"] if "calibration_id" in s}
+        calibration_ids |= {c["calibration_id"] for c in chunks if "calibration_id" in c}
+        bounded_session = dict(session)
+        if "events" in session:
+            bounded_session["events"] = [event for event in session["events"] if datetime.fromisoformat(event["timestamp"]) <= end]
+        request: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION, "session": bounded_session, "chunks": chunks,
+            "requested_window": {"start": start.isoformat(), "end": end.isoformat()},
+            "calibrations": self._store.calibrations(calibration_ids),
+            "clock_syncs": [
+                sync for sync in self._store.clock_syncs(astronaut_id, session["device_id"], {boot_id})
+                if datetime.fromisoformat(sync["utc"]) <= end
+            ],
+        }
+        if (profile := self._store.profile(astronaut_id)) is not None:
+            request["profile"] = profile
+        result = await self._engine.features(request)
+        if result["astronaut_id"] != astronaut_id or result["session_id"] != session_id:
+            raise EngineError("engine returned a feature set of another session")
+        span = result.get("window")
+        if not span or datetime.fromisoformat(span["start"]) != start or datetime.fromisoformat(span["end"]) != end:
+            raise EngineError("engine returned a different measured window")
+        if not self._store.put_measured_window(result, boot_id=boot_id):
+            return False
+        now = self._clock()
+        if now - timedelta(seconds=5) <= end <= now:
+            await self.assess(astronaut_id, now)
+        return True
+
     async def _rebuild_baseline(self, astronaut_id: str) -> dict[str, Any] | None:
         feature_sets = self._store.feature_sets_of_phase(astronaut_id, "preflight")
         if not feature_sets:

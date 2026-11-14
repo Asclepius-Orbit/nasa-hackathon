@@ -12,7 +12,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gate:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Broker credentials (throwaway, generated per run; app/.env and app/mosquitto/auth are gitignored)
+        run: sh app/mosquitto/setup.sh
+      - name: Quality gate (lint, types, tests, coverage)
+        env:
+          GATE_MUTATION: "off"
+        run: docker compose -f app/docker-compose.yml run --rm -T quality
+      - name: Diff coverage
+        # Runs in the quality image (diff-cover is in the locked dev group); the WORKDIR spine_monitor/ makes coverage.xml paths map to git paths.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >
+          docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
+          sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'
+
+  mutation:
     runs-on: ubuntu-latest
     # Incremental mutation scales with the changed functions. A branch-wide diff selecting 1541 mutants took about
     # 15 min on a 22-CPU machine (measured); on a 2-vCPU hosted runner that is only an ESTIMATE (extrapolated, not
@@ -24,18 +45,22 @@ jobs:
           fetch-depth: 0
       - name: Broker credentials (throwaway, generated per run; app/.env and app/mosquitto/auth are gitignored)
         run: sh app/mosquitto/setup.sh
-      - name: Quality gate (lint, types, tests, coverage, incremental mutation)
+      - name: Incremental mutation
         env:
-          GATE_MUTATION: changed
           MUTATION_BASE: origin/${{ github.base_ref }}
-        run: docker compose -f app/docker-compose.yml run --rm -T quality
-      - name: Diff coverage
-        # Runs in the quality image (diff-cover is in the locked dev group); the WORKDIR spine_monitor/ makes coverage.xml paths map to git paths.
+        run: docker compose -f app/docker-compose.yml run --rm -T quality sh quality/mutation.sh changed
+
+  gate:
+    # Preserve the existing required check while running its two independent parts on separate runners.
+    if: always()
+    needs: [tests, mutation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require tests and mutation
         env:
-          BASE_REF: ${{ github.base_ref }}
-        run: >
-          docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
-          sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'
+          TESTS_RESULT: ${{ needs.tests.result }}
+          MUTATION_RESULT: ${{ needs.mutation.result }}
+        run: test "$TESTS_RESULT" = success && test "$MUTATION_RESULT" = success
 
   ui-quality:
     # Native (not compose): the bind-mounted repo is owned by the runner uid, which the image's non-root user cannot write.

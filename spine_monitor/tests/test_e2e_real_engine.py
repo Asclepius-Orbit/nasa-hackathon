@@ -111,6 +111,10 @@ def _mission_config() -> MissionConfig:
     raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
     raw["faults"]["device"]["reboot"]["probability_per_hour"] = 0.0
     raw["signals"]["chunk_ms"] = 4000
+    # The per-session repeat dispersion is a resistance offset nobody can calibrate out; with it the session-to-session spread
+    # of the spine length is as large as the elongation the scenario relies on, so it is switched off here (the rest of the
+    # sensor realism stays on).
+    raw["signals"]["stretch"]["repeat_dispersion_ohm"] = 0.0
     raw["protocols"][EXERCISE_PROTOCOL]["planned_sets"] = 1
     return MissionConfig.model_validate(raw)
 

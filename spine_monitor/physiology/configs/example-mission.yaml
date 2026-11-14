@@ -174,12 +174,29 @@ signals:
     deconditioning_fatigue_gain: 1.0
     acquisition: { adc_bits: 12, vref_v: 3.3, gain: 1000.0, input_pin: GPIO34 }
     filter: { highpass_hz: 20.0, lowpass_hz: 450.0, notch_hz: 50 }
+    # Realismo (#131). Los valores marcados hip. son hipotesis sin cifra verificada (docs/sensor-sources.md).
+    signal_kind: raw               # el modelo usa envelope por defecto; aqui raw para que las features (RMS, mediana) sean de la senal cruda
+    envelope_lowpass_hz: 5.0       # hip.
+    baseline_wander_mv: 0.0        # hip.: apagado
+    baseline_wander_hz: 0.5        # hip.
+    mains_amplitude_mv: 0.0        # hip.: apagado
+    mains_hz: 50.0
+    ecg_leak_mv: 0.0               # hip.: apagado
+    ecg_heart_rate_bpm: 70.0       # hip.
+    quantize_adc: false
   imu:
     sample_rate_hz: 100.0
-    accel_noise_g: 0.004
-    gyro_noise_dps: 0.05
+    accel_noise_density_ug_rthz: 400.0   # spec MPU-6050
+    gyro_noise_density_dps_rthz: 0.005   # spec (*), contrastar con la hoja
     accel_bias_g: { x: 0.01, y: -0.005, z: 0.002 }
     gyro_bias_dps: { x: 0.3, y: -0.2, z: 0.1 }
+    accel_bias_max_g: { x: 0.05, y: 0.05, z: 0.08 }   # spec (maximo, (*) contrastar)
+    gyro_bias_max_dps: 20.0                           # spec (maximo, no tipico)
+    # Deriva del sesgo: HIPOTESIS sin cifra de la hoja.
+    bias_drift_tau_s: 1800.0
+    accel_bias_drift_sigma_g: 0.002
+    gyro_bias_drift_sigma_dps: 0.05
+    quantize_output: true
     accel_range_g: 4
     gyro_range_dps: 500
     dlpf_hz: 44.0
@@ -197,8 +214,16 @@ signals:
       - { resistance_ohm: 6012.0, length_mm: 650.0 }
       - { resistance_ohm: 6790.0, length_mm: 731.0 }
       - { resistance_ohm: 7560.0, length_mm: 812.0 }
-    circuit: { adc_bits: 12, vref_v: 3.3, series_resistor_ohm: 10000.0, input_pin: GPIO35 }
-    adc_noise_counts: 1.5
+    # Divisor del firmware: 10 kohm en serie, ADC de 10 bits (cuentas 1..1022 en el simulador, nunca los topes).
+    circuit: { adc_bits: 10, vref_v: 5.0, series_resistor_ohm: 10000.0, input_pin: A1 }
+    adc_noise_counts: 1.0
+    # Hipotesis PROVISIONALES (docs/sensor-sources.md): sin fuente cuantitativa, no son medidas.
+    # Los 150 ohm de diferencia entre lecturas repetidas del banco motivan repeat_dispersion_ohm (sd por sesion).
+    read_noise_ohm: 5.0
+    repeat_dispersion_ohm: 60.0
+    creep_fraction: 0.02
+    creep_tau_s: 90.0
+    lot_variation_fraction: 0.10
     hysteresis_tau_s: 90.0
     hysteresis_gain: 0.15
     band_recovering_threshold_mm: 0.5

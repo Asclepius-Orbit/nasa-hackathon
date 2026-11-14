@@ -326,8 +326,10 @@ def test_status_reports_the_active_stream_rate(config):
     nominal = config.signals.rate(StreamKind.IMU)
     reduced = nominal / 2
     at = T0 + timedelta(seconds=5)
+
     def rate():
         return {s["stream_id"]: s["sample_rate_hz"] for s in dump(device.status(np.random.default_rng(0), at))["streams"]}
+
     assert rate()["imu_t9"] == nominal
     device.advance("imu_t9", start=T0, n_samples=100, rate_hz=reduced, chunk_ms=100)
     assert rate()["imu_t9"] == reduced and rate()["emg_lat_left"] == config.signals.rate(StreamKind.EMG)
@@ -441,8 +443,10 @@ def test_chunk_size_is_the_one_given_per_call(config):
     una sola muestra con 100 ms; seq y advance siguen el tamaño de chunk de cada llamada."""
     rate = config.schedule.background.sample_rates_hz.imu
     channels = channels_for(StreamKind.IMU, 100)
+
     def quality(n):
         return clean_quality(StreamKind.IMU, n)
+
     device = SimDevice(config, single_boot_plan(config))
     heavy = list(device.chunks(np.random.default_rng(0), stream_id="imu_t9", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=100.0,
                                channels=channels, quality=quality(100), calibration_id=None))  # fmt: skip
@@ -461,8 +465,10 @@ def test_status_last_seq_uses_published_when_given(config):
     device = SimDevice(config, single_boot_plan(config))
     emit(device, config, "emg_lat_left", n=1000)  # el dispositivo ya consumió seq 0..9
     at = T0 + timedelta(seconds=1)
+
     def by_id(**kw):
         return {s["stream_id"]: s for s in dump(device.status(np.random.default_rng(0), at, **kw))["streams"]}
+
     assert by_id()["emg_lat_left"]["last_seq"] == 9  # sin published: next_seq - 1
     published = by_id(published={"emg_lat_left": 4})
     assert published["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in published["imu_t9"]
@@ -531,3 +537,12 @@ def test_status_is_degraded_only_below_the_battery_threshold_and_a_stall_ends_ex
     emit(device, cfg, "emg_lat_left", n=1000)  # 10 chunks de 100 ms perdidos: stalled en [T0, T0 + 1 s)
     assert dump(device.status(np.random.default_rng(0), T0 + timedelta(milliseconds=999)))["status"] == "degraded"
     assert dump(device.status(np.random.default_rng(0), T0 + timedelta(seconds=1)))["status"] == "ok"
+
+
+@pytest.mark.parametrize("kind", ["raw", "rectified", "envelope"])
+def test_emg_chunk_declares_the_configured_signal_kind(kind):
+    config = make_config(lambda raw: raw["signals"]["emg"].update(signal_kind=kind))
+    device = SimDevice(config, single_boot_plan(config))
+    chunk = emit(device, config, "emg_lat_left")[0].chunk
+    assert chunk.signal_kind.value == kind
+    assert validation.errors(SCHEMA, dump(chunk)) == []

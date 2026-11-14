@@ -30,8 +30,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package spine-gateway --no-install-workspace
 
 # Project layer: source of the real gateway and the workspace packages it depends on
-# (contracts brings the JSON Schemas, which the wheel bundles for validation)
+# (contracts brings the JSON Schemas, which the wheel bundles for validation; physiology makes the emulator signals)
 COPY spine_monitor/contracts contracts
+COPY spine_monitor/physiology physiology
 COPY spine_monitor/gateway gateway
 
 RUN --mount=type=cache,target=/root/.cache/uv \

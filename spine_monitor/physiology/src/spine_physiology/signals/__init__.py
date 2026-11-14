@@ -54,8 +54,18 @@ def rep_schedule(protocol: ExerciseProtocol, *, rng: np.random.Generator | None 
             capacity = max(1.0 - 0.4 * fatigue, 0.4)
             duration = protocol.rep_duration_s * (1.0 + 0.5 * fatigue + variation)
             end_fatigue = min(1.0, fatigue + protocol.effort_load * duration / protocol.fatigue_resistance)
-            reps.append(Rep(index=len(reps) + 1, start_s=cursor, end_s=cursor + duration, set_index=s + 1,
-                            fatigue=fatigue, capacity=capacity, amplitude_factor=capacity * (1.0 + variation), fatigue_end=end_fatigue))
+            reps.append(
+                Rep(
+                    index=len(reps) + 1,
+                    start_s=cursor,
+                    end_s=cursor + duration,
+                    set_index=s + 1,
+                    fatigue=fatigue,
+                    capacity=capacity,
+                    amplitude_factor=capacity * (1.0 + variation),
+                    fatigue_end=end_fatigue,
+                )
+            )
             fatigue = end_fatigue
             cursor += duration + protocol.rest_between_reps_s
             fatigue *= math.exp(-protocol.recovery_per_s * protocol.rest_between_reps_s)

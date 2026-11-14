@@ -185,9 +185,8 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
         # El dispositivo solo existe dentro de su ventana de encendido del día: la sesión (con su duración
         # en chunks enteros) se desplaza para caber entre el encendido, la sesión anterior y el apagado.
         earliest = power_on if previous_end is None else max(power_on, previous_end)
-        exercise = isinstance(protocol, ExerciseProtocol)
-        reps = rep_schedule(protocol, rng=tree.rng(astronaut_id, day.index, slot.name, "exercise")) if exercise else ()
-        duration_s = exercise_duration_s(protocol, reps) if exercise else protocol_duration_s(protocol)
+        reps = rep_schedule(protocol, rng=tree.rng(astronaut_id, day.index, slot.name, "exercise")) if isinstance(protocol, ExerciseProtocol) else ()
+        duration_s = exercise_duration_s(protocol, reps) if isinstance(protocol, ExerciseProtocol) else protocol_duration_s(protocol)
         duration = chunks_for(duration_s, chunk_ms=chunk_ms) * chunk
         start = max(start, earliest)
         if start + duration > power_off:
@@ -682,8 +681,9 @@ def synthesize(
             )
             peaks = [peak * (1.0 + 0.4 * r.fatigue) for r in reps]
             pct = emg_signal.activation_profile(reps, peak_pct_mvc=peaks, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
-            fatigue = emg_signal.exercise_fatigue_profile(reps, n_samples=n, rate_hz=rate,
-                                                         recovery_per_s=spec.protocol.recovery_per_s if spec.protocol else 0.0)
+            fatigue = emg_signal.exercise_fatigue_profile(
+                reps, n_samples=n, rate_hz=rate, recovery_per_s=spec.protocol.recovery_per_s if spec.protocol else 0.0
+            )
             raw = {"emg": emg_signal.synth_emg(rng, params, mvc_rms_mv=mvc, pct_mvc=pct, fatigue=fatigue, rate_hz=rate)}
             truth = {"pct_mvc": pct, "fatigue": fatigue, "mvc_rms_mv": mvc}
         elif kind is StreamKind.IMU:

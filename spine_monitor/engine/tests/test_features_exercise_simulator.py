@@ -51,8 +51,8 @@ EVENTS_MEAN_ABS_TOLERANCE_S = 1e-6
 EVENTS_CV_ABS_TOLERANCE_PCT = 1e-6
 # Solo IMU: el umbral de borde recorta algo los extremos (velocidad casi nula); media dentro del 10 %.
 IMU_MEAN_REL_TOLERANCE = 0.10
-# Sin eventos el detector puede fusionar dos repeticiones lentas, lo que amplifica el CV.
-IMU_CV_MAX_PCT = 10.0
+# Sin eventos el umbral de movimiento introduce un pequeño error en los bordes.
+IMU_CV_MAX_PCT = 2.0
 
 SEEDS = [7, 20261113]
 GRAVITIES = ["earth_1g", "microgravity"]
@@ -141,8 +141,7 @@ def test_without_events_the_imu_fallback_matches_the_simulator_truth(seed: int, 
 
     features = _by_id(result)
     assert {f for f in features if f.startswith("exercise.")} == set(ALL_IDS)
-    # El detector por IMU puede perder una repetición cuando baja la velocidad por fatiga.
-    assert features[COUNT]["value"] == pytest.approx(truth[COUNT], abs=1)
+    assert features[COUNT]["value"] == truth[COUNT]
     assert features[MEAN]["value"] == pytest.approx(truth[MEAN], rel=IMU_MEAN_REL_TOLERANCE)
     assert features[CV]["value"] == pytest.approx(truth[CV], abs=IMU_CV_MAX_PCT)
     for feature_id in ALL_IDS:

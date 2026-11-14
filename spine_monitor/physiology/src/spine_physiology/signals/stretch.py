@@ -21,6 +21,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.signal import lfilter
 
 from spine_physiology.config import StretchCalibrationConfig, StretchSignalConfig
 
@@ -38,6 +39,7 @@ class CordSamples:
     length_mm: np.ndarray  # longitud real del cordón (sin histéresis)
     effective_length_mm: np.ndarray  # real + residuo de histéresis (lo que ve la resistencia)
     residual_mm: np.ndarray  # residuo de histéresis >= 0 (band_recovering y ground truth)
+    creep_mm: np.ndarray  # fluencia lenta (>= 0), ya incluida en effective_length_mm; no es histéresis
     adc_counts: np.ndarray  # int64, antes de fallos de calidad
 
 
@@ -132,7 +134,8 @@ def resistance_to_adc(rng: np.random.Generator, resistance_ohm: np.ndarray, para
     resistance = np.asarray(resistance_ohm, dtype=np.float64)
     counts = full_scale * resistance / (resistance + circuit.series_resistor_ohm)
     counts = counts + rng.normal(0.0, params.adc_noise_counts, size=counts.shape)
-    return np.clip(np.rint(counts), 0.0, full_scale).astype(np.int64)
+    # Nunca en los topes (0 y fondo de escala): el ADC real no da esas lecturas con el divisor conectado.
+    return np.clip(np.rint(counts), 1.0, full_scale - 1.0).astype(np.int64)
 
 
 def adc_to_resistance(adc_counts: np.ndarray, params: StretchSignalConfig) -> np.ndarray:
@@ -144,6 +147,21 @@ def adc_to_resistance(adc_counts: np.ndarray, params: StretchSignalConfig) -> np
     return circuit.series_resistor_ohm * ratio / (1.0 - ratio)
 
 
+def lot_gain(rng: np.random.Generator, params: StretchSignalConfig) -> float:
+    """Ganancia de resistencia del lote de cordón de un astronauta: N(1, lot_variation_fraction) recortada a ±3 sd
+    y a >= 0,1 (hipótesis provisional). Se sortea una vez por astronauta, con su propia rama del rng."""
+    z = float(np.clip(rng.normal(), -3.0, 3.0))
+    return max(1.0 + params.lot_variation_fraction * z, 0.1)
+
+
+def apply_creep(length_mm: np.ndarray, *, rest_length_mm: float, rate_hz: float, params: StretchSignalConfig) -> np.ndarray:
+    """Fluencia: filtro de primer orden (constante creep_tau_s) de creep_fraction × max(L − reposo, 0).
+    Arranca en 0 al inicio de cada sesión (sin continuidad entre sesiones)."""
+    target = params.creep_fraction * np.maximum(np.asarray(length_mm, dtype=np.float64) - rest_length_mm, 0.0)
+    a = float(np.exp(-1.0 / (rate_hz * params.creep_tau_s)))
+    return np.asarray(lfilter([1.0 - a], [1.0, -a], target), dtype=np.float64)
+
+
 def synth_stretch(
     rng: np.random.Generator,
     params: StretchSignalConfig,
@@ -152,15 +170,23 @@ def synth_stretch(
     rest_length_mm: float,
     rate_hz: float,
     initial_residual_mm: float,
+    lot_gain: float = 1.0,
 ) -> CordSamples:
-    """Pasos 2-4 de la cadena."""
+    """Pasos 2-4 de la cadena, más fluencia, ganancia de lote, dispersión entre lecturas y ruido por lectura.
+
+    El ruido de ADC sale de `rng`; la dispersión (un offset por sesión) y el ruido de resistencia por lectura
+    salen de ramas hijas (`rng.spawn`), así que activarlos no desplaza el ruido de ADC.
+    """
+    dispersion_rng, read_rng = rng.spawn(2)
     length = np.asarray(length_mm, dtype=np.float64)
-    effective, residual = apply_hysteresis(
-        length, rest_length_mm=rest_length_mm, rate_hz=rate_hz, params=params, initial_residual_mm=initial_residual_mm
-    )
-    resistance = length_to_resistance(effective, params.curve_pairs())
+    effective, residual = apply_hysteresis(length, rest_length_mm=rest_length_mm, rate_hz=rate_hz, params=params, initial_residual_mm=initial_residual_mm)
+    creep = apply_creep(length, rest_length_mm=rest_length_mm, rate_hz=rate_hz, params=params)
+    effective = effective + creep
+    resistance = lot_gain * length_to_resistance(effective, params.curve_pairs())
+    resistance = resistance + dispersion_rng.normal(0.0, params.repeat_dispersion_ohm)
+    resistance = resistance + read_rng.normal(0.0, params.read_noise_ohm, size=resistance.shape)
     adc = resistance_to_adc(rng, resistance, params)
-    return CordSamples(length_mm=length, effective_length_mm=effective, residual_mm=residual, adc_counts=adc)
+    return CordSamples(length_mm=length, effective_length_mm=effective, residual_mm=residual, creep_mm=creep, adc_counts=adc)
 
 
 def derive(adc_counts: np.ndarray, params: StretchSignalConfig, calibration: CurvePairs) -> tuple[np.ndarray, np.ndarray]:
@@ -175,6 +201,7 @@ def measured_curve(
     calibration: StretchCalibrationConfig,
     *,
     rest_length_mm: float,
+    lot_gain: float = 1.0,
 ) -> tuple[tuple[float, float], ...]:
     """Curva publicada en una StretchCalibration: `n_points` puntos (R, L) desde el reposo hacia arriba,
     longitudes con error N(0, measurement_noise_mm), estrictamente crecientes en R y L.
@@ -192,7 +219,7 @@ def measured_curve(
         top = rest_length_mm + float(l_true[-1] - l_true[0])
     nominal = np.linspace(rest_length_mm, top, calibration.n_points)
     step = (top - rest_length_mm) / (calibration.n_points - 1)
-    resistance = length_to_resistance(nominal, params.curve_pairs())
+    resistance = lot_gain * length_to_resistance(nominal, params.curve_pairs())
     noise = rng.normal(0.0, calibration.measurement_noise_mm, size=calibration.n_points)
     noise = np.clip(noise, -step / 4.0, step / 4.0)
     noise[0] = 0.0

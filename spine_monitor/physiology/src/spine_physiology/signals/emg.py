@@ -26,6 +26,8 @@ from spine_physiology.signals import Rep
 _FATIGUE_LEVELS = 9
 _MIN_BAND_SCALE = 0.05
 _RESPONSE_GRID = 4096
+# - `_ECG_SIGMA_S`: anchura (σ, s) del pulso QRS sintético de la fuga de ECG. Hipótesis de forma, sin fuente.
+_ECG_SIGMA_S = 0.01
 
 
 def effective_pct_mvc(protocol_pct_mvc: float, deconditioning: float, params: EmgSignalConfig) -> float:
@@ -125,6 +127,59 @@ def _filter_zero_phase(sos: np.ndarray, x: np.ndarray) -> np.ndarray:
     return sp_signal.sosfiltfilt(sos, x, padlen=min(default_padlen, x.size - 1))
 
 
+def _lowpass_zero_phase(x: np.ndarray, cutoff_hz: float, rate_hz: float) -> tuple[np.ndarray, float]:
+    """Butterworth de 2.º orden paso bajo de fase cero. Devuelve (y, potencia de salida de ruido blanco unitario)."""
+    sos = np.asarray(sp_signal.butter(2, cutoff_hz, btype="lowpass", fs=rate_hz, output="sos"), dtype=np.float64)
+    return _filter_zero_phase(sos, x), _zero_phase_power_gain(sos)
+
+
+def _ecg_pulses(n: int, params: EmgSignalConfig, rate_hz: float, phase_s: float) -> np.ndarray:
+    """Tren de complejos QRS (pulsos gaussianos de σ = _ECG_SIGMA_S) de pico `ecg_leak_mv`, uno por latido."""
+    t = np.arange(n, dtype=np.float64) / rate_hz
+    period = 60.0 / params.ecg_heart_rate_bpm
+    nearest = ((t - phase_s + period / 2.0) % period) - period / 2.0  # distancia firmada al latido más cercano
+    return params.ecg_leak_mv * np.exp(-0.5 * (nearest / _ECG_SIGMA_S) ** 2)
+
+
+def _interference(rng: np.random.Generator, params: EmgSignalConfig, n: int, rate_hz: float) -> np.ndarray:
+    """Suma de deriva lenta, red eléctrica y fuga de ECG (cada una a 0 si su amplitud es 0)."""
+    t = np.arange(n, dtype=np.float64) / rate_hz
+    out = np.zeros(n, dtype=np.float64)
+    if params.baseline_wander_mv > 0.0:
+        slow, gain = _lowpass_zero_phase(rng.standard_normal(n), params.baseline_wander_hz, rate_hz)
+        out += params.baseline_wander_mv * slow / np.sqrt(gain)
+    if params.mains_amplitude_mv > 0.0:
+        phase = rng.uniform(0.0, 2.0 * np.pi)
+        out += params.mains_amplitude_mv * np.sin(2.0 * np.pi * params.mains_hz * t + phase)
+    if params.ecg_leak_mv > 0.0:
+        out += _ecg_pulses(n, params, rate_hz, rng.uniform(0.0, 60.0 / params.ecg_heart_rate_bpm))
+    return out
+
+
+def _apply_signal_kind(x: np.ndarray, params: EmgSignalConfig, rate_hz: float) -> np.ndarray:
+    """raw: tal cual; rectified: |x|; envelope: |x| suavizada (paso bajo de fase cero). Luego cuantiza si procede."""
+    if params.signal_kind != "raw":
+        x = np.abs(x)
+    if params.signal_kind == "envelope":
+        x, _ = _lowpass_zero_phase(x, params.envelope_lowpass_hz, rate_hz)
+        x = np.maximum(x, 0.0)  # el paso bajo puede dejar un rizado negativo minúsculo
+    if params.quantize_adc:
+        x = _quantize(x, params)
+    return x
+
+
+def _quantize(x: np.ndarray, params: EmgSignalConfig) -> np.ndarray:
+    """Redondea a cuentas del ADC (paso `vref / gain / 2^bits`, referido a la entrada, en mV) y satura.
+
+    Cruda: bipolar sobre media escala [-2^(b-1), 2^(b-1) - 1]; rectificada/envolvente: unipolar [0, 2^b - 1].
+    """
+    acq = params.acquisition
+    full = 2**acq.adc_bits
+    lsb_mv = acq.vref_v * 1000.0 / acq.gain / full
+    low, high = (-full // 2, full // 2 - 1) if params.signal_kind == "raw" else (0, full - 1)
+    return np.clip(np.round(x / lsb_mv), low, high) * lsb_mv
+
+
 def synth_emg(
     rng: np.random.Generator,
     params: EmgSignalConfig,
@@ -138,7 +193,9 @@ def synth_emg(
 
     Un único bloque de ruido blanco se filtra en banda (con la banda desplazada según la fatiga),
     se normaliza a RMS unitario y se multiplica por la envolvente `mvc_rms_mv × pct / 100`; después
-    se suma ruido blanco de sensor `noise_rms_mv`. Consume de `rng` exactamente 2 × n normales.
+    se suma ruido blanco de sensor `noise_rms_mv`. Consume de `rng` 2 × n normales y, solo si están
+    encendidas, después las de deriva (n normales), red (1 fase) y ECG (1 fase), por ese orden. Al final
+    aplica `signal_kind` (raw | rectified | envelope) y, si `quantize_adc`, la cuantización del ADC.
     """
     pct = np.asarray(pct_mvc, dtype=np.float64)
     fat = np.clip(np.asarray(fatigue, dtype=np.float64), 0.0, 1.0)
@@ -168,7 +225,11 @@ def synth_emg(
         band += weight * unit
 
     envelope = mvc_rms_mv * pct / 100.0
-    return envelope * band + params.noise_rms_mv * sensor_noise
+    out = envelope * band + params.noise_rms_mv * sensor_noise
+    # Interferencias aditivas: sus normales/fases se sacan de `rng` DESPUÉS de las 2 × n del EMG y solo si
+    # están encendidas, así que con ellas apagadas la salida cruda no cambia ni un bit.
+    out = out + _interference(rng, params, n, rate_hz)
+    return _apply_signal_kind(out, params, rate_hz)
 
 
 def rms(x: np.ndarray) -> float:

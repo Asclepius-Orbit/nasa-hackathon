@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.16.1",
     "pyserial>=3.5",
     "spine-contracts",
+    "spine-physiology",
 ]
 
 [project.scripts]
@@ -24,3 +25,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 spine-contracts = { workspace = true }
+spine-physiology = { workspace = true }

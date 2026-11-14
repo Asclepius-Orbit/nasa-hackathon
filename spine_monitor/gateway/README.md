@@ -40,6 +40,7 @@ Package `spine_gateway` (`src/spine_gateway/`):
 | `status.py` | `DeviceStatus`, `ClockSync` and the background `session_id`; stream and global state. |
 | `app.py` | `Gateway`: MQTT loop (aiomqtt), Last Will, timers, commands, sessions and calibrations. |
 | `emulator.py` | Fake Arduino over TCP (`spine-arduino-emulator`) for working without a board. |
+| `signals.py` | Signals of the emulator: `spine_physiology` generators converted to raw firmware counts. |
 | `__main__.py` | Entry point `spine-gateway`. |
 
 Data flow:
@@ -81,7 +82,7 @@ uv run spine-arduino-emulator --port 5000
 SPINE_GATEWAY_SERIAL_URL=socket://127.0.0.1:5000 uv run spine-gateway
 ```
 
-pyserial turns `socket://host:port` into a TCP connection, so the gateway runs the exact same code as with a board. The emulator produces deterministic synthetic signals and gives each client a fresh device (new `boot_id`, counters at zero), like an Arduino reset by opening the port. Options: `--host` (default `127.0.0.1`), `--port` (default 5000), `--seed`, `--no-imu` (firmware without MPU-6050: no `I` frames and `#imu absent`), `--drop-every N` (every Nth batch is not sent but consumes its `frame_seq`, like an overrun) and `--reboot-after S` (device reboot after S seconds).
+pyserial turns `socket://host:port` into a TCP connection, so the gateway runs the exact same code as with a board. The emulator produces deterministic synthetic signals, generated with the `spine_physiology` models and sent as the raw counts of the firmware (10-bit EMG as an envelope, MPU-6050 int16 at ±4 g / ±500 dps, cord through the 10 kΩ divider): a 3 s flexion repetition every 4 s on `gyro_x` (what the backend counts), with the EMG contraction and the cord stretch tied to the same effort phase; the amplitudes depend on `--seed`. It gives each client a fresh device (new `boot_id`, counters at zero), like an Arduino reset by opening the port. Options: `--host` (default `127.0.0.1`), `--port` (default 5000), `--seed`, `--no-imu` (firmware without MPU-6050: no `I` frames and `#imu absent`), `--drop-every N` (every Nth batch is not sent but consumes its `frame_seq`, like an overrun) and `--reboot-after S` (device reboot after S seconds).
 
 The same demo in Docker, profile `gateway-demo` (emulator + gateway, Mosquitto starts as a dependency). The image `spine-gateway:dev` is built on the first `up` (use `--build` after changing the code):
 

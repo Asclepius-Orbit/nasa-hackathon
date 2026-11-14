@@ -421,9 +421,7 @@ class SimDevice:
         signals = self._config.signals
         if kind is StreamKind.EMG:
             acq = signals.emg.acquisition
-            meta: dict[str, Any] = {
-                "acquisition": {"adc_bits": acq.adc_bits, "vref_v": acq.vref_v, "gain": acq.gain, "input_pin": acq.input_pin}
-            }
+            meta: dict[str, Any] = {"acquisition": {"adc_bits": acq.adc_bits, "vref_v": acq.vref_v, "gain": acq.gain, "input_pin": acq.input_pin}}
             f = signals.emg.filter
             filt = {k: v for k, v in {"highpass_hz": f.highpass_hz, "lowpass_hz": f.lowpass_hz, "notch_hz": f.notch_hz}.items() if v is not None}
             if filt:
@@ -454,7 +452,7 @@ class SimDevice:
 
         if kind is StreamKind.EMG:
             return EmgChunk.model_validate({
-                **base, "stream_kind": "emg", "signal_kind": "raw", "units": {"emg": "mV"},
+                **base, "stream_kind": "emg", "signal_kind": self._config.signals.emg.signal_kind, "units": {"emg": "mV"},
                 "data": {"emg": channels["emg"].tolist()}, "quality": {"emg": q("emg")}, **meta,
             })  # fmt: skip
         if kind is StreamKind.IMU:

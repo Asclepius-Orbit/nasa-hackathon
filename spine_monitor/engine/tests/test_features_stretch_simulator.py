@@ -50,13 +50,18 @@ REST_LENGTH_MM = _rest_length_mm()  # baseline.cord_rest_length_mm del astronaut
 # Tolerancias frente a la verdad; observado en las 4 combinaciones semilla x gravedad.
 # Pico y rango por repetición: la verdad es la longitud real sin ruido ni histéresis, la extracción ve el ruido ADC (el
 # máximo de ~60 muestras con ruido sesga el pico hacia arriba y el rango en ambos extremos) y la histéresis (solo el pico):
-# observado +21..22 % el pico y +18..22 % el rango, siempre por encima de la verdad; umbral 30 %.
-PER_REP_REL = 0.30
+# observado +21..22 % el pico y +18..22 % el rango con el ADC de 12 bits; el del firmware real es de 10 bits (cuentas
+# 1..1022, ~2,6 mm por cuenta con 1 cuenta de ruido), asi que el maximo y el minimo de ~60 muestras se desvian mas:
+# observado hasta +61 % el rango (suma ~8 mm de extremos de ruido a unos 15 mm reales), siempre por encima de la
+# verdad; umbral 70 %.
+PER_REP_REL = 0.70
 # Elongación pasiva de un spine_check: solo ruido ADC y de la curva medida sobre ~2400 muestras: observado hasta 0,03 mm;
-# umbral 0,1 mm. En el fondo la extracción detecta las flexiones como repeticiones y excluye cada una más la espera de
+# umbral 0,1 mm con el ADC de 12 bits. Con el de 10 bits del firmware (~2,6 mm por cuenta) la cuantizacion deja un sesgo
+# de ~0,15 cuentas en la media: observado hasta 0,45 mm (y -0,2 mm sin ruido, la verdad es continua); umbral 0,6 mm.
+# En el fondo la extracción detecta las flexiones como repeticiones y excluye cada una más la espera de
 # recuperación de las muestras pasivas (la verdad promedia todo lo emitido): con la semilla 20261113 quedan 305 de 1010
 # muestras y el error sube a 0,22 mm; umbral 0,5 mm. Los % equivalen a esos mm sobre la longitud de reposo.
-ELONGATION_MM_ABS = {SPINE_CHECK: 0.1, BACKGROUND: 0.5}
+ELONGATION_MM_ABS = {SPINE_CHECK: 0.6, BACKGROUND: 0.5}
 ELONGATION_PCT_ABS = {slot: 100.0 * mm / REST_LENGTH_MM for slot, mm in ELONGATION_MM_ABS.items()}
 # Resistencia de reposo: se invierte el ADC con la resistencia serie exacta: observado < 0,04 % incluso en el fondo; umbral 0,1 %.
 REST_RESISTANCE_REL = 1e-3
@@ -99,6 +104,9 @@ def _mission_config(scenario: Scenario) -> Any:
     raw["segments"] = [{"days": scenario.days, "phase": scenario.phase, "gravity_environment": scenario.gravity}]
     raw["device"].update(power_on_time_utc="09:55", power_off_time_utc="10:40")
     raw["protocols"]["lat_pulldown_standing_v1"].update(streams=list(scenario.streams), lead_out_s=10.0)
+    # La dispersion entre lecturas repetidas es un offset de resistencia por sesion que la verdad no puede conocer (y que
+    # la curva de calibracion no corrige): se apaga para comparar con la verdad; el resto del realismo sigue encendido.
+    raw["signals"]["stretch"]["repeat_dispersion_ohm"] = 0.0
     if not scenario.faults:
         # los artefactos inyectados (clipping, saturación...) alteran la señal sin tocar la verdad: se comparan sin ellos
         for fault in raw["faults"]["quality"].values():

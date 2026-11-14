@@ -332,6 +332,12 @@ def _base(config: MissionConfig, member: CrewMember, *, calibration_id: str, str
     return base
 
 
+def member_lot_gain(config: MissionConfig, seed: int, astronaut_id: str) -> float:
+    """Ganancia de resistencia del lote de cordón del astronauta. RNG `(astronaut_id, "stretch_lot")`: rama propia,
+    una vez por astronauta, compartida por la curva de calibración y la señal."""
+    return stretch_signal.lot_gain(RngTree(seed).rng(astronaut_id, "stretch_lot"), config.signals.stretch)
+
+
 def stretch_calibration(
     config: MissionConfig,
     rng: np.random.Generator,
@@ -342,10 +348,11 @@ def stretch_calibration(
     session_id: str | None,
     created_at: datetime,
     day: int,
+    lot_gain: float = 1.0,
 ) -> CalibrationRecord:
-    """Curva medida (ruidosa) de la curva real del cordón; el primer punto es el reposo."""
+    """Curva medida (ruidosa) de la curva real del cordón (con la ganancia de lote); el primer punto es el reposo."""
     rest = member.baseline.cord_rest_length_mm
-    curve = stretch_signal.measured_curve(rng, config.signals.stretch, config.calibration.stretch, rest_length_mm=rest)
+    curve = stretch_signal.measured_curve(rng, config.signals.stretch, config.calibration.stretch, rest_length_mm=rest, lot_gain=lot_gain)
     cfg = config.calibration.stretch
     model = StretchCalibration.model_validate({
         **_base(config, member, calibration_id=calibration_id, stream_id=stream_id, session_id=session_id, created_at=created_at),
@@ -440,10 +447,11 @@ def scheduled_calibrations(
         cal_day = timeline.day(cal_index)
         host = next((p for p in plan_day(config, seed, astronaut_id, cal_day) if stream.stream_id in p.stream_ids), None)
         keys: tuple[Key, ...] = (astronaut_id, cal_index, "calibration", cal_type, stream.stream_id)
+        extra = {"lot_gain": member_lot_gain(config, seed, astronaut_id)} if cal_type == "stretch" else {}
         out[stream.stream_id] = build(
             config, tree.rng(*keys), member, calibration_id=tree.uuid(*keys), stream_id=stream.stream_id,
             session_id=host.session_id if host is not None else None,
-            created_at=host.start if host is not None else cal_day.at(config.device.power_on_time_utc), day=cal_index,
+            created_at=host.start if host is not None else cal_day.at(config.device.power_on_time_utc), day=cal_index, **extra,
         )  # fmt: skip
     return out
 
@@ -599,7 +607,7 @@ class StreamSynthesis:
     quality: list[ChunkQuality]  # una por chunk
     calibration_id: str | None
     episodes: tuple[FaultEpisode, ...]
-    truth: dict[str, Any]  # emg: pct_mvc, fatigue, mvc_rms_mv | imu: angle_deg | stretch: length_mm, residual_mm, rest_length_mm, angle_deg
+    truth: dict[str, Any]  # emg: pct_mvc, fatigue, mvc_rms_mv | imu: angle_deg | stretch: length_mm, residual_mm, rest_length_mm, angle_deg, lot_gain
 
     def slice(self, k0: int, k1: int) -> tuple[dict[str, np.ndarray], list[ChunkQuality]]:
         """Canales y quality de los chunks [k0, k1)."""
@@ -668,9 +676,7 @@ def synthesize(
             params = signals.emg
             mvc = member.baseline.emg_mvc_rms_mv[stream_id]
             peak = (
-                emg_signal.effective_pct_mvc(spec.protocol.pct_mvc, state.muscle_deconditioning, params)
-                if spec.protocol is not None
-                else params.rest_pct_mvc
+                emg_signal.effective_pct_mvc(spec.protocol.pct_mvc, state.muscle_deconditioning, params) if spec.protocol is not None else params.rest_pct_mvc
             )
             pct = emg_signal.activation_profile(reps, peak_pct_mvc=peak, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
             per_rep = emg_signal.effective_fatigue_per_rep(state.muscle_deconditioning, params)
@@ -691,12 +697,14 @@ def synthesize(
             rest = member.baseline.cord_rest_length_mm
             length = stretch_signal.cord_length(params, rest_length_mm=rest, elongation_mm=state.spine_elongation_mm, angle_deg=angle, offset_mm=offset)
             static = float(length[0] - params.flexion_mm_per_deg * abs(angle[0])) if n else rest
+            lot = member_lot_gain(config, seed, member.astronaut_id)
             cord = stretch_signal.synth_stretch(
                 rng, params, length_mm=length, rest_length_mm=static, rate_hz=rate,
                 initial_residual_mm=spec.initial_residual_mm.get(stream_id, 0.0),
+                lot_gain=lot,
             )  # fmt: skip
             raw = {"adc_counts": cord.adc_counts}
-            truth = {"length_mm": length, "residual_mm": cord.residual_mm, "rest_length_mm": rest, "angle_deg": angle}
+            truth = {"length_mm": length, "residual_mm": cord.residual_mm, "rest_length_mm": rest, "angle_deg": angle, "lot_gain": lot}
 
         faults_rng = tree.rng(*spec.keys, stream_id, "faults")
         episodes = plan_quality_faults(faults_rng, config.faults.quality, stream_id=stream_id, kind=kind, n_samples=n, rate_hz=rate, samples_per_chunk=spc)

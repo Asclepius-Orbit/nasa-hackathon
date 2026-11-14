@@ -41,6 +41,45 @@ docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-em
 
 The build context is the repository root: if Docker cannot read it because of unreadable folders (leftover temporary directories on Windows), delete them or build from a clean clone. It has not been tested with a real board yet. See [`spine_monitor/gateway/README.md`](spine_monitor/gateway/README.md) (running, configuration, wiring and test with the board) and [`firmware/README.md`](firmware/README.md) (sketch and serial protocol).
 
+## Telemetry source: simulator or device
+
+`SPINE_APP_TELEMETRY_SOURCE` (in `app/.env` or the environment) picks the single producer of telemetry for the whole app: `simulator` (default) or `device`. The backend only accepts that `source`; any other value stops its start with `SPINE_APP_TELEMETRY_SOURCE must be one of: simulator, device (got 'x')`. `SPINE_GATEWAY_DEMO=1` (default `0`) makes `device` use the serial emulator instead of a board; it requires `device` and `start-demo.ps1` rejects it with `simulator`.
+
+| Source | Producer (compose profile) | Where |
+|---|---|---|
+| `simulator` | physiology simulator (`sim`) | any OS |
+| `device` | real gateway + Arduino over USB (`hardware`) | Linux |
+| `device` + `SPINE_GATEWAY_DEMO=1` | gateway + Arduino emulator (`gateway-demo`), no board | any OS, including Windows |
+
+Rule: one producer at a time, never simulator and gateway together. Only `app/start-demo.ps1` enforces it; composing profiles by hand can still mix them.
+
+Reproduce it (from the repo root, Docker needed):
+
+```bash
+sh app/mosquitto/setup.sh                                  # once: credentials in app/.env
+powershell -File app/start-demo.ps1                        # simulator (default)
+SPINE_APP_TELEMETRY_SOURCE=device SPINE_GATEWAY_DEMO=1 powershell -File app/start-demo.ps1   # device through the emulator
+```
+
+On PowerShell set the variables with `$env:NAME='value'` or write them in `app/.env`; `-NoUi` skips the desktop app.
+
+The backend drops (warning in the log, counter `wrong_source`) every stream, status or calibration message whose `source` differs from the configured one, `replay` included. `ack` and `clock` carry no `source`, so they are not filtered. In device mode the offline Last Will of the gateway always wins in the device status.
+
+Verify it (stop the dev stack first: both need ports 1883, 8000 and 8001 free):
+
+```bash
+cd spine_monitor && SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetry_source.py   # real Mosquitto, both modes
+cd app/ui && pnpm run e2e:real          # UI against the simulator
+cd app/ui && pnpm run e2e:real:device   # UI against gateway + emulator
+```
+
+Known limits:
+
+- Verification with a physical Arduino is **pending**: no test on a board has been done. On a real session the EMG is broken and the IMU signal is unreliable.
+- Device mode through the emulator covers pairing, session start and stop only.
+- The lat pulldown protocol declares `emg_lat_left` and `emg_lat_right`, but the gateway has one EMG stream, so it is rejected. `calibrate` and artefact injection are simulator-only in the e2e tests. A follow-up issue will track this.
+- The realism of the simulated signal is tracked separately (#131).
+
 ## Claude Code skills for pull requests
 
 Two project skills in `.claude/skills/` drive PR review with subagents:

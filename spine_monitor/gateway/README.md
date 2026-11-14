@@ -15,6 +15,7 @@ Verified **without hardware**:
 
 **Not tested yet with a real board.** Nothing of this has run on hardware:
 
+- The whole device source (`SPINE_APP_TELEMETRY_SOURCE=device`) with a physical board: **pending**. On a real session the EMG is broken and the IMU signal is unreliable. Through the emulator (`SPINE_GATEWAY_DEMO=1` in `app/start-demo.ps1`, profile `gateway-demo`) only pairing, session start and stop are covered; `pnpm run e2e:real:device` (from `app/ui`, ports 1883/8000/8001 free) and `SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetry_source.py` (from `spine_monitor`) check it. The backend takes only the `source` it is configured for, and the gateway must be the single producer (never together with the simulator, profile `sim`).
 - Real timing of the ADC sampling and the Timer1 ISR (1000 Hz EMG, 20 Hz cord).
 - I2C reading of the MPU-6050 (100 Hz, 400 kHz).
 - Throughput of the USB-serial bridge at 250000 baud (about 5 KB/s of average payload).
@@ -308,4 +309,5 @@ With the module connected, measure `SIG` with a multimeter (or watch `emg` in a 
 - `rest_length_mm` and the real curve of the stretch cord (#12); today they are a placeholder and the mission curve.
 - `calibrate` of type `imu` is not implemented.
 - A dedicated error code for "not supported": it requires changing the contract (today `invalid_command` is used).
+- The lat pulldown protocol declares `emg_lat_left` and `emg_lat_right`, but the gateway has one EMG stream, so it is rejected; `calibrate` and artefact injection are simulator-only in the e2e tests (a follow-up issue will track this).
 - BLE is out of scope.

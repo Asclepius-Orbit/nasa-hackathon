@@ -1,5 +1,5 @@
 /* Bone and sensor colours are the ones of the mock's figure; they carry no clinical meaning. */
-.figure { --bone: #D3DBE0; --bone-line: #A9B6BE; --lumbar-fill: #C9D7EA; margin: 0; padding: 12px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l); }
+.figure { position: relative; --bone: #D3DBE0; --bone-line: #A9B6BE; --lumbar-fill: #C9D7EA; margin: 0; padding: 12px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l); }
 .figure svg { display: block; width: 100%; height: auto; }
 .figure figcaption { font-size: 0.9375rem; color: var(--muted); margin: 4px 10px 0; }
 .today { fill: none; stroke: var(--ink); stroke-width: 4; }
@@ -18,3 +18,33 @@
 .value { fill: var(--action); font-weight: 700; }
 .legend { font-size: 14px; fill: var(--muted); }
 .figure figcaption .measured { display: block; margin-top: 4px; font-weight: 600; }
+
+/* Interaction: the default drawing is untouched; everything below only reacts to pointer, focus or a pick. */
+.hit, .sensor { cursor: pointer; transform-box: fill-box; transform-origin: center; transition: transform 0.18s ease, filter 0.18s ease; animation: rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.hit:hover { transform: scale(1.1); filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--action) 45%, transparent)); }
+.sensor:hover { transform: scale(1.18); filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--ink) 40%, transparent)); }
+.hit:active, .sensor:active { transform: scale(0.96); }
+.hit[data-active='true'] { transform: scale(1.08); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--action) 70%, transparent)); }
+.hit[data-active='true'] ellipse:first-child, .sensor[data-active='true'] > * { stroke: var(--action); stroke-width: 3; }
+.ring { fill: none; stroke: var(--action); stroke-width: 2; pointer-events: none; transform-box: fill-box; transform-origin: center; animation: ring 1.6s ease-out infinite; }
+.cordHit { fill: none; stroke: transparent; stroke-width: 22; stroke-linecap: round; }
+.cord { stroke-dasharray: 1; animation: draw 1.1s ease-out 0.2s both; }
+.sensor:hover .cord, .sensor[data-active='true'] .cord { stroke-width: 8; }
+.pill { pointer-events: none; animation: pop 0.18s ease-out both; transform-box: fill-box; transform-origin: right center; }
+.pill rect { fill: var(--action); }
+.pill text { fill: var(--surface); font-size: 13px; font-weight: 700; }
+.picker { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.picker:focus-within { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal; display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 10px 0; }
+.picker button { font: inherit; font-size: 0.8125rem; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.picker button[aria-pressed='true'] { background: var(--action); color: var(--surface); border-color: var(--action); }
+.readout:empty { display: none; }
+.card { position: relative; display: grid; gap: 2px; margin: 8px 10px 0; padding: 10px 36px 10px 12px; border: 1px solid var(--action); border-left-width: 4px; border-radius: var(--radius-l); background: color-mix(in srgb, var(--action) 8%, var(--surface)); animation: card 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.card span { color: var(--muted); font-size: 0.9375rem; }
+.close { position: absolute; top: 4px; right: 6px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.close:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
+@keyframes rise { from { opacity: 0; transform: translateX(-10px); } }
+@keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes ring { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
+@keyframes pop { from { opacity: 0; transform: scale(0.7); } }
+@keyframes card { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .ring { animation: none; opacity: 0; } }

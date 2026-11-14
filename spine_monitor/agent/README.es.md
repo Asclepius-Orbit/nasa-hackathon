@@ -6,7 +6,7 @@ Agente LLM local que responde preguntas sobre el estado de salud de la columna d
 
 Reglas que cumple, por diseño:
 
-- **Solo lectura.** No puede cambiar datos ni el semáforo, ni enviar informes; rechaza esas peticiones sin llamar a ninguna tool.
+- **Datos de solo lectura.** No puede cambiar datos del astronauta ni el semáforo. `POST /report` puede devolver un informe extractivo de evidencia, pero no modifica datos ni envía el informe a otro sitio.
 - **No diagnostica.** Ni diagnóstico médico ni consejos de tratamiento; las preguntas clínicas se derivan al cirujano de vuelo.
 - **Dice «no lo sé»** cuando una tool no devuelve datos o da error. Nunca inventa cifras (un valor ausente es «no disponible», nunca 0), y el prompt le pide citar los valores que devuelven las tools en vez de calcular otros nuevos.
 - **Si falla el LLM, no falla nada más.** El agente es un proceso aparte: el camino directo app-motor no depende de él. Si Ollama está caído, agota el tiempo o no responde nada, el agente imprime un resumen determinista construido con las tools MCP (sin LLM).
@@ -77,14 +77,21 @@ SPINE_AGENT_HTTP_TOKEN=cambialo uv run spine-agent-http     # http://127.0.0.1:8
 curl -N http://127.0.0.1:8003/chat \
   -H "Authorization: Bearer cambialo" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
   -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000001","question":"¿Por qué estoy en ámbar?"}'
+
+curl -N http://127.0.0.1:8003/report \
+  -H "Authorization: Bearer cambialo" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
+  -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000002","question":"Informe sobre la evidencia de altura sentada en microgravedad y cita las fuentes."}'
 ```
 
 - `POST /chat` responde 200 con un `text/event-stream`. Cada evento es `event: <tipo>` más una línea `data:` con JSON: `text` (`delta`), `tool_call` (`tool_name`, `tool_args`), `fallback` (`text`), `notice` (`code` `mid_stream` o `correction`, `text`) y, al final, exactamente un `end` o un `error` (`code` `busy`, `unavailable`, `invalid` o `internal`, `message`). Los comentarios `: ping` mantienen viva la conexión mientras el modelo piensa (en CPU el primer token tarda unos 27 s, a veces un minuto).
+- `POST /report` acepta la misma petición autenticada y transmite el mismo formato de eventos. Usa el modelo para buscar evidencia local, pero solo emite fragmentos recuperados completos con título, URL, localizador y limitaciones; omite afirmaciones escritas por el modelo. Si no hay fragmentos utilizables, indica que la evidencia es insuficiente. No añade el informe al historial del chat.
 - El cliente genera `conversation_id`: un id nuevo empieza una conversación y el mismo id la continúa. El historial vive solo en memoria, acotado y con TTL de inactividad; una conversación pertenece al astronauta de su primera pregunta.
 - Una respuesta a la vez por conversación (una segunda pregunta mientras tanto es un 409). Para cancelar una respuesta se cierra la conexión: la ejecución del modelo se detiene y el turno no se guarda. `DELETE /chat/{conversation_id}` olvida una conversación (204, también si no existe).
 - Toda petición salvo `/health` necesita `Authorization: Bearer <token>` y `X-Astronaut-Id` (el astronauta desbloqueado, igual al `astronaut_id` del cuerpo): 401, 403, 422 y 503 son problem details con el schema `app/error`.
 - Sin LLM (Ollama caído o fallando) la respuesta sigue siendo un stream: un resumen `fallback` hecho con las tools MCP y luego `end`. Si el propio servidor MCP no puede arrancar, el stream termina con `error` `unavailable`.
 - El servidor arranca el servidor MCP una vez (subproceso stdio) y lo para al apagarse. Hay una imagen Docker en `agent/Dockerfile` (escucha en `0.0.0.0:8003` dentro del contenedor y guarda el token generado en `/data`).
+
+Para una comprobación end-to-end opcional de `POST /report` sin conexión, con el motor real, la read API, el servidor MCP y Ollama local, consulta [`tests/offline-125.md`](../tests/offline-125.md). Se ejecuta en una red Docker aislada y no forma parte del quality gate.
 
 ## Evals
 

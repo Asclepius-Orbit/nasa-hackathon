@@ -6,7 +6,7 @@ Agent LLM local que respon preguntes sobre l'estat de salut de la columna d'un a
 
 Regles que compleix, per disseny:
 
-- **Només lectura.** No pot canviar dades ni el semàfor, ni enviar informes; rebutja aquestes peticions sense cridar cap eina.
+- **Dades de només lectura.** No pot canviar dades de l'astronauta ni el semàfor. `POST /report` pot retornar un informe extractiu d'evidència, però no modifica dades ni envia l'informe enlloc.
 - **No diagnostica.** Ni diagnòstic mèdic ni consells de tractament; les preguntes clíniques es deriven al cirurgià de vol.
 - **Diu «no ho sé»** quan una eina no retorna dades o dona error. Mai s'inventa xifres (un valor absent és «no disponible», mai 0), i el prompt li demana citar els valors que retornen les eines en lloc de calcular-ne de nous.
 - **Si falla el LLM, no falla res més.** L'agent és un procés apart: el camí directe app-motor no en depèn. Si Ollama està caigut, esgota el temps o no respon res, l'agent imprimeix un resum determinista construït amb les eines MCP (sense LLM).
@@ -77,14 +77,21 @@ SPINE_AGENT_HTTP_TOKEN=canvia-ho uv run spine-agent-http     # http://127.0.0.1:
 curl -N http://127.0.0.1:8003/chat \
   -H "Authorization: Bearer canvia-ho" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
   -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000001","question":"Per què estic en ambre?"}'
+
+curl -N http://127.0.0.1:8003/report \
+  -H "Authorization: Bearer canvia-ho" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
+  -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000002","question":"Informe sobre l'evidència d'altura asseguda en microgravetat i cita les fonts."}'
 ```
 
 - `POST /chat` respon 200 amb un `text/event-stream`. Cada esdeveniment és `event: <tipus>` més una línia `data:` amb JSON: `text` (`delta`), `tool_call` (`tool_name`, `tool_args`), `fallback` (`text`), `notice` (`code` `mid_stream` o `correction`, `text`) i, al final, exactament un `end` o un `error` (`code` `busy`, `unavailable`, `invalid` o `internal`, `message`). Els comentaris `: ping` mantenen viva la connexió mentre el model pensa (en CPU el primer token triga uns 27 s, de vegades un minut).
+- `POST /report` accepta la mateixa petició autenticada i transmet el mateix format d'esdeveniments. Fa servir el model per cercar evidència local, però només emet fragments recuperats complets amb títol, URL, localitzador i limitacions; omet afirmacions escrites pel model. Si no hi ha fragments útils, indica que l'evidència és insuficient. No afegeix l'informe a l'historial del xat.
 - El client genera `conversation_id`: un id nou comença una conversa i el mateix id la continua. L'historial només viu en memòria, acotat i amb TTL d'inactivitat; una conversa pertany a l'astronauta de la seva primera pregunta.
 - Una resposta alhora per conversa (una segona pregunta mentrestant és un 409). Per cancel·lar una resposta es tanca la connexió: l'execució del model s'atura i el torn no es desa. `DELETE /chat/{conversation_id}` oblida una conversa (204, també si no existeix).
 - Tota petició excepte `/health` necessita `Authorization: Bearer <token>` i `X-Astronaut-Id` (l'astronauta desbloquejat, igual a l'`astronaut_id` del cos): 401, 403, 422 i 503 són problem details amb el schema `app/error`.
 - Sense LLM (Ollama caigut o fallant) la resposta continua sent un stream: un resum `fallback` fet amb les tools MCP i després `end`. Si el mateix servidor MCP no pot arrencar, el stream acaba amb `error` `unavailable`.
 - El servidor arrenca el servidor MCP una vegada (subprocés stdio) i l'atura en apagar-se. Hi ha una imatge Docker a `agent/Dockerfile` (escolta a `0.0.0.0:8003` dins del contenidor i desa el token generat a `/data`).
+
+Per a una comprovació end-to-end opcional de `POST /report` sense connexió, amb el motor real, la read API, el servidor MCP i Ollama local, consulta [`tests/offline-125.md`](../tests/offline-125.md). S'executa en una xarxa Docker aïllada i no forma part del quality gate.
 
 ## Evals
 

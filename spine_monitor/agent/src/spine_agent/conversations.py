@@ -21,6 +21,8 @@ class Session(Protocol):
 
     def ask(self, question: str) -> AsyncIterator[ReplyChunk]: ...
 
+    def ask_report(self, question: str) -> AsyncIterator[ReplyChunk]: ...
+
 
 class Refused(Exception):
     def __init__(self, status: int, detail: str) -> None:

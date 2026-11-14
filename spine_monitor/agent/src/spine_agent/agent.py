@@ -27,6 +27,7 @@ from pydantic_ai.toolsets import AbstractToolset
 from spine_agent.guards import fallback_reply, find_diagnostic_terms
 from spine_agent.ports import StatusSource
 from spine_agent.prompts import SYSTEM_PROMPT, astronaut_instruction
+from spine_agent.report import evidence_report
 from spine_agent.settings import AgentSettings, mcp_server_env
 
 MID_STREAM_NOTICE = "The assistant failed mid-answer; falling back to the automatic summary."
@@ -179,6 +180,23 @@ class ChatSession:
         assessment_id = assessment.get("assessment_id")
         explanation = await self._fallback.explanation(assessment_id) if assessment_id else None
         return fallback_reply(status, explanation)
+
+    async def ask_report(self, question: str) -> AsyncIterator[ReplyChunk]:
+        """Produce an extractive report from this run's evidence; never expose unverified model text."""
+        messages: list[ModelMessage] = []
+        try:
+            prompt = f'{question}\n\nFor this evidence report, search the local scientific evidence with search_evidence.'
+            async with self._agent.run_stream_events(prompt, deps=AgentDeps(self._astronaut_id, self._clock())) as events:
+                async for event in events:
+                    if isinstance(event, AgentRunResultEvent):
+                        messages = event.result.all_messages()
+                    elif chunk := _chunk(event):
+                        if chunk.kind == 'tool_call':
+                            yield chunk
+        except MODEL_FAILURES:
+            yield ReplyChunk('text', 'Insufficient evidence: the local model is unavailable or failed; no report could be generated.')
+            return
+        yield ReplyChunk('text', evidence_report(messages))
 
 
 def _chunk(event: object) -> ReplyChunk | None:

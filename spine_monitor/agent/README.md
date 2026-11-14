@@ -6,7 +6,7 @@ Local LLM agent that answers questions about an astronaut's spine-health status 
 
 Rules it follows, by design:
 
-- **Read-only.** It cannot change data, the traffic light or send reports; it refuses those requests without calling any tool.
+- **Read-only data.** It cannot change astronaut data or the traffic light. `POST /report` can return an extractive evidence report, but it does not modify astronaut data or send the report elsewhere.
 - **It does not diagnose.** No medical diagnosis and no treatment advice; clinical questions go to the flight surgeon.
 - **It says "I don't know"** when a tool returns no data or an error. It never invents numbers (a missing value is "not available", never 0), and the prompt tells it to quote the values the tools return instead of computing new ones.
 - **If the LLM fails, nothing else does.** The agent is a separate process: the direct app-engine path does not depend on it. If Ollama is down, times out or answers nothing, the agent prints a deterministic summary built from the MCP tools instead (no LLM involved).
@@ -77,14 +77,21 @@ SPINE_AGENT_HTTP_TOKEN=change-me uv run spine-agent-http     # http://127.0.0.1:
 curl -N http://127.0.0.1:8003/chat \
   -H "Authorization: Bearer change-me" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
   -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000001","question":"Why am I amber?"}'
+
+curl -N http://127.0.0.1:8003/report \
+  -H "Authorization: Bearer change-me" -H "X-Astronaut-Id: AST-01" -H "Content-Type: application/json" \
+  -d '{"schema_version":"1.0.0","astronaut_id":"AST-01","conversation_id":"c0ffee00-0000-4000-8000-000000000002","question":"Report on microgravity seated height evidence and cite sources."}'
 ```
 
 - `POST /chat` answers 200 with a `text/event-stream`. Each event is `event: <type>` plus one `data:` JSON line: `text` (`delta`), `tool_call` (`tool_name`, `tool_args`), `fallback` (`text`), `notice` (`code` `mid_stream` or `correction`, `text`), and exactly one `end` or `error` (`code` `busy`, `unavailable`, `invalid` or `internal`, `message`) last. `: ping` comments keep the connection alive while the model thinks (on CPU the first token takes about 27 s, sometimes a minute).
+- `POST /report` accepts the same authenticated request and streams the same event format. It uses the model to search local evidence, then emits only complete retrieved passages with their title, URL, locator and limitations; model-written claims are withheld. With no usable passages it returns an explicit insufficient-evidence message. It does not add the report to chat history.
 - The client generates `conversation_id`: a new id starts a conversation, the same id continues it. The history lives in memory only, bounded and with an idle TTL; a conversation belongs to the astronaut of its first question.
 - One answer at a time per conversation (a second question meanwhile is a 409). To cancel an answer, close the connection: the model run stops and the turn is not kept. `DELETE /chat/{conversation_id}` forgets a conversation (204, also when unknown).
 - Every request but `/health` needs `Authorization: Bearer <token>` and `X-Astronaut-Id` (the unlocked astronaut, equal to the body's `astronaut_id`): 401, 403, 422 and 503 are problem details with the `app/error` schema.
 - Without the LLM (Ollama down or failing) the answer is still a stream: a `fallback` summary built from the MCP tools, then `end`. If the MCP server itself cannot start, the stream ends with `error` `unavailable`.
 - The server starts the MCP server once (stdio subprocess) and stops it on shutdown. A Docker image is in `agent/Dockerfile` (it listens on `0.0.0.0:8003` inside the container and keeps the generated token in `/data`).
+
+For an opt-in end-to-end offline check of `POST /report` with the real engine, read API, MCP server and local Ollama, see [`tests/offline-125.md`](../tests/offline-125.md). It runs on an isolated Docker network and is not part of the quality gate.
 
 ## Evals
 

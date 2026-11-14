@@ -117,12 +117,13 @@ def _unreachable(exc: BaseException) -> bool:
 class Answer:
     """The answer to one question: its SSE events, and `close`, which stops it and frees the conversation (idempotent)."""
 
-    def __init__(self, conversations: Conversations, conversation: Conversation, question: str, keepalive_s: float) -> None:
+    def __init__(self, conversations: Conversations, conversation: Conversation, question: str, keepalive_s: float, *, report: bool = False) -> None:
         self._conversations = conversations
         self._conversation = conversation
         self._question = question
         self._keepalive_s = keepalive_s
         self._closed = False
+        self._report = report
 
     async def events(self) -> AsyncGenerator[str]:
         queue: asyncio.Queue[Event] = asyncio.Queue()
@@ -143,7 +144,8 @@ class Answer:
 
     async def _produce(self, queue: asyncio.Queue[Event]) -> None:
         try:
-            async for chunk in self._conversation.session.ask(self._question):
+            stream = self._conversation.session.ask_report(self._question) if self._report else self._conversation.session.ask(self._question)
+            async for chunk in stream:
                 queue.put_nowait(_event_of(chunk))
         except asyncio.CancelledError:
             code, message = self._conversation.cancel_reason or ("unavailable", "the answer was cancelled")
@@ -293,6 +295,15 @@ def create_app(
             raise Problem(403, "the request is about another astronaut than the one unlocked")
         conversation = conversations.claim(payload["conversation_id"], astronaut_id)
         return ChatEventResponse(Answer(conversations, conversation, payload["question"], settings.http_keepalive_s))
+
+    @app.post("/report", operation_id="createEvidenceReport")
+    async def report(request: Request) -> Response:
+        astronaut_id = _unlocked(request, token)
+        payload = await _chat_request(request)
+        if payload["astronaut_id"] != astronaut_id:
+            raise Problem(403, "the request is about another astronaut than the one unlocked")
+        conversation = conversations.claim(payload["conversation_id"], astronaut_id)
+        return ChatEventResponse(Answer(conversations, conversation, payload["question"], settings.http_keepalive_s, report=True))
 
     @app.delete("/chat/{conversation_id}", operation_id="forgetConversation", status_code=204)
     async def forget(conversation_id: str, request: Request) -> Response:

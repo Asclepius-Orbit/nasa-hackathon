@@ -1,0 +1,29 @@
+services:
+  ollama:
+    image: ollama/ollama:0.40.14
+    pull_policy: never
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "16384"
+    volumes:
+      - models:/root/.ollama:ro
+    networks: [offline]
+  check:
+    image: spine-quality:dev
+    pull_policy: never
+    working_dir: /work/spine_monitor
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      SPINE_AGENT_OLLAMA_BASE_URL: http://ollama:11434/v1
+      SPINE_APP_URL: http://127.0.0.1:18002
+      SPINE_ENGINE_URL: http://127.0.0.1:18001
+    volumes:
+      - ../..:/work:ro
+    command: ["python", "tests/offline_125.py"]
+    networks: [offline]
+networks:
+  offline:
+    internal: true
+volumes:
+  models:
+    external: true
+    name: app_ollama-models

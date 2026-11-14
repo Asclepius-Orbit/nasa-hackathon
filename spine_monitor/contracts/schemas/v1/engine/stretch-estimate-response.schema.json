@@ -8,7 +8,25 @@
     "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
     "estimated_length_mm": { "type": "number", "exclusiveMinimum": 0 },
     "elongation_mm": { "type": "number" },
-    "model": { "const": "experimental_uniform_resistance_v1" }
+    "model": { "const": "experimental_uniform_resistance_v1" },
+    "prediction": {
+      "description": "Experimental engine prediction, not diagnosis. The reference is the personal Earth cord length plus an assumed linear daily change; uncertainty covers the current resistance only.",
+      "type": "object",
+      "properties": {
+        "reference_length_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "deviation_mm": { "type": "number" },
+        "uncertainty_mm": { "type": "number", "minimum": 0 },
+        "assumed_daily_change_mm": { "type": "number" },
+        "elapsed_days": { "type": "number", "minimum": 0 },
+        "sensor_uncertainty_ohm": { "type": "number", "minimum": 0 },
+        "baseline_posture": { "enum": ["straight", "max_flexion"] },
+        "standing_height_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "sitting_height_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "exercise_phase": { "enum": ["pre", "post", "unrelated"] }
+      },
+      "required": ["reference_length_mm", "deviation_mm", "uncertainty_mm", "assumed_daily_change_mm", "elapsed_days", "sensor_uncertainty_ohm", "baseline_posture"],
+      "additionalProperties": false
+    }
   },
   "required": ["schema_version", "estimated_length_mm", "elongation_mm", "model"],
   "additionalProperties": false

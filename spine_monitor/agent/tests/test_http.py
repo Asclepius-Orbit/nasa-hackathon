@@ -279,6 +279,16 @@ async def test_chat_about_another_astronaut_than_the_unlocked_one_is_403():
     assert_problem(response, 403)
 
 
+@pytest.mark.parametrize(('payload', 'headers'), [
+    (body(), {'authorization': f'Bearer {TOKEN}'}),
+    (body(astronaut_id='AST-02'), AUTH),
+])
+async def test_report_requires_matching_unlocked_astronaut(payload, headers):
+    async with client(make_app(text_script('ok'))) as c:
+        response = await c.post('/report', json=payload, headers=headers)
+    assert_problem(response, 403)
+
+
 async def test_a_conversation_of_another_astronaut_is_403():
     app = make_app(text_script("ok"))
     await ask(app)

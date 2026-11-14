@@ -125,3 +125,9 @@ def test_astronaut_instruction_converts_to_utc_and_drops_microseconds():
     text = astronaut_instruction("AST-01", local)
     assert "2026-11-13T12:30:05Z" in text
     assert "last 24 hours: start=2026-11-12T12:30:05Z" in text
+
+@pytest.mark.unit
+def test_prompt_requires_retrieval_and_citation_or_insufficient_evidence():
+    assert 'search_evidence' in SYSTEM_PROMPT
+    assert 'insufficient evidence' in SYSTEM_PROMPT
+    assert 'locator' in SYSTEM_PROMPT

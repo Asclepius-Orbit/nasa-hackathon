@@ -120,7 +120,7 @@ services:
         condition: service_started
       engine:
         condition: service_started
-    profiles: ["llm"]
+    profiles: ["llm", "llm-prepare"]
     restart: unless-stopped
 
   simulator:
@@ -244,7 +244,7 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
-    profiles: ["llm"]
+    profiles: ["llm-prepare"]
     restart: "no"
 
   quality:

@@ -54,6 +54,61 @@ def test_stretch_estimate_uses_measured_trials_and_personal_baseline(client):
     assert body["elongation_mm"] == pytest.approx(38.5723, abs=0.01)
 
 
+def test_stretch_prediction_uses_matching_earth_posture_and_explicit_assumptions(client):
+    request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500,
+               "current_resistance_ohm": 4600, "reference_length_mm": 500,
+               "prediction": {"baseline_posture": "straight", "current_posture": "straight",
+                              "baseline_gravity": "earth_1g", "elapsed_days": 5,
+                              "assumed_daily_change_mm": 0.2, "sensor_uncertainty_ohm": 10,
+                              "standing_height_mm": 1750, "sitting_height_mm": 900,
+                              "exercise_phase": "pre"}}
+    response = client.post("/stretch-estimate", json=request)
+    assert response.status_code == 200
+    result = response.json()["prediction"]
+    assert result["reference_length_mm"] == 501
+    assert result["deviation_mm"] == pytest.approx(response.json()["estimated_length_mm"] - 501)
+    assert result["uncertainty_mm"] > 0
+    assert result["standing_height_mm"] == 1750
+    assert result["sitting_height_mm"] == 900
+    assert result["exercise_phase"] == "pre"
+    assert validation.errors("engine/stretch-estimate-response", response.json()) == []
+
+
+@pytest.mark.parametrize("field,value", [("current_posture", "max_flexion"), ("baseline_gravity", "microgravity")])
+def test_stretch_prediction_rejects_incompatible_reference(client, field, value):
+    prediction = {"baseline_posture": "straight", "current_posture": "straight", "baseline_gravity": "earth_1g",
+                  "elapsed_days": 0, "assumed_daily_change_mm": 0, "sensor_uncertainty_ohm": 0}
+    prediction[field] = value
+    request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500,
+               "current_resistance_ohm": 4600, "reference_length_mm": 500, "prediction": prediction}
+    assert_problem(client.post("/stretch-estimate", json=request), 422, "invalid_request")
+
+
+@pytest.mark.parametrize("changes", [
+    {"sensor_uncertainty_ohm": 10000},
+    {"elapsed_days": 10, "assumed_daily_change_mm": -100},
+])
+def test_stretch_prediction_rejects_unrepresentable_reference_or_uncertainty(client, changes):
+    prediction = {"baseline_posture": "max_flexion", "current_posture": "max_flexion", "baseline_gravity": "earth_1g",
+                  "elapsed_days": 0, "assumed_daily_change_mm": 0, "sensor_uncertainty_ohm": 0}
+    prediction.update(changes)
+    request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500,
+               "current_resistance_ohm": 4600, "reference_length_mm": 500, "prediction": prediction}
+    assert_problem(client.post("/stretch-estimate", json=request), 422, "invalid_request")
+
+
+def test_stretch_prediction_allows_flexion_reference_and_zero_uncertainty(client):
+    request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 5650,
+               "current_resistance_ohm": 5650, "reference_length_mm": 500,
+               "prediction": {"baseline_posture": "max_flexion", "current_posture": "max_flexion",
+                              "baseline_gravity": "earth_1g", "elapsed_days": 0,
+                              "assumed_daily_change_mm": 0, "sensor_uncertainty_ohm": 0}}
+    response = client.post("/stretch-estimate", json=request)
+    assert response.status_code == 200
+    assert response.json()["prediction"]["deviation_mm"] == pytest.approx(0)
+    assert response.json()["prediction"]["uncertainty_mm"] == 0
+
+
 @pytest.mark.parametrize("field", ["baseline_resistance_ohm", "current_resistance_ohm"])
 def test_stretch_estimate_rejects_out_of_range_without_extrapolating(client, field):
     body = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500,
@@ -123,6 +178,20 @@ def test_assess_returns_a_valid_assessment(client):
     assert body["completeness"]["score"] == pytest.approx(4 / 9)
 
 
+@pytest.mark.parametrize("part", ["baseline", "profile", "feature_sets"])
+def test_assess_rejects_data_from_another_person(client, part):
+    body = example("assess-request")
+    item = body[part][0] if part == "feature_sets" else body[part]
+    item["astronaut_id"] = "AST-02"
+    assert_problem(client.post("/assess", json=body), 422, "insufficient_data")
+
+
+def test_baseline_endpoint_rejects_features_from_another_person(client):
+    body = example("baseline-request")
+    body["feature_sets"][0]["astronaut_id"] = "AST-02"
+    assert_problem(client.post("/baseline", json=body), 422, "insufficient_data")
+
+
 def test_assess_without_mission_day_omits_it_instead_of_sending_null(client):
     request = example("assess-request")
     del request["mission_day"]
@@ -142,6 +211,12 @@ def test_simulate_returns_a_hypothetical_pair(client):
     body = response.json()
     assert validation.errors("engine/simulate-response", body) == []
     assert body["hypothetical"] is True
+
+
+def test_simulate_rejects_another_persons_baseline(client):
+    request = example("simulate-request")
+    request["base"]["baseline"]["astronaut_id"] = "AST-02"
+    assert_problem(client.post("/simulate", json=request), 422, "insufficient_data")
 
 
 def test_simulate_without_overrides_projects_the_base_unchanged(client):

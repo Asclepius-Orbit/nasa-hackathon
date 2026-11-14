@@ -2,6 +2,30 @@
 
 # nasa-hackathon
 
+## Antropometría y evidencia offline
+
+El [inventario de fuentes](docs/anthropometry-sources.md) recoge guías de diseño de NASA y un estudio relacionado, con población, método, páginas, limitaciones y condiciones de reutilización. Los valores de NASA de aproximadamente el 3 % de la estatura de pie y el 6 % de la altura sentada son márgenes de diseño de naves, no umbrales clínicos. Una predicción del motor es experimental: depende de la referencia terrestre individual en la misma postura, la incertidumbre del sensor y las hipótesis indicadas; estatura, altura sentada y longitud estimada del cordón son magnitudes distintas.
+
+Las fuentes revisadas incluyen [NTRS 20110023150](https://ntrs.nasa.gov/citations/20110023150), [20090007782](https://ntrs.nasa.gov/citations/20090007782), [20090038743](https://ntrs.nasa.gov/citations/20090038743), [NASA-STD-3000 volumen I](https://standards.nasa.gov/standard/NASA/NASA-STD-3000_VOL_I), [NASA-STD-3001 volumen 2](https://standards.nasa.gov/node/237), el [Human Integration Design Handbook](https://www.nasa.gov/human-integration-design-handbook/) y la [API NTRS](https://ntrs.nasa.gov/api/openapi/). El inventario detalla versiones, acceso y límites; citar una fuente no implica que su texto completo esté incluido en el corpus local.
+
+Prepara el equipo con conexión: instala las dependencias fijadas y las imágenes Docker, configura el broker como se indica abajo y guarda el modelo Ollama necesario. La [guía del agente](spine_monitor/agent/README.es.md) describe el volumen de modelos y su configuración. Conserva ese volumen y los recursos de evidencia locales al trasladar o actualizar una instalación offline; `docker compose down -v` borra el volumen de modelos. Comprueba que estén presentes el modelo exacto y los recursos antes de desconectar. `ollama-pull` pertenece al perfil explícito `llm-prepare` y descarga los modelos que falten; no lo ejecutes sin conexión. Para iniciar en una máquina ya preparada, usa el perfil `llm`, que arranca Ollama sin descargar modelos:
+
+```bash
+docker compose -f app/docker-compose.yml --profile llm up -d
+cd spine_monitor
+uv run spine-agent --astronaut AST-01
+```
+
+La aplicación puede contestar con el resumen determinista si Ollama no está disponible, pero no generará una respuesta de modelo sin el modelo local. Un informe generado debe citar ubicaciones comprobables de las fuentes o indicar que la evidencia es insuficiente.
+
+El corpus incluido y su índice vectorial léxico disperso son archivos locales. Después de actualizar el corpus, reconstruye el índice correspondiente desde `spine_monitor/` (no hace falta Internet):
+
+```bash
+uv run python -c "from pathlib import Path; from spine_mcp_server.evidence import build_index; p=Path('mcp_server/src/spine_mcp_server/evidence_data'); build_index(p/'corpus.json', p/'index.json')"
+```
+
+Copia ambos archivos juntos al instalar o actualizar sin conexión. `SPINE_EVIDENCE_DIR` puede apuntar a su directorio. Si faltan, son inválidos o no coinciden, la recuperación falla de forma explícita; el índice no descarga evidencia ni proporciona embeddings semánticos.
+
 ## Entorno de desarrollo (Python)
 
 `spine_monitor/` es un workspace de uv: un solo `.venv` y un solo `uv.lock` para todos los paquetes. Trabaja siempre desde `spine_monitor/` (`uv sync --all-packages`, `uv run pytest`). En PyCharm, abre la carpeta `spine_monitor/` y elige como intérprete su `.venv`.

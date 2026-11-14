@@ -2,13 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.asclepius-orbit.example/v1/engine/stretch-estimate-request.schema.json",
   "title": "StretchEstimateRequest",
-  "description": "Experimental estimate using the astronaut's straight-back Earth reference and the current cord resistance. Both must be inside the experimental model's range; the measured reference length must be the distance between the back contacts. The model is not clinically validated.",
+  "description": "Experimental estimate using the astronaut's Earth reference and current cord resistance. With prediction, the reference and current measurement must use the same posture. Both resistances must be inside the experimental model's range; the measured reference length must be the distance between the back contacts. The model is not clinically validated.",
   "type": "object",
   "properties": {
     "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
     "baseline_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
     "current_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
-    "reference_length_mm": { "type": "number", "exclusiveMinimum": 0 }
+    "reference_length_mm": { "type": "number", "exclusiveMinimum": 0 },
+    "prediction": {
+      "description": "Optional experimental temporal reference. The baseline is the same individual's Earth reference in the same posture. Daily change is an explicit assumption, not a NASA curve. Heights are context, not cord lengths.",
+      "type": "object",
+      "properties": {
+        "baseline_posture": { "enum": ["straight", "max_flexion"] },
+        "current_posture": { "enum": ["straight", "max_flexion"] },
+        "baseline_gravity": { "enum": ["earth_1g", "microgravity"] },
+        "elapsed_days": { "type": "number", "minimum": 0 },
+        "assumed_daily_change_mm": { "type": "number" },
+        "sensor_uncertainty_ohm": { "type": "number", "minimum": 0 },
+        "standing_height_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "sitting_height_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "exercise_phase": { "enum": ["pre", "post", "unrelated"] }
+      },
+      "required": ["baseline_posture", "current_posture", "baseline_gravity", "elapsed_days", "assumed_daily_change_mm", "sensor_uncertainty_ohm"],
+      "additionalProperties": false
+    }
   },
   "required": ["schema_version", "baseline_resistance_ohm", "current_resistance_ohm", "reference_length_mm"],
   "additionalProperties": false

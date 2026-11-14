@@ -4,7 +4,7 @@ Reglas:
 
 - El ``calibration_id`` del chunk manda sobre el de ``session.streams[]``.
 - Se busca en ``request.calibrations`` por ``calibration_id``; si hay ids repetidos gana el primero.
-- Solo aplica si su ``stream_id`` coincide y, cuando el stream está declarado, su tipo corresponde
+- Solo aplica si coinciden astronauta, dispositivo y ``stream_id`` y, cuando el stream está declarado, su tipo corresponde
   al ``stream_kind`` (stretch -> stretch, emg_mvc -> emg, imu -> imu). Si no: ``no_calibration``.
 - ``valid_until`` anterior a ``at`` -> se resuelve pero queda ``EXPIRED`` (``calibration_expired``).
   Igual a ``at`` sigue vigente. Sin ``at`` no se juzga la caducidad.
@@ -63,7 +63,8 @@ def resolve_calibration(
     if calibration_id is None:
         return missing()
     found = next((c for c in request.calibrations or () if c.calibration_id == calibration_id), None)
-    if found is None or found.stream_id != stream_id:
+    if (found is None or found.stream_id != stream_id or found.astronaut_id != request.session.astronaut_id
+            or found.device_id != request.session.device_id):
         return missing()
     if declared is not None and _KIND_OF_CALIBRATION[found.calibration_type] != declared.stream_kind.value:
         return missing()

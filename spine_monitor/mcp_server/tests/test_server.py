@@ -1,4 +1,4 @@
-"""Tests del servidor MCP: las 7 herramientas, en proceso (`Client` sobre `MCPServer`), contra puertos falsos y los mocks de ejemplo."""
+"""Tests del servidor MCP: las 8 herramientas, en proceso (`Client` sobre `MCPServer`), contra puertos falsos y los mocks de ejemplo."""
 
 import json
 from datetime import UTC, datetime
@@ -17,7 +17,9 @@ from spine_mcp_server.server import create_server
 
 AST = "AST-01"
 ASSESSMENT_ID = "a55e55e0-0000-4000-8000-0000000000a1"
-TOOLS = {"get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports"}
+TOOLS = {
+    "get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports", "search_evidence",
+}
 WIDE = {"start": "2027-01-01T00:00:00Z", "end": "2027-03-01T00:00:00Z"}
 WIDE_PERIODS = {"a_start": WIDE["start"], "a_end": WIDE["end"], "b_start": WIDE["start"], "b_end": WIDE["end"]}
 OVERRIDE = {"feature_id": "stretch.full_spine.peak_elongation_mm", "mode": "add", "value": 5}
@@ -152,7 +154,7 @@ CALLS: list[tuple[str, dict[str, Any], str]] = [
 
 
 @pytest.mark.anyio
-async def test_lists_exactly_the_seven_tools():
+async def test_lists_exactly_the_eight_tools():
     assert set(await _tools(_server())) == TOOLS
 
 
@@ -197,6 +199,7 @@ async def test_every_input_parameter_is_described():
 async def test_parameter_names_and_required_ones():
     tools = await _tools(_server())
     expected = {
+        "search_evidence": ({"query", "limit"}, {"query"}),
         "get_current_status": ({"astronaut_id"}, {"astronaut_id"}),
         "get_history": ({"astronaut_id", "start", "end", "limit"}, {"astronaut_id", "start", "end"}),
         "get_sessions": ({"astronaut_id", "start", "end", "limit"}, {"astronaut_id", "start", "end"}),
@@ -523,7 +526,7 @@ async def test_simulate_scenario_does_not_touch_the_app_port():
 
 
 @pytest.mark.anyio
-async def test_main_serves_the_seven_tools_over_stdio(monkeypatch: pytest.MonkeyPatch):
+async def test_main_serves_the_eight_tools_over_stdio(monkeypatch: pytest.MonkeyPatch):
     # La frontera es el transporte: se sustituye `run` (que bloquearía leyendo stdin) y se comprueba qué servidor y transporte se arrancan.
     started: list[tuple[MCPServer, str]] = []
     monkeypatch.setattr(MCPServer, "run", lambda self, transport="stdio": started.append((self, transport)))

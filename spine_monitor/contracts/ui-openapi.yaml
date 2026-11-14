@@ -30,6 +30,47 @@ servers:
   - url: http://127.0.0.1:8000
     description: Local app process (write and view API, /ui)
 paths:
+  /ui/crew/{astronaut_id}/sessions/{session_id}/stretch-prediction:
+    post:
+      operationId: predictSessionStretch
+      summary: Experimental prediction from a stored posture measurement
+      description: Uses the stored session feature and same-person Earth baseline of the identical posture. The caller supplies the measured Earth contact span, elapsed time, assumed daily change and sensor uncertainty. Missing or incompatible data is an error. This is not a diagnosis. The X-Baseline-Id response header identifies the baseline used.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reference_length_mm: { type: number, exclusiveMinimum: 0 }
+                elapsed_days: { type: number, minimum: 0 }
+                assumed_daily_change_mm: { type: number }
+                sensor_uncertainty_ohm: { type: number, minimum: 0 }
+              required: [reference_length_mm, elapsed_days, assumed_daily_change_mm, sensor_uncertainty_ohm]
+              additionalProperties: false
+      responses:
+        '200':
+          description: Experimental prediction.
+          headers:
+            X-Baseline-Id:
+              schema: { type: string, format: uuid }
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/engine/stretch-estimate-response.schema.json'
+        '404':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /ui/crew:
     get:
       operationId: listCrew

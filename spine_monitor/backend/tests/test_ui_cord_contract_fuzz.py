@@ -93,7 +93,8 @@ def test_cord_views_answer_what_the_contract_promises(case: schemathesis.Case, c
     # A well-formed id is the populated astronaut, so the requests reach the data; malformed ids still exercise the rejection.
     if re.fullmatch(r"AST-[0-9]{2,3}", str(case.path_parameters.get("astronaut_id", ""))):
         case.path_parameters["astronaut_id"] = AST
-    kwargs = case.as_transport_kwargs(base_url=BASE_URL, headers={"Authorization": f"Bearer {TOKEN}", "X-Astronaut-Id": str(case.path_parameters["astronaut_id"])})
+    headers = {"Authorization": f"Bearer {TOKEN}", "X-Astronaut-Id": str(case.path_parameters["astronaut_id"])}
+    kwargs = case.as_transport_kwargs(base_url=BASE_URL, headers=headers)
     response = cord_client.request(**kwargs)
     case.validate_response(response)
     assert response.status_code != 500, response.text

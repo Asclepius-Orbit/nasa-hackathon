@@ -8,7 +8,15 @@ L'[inventari de fonts](docs/anthropometry-sources.md) recull guies de disseny de
 
 Les fonts revisades inclouen [NTRS 20110023150](https://ntrs.nasa.gov/citations/20110023150), [20090007782](https://ntrs.nasa.gov/citations/20090007782), [20090038743](https://ntrs.nasa.gov/citations/20090038743), [NASA-STD-3000 volum I](https://standards.nasa.gov/standard/NASA/NASA-STD-3000_VOL_I), [NASA-STD-3001 volum 2](https://standards.nasa.gov/node/237), el [Human Integration Design Handbook](https://www.nasa.gov/human-integration-design-handbook/) i l'[API NTRS](https://ntrs.nasa.gov/api/openapi/). L'inventari detalla versions, accés i límits; citar una font no implica que el text complet estigui inclòs en el corpus local.
 
-Prepara l'equip amb connexió: instal·la les dependències fixades i les imatges Docker, configura el broker com s'indica a continuació i desa el model Ollama necessari. La [guia de l'agent](spine_monitor/agent/README.ca.md) descriu el volum de models i la configuració. Conserva aquest volum i els recursos d'evidència locals quan traslladis o actualitzis una instal·lació fora de línia; `docker compose down -v` esborra el volum de models. Comprova que el model exacte i els recursos hi siguin abans de desconnectar. El servei actual `ollama-pull` intenta descarregar els models absents, per tant no s'ha d'invocar sense connexió; sense model local no es pot generar amb aquest. Un informe generat ha de citar ubicacions comprovables de les fonts o indicar que l'evidència és insuficient.
+Prepara l'equip amb connexió: instal·la les dependències fixades i les imatges Docker, configura el broker com s'indica a continuació i desa el model Ollama necessari. La [guia de l'agent](spine_monitor/agent/README.ca.md) descriu el volum de models i la configuració. Conserva aquest volum i els recursos d'evidència locals quan traslladis o actualitzis una instal·lació fora de línia; `docker compose down -v` esborra el volum de models. Comprova que el model exacte i els recursos hi siguin abans de desconnectar. `ollama-pull` pertany al perfil explícit `llm-prepare` i descarrega els models que faltin; no l'executis sense connexió. Per iniciar en una màquina ja preparada, fes servir el perfil `llm`, que engega Ollama sense descarregar models:
+
+```bash
+docker compose -f app/docker-compose.yml --profile llm up -d
+cd spine_monitor
+uv run spine-agent --astronaut AST-01
+```
+
+L'aplicació pot respondre amb el resum determinista si Ollama no està disponible, però no generarà una resposta de model sense el model local. Un informe generat ha de citar ubicacions comprovables de les fonts o indicar que l'evidència és insuficient.
 
 El corpus inclòs i el seu índex vectorial lèxic dispers són fitxers locals. Després d'actualitzar el corpus, reconstrueix l'índex corresponent des de `spine_monitor/` (no cal Internet):
 

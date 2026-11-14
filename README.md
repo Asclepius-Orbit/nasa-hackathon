@@ -8,7 +8,15 @@ The [source inventory](docs/anthropometry-sources.md) records NASA design guidan
 
 Sources reviewed include [NTRS 20110023150](https://ntrs.nasa.gov/citations/20110023150), [20090007782](https://ntrs.nasa.gov/citations/20090007782), [20090038743](https://ntrs.nasa.gov/citations/20090038743), [NASA-STD-3000 Volume I](https://standards.nasa.gov/standard/NASA/NASA-STD-3000_VOL_I), [NASA-STD-3001 Volume 2](https://standards.nasa.gov/node/237), the [Human Integration Design Handbook](https://www.nasa.gov/human-integration-design-handbook/), and the [NTRS API](https://ntrs.nasa.gov/api/openapi/). The inventory gives versions, access and limits; listing a source does not mean its full text is included in the local corpus.
 
-Prepare the machine while connected: install the locked dependencies and Docker images, set up the broker as below, and cache the required Ollama model. The [agent guide](spine_monitor/agent/README.md) describes its model volume and settings. Preserve that volume and the local evidence resources when transferring or updating an offline installation; `docker compose down -v` deletes the model volume. Verify the exact model and resources are present before disconnecting. The existing `ollama-pull` service attempts a download if a model is missing, so do not invoke it on a disconnected machine; absence of a local model prevents model generation. A generated report should cite retrievable source locations or say that evidence is insufficient.
+Prepare the machine while connected: install the locked dependencies and Docker images, set up the broker as below, and cache the required Ollama model. The [agent guide](spine_monitor/agent/README.md) describes its model volume and settings. Preserve that volume and the local evidence resources when transferring or updating an offline installation; `docker compose down -v` deletes the model volume. Verify the exact model and resources are present before disconnecting. `ollama-pull` belongs to the explicit `llm-prepare` profile and downloads models that are missing; do not run it offline. To start an already prepared machine, use the `llm` profile, which starts Ollama without downloading models:
+
+```bash
+docker compose -f app/docker-compose.yml --profile llm up -d
+cd spine_monitor
+uv run spine-agent --astronaut AST-01
+```
+
+The app can return its deterministic summary if Ollama is unavailable, but it cannot generate a model response without the local model. A generated report should cite retrievable source locations or say that evidence is insufficient.
 
 The bundled corpus and sparse lexical-vector index are local files. After updating the corpus, rebuild its matching index from `spine_monitor/` (no Internet access is needed):
 

@@ -178,6 +178,20 @@ def test_assess_returns_a_valid_assessment(client):
     assert body["completeness"]["score"] == pytest.approx(4 / 9)
 
 
+@pytest.mark.parametrize("part", ["baseline", "profile", "feature_sets"])
+def test_assess_rejects_data_from_another_person(client, part):
+    body = example("assess-request")
+    item = body[part][0] if part == "feature_sets" else body[part]
+    item["astronaut_id"] = "AST-02"
+    assert_problem(client.post("/assess", json=body), 422, "insufficient_data")
+
+
+def test_baseline_endpoint_rejects_features_from_another_person(client):
+    body = example("baseline-request")
+    body["feature_sets"][0]["astronaut_id"] = "AST-02"
+    assert_problem(client.post("/baseline", json=body), 422, "insufficient_data")
+
+
 def test_assess_without_mission_day_omits_it_instead_of_sending_null(client):
     request = example("assess-request")
     del request["mission_day"]

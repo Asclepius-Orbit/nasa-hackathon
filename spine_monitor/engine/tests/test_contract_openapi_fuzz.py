@@ -40,7 +40,8 @@ def test_engine_answers_what_the_contract_promises(case: schemathesis.Case) -> N
 # Rechazos de dominio por operación: el único 422 que el schema de la petición no puede expresar.
 _DOMAIN_REJECTIONS = {
     "/baseline": {"insufficient_data"},
-    "/simulate": {"unknown_feature", "invalid_request"},
+    "/assess": {"insufficient_data"},
+    "/simulate": {"unknown_feature", "invalid_request", "insufficient_data"},
     "/stretch-estimate": {"invalid_request"},
 }
 
@@ -60,7 +61,8 @@ def _domain_rejections(case: schemathesis.Case, response) -> list:
     feature fuera del catálogo o sin valor en la base (`unknown_feature`) o con resultado no finito
     (`invalid_request`) es un rechazo de dominio que el schema de la petición no puede expresar. El acotado es
     igual en /stretch-estimate: las resistencias deben estar dentro del dominio medido, que depende de la referencia.
-    por operación: un `invalid_request` en /features, /baseline o /assess sería una divergencia entre el schema
+    Identidades inconsistentes en la baseline, evaluación o simulación producen `insufficient_data`.
+    Por operación: un `invalid_request` en /features, /baseline o /assess sería una divergencia entre el schema
     y Pydantic y debe fallar. Cualquier otro rechazo de datos válidos falla.
     """
     problem_type = json.loads(response.content).get("type") if response.status_code == 422 else None
@@ -77,11 +79,11 @@ def _domain_rejections(case: schemathesis.Case, response) -> list:
         ("/baseline", 422, "unknown_feature", False),
         ("/simulate", 422, "unknown_feature", True),
         ("/simulate", 422, "invalid_request", True),
-        ("/simulate", 422, "insufficient_data", False),
+        ("/simulate", 422, "insufficient_data", True),
         ("/stretch-estimate", 422, "invalid_request", True),
         ("/stretch-estimate", 422, "unknown_feature", False),
         ("/assess", 422, "invalid_request", False),
-        ("/assess", 422, "insufficient_data", False),
+        ("/assess", 422, "insufficient_data", True),
         ("/features", 422, "invalid_request", False),
         ("/simulate", 400, "invalid_request", False),
         ("/simulate", 422, None, False),

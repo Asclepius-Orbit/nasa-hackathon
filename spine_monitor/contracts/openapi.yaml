@@ -97,7 +97,7 @@ paths:
               schema:
                 $ref: 'schemas/v1/domain/baseline.schema.json'
         '422':
-          description: The request is invalid, or it is valid against the schema but the data is insufficient to build a baseline (type `insufficient_data`, e.g. no feature set of a session in reference gravity).
+          description: The request is invalid, or it is valid against the schema but the data is insufficient to build a baseline (type `insufficient_data`, e.g. no feature set of a session in reference gravity or a feature set belongs to another astronaut).
           content:
             application/problem+json:
               schema:
@@ -108,7 +108,7 @@ paths:
     post:
       operationId: assess
       summary: Assess the current state against the baseline
-      description: Profile, baseline, recent feature sets, self-reports and context in; an Assessment out. The level comes from the deterministic clinical rules, which may override the model.
+      description: Profile, baseline, recent feature sets, self-reports and context in; an Assessment out. Profile, baseline and feature sets must identify the requested astronaut; mismatches return 422 insufficient_data. The level comes from the deterministic clinical rules, which may override the model.
       requestBody:
         required: true
         content:
@@ -130,7 +130,7 @@ paths:
     post:
       operationId: simulate
       summary: What-if on top of an assess request
-      description: Read-only. Returns the reference assessment next to the scenario assessment, both hypothetical. Backs the MCP tool `simulate_scenario`.
+      description: Read-only. Returns the reference assessment next to the scenario assessment, both hypothetical. Identity mismatches in the base assessment return 422 insufficient_data. Backs the MCP tool `simulate_scenario`.
       requestBody:
         required: true
         content:

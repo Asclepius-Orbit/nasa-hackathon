@@ -17,7 +17,9 @@ from spine_mcp_server.server import create_server
 
 AST = "AST-01"
 ASSESSMENT_ID = "a55e55e0-0000-4000-8000-0000000000a1"
-TOOLS = {"get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports", "search_evidence"}
+TOOLS = {
+    "get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports", "search_evidence",
+}
 WIDE = {"start": "2027-01-01T00:00:00Z", "end": "2027-03-01T00:00:00Z"}
 WIDE_PERIODS = {"a_start": WIDE["start"], "a_end": WIDE["end"], "b_start": WIDE["start"], "b_end": WIDE["end"]}
 OVERRIDE = {"feature_id": "stretch.full_spine.peak_elongation_mm", "mode": "add", "value": 5}

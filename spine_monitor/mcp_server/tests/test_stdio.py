@@ -9,7 +9,9 @@ from mcp.client.client import Client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from spine_contracts.validation import validate
 
-TOOLS = {"get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports", "search_evidence"}
+TOOLS = {
+    "get_current_status", "get_history", "compare_periods", "explain_assessment", "simulate_scenario", "get_sessions", "get_self_reports", "search_evidence",
+}
 TIMEOUT_SECONDS = 30
 
 

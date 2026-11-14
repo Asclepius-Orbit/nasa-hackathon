@@ -10,11 +10,11 @@ from spine_mcp_server import APP_URL_ENV, ENGINE_URL_ENV
 
 # Variables of this process that the MCP server subprocess must see. The stdio client starts it with a sanitized
 # environment (PATH, HOME...), so without forwarding them `--dataset http` would always read its default URLs.
-MCP_SERVER_ENV = (APP_URL_ENV, ENGINE_URL_ENV)
+MCP_SERVER_ENV = (APP_URL_ENV, ENGINE_URL_ENV, "SPINE_EVIDENCE_DIR")
 
 
 def mcp_server_env() -> dict[str, str]:
-    """The app and engine URLs set in this process, to add to the environment of the MCP server subprocess."""
+    """Forward the configured upstream URLs and offline evidence directory to the MCP subprocess."""
     return {name: os.environ[name] for name in MCP_SERVER_ENV if name in os.environ}
 
 

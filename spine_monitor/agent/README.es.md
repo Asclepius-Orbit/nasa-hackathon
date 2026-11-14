@@ -33,7 +33,9 @@ Necesita Docker. Ollama corre en Docker bajo el perfil `llm` de compose y los mo
 ```bash
 # Desde la raíz del repositorio. Una vez: las credenciales del broker (compose las necesita).
 sh app/mosquitto/setup.sh
-# El perfil llm también arranca la API de chat (agent, 127.0.0.1:8003). La primera vez descarga qwen3.5:4b (3,3 GB) al volumen.
+# Prepara los modelos con conexi?n; el arranque normal no descarga modelos.
+docker compose -f app/docker-compose.yml --profile llm-prepare run --rm ollama-pull
+# Runtime:
 docker compose -f app/docker-compose.yml --profile llm up -d
 
 # Chat (streaming, multi-turno). Salir con /exit, /quit, Ctrl-D o Ctrl-C.

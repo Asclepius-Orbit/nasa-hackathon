@@ -147,6 +147,7 @@ class ChatSession:
         streamed: list[str] = []
         output: str | None = None
         messages: list[ModelMessage] = []
+        model_failed = False
         try:
             async with self._agent.run_stream_events(question, message_history=self.history, deps=AgentDeps(self._astronaut_id, self._clock())) as events:
                 async for event in events:
@@ -159,11 +160,13 @@ class ChatSession:
                         yield chunk
         except MODEL_FAILURES:
             output = None
+            model_failed = True
 
         if output is None or not output.strip():
             if any(text.strip() for text in streamed):
                 yield ReplyChunk("notice", MID_STREAM_NOTICE)
-            yield ReplyChunk("fallback", await self._fallback_text())
+            reason = "The local model is unavailable or failed; a generated report could not be produced.\n" if model_failed else ""
+            yield ReplyChunk("fallback", reason + await self._fallback_text())
             return
 
         self.history = messages

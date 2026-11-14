@@ -33,7 +33,9 @@ Necessita Docker. Ollama corre a Docker sota el perfil `llm` de compose i els mo
 ```bash
 # Des de l'arrel del repositori. Un cop: les credencials del broker (compose les necessita).
 sh app/mosquitto/setup.sh
-# El perfil llm també arrenca l'API de xat (agent, 127.0.0.1:8003). La primera vegada descarrega qwen3.5:4b (3,3 GB) al volum.
+# Prepara els models amb connexi?; l?arrencada normal no descarrega models.
+docker compose -f app/docker-compose.yml --profile llm-prepare run --rm ollama-pull
+# Runtime:
 docker compose -f app/docker-compose.yml --profile llm up -d
 
 # Xat (streaming, multitorn). Sortir amb /exit, /quit, Ctrl-D o Ctrl-C.

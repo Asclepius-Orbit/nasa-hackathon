@@ -188,6 +188,7 @@ def create_app(
             clock=clock,
             queue_day=queue_day_for_ground,
             guard=guard,
+            telemetry_source=settings.telemetry_source,
         )
     )
 

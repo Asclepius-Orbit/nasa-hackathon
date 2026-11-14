@@ -402,13 +402,16 @@ class Store:
     # --- device status and clock anchors ---------------------------------------------
 
     def put_device_status(self, status: dict[str, Any]) -> bool:
-        """Keeps the latest status per device; False when one older than the stored one arrives."""
+        """Keeps the latest status per device; False when one older than the stored one arrives.
+
+        An `offline` always wins: the broker publishes the Last Will as it was stamped when the device connected, so it is older
+        than every status the device sent since, yet it is the last thing that happened."""
         key = utc_key(status["timestamp"])
         cursor = self._db.execute(
             "INSERT INTO device_status VALUES (?, ?, ?, ?) "
             "ON CONFLICT (astronaut_id, device_id) DO UPDATE SET timestamp = excluded.timestamp, payload = excluded.payload "
-            "WHERE excluded.timestamp >= device_status.timestamp",
-            (status["astronaut_id"], status["device_id"], key, _dumps(status)),
+            "WHERE ? OR excluded.timestamp >= device_status.timestamp",
+            (status["astronaut_id"], status["device_id"], key, _dumps(status), status["status"] == "offline"),
         )
         return cursor.rowcount == 1
 

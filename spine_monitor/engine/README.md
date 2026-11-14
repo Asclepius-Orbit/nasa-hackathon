@@ -39,6 +39,8 @@ curl -s -X POST http://127.0.0.1:8001/assess \
 
 The examples in `contracts/examples/valid/engine/` are valid requests for every endpoint, and `contracts/examples/valid/domain/` holds valid responses (`assessment.amber.json`, `baseline.json`, `feature-set.*.json`). A mock only needs to return those for the matching route and answer errors with `engine/error.json`.
 
+`POST /stretch-estimate` accepts an optional `prediction` object: the individual's Earth baseline and current posture (both `straight` or both `max_flexion`), `elapsed_days`, an explicitly assumed `assumed_daily_change_mm`, and `sensor_uncertainty_ohm`. The predicted reference is the baseline contact span plus the assumed linear daily change; deviation is estimated span minus reference. Uncertainty is the largest change from applying the resistance uncertainty to the current measurement; the interval must lie within the measured curve. Optional `standing_height_mm`, `sitting_height_mm` and `exercise_phase` (`pre`, `post`, `unrelated`) are context, not cord lengths or corrections. This is an experimental engine prediction, not a validated NASA curve or clinical assessment; it excludes baseline and model uncertainty.
+
 ## Personal baseline and deviations
 
 `POST /baseline` builds one entry per feature + protocol + gravity environment (mean, standard deviation, median and MAD) from the reference sessions, normally pre-flight in 1 g. A feature seen in a single session still gets an entry (`n` says how far to trust it). The caller stores the baseline and sends it with every `/assess`.

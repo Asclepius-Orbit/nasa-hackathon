@@ -27,6 +27,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -264,6 +265,57 @@ def build_router(
         return {"schema_version": SCHEMA_VERSION, "exported_at": clock().isoformat(), **store.export_astronaut(_astronaut(astronaut_id))}
 
     # --- medical contacts --------------------------------------------------------------------------
+
+    @router.post("/crew/{astronaut_id}/sessions/{session_id}/stretch-prediction")
+    async def predict_session_stretch(astronaut_id: str, session_id: str, request: Request, response: Response) -> dict[str, Any]:
+        astronaut_id = _astronaut(astronaut_id)
+        body = await _body(request)
+        required = {"reference_length_mm", "elapsed_days", "assumed_daily_change_mm", "sensor_uncertainty_ohm"}
+        if set(body) != required:
+            raise Problem(422, "Provide the reference length, elapsed days, assumed daily change and sensor uncertainty")
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) or
+               abs(value) > 1_000_000 or not math.isfinite(value) for value in body.values()):
+            raise Problem(422, "Prediction inputs must be finite numbers within the supported range")
+        feature_set = store.feature_set(session_id)
+        if feature_set is None or feature_set["astronaut_id"] != astronaut_id:
+            raise Problem(404, "No feature set for this session", type_="not_found")
+        postures = {"spine_resistance_straight_v1": ("straight", "straight_resistance_ohm"),
+                    "spine_resistance_max_flexion_v1": ("max_flexion", "max_flexion_resistance_ohm")}
+        protocol = feature_set.get("protocol_id")
+        if protocol not in postures:
+            raise Problem(422, "Session is not a posture resistance measurement")
+        posture, suffix = postures[protocol]
+        feature_id = f"stretch.full_spine.{suffix}"
+        features = [f for f in feature_set["features"] if f["feature_id"] == feature_id and f["unit"] == "ohm"]
+        baseline = store.latest_baseline(astronaut_id)
+        entries = [] if baseline is None or baseline["astronaut_id"] != astronaut_id else [e for e in baseline["entries"] if e["feature_id"] == feature_id
+                    and e.get("protocol_id") == protocol and e["gravity_environment"] == "earth_1g"]
+        if len(features) != 1 or len(entries) != 1 or features[0].get("quality", {}).get("score") == 0:
+            raise Problem(422, "A unique measurement and matching personal Earth baseline are required")
+        prediction = {"baseline_posture": posture, "current_posture": posture, "baseline_gravity": "earth_1g",
+                      **{k: v for k, v in body.items() if k != "reference_length_mm"}}
+        profile = store.profile(astronaut_id)
+        if profile is not None:
+            anthropometry = profile["anthropometry"]
+            for source, target in (("height_standing_cm", "standing_height_mm"), ("height_sitting_cm", "sitting_height_mm")):
+                if source in anthropometry:
+                    prediction[target] = round(anthropometry[source] * 10, 6)
+        session = store.session(session_id)
+        if session is not None and session.payload["astronaut_id"] == astronaut_id and session.payload.get("phase") in ("pre", "post"):
+            prediction["exercise_phase"] = session.payload["phase"]
+        payload = {"schema_version": SCHEMA_VERSION, "baseline_resistance_ohm": entries[0]["median"],
+                   "current_resistance_ohm": features[0]["value"], "reference_length_mm": body["reference_length_mm"],
+                   "prediction": prediction}
+        _schema_errors("engine/stretch-estimate-request", payload)
+        try:
+            result = await analysis.stretch_estimate(payload)
+        except EngineError as exc:
+            if exc.status == 422:
+                raise Problem(422, "The supplied values cannot be represented by the experimental model") from exc
+            raise Problem(503, "Prediction engine unavailable", type_="unavailable") from exc
+        assert baseline is not None
+        response.headers["X-Baseline-Id"] = baseline["baseline_id"]
+        return result
 
     @router.post("/crew/{astronaut_id}/contacts", status_code=201)
     async def post_contact(astronaut_id: str, request: Request) -> JSONResponse:

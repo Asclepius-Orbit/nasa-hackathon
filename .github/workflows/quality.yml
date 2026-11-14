@@ -12,7 +12,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gate:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - name: Build quality image with layer cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: spine_monitor/quality/Dockerfile
+          load: true
+          tags: spine-quality:dev
+          cache-from: type=gha,scope=quality-tests
+          cache-to: type=gha,scope=quality-tests,mode=max,ignore-error=true
+      - name: Broker credentials (throwaway, generated per run; app/.env and app/mosquitto/auth are gitignored)
+        run: sh app/mosquitto/setup.sh
+      - name: Quality gate (lint, types, tests, coverage)
+        env:
+          GATE_MUTATION: "off"
+        run: docker compose -f app/docker-compose.yml run --rm -T quality
+      - name: Diff coverage
+        # Runs in the quality image (diff-cover is in the locked dev group); the WORKDIR spine_monitor/ makes coverage.xml paths map to git paths.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >
+          docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
+          sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'
+
+  mutation:
     runs-on: ubuntu-latest
     # Incremental mutation scales with the changed functions. A branch-wide diff selecting 1541 mutants took about
     # 15 min on a 22-CPU machine (measured); on a 2-vCPU hosted runner that is only an ESTIMATE (extrapolated, not
@@ -22,20 +53,34 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - name: Build quality image with layer cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: spine_monitor/quality/Dockerfile
+          load: true
+          tags: spine-quality:dev
+          cache-from: type=gha,scope=quality-mutation
+          cache-to: type=gha,scope=quality-mutation,mode=max,ignore-error=true
       - name: Broker credentials (throwaway, generated per run; app/.env and app/mosquitto/auth are gitignored)
         run: sh app/mosquitto/setup.sh
-      - name: Quality gate (lint, types, tests, coverage, incremental mutation)
+      - name: Incremental mutation
         env:
-          GATE_MUTATION: changed
           MUTATION_BASE: origin/${{ github.base_ref }}
-        run: docker compose -f app/docker-compose.yml run --rm -T quality
-      - name: Diff coverage
-        # Runs in the quality image (diff-cover is in the locked dev group); the WORKDIR spine_monitor/ makes coverage.xml paths map to git paths.
+        run: docker compose -f app/docker-compose.yml run --rm -T quality sh quality/mutation.sh changed
+
+  gate:
+    # Preserve the existing required check while running its two independent parts on separate runners.
+    if: always()
+    needs: [tests, mutation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require tests and mutation
         env:
-          BASE_REF: ${{ github.base_ref }}
-        run: >
-          docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
-          sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'
+          TESTS_RESULT: ${{ needs.tests.result }}
+          MUTATION_RESULT: ${{ needs.mutation.result }}
+        run: test "$TESTS_RESULT" = success && test "$MUTATION_RESULT" = success
 
   ui-quality:
     # Native (not compose): the bind-mounted repo is owned by the runner uid, which the image's non-root user cannot write.
@@ -53,6 +98,11 @@ jobs:
           node-version: 24
       - name: Enable corepack (pnpm version comes from package.json packageManager)
         run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/ui/pnpm-lock.yaml
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: UI quality gate (lint, types, contract types, tests+coverage, audit)

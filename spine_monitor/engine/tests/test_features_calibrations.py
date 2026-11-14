@@ -78,6 +78,15 @@ def test_calibration_of_another_stream_does_not_apply():
     assert resolution.reason == "no_calibration"
 
 
+@pytest.mark.parametrize(("field", "value"), [("astronaut_id", "AST-02"), ("device_id", "wb-02")])
+def test_calibration_from_another_person_or_device_does_not_apply(field, value):
+    candidate = calibration(SESSION_EMG, "emg_lat_left")
+    candidate[field] = value
+    resolution = resolve_calibration(request(candidate), "emg_lat_left", at=AT)
+    assert resolution.status is CalibrationStatus.MISSING
+    assert resolution.reason == "no_calibration"
+
+
 def test_calibration_of_another_kind_does_not_apply():
     # imu_t9 es un stream IMU: una calibración emg_mvc con su stream_id no le sirve.
     imu_id = "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f13"

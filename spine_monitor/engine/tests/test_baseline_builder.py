@@ -39,6 +39,13 @@ def test_example_request_builds_a_baseline_that_conforms_to_the_schema():
     assert baseline.built_from_session_ids == ["3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"]
 
 
+def test_baseline_rejects_another_persons_feature_set():
+    req = two_session_request()
+    req.feature_sets[1].astronaut_id = "AST-02"
+    with pytest.raises(InsufficientDataError, match="astronaut"):
+        StatisticalBaselineBuilder().build(req)
+
+
 def test_statistics_per_feature():
     entry = entry_of(StatisticalBaselineBuilder().build(two_session_request()))
 

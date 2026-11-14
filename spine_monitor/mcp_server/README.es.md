@@ -92,3 +92,8 @@ El simulador aplica las mismas traducciones a los errores del motor, identificá
 - Si dos assessments comparten `as_of`, `latest` es el nivel más grave.
 - Los datos que faltan son `null`, nunca 0.
 - `warnings` marca los periodos vacíos (`period_a_empty`, `period_b_empty`) y los truncados (`period_a_truncated`, `period_b_truncated`).
+
+
+### `search_evidence`
+
+Busca en el ?ndice de evidencia local; devuelve t?tulos, URL, p?ginas y limitaciones. Sin coincidencias hay evidencia insuficiente. `SPINE_EVIDENCE_DIR` permite elegir la carpeta de `corpus.json` e `index.json`; si faltan o no coinciden, la herramienta devuelve un error. Para reconstruirlo, ejecuta desde `spine_monitor/`: `uv run python -c "from pathlib import Path; from spine_mcp_server.evidence import build_index; p=Path('mcp_server/src/spine_mcp_server/evidence_data'); build_index(p/'corpus.json', p/'index.json')"`.

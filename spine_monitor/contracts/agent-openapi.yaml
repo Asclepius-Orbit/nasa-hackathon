@@ -29,6 +29,41 @@ servers:
   - url: http://127.0.0.1:8003
     description: Local LLM agent process
 paths:
+  /report:
+    post:
+      operationId: createEvidenceReport
+      summary: Create an extractive evidence report
+      description: >-
+        Uses the same authentication, request body, SSE event schema and conversation locking as /chat.
+        Model text is withheld; the result consists only of retrieved local passages, source title, URL,
+        locator and limitations, or an explicit insufficient-evidence message. The report does not modify chat history.
+      parameters:
+        - $ref: '#/components/parameters/AstronautHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'schemas/v1/agent/chat-request.schema.json'
+      responses:
+        '200':
+          description: SSE stream with tool calls followed by the extractive report and end, or an error.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              x-sse-data:
+                $ref: 'schemas/v1/agent/chat-event.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Busy'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '503':
+          $ref: '#/components/responses/Full'
   /health:
     get:
       operationId: agentHealth

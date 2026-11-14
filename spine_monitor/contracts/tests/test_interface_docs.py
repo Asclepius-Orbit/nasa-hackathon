@@ -169,6 +169,7 @@ UI_CREW_DATA = {
 DEVICES_PATH = "/ui/crew/{astronaut_id}/devices"
 # Actions the UI posts: path -> status of success. Session commands answer 202 at once (the harness acks later).
 UI_ACTIONS = {
+    "/ui/crew/{astronaut_id}/sessions/{session_id}/stretch-prediction": "200",
     "/ui/crew/{astronaut_id}/sessions": "202",
     "/ui/sessions/{session_id}/stop": "202",
     "/ui/sessions/{session_id}/events": "202",
@@ -368,7 +369,12 @@ def test_ui_rep_state_examples_validate():
 
 # ---- LLM agent chat API (agent-openapi.yaml) ----------------------------------
 
-AGENT_OPERATIONS = {("/chat", "post"): "askAgent", ("/chat/{conversation_id}", "delete"): "forgetConversation", ("/health", "get"): "agentHealth"}
+AGENT_OPERATIONS = {
+    ("/chat", "post"): "askAgent",
+    ("/report", "post"): "createEvidenceReport",
+    ("/chat/{conversation_id}", "delete"): "forgetConversation",
+    ("/health", "get"): "agentHealth",
+}
 CHAT_EVENTS = ("text", "tool_call", "fallback", "notice", "end", "error")
 
 
@@ -396,6 +402,16 @@ def test_agent_chat_takes_the_chat_request_and_streams_chat_events():
     for word in ("data:", ": ping", *(f"event: {name}" for name in CHAT_EVENTS)):
         assert word in ok["description"], word
     assert {"401", "403", "409", "422", "503"} <= set(post["responses"])
+
+
+def test_agent_report_uses_the_same_request_and_event_contract_as_chat():
+    paths = load("agent-openapi.yaml")["paths"]
+    chat, report = paths["/chat"]["post"], paths["/report"]["post"]
+    assert report["requestBody"] == chat["requestBody"]
+    assert report["parameters"] == chat["parameters"]
+    assert report["responses"]["200"]["content"] == chat["responses"]["200"]["content"]
+    for status in ("401", "403", "409", "422", "503"):
+        assert report["responses"][status] == chat["responses"][status]
 
 
 def test_agent_forget_is_idempotent_and_guarded():

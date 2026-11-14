@@ -7,6 +7,7 @@ details del contrato en lugar del 422 propio de FastAPI.
 """
 
 import json
+from math import isfinite
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -143,10 +144,45 @@ def create_app(
             return problem(Type.INVALID_REQUEST, TITLES[Type.INVALID_REQUEST], 422, "Inputs cannot be represented by the experimental model.")
         if length is None:
             return problem(Type.INVALID_REQUEST, TITLES[Type.INVALID_REQUEST], 422, "Resistance is outside the measured curve; extrapolation is not available.")
-        return _json(StretchEstimateResponse(
-            schema_version=SCHEMA_VERSION, estimated_length_mm=length,
-            elongation_mm=length - body.reference_length_mm, model="experimental_uniform_resistance_v1",
-        ))
+        response: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION, "estimated_length_mm": length,
+            "elongation_mm": length - body.reference_length_mm, "model": "experimental_uniform_resistance_v1",
+        }
+        if body.prediction is not None:
+            prediction = body.prediction
+            if prediction.baseline_posture != prediction.current_posture or prediction.baseline_gravity.value != "earth_1g":
+                return problem(
+                    Type.INVALID_REQUEST, TITLES[Type.INVALID_REQUEST], 422,
+                    "Prediction requires the individual's Earth baseline in the same posture.",
+                )
+            reference = body.reference_length_mm + prediction.elapsed_days * prediction.assumed_daily_change_mm
+            try:
+                bounds = [estimate_contact_span_mm(
+                    body.current_resistance_ohm + sign * prediction.sensor_uncertainty_ohm,
+                    body.baseline_resistance_ohm, trials, spacing, body.reference_length_mm,
+                ) for sign in (-1, 1)]
+            except ValueError:
+                bounds = [None, None]
+            if not isfinite(reference) or reference <= 0 or any(value is None for value in bounds):
+                return problem(
+                    Type.INVALID_REQUEST, TITLES[Type.INVALID_REQUEST], 422,
+                    "Prediction reference or uncertainty interval is outside the experimental model.",
+                )
+            lower, upper = bounds
+            assert lower is not None and upper is not None
+            response["prediction"] = {
+                "reference_length_mm": reference, "deviation_mm": length - reference,
+                "uncertainty_mm": max(length - lower, upper - length),
+                "assumed_daily_change_mm": prediction.assumed_daily_change_mm,
+                "elapsed_days": prediction.elapsed_days, "sensor_uncertainty_ohm": prediction.sensor_uncertainty_ohm,
+                "baseline_posture": prediction.baseline_posture.value,
+                **{k: v for k, v in {
+                    "standing_height_mm": prediction.standing_height_mm,
+                    "sitting_height_mm": prediction.sitting_height_mm,
+                    "exercise_phase": prediction.exercise_phase.value if prediction.exercise_phase else None,
+                }.items() if v is not None},
+            }
+        return _json(StretchEstimateResponse.model_validate(response))
 
     @app.post("/assess", operation_id="assess")
     async def assess(request: Request) -> JSONResponse:

@@ -1,4 +1,4 @@
-"""Servidor MCP de Asclepius Orbit: 7 herramientas de solo lectura sobre la salud lumbar de un astronauta.
+"""Servidor MCP de Asclepius Orbit: 8 herramientas de solo lectura sobre la salud lumbar de un astronauta.
 
 Las descripciones y los nombres de herramientas y parámetros están en inglés a propósito: los lee un LLM pequeño
 local, así que dicen con precisión qué devuelven, que los datos pueden faltar (null) y que nunca diagnostican.
@@ -30,6 +30,7 @@ from spine_contracts.validation import errors
 
 from spine_mcp_server.compare import compare_periods as compare_histories
 from spine_mcp_server.errors import UpstreamError
+from spine_mcp_server.evidence import EvidenceIndex, EvidenceResult, EvidenceUnavailable
 from spine_mcp_server.ports import AppReader, AssessBaseSource, Simulator
 
 # Tope de `limit` de la API de la app; `compare_periods` lo usa siempre para leer cada periodo entero.
@@ -70,8 +71,26 @@ def _upstream_as_tool_errors() -> Iterator[None]:
 
 
 def create_server(app: AppReader, simulator: Simulator, base: AssessBaseSource) -> MCPServer:
-    """Servidor MCP con sus 7 herramientas, que solo hablan con el resto del sistema a través de los puertos dados."""
+    """Servidor MCP con sus 8 herramientas, que solo hablan con el resto del sistema a través de los puertos dados."""
     server = MCPServer("spine-mcp-server", instructions=INSTRUCTIONS)
+
+    @server.tool(
+        name="search_evidence",
+        annotations=_READ_ONLY,
+        description=(
+            "Search the prepared offline reference corpus for relevant passages and their source URLs and page locators. "
+            "Results can be missing when there is no matching evidence. This is documentary context and never diagnoses a medical condition."
+        ),
+    )
+    def search_evidence(
+        query: Annotated[str, Field(min_length=1, description="English terms describing the evidence sought.")],
+        limit: Annotated[int, Field(ge=1, le=20, description="Maximum number of passages to return (1 to 20). ")] = 5,
+    ) -> Annotated[CallToolResult, EvidenceResult]:
+        try:
+            matches = EvidenceIndex.default().search(query, limit + 1)
+            return _result(EvidenceResult(matches=matches[:limit], truncated=len(matches) > limit))
+        except EvidenceUnavailable as error:
+            raise ToolError(str(error)) from error
 
     @server.tool(
         name="get_current_status",

@@ -3,9 +3,37 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, constr
+from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, confloat, constr
+
+
+class BaselinePosture(Enum):
+    STRAIGHT = 'straight'
+    MAX_FLEXION = 'max_flexion'
+
+
+class ExercisePhase(Enum):
+    PRE = 'pre'
+    POST = 'post'
+    UNRELATED = 'unrelated'
+
+
+class Prediction(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    reference_length_mm: PositiveFloat
+    deviation_mm: float
+    uncertainty_mm: confloat(ge=0.0)
+    assumed_daily_change_mm: float
+    elapsed_days: confloat(ge=0.0)
+    sensor_uncertainty_ohm: confloat(ge=0.0)
+    baseline_posture: BaselinePosture
+    standing_height_mm: PositiveFloat | None = None
+    sitting_height_mm: PositiveFloat | None = None
+    exercise_phase: ExercisePhase | None = None
 
 
 class StretchEstimateResponse(BaseModel):
@@ -20,3 +48,7 @@ class StretchEstimateResponse(BaseModel):
     estimated_length_mm: PositiveFloat
     elongation_mm: float
     model: Literal['experimental_uniform_resistance_v1']
+    prediction: Prediction | None = Field(
+        None,
+        description='Experimental engine prediction, not diagnosis. The reference is the personal Earth cord length plus an assumed linear daily change; uncertainty covers the current resistance only.',
+    )

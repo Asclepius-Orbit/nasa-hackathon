@@ -15,6 +15,7 @@ from spine_contracts import (
     MissingReason,
 )
 
+from spine_engine.errors import InsufficientDataError
 from spine_engine.features.symptoms import symptom_feature_set
 from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriageContext, TriagePolicy
 
@@ -73,6 +74,9 @@ class AssessmentPipeline:
         self._triage_policy = triage_policy
 
     def evaluate(self, request: AssessRequest) -> Assessment:
+        if (request.baseline.astronaut_id != request.astronaut_id or request.profile.astronaut_id != request.astronaut_id
+                or any(fs.astronaut_id != request.astronaut_id for fs in request.feature_sets)):
+            raise InsufficientDataError("profile, baseline and feature sets must belong to the requested astronaut")
         symptoms = symptom_feature_set(request.self_reports or [], request.daily_context or [], request.as_of, request.astronaut_id)
         feature_sets = [*request.feature_sets, symptoms]
         deviations = self._baseline_strategy.deviations(request.baseline, feature_sets)

@@ -20,6 +20,8 @@ class StatisticalBaselineBuilder:
     """
 
     def build(self, request: BaselineRequest) -> Baseline:
+        if any(feature_set.astronaut_id != request.astronaut_id for feature_set in request.feature_sets):
+            raise InsufficientDataError("feature sets must belong to the requested astronaut")
         groups: dict[tuple, list[float]] = defaultdict(list)
         sessions: set[str] = set()
         for feature_set in request.feature_sets:

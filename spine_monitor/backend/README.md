@@ -2,6 +2,8 @@
 
 # spine-backend (the on-board app)
 
+The authenticated `POST /ui/crew/{astronaut_id}/sessions/{session_id}/stretch-prediction` reads the stored resistance feature and the same astronaut's Earth baseline for the same posture and protocol. The caller provides `reference_length_mm` (the measured Earth contact span), `elapsed_days`, `assumed_daily_change_mm` and `sensor_uncertainty_ohm`. Missing data or an unsupported posture produces an error. The response is the experimental engine prediction and `X-Baseline-Id` identifies the baseline; optional heights come from the profile. It is not a clinical assessment. Nothing is stored by this request.
+
 With the v1 contracts the app owns the stateful part: it listens to the bus, stores everything in
 SQLite, sends the commands that drive the protocol, and calls the stateless engine.
 

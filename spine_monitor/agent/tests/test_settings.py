@@ -85,3 +85,8 @@ def test_an_unset_url_is_not_forwarded_so_the_server_keeps_its_default(monkeypat
     assert mcp_server_env() == {"SPINE_ENGINE_URL": "http://engine:8001"}
     monkeypatch.delenv("SPINE_ENGINE_URL")
     assert mcp_server_env() == {}
+
+@pytest.mark.unit
+def test_mcp_inherits_the_offline_evidence_directory(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    monkeypatch.setenv('SPINE_EVIDENCE_DIR', str(tmp_path))
+    assert mcp_server_env()['SPINE_EVIDENCE_DIR'] == str(tmp_path)

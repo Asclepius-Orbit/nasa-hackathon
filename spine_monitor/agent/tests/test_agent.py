@@ -524,3 +524,13 @@ def test_reply_chunk_defaults():
     chunk = ReplyChunk("text", "hi")
     assert (chunk.tool_name, chunk.tool_args) == (None, None)
     assert isinstance(build_agent(_settings(), toolsets=[]), Agent)
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_missing_local_model_is_explicit_in_the_fallback():
+    error = ModelHTTPError(status_code=404, model_name='qwen3.5:4b', body='model not found')
+    agent = build_agent(_settings(), model=FunctionModel(stream_function=failing_script(error)), toolsets=[])
+    async with ChatSession(agent, FakeStatusSource({'AST-01': AMBER_STATUS}), 'AST-01') as session:
+        chunks = await _collect(session, 'Give me a report')
+    assert 'local model' in chunks[-1].text.lower()
+    assert 'unavailable' in chunks[-1].text.lower()

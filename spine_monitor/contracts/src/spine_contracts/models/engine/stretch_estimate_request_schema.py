@@ -3,7 +3,40 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, constr
+from enum import Enum
+
+from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, confloat, constr
+
+
+class BaselinePosture(Enum):
+    STRAIGHT = 'straight'
+    MAX_FLEXION = 'max_flexion'
+
+
+class BaselineGravity(Enum):
+    EARTH_1G = 'earth_1g'
+    MICROGRAVITY = 'microgravity'
+
+
+class ExercisePhase(Enum):
+    PRE = 'pre'
+    POST = 'post'
+    UNRELATED = 'unrelated'
+
+
+class Prediction(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    baseline_posture: BaselinePosture
+    current_posture: BaselinePosture
+    baseline_gravity: BaselineGravity
+    elapsed_days: confloat(ge=0.0)
+    assumed_daily_change_mm: float
+    sensor_uncertainty_ohm: confloat(ge=0.0)
+    standing_height_mm: PositiveFloat | None = None
+    sitting_height_mm: PositiveFloat | None = None
+    exercise_phase: ExercisePhase | None = None
 
 
 class StretchEstimateRequest(BaseModel):
@@ -18,3 +51,7 @@ class StretchEstimateRequest(BaseModel):
     baseline_resistance_ohm: PositiveFloat
     current_resistance_ohm: PositiveFloat
     reference_length_mm: PositiveFloat
+    prediction: Prediction | None = Field(
+        None,
+        description="Optional experimental temporal reference. The baseline is the same individual's Earth reference in the same posture. Daily change is an explicit assumption, not a NASA curve. Heights are context, not cord lengths.",
+    )

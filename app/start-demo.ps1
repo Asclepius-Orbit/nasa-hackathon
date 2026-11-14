@@ -1,6 +1,6 @@
 # Starts the demo stack (sim + llm) and the desktop UI with the tokens fixed in app/.env.
-# Usage (from anywhere): powershell -File app/start-demo.ps1 [-NoUi] [-SkipPull]
-param([switch]$NoUi, [switch]$SkipPull)
+# Usage (from anywhere): powershell -File app/start-demo.ps1 [-NoUi]
+param([switch]$NoUi)
 
 $ErrorActionPreference = 'Stop'
 $app = $PSScriptRoot
@@ -35,11 +35,6 @@ $env:ASCLEPIUS_AGENT_TOKEN = Get-EnvValue 'SPINE_AGENT_HTTP_TOKEN'
 
 docker @compose up -d --build
 if ($LASTEXITCODE -ne 0) { throw 'docker compose up failed' }
-
-if (-not $SkipPull) {
-    docker @compose run --rm ollama-pull
-    if ($LASTEXITCODE -ne 0) { throw 'model pull failed' }
-}
 
 docker @compose ps
 curl.exe -s http://127.0.0.1:8000/health

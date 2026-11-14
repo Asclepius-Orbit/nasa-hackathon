@@ -2,6 +2,8 @@
 
 # spine-backend (l'app de bord)
 
+L'endpoint autenticat `POST /ui/crew/{astronaut_id}/sessions/{session_id}/stretch-prediction` utilitza la resistència desada i la baseline terrestre de la mateixa persona, postura i protocol. El client aporta `reference_length_mm` (distància terrestre mesurada entre contactes), `elapsed_days`, `assumed_daily_change_mm` i `sensor_uncertainty_ohm`. Les dades absents o una postura incompatible produeixen un error. La resposta és la predicció experimental del motor i `X-Baseline-Id` identifica la baseline; les altures opcionals provenen del perfil. No és una avaluació clínica. La petició no desa dades.
+
 Amb els contractes v1 l'app és la propietària de la part amb estat: escolta el bus, ho desa tot a
 SQLite, envia les comandes que guien el protocol i crida el motor, que no té estat.
 

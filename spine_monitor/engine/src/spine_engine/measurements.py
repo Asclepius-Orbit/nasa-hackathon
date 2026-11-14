@@ -26,9 +26,12 @@ def measurements(feature_sets: list[FeatureSet], as_of: datetime) -> dict[str, f
         if not as_of - timedelta(seconds=5) <= window.end <= as_of:
             continue
         for f in fs.features:
-            if f.feature_id not in UNITS or f.unit != UNITS[f.feature_id] or not math.isfinite(f.value) or f.quality.score <= 0:
+            if (f.feature_id not in UNITS or f.unit != UNITS[f.feature_id] or not math.isfinite(f.value)
+                    or f.quality.score <= 0 or f.quality.flags):
                 continue
-            if f.feature_id == IMU and f.value < 25:
+            if f.feature_id == STRETCH and f.value <= -100:
+                continue
+            if f.feature_id == IMU and not 25 <= f.value <= 180:
                 continue
             if f.feature_id == EMG and not 0 <= f.value <= 1023:
                 continue

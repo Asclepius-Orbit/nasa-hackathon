@@ -1,7 +1,7 @@
 ﻿from datetime import UTC, datetime, timedelta
 
 import pytest
-from spine_contracts import Completeness, FeatureSet, Level, Quality
+from spine_contracts import Completeness, FeatureSet, Level
 from spine_engine.interfaces import RiskResult, TriageContext
 from spine_engine.measurements import EMG, IMU, STRETCH, UNITS, classify, measurements
 from spine_engine.triage import DeclarativeTriagePolicy, PolicyConfig

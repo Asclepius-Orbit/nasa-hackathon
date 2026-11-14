@@ -7,12 +7,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from spine_contracts import AssessmentDomain, DailySelfReport, Escalation, FiredRule, Level, RedFlagReport, Urgency
-from spine_contracts.models.domain.assessment_schema import Domain2, Evidence, Operator
+from spine_contracts.models.domain.assessment_schema import Domain2, Evidence
 
-from spine_engine.interfaces import TriageContext, TriageDecision
 from spine_engine.features.symptoms import WINDOW
-from spine_engine.pipeline import domain_of
+from spine_engine.interfaces import TriageContext, TriageDecision
 from spine_engine.measurements import SOURCE, UNITS, classify, measurements
+from spine_engine.pipeline import domain_of
 
 _LEVEL = {Level.GREEN: 0, Level.AMBER: 1, Level.RED: 2}
 _URGENCY = {Urgency.ROUTINE: 0, Urgency.PRIORITY: 1, Urgency.IMMEDIATE: 2}
@@ -133,7 +133,8 @@ class DeclarativeTriagePolicy:
                     domain_levels[domain] = max(domain_levels.get(domain, Level.GREEN), rule.level, key=_LEVEL.__getitem__)
                 fired.append(FiredRule(rule_id=rule.rule_id, domain=Domain2(rule.domain), level=rule.level,
                     overrides_model=_LEVEL[rule.level] > _LEVEL[model_level],
-                    evidence=Evidence(datum=rule.key or rule.datum, value=value, operator=Operator(rule.operator), threshold=rule.threshold)))
+                    evidence=Evidence.model_validate({"datum": rule.key or rule.datum, "value": value,
+                                                      "operator": rule.operator, "threshold": rule.threshold})))
                 recommendations.extend(rule.recommendations)
                 if rule.urgency is not None:
                     urgencies.append(rule.urgency)
@@ -147,7 +148,7 @@ class DeclarativeTriagePolicy:
                 "description": f"Unrecognized red flag: {flag}"}))
         if context.completeness.score < 1 or context.completeness.missing:
             level = max(level, Level.AMBER, key=_LEVEL.__getitem__)
-            evidence = (Evidence(datum="completeness", value=context.completeness.score, operator=Operator.field__1, threshold=1)
+            evidence = (Evidence.model_validate({"datum": "completeness", "value": context.completeness.score, "operator": "<", "threshold": 1})
                         if context.completeness.score < 1 else None)
             fields: dict[str, object] = {"rule_id": "RULE_INCOMPLETE_DATA", "domain": Domain2.SAFETY, "level": Level.AMBER,
                       "overrides_model": _LEVEL[Level.AMBER] > _LEVEL[model_level], "description": "Incomplete data"}

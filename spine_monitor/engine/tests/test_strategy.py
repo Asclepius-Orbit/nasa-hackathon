@@ -1,4 +1,4 @@
-import json
+﻿import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -135,7 +135,7 @@ def test_plugs_into_the_pipeline_and_the_assessment_still_conforms_to_the_schema
     assessment = pipeline.evaluate(request())
 
     assert validation.errors("domain/assessment", dump(assessment)) == []
-    assert assessment.completeness.score == pytest.approx(4 / 9)
+    assert assessment.completeness.score == pytest.approx(4 / 12)
     assert assessment.drivers == []
 
 
@@ -184,3 +184,4 @@ def test_partial_risk_weights_keep_the_other_domains_scoring():
     assessment = default_pipeline(EngineSettings(_env_file=None, risk_domain_weights={AssessmentDomain.MUSCLE: 2.0})).evaluate(req)
 
     assert ROM in {d.feature_id for d in assessment.drivers}
+

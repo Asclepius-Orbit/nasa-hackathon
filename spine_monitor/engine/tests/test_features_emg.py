@@ -1,6 +1,6 @@
-"""Familia ``emg`` (#42): RMS de la fase activa y del reposo, %MVC, pico en ventana y simetría entre lados.
+﻿"""Familia ``emg`` (#42): RMS de la fase activa y del reposo, %MVC, pico en ventana y simetrÃ­a entre lados.
 
-Rejilla de tiempo de los tests: 100 Hz (una muestra cada 10 ms) desde ``T0``; la muestra ``i`` cae en ``T0 + 10 ms·i``.
+Rejilla de tiempo de los tests: 100 Hz (una muestra cada 10 ms) desde ``T0``; la muestra ``i`` cae en ``T0 + 10 msÂ·i``.
 Las repeticiones se fijan con un ``FakeService`` (frontera) salvo en los tests que ejercitan el servicio real.
 """
 
@@ -43,7 +43,7 @@ def at(samples: int) -> datetime:
 
 
 def window(index: int, start: int, end: int, rest_end: int | None) -> RepWindow:
-    """Repetición con la activa [start, end) y el reposo [end, rest_end), todo en muestras de la rejilla."""
+    """RepeticiÃ³n con la activa [start, end) y el reposo [end, rest_end), todo en muestras de la rejilla."""
     return RepWindow(index, at(start), at(end), at(end) if rest_end is not None else None, at(rest_end) if rest_end is not None else None)
 
 
@@ -59,7 +59,7 @@ class FakeService(RepetitionService):
 
 
 def alternating(values: list[float]) -> list[float]:
-    """Alterna el signo: el RMS no cambia, una media sí."""
+    """Alterna el signo: el RMS no cambia, una media sÃ­."""
     return [v if i % 2 == 0 else -v for i, v in enumerate(values)]
 
 
@@ -123,7 +123,7 @@ def make_context(
 ) -> ExtractionContext:
     """Contexto con los streams EMG ``declared`` (por defecto los de ``samples``), sus chunks y calibraciones.
 
-    ``last_chunk_kind`` cambia el ``signal_kind`` del último chunk de cada stream (un stream que mezcla tipos).
+    ``last_chunk_kind`` cambia el ``signal_kind`` del Ãºltimo chunk de cada stream (un stream que mezcla tipos).
     """
     payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
     sides = {LEFT: "left", RIGHT: "right"}
@@ -168,7 +168,7 @@ def skipped(result: FamilyResult) -> dict[str, Reason]:
 
 # Dos repeticiones: activa [0,30) y reposo [30,50); activa [50,80) y reposo [80,100).
 TWO_REPS = (window(1, 0, 30, 50), window(2, 50, 80, 100))
-# Izquierda: rep 1 = 25 muestras de 1 mV y 5 de 3 mV (el último RMS de 5 muestras vale 3); rep 2 = 30 de 1 mV; reposo 0,1 mV.
+# Izquierda: rep 1 = 25 muestras de 1 mV y 5 de 3 mV (el Ãºltimo RMS de 5 muestras vale 3); rep 2 = 30 de 1 mV; reposo 0,1 mV.
 LEFT_SIGNAL = alternating([1.0] * 25 + [3.0] * 5) + [0.1, -0.1] * 10 + alternating([1.0] * 30) + [0.1, -0.1] * 10
 # Derecha: 2 mV constantes en la activa; reposo 0,2 mV.
 RIGHT_SIGNAL = alternating([2.0] * 30) + [0.2, -0.2] * 10 + alternating([2.0] * 30) + [0.2, -0.2] * 10
@@ -245,7 +245,7 @@ def test_the_output_order_is_deterministic_per_stream_then_symmetry():
 @pytest.mark.parametrize("signal_kind", ["envelope", "rectified"])
 def test_an_envelope_or_rectified_signal_gives_the_same_amplitude_features(signal_kind: str):
     raw = computed(family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated())))
-    # con la MVC medida en el mismo tipo de señal (la envolvente solo es compatible consigo misma)
+    # con la MVC medida en el mismo tipo de seÃ±al (la envolvente solo es compatible consigo misma)
     other = computed(family_for(*TWO_REPS).extract(make_context(SAMPLES, both_calibrated(signal_kind=signal_kind), signal_kind=signal_kind)))
 
     assert {k: v.value for k, v in other.items()} == {k: v.value for k, v in raw.items()}
@@ -344,7 +344,7 @@ def test_a_repetition_shorter_than_the_calibration_window_uses_all_its_samples_a
 
 
 def test_the_window_in_samples_is_the_calibration_window_rounded_to_the_nearest_sample():
-    # 100 Hz y 35 ms = 3,5 muestras -> 4: la ventana (4,4,4,0) da sqrt(12); con 3 muestras daría 4
+    # 100 Hz y 35 ms = 3,5 muestras -> 4: la ventana (4,4,4,0) da sqrt(12); con 3 muestras darÃ­a 4
     context = make_context({LEFT: [4.0, 4.0, 4.0, 0.0, 0.0]}, [calibration(LEFT, "left", 1.0, window_ms=35)])
 
     result = family_for(window(1, 0, 5, None)).extract(context)
@@ -361,7 +361,7 @@ def test_a_peak_below_one_millivolt_is_not_raised_to_one():
 
 
 def test_a_symmetry_between_small_pct_mvc_is_still_computed():
-    # 0,5 % y 0,25 % de MVC: media 0,375 % (> 0), índice 100·0,25/0,375
+    # 0,5 % y 0,25 % de MVC: media 0,375 % (> 0), Ã­ndice 100Â·0,25/0,375
     small = {LEFT: [0.01] * 100, RIGHT: [0.005] * 100}
 
     result = family_for(*TWO_REPS).extract(make_context(small, [calibration(LEFT, "left", 2.0), calibration(RIGHT, "right", 2.0)]))
@@ -511,7 +511,7 @@ def test_each_muscle_gets_its_own_symmetry():
 
 
 def test_non_emg_streams_are_ignored():
-    # el ejemplo declara también un IMU y un stretch: ninguno genera features de EMG
+    # el ejemplo declara tambiÃ©n un IMU y un stretch: ninguno genera features de EMG
     payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
     context = build_context(FeaturesRequest.model_validate(payload))
 
@@ -522,7 +522,7 @@ def test_non_emg_streams_are_ignored():
 
 
 def test_a_non_emg_stream_is_ignored_even_if_its_placement_names_a_muscle_and_a_side():
-    # el placement es común a todos los tipos: un IMU puede declarar lado (y músculo); solo el tipo decide
+    # el placement es comÃºn a todos los tipos: un IMU puede declarar lado (y mÃºsculo); solo el tipo decide
     payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
     payload["session"]["streams"] = [s for s in payload["session"]["streams"] if s["stream_id"] != RIGHT]
     imu = next(s for s in payload["session"]["streams"] if s["stream_kind"] == "imu")
@@ -546,7 +546,7 @@ def test_the_real_service_uses_the_session_events_for_active_and_rest_windows():
 
 
 def test_a_resolved_calibration_that_is_not_an_emg_mvc_counts_as_no_calibration():
-    # no puede darse con streams declarados (la resolución comprueba el tipo), pero la familia no se fía
+    # no puede darse con streams declarados (la resoluciÃ³n comprueba el tipo), pero la familia no se fÃ­a
     context = make_context(SAMPLES, both_calibrated())
     calibrations = FeaturesRequest.model_validate(json.loads(_EXAMPLE.read_text(encoding="utf-8"))).calibrations
     assert calibrations
@@ -563,12 +563,12 @@ def test_a_resolved_calibration_that_is_not_an_emg_mvc_counts_as_no_calibration(
 def test_the_default_registry_registers_the_emg_family_after_exercise():
     families = list(default_registry())
 
-    assert [f.family for f in families] == ["exercise", "emg", "imu", "emg_spectral", "stretch"]
+    assert [f.family for f in families] == ["exercise", "emg", "imu", "emg_spectral", "stretch", "measured"]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class CountingClock(DeviceClock):
-    """El reloj del contexto, anotando cada conversión a UTC (el coste por muestra de leer un stream)."""
+    """El reloj del contexto, anotando cada conversiÃ³n a UTC (el coste por muestra de leer un stream)."""
 
     calls: list[int] = dataclasses.field(default_factory=list[int])
 
@@ -578,7 +578,7 @@ class CountingClock(DeviceClock):
 
 
 def test_the_samples_are_converted_to_utc_a_fixed_number_of_times_whatever_the_number_of_repetitions():
-    # una sesión EMG a 1000 Hz tiene cientos de miles de muestras: recorrerlas una vez por repetición la hace lenta
+    # una sesiÃ³n EMG a 1000 Hz tiene cientos de miles de muestras: recorrerlas una vez por repeticiÃ³n la hace lenta
     context = make_context({LEFT: LEFT_SIGNAL}, [calibration(LEFT, "left", LEFT_MVC)])
 
     def conversions(*windows: RepWindow) -> int:
@@ -649,3 +649,4 @@ def test_pct_mvc_is_inversely_linear_in_the_mvc(values: list[float], mvc: float,
 
     for name in ("rms_pct_mvc", "peak_pct_mvc"):
         assert scaled[f"{PREFIX_LEFT}.{name}"] == pytest.approx(base[f"{PREFIX_LEFT}.{name}"] / factor, rel=1e-9)
+

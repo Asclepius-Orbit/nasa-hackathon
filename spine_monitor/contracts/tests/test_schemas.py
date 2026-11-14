@@ -33,6 +33,20 @@ def test_simulate_projection_metadata_contract(validator_for):
         assert list(validator.iter_errors(response))
 
 
+def test_stretch_estimate_contract_rejects_invalid_inputs_and_extras(validator_for):
+    request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500, "current_resistance_ohm": 5650, "reference_length_mm": 500}
+    validator = validator_for("engine/stretch-estimate-request")
+    assert validator.is_valid(request)
+    for key in ("baseline_resistance_ohm", "current_resistance_ohm", "reference_length_mm"):
+        assert not validator.is_valid({**request, key: 0})
+        assert not validator.is_valid({k: v for k, v in request.items() if k != key})
+    assert not validator.is_valid({**request, "unknown": 1})
+    response = {"schema_version": "1.0.0", "estimated_length_mm": 520, "elongation_mm": 20, "model": "experimental_uniform_resistance_v1"}
+    result = validator_for("engine/stretch-estimate-response")
+    assert result.is_valid(response)
+    assert not result.is_valid({**response, "model": "validated"})
+
+
 @pytest.fixture(scope="session")
 def schemas() -> dict[Path, dict]:
     return {path: load_json(path) for path in schema_files()}

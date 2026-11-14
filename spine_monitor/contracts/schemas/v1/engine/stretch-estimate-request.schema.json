@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/stretch-estimate-request.schema.json",
+  "title": "StretchEstimateRequest",
+  "description": "Experimental estimate using the astronaut's straight-back Earth reference and the current cord resistance. Both must be inside the experimental model's range; the measured reference length must be the distance between the back contacts. The model is not clinically validated.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "baseline_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+    "current_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+    "reference_length_mm": { "type": "number", "exclusiveMinimum": 0 }
+  },
+  "required": ["schema_version", "baseline_resistance_ohm", "current_resistance_ohm", "reference_length_mm"],
+  "additionalProperties": false
+}

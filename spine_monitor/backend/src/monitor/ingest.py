@@ -57,12 +57,21 @@ class ChunkListener(Protocol):
 
 
 class Ingest:
-    def __init__(self, store: Store, control: Control, *, store_unknown_session_chunks: bool = True, live: ChunkListener | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        control: Control,
+        *,
+        store_unknown_session_chunks: bool = True,
+        live: ChunkListener | None = None,
+        telemetry_source: str | None = None,
+    ) -> None:
         self._store = store
         self._control = control
         self._store_unknown = store_unknown_session_chunks
         self._live = live
-        self.counts: dict[str, int] = {"accepted": 0, "duplicate": 0, "rejected": 0, "dropped": 0}
+        self._source = telemetry_source
+        self.counts: dict[str, int] = {"accepted": 0, "duplicate": 0, "rejected": 0, "dropped": 0, "wrong_source": 0}
 
     def handle(self, topic: str, payload: bytes) -> None:
         try:
@@ -98,6 +107,11 @@ class Ingest:
         mismatched = sorted(k for k, v in expected.items() if message.get(k) != v)
         if mismatched:
             raise Rejected(f"payload does not match topic: {', '.join(mismatched)}")
+        # ack and clock carry no `source`; the other kinds must come from the configured one (never mix real and simulated data).
+        source = message.get("source")
+        if self._source is not None and source is not None and source != self._source:
+            _log.warning("dropped message on %s: source %r, this installation takes only %r", topic, source, self._source)
+            return "wrong_source"
         return getattr(self, f"_on_{kind}")(message)
 
     def _on_stream(self, chunk: dict[str, Any]) -> str:

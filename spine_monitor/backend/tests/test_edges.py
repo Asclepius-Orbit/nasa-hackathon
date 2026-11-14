@@ -106,6 +106,7 @@ async def test_max_duration_and_explicit_mission_context_reach_the_command(harne
     assert harness.mqtt.commands("start_session")[0]["max_duration_s"] == 300
 
 
+@pytest.mark.parametrize("harness_settings", [{"telemetry_source": "simulator"}])
 async def test_session_source_follows_the_device(harness):
     status = harness.example("telemetry/device-status.degraded") | {"source": "simulator"}
     harness.mqtt.deliver(topics.status(harness.astronaut_id, harness.device_id), status)

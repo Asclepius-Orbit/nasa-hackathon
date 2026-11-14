@@ -69,6 +69,19 @@ async def test_device_status_keeps_the_latest(harness):
     assert devices == [status]
 
 
+async def test_a_last_will_offline_wins_although_it_was_stamped_before_the_latest_status(harness):
+    """The broker stamps nothing: the will is built when the device connects, so it is always older than the statuses published since."""
+    status = harness.example("telemetry/device-status.degraded")
+    will = {"schema_version": status["schema_version"], **{k: status[k] for k in ("astronaut_id", "device_id", "source", "link")}}
+    will |= {"timestamp": "2020-01-01T00:00:00Z", "status": "offline"}
+    harness.mqtt.deliver(topics.status(harness.astronaut_id, harness.device_id), status)
+    harness.mqtt.deliver(topics.status(harness.astronaut_id, harness.device_id), will)
+    await harness.settle()
+
+    devices = (await harness.http.get(f"/ui/crew/{harness.astronaut_id}/devices")).json()
+    assert devices == [will]
+
+
 async def test_clock_and_calibration_are_stored(harness):
     anchor = harness.example("telemetry/clock-sync.round-trip")
     calibration = harness.example("domain/calibration.stretch")

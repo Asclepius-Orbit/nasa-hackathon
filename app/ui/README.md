@@ -77,6 +77,17 @@ subsequent starts. noVNC asks for `SPINE_UI_VNC_PASSWORD` (VNC uses eight charac
 with `--no-sandbox` (the container is the boundary) and `--password-store=basic` (no keyring). Pass
 `--build-arg BUILD_MODE=e2e-real` to seed the demo crew.
 
+### Simulator or device
+
+The demo above is the `simulator` source (default). `SPINE_APP_TELEMETRY_SOURCE=device` swaps the producer for the real gateway: with a board on Linux (profile `hardware`), or with `SPINE_GATEWAY_DEMO=1` against the Arduino emulator (profile `gateway-demo`, works on Windows). `app/start-demo.ps1` picks the single producer from those two variables and rejects `SPINE_GATEWAY_DEMO=1` with `simulator`. Unattended UI checks, from `app/ui`:
+
+```bash
+pnpm run e2e:real          # simulator, harness sim-01
+pnpm run e2e:real:device   # gateway + emulator (profile gateway-demo), harness gw-demo
+```
+
+Both need Docker, `sh`, and ports 1883, 8000 and 8001 free, so stop the dev stack first. Device mode through the emulator covers pairing, session start and stop only; `calibrate` and artefacts are simulator-only there, and a physical Arduino is still unverified (pending).
+
 ## Scripts
 
 | Script | What it does |

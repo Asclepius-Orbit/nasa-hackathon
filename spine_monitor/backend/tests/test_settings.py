@@ -184,3 +184,23 @@ def test_tls_without_a_ca_file_uses_the_system_cas() -> None:
     assert isinstance(client, RecordingClient)
     tls = client.kwargs["tls_params"]
     assert isinstance(tls, aiomqtt.TLSParameters) and tls.ca_certs is None
+
+
+def test_telemetry_source_defaults_to_simulator() -> None:
+    assert settings().telemetry_source == "simulator"
+
+
+@pytest.mark.parametrize("source", ["simulator", "device"])
+def test_telemetry_source_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch, source: str) -> None:
+    monkeypatch.setenv("SPINE_APP_TELEMETRY_SOURCE", source)
+    assert settings().telemetry_source == source
+
+
+@pytest.mark.parametrize("value", ["replay", "real", ""])
+def test_invalid_telemetry_source_names_the_variable_and_the_allowed_values(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("SPINE_APP_TELEMETRY_SOURCE", value)
+    with pytest.raises(ValidationError) as error:
+        settings()
+    assert "SPINE_APP_TELEMETRY_SOURCE" in str(error.value)
+    assert "simulator" in str(error.value)
+    assert "device" in str(error.value)

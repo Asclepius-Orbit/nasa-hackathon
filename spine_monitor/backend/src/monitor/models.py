@@ -9,7 +9,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-EventType = Literal["set_start", "set_end", "rep_start", "rep_end", "mvc_start", "mvc_end", "rest_start", "rest_end", "pain_reported", "artifact", "note"]
+EventType = Literal["set_start", "set_end", "rep_start", "rep_end", "mvc_start", "mvc_end", "reference_effort_start", "reference_effort_end", "rest_start", "rest_end", "pain_reported", "artifact", "note"]
 StopReason = Literal["completed", "aborted_by_user", "aborted_pain", "aborted_other"]
 CalibrationType = Literal["stretch", "emg_mvc", "imu"]
 

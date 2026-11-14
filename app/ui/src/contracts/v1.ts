@@ -719,6 +719,10 @@ export type ImuCalibration = CalibrationBase & {
   gyro_range_dps: 250 | 500 | 1000 | 2000;
   gyro_bias_dps: Xyz;
   accel_bias_g?: Xyz;
+  /**
+   * Independently measured initial orientation around sensor X, in degrees at created_at. Gyroscope integration alone cannot establish absolute orientation; omit when no reference is available.
+   */
+  reference_orientation_x_deg?: number;
   mounting: {
     /**
      * Anatomical direction a sensor axis points to: cranial/caudal (head/feet), anterior/posterior (front/back), left/right.
@@ -902,6 +906,8 @@ export type MarkEventCommand = CommandBase & {
     | "rep_end"
     | "mvc_start"
     | "mvc_end"
+    | "reference_effort_start"
+    | "reference_effort_end"
     | "rest_start"
     | "rest_end"
     | "pain_reported"
@@ -1212,6 +1218,14 @@ export interface Assessment {
       value: number;
       operator: ">" | ">=" | "<" | "<=" | "==" | "!=";
       threshold: number;
+      /**
+       * Unit shared by value and threshold.
+       */
+      unit?: string;
+      /**
+       * Source of the threshold or operational convention.
+       */
+      source?: string;
     };
   }[];
   recommendations: string[];
@@ -1766,6 +1780,8 @@ export interface Event {
     | "rep_end"
     | "mvc_start"
     | "mvc_end"
+    | "reference_effort_start"
+    | "reference_effort_end"
     | "rest_start"
     | "rest_end"
     | "pain_reported"

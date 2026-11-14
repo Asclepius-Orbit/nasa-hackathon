@@ -167,6 +167,10 @@ class ImuCalibration(CalibrationBase):
     gyro_range_dps: GyroRangeDps
     gyro_bias_dps: common_schema.Xyz
     accel_bias_g: common_schema.Xyz | None = None
+    reference_orientation_x_deg: confloat(ge=0.0, le=180.0) | None = Field(
+        None,
+        description='Independently measured initial orientation around sensor X, in degrees at created_at. Gyroscope integration alone cannot establish absolute orientation; omit when no reference is available.',
+    )
     mounting: Mounting
     static_duration_s: PositiveFloat | None = Field(
         None, description='How long the sensor was held still to estimate the bias.'

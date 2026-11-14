@@ -227,7 +227,7 @@ MUTATIONS = [
     ("domain/assessment.amber", "evidence with non-numeric value", lambda d: d["fired_rules"][0]["evidence"].update(value="high")),
     ("domain/assessment.amber", "evidence with non-numeric threshold", lambda d: d["fired_rules"][0]["evidence"].update(threshold="3")),
     ("domain/assessment.amber", "evidence with non-string datum", lambda d: d["fired_rules"][0]["evidence"].update(datum=7)),
-    ("domain/assessment.amber", "evidence with unknown property", lambda d: d["fired_rules"][0]["evidence"].update(unit="x")),
+    ("domain/assessment.amber", "evidence with unknown property", lambda d: d["fired_rules"][0]["evidence"].update(unexpected="x")),
     ("engine/features-request", "no chunks", lambda d: d.update(chunks=[])),
     ("engine/baseline-request", "no reference sessions", lambda d: d.update(feature_sets=[])),
     ("engine/baseline-request", "self-report with pain above 10", lambda d: d["self_reports"][0].update(pain_nrs=11)),
@@ -742,12 +742,11 @@ def test_catalog_version_marks_the_provisional_values():
     assert load_catalog()["catalog_version"] == "0.3.0"
 
 
-def test_catalog_carries_provisional_directions_and_ranges_for_the_risk_layer():
-    # #51 needs something to read: more than the symptoms scales, and at least one provisional range
+def test_catalog_carries_directions_for_the_risk_layer():
     directions = {entry["feature_id"]: entry["risk_direction"] for entry in _catalog_entries()}
     specified = {fid for fid, direction in directions.items() if direction not in NO_RANGES_DIRECTIONS}
     assert len([fid for fid in specified if not fid.startswith("symptoms.")]) >= 5
-    assert any(entry["ranges"]["source"].startswith(PROVISIONAL_MARKER) for entry in _entries_with_ranges())
+    assert next(e for e in _catalog_entries() if e["feature_id"] == "imu.{spine_level}.{anatomical_plane}.rom_deg")["ranges"] is None
 
 
 def test_symmetry_index_waits_for_aguado():

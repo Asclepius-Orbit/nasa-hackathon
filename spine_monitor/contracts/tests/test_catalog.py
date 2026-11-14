@@ -94,7 +94,7 @@ def test_features_removed_by_clinical_decision_stay_out_of_the_catalog():
 
 
 def test_risk_direction_and_ranges_of_a_concrete_id_come_from_its_entry():
-    entry = next(e for e in load_catalog()["entries"] if e["ranges"] is not None)
+    entry = next(e for e in load_catalog()["entries"] if e["risk_direction"] == "higher_is_worse")
     concrete = expand_ids(entry)[0]
     assert risk_direction(concrete) == entry["risk_direction"]
     assert ranges(concrete) == entry["ranges"]

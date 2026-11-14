@@ -70,6 +70,12 @@ class Evidence(BaseModel):
     value: float
     operator: Operator
     threshold: float
+    unit: constr(min_length=1, max_length=32) | None = Field(
+        None, description='Unit shared by value and threshold.'
+    )
+    source: constr(min_length=1, max_length=200) | None = Field(
+        None, description='Source of the threshold or operational convention.'
+    )
 
 
 class Urgency(str, Enum):

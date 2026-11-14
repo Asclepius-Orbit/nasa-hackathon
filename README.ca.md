@@ -2,6 +2,20 @@
 
 # nasa-hackathon
 
+## Antropometria i evidència fora de línia
+
+L'[inventari de fonts](docs/anthropometry-sources.md) recull guies de disseny de la NASA i un estudi relacionat, amb població, mètode, pàgines, limitacions i condicions de reutilització. Els valors de la NASA d'aproximadament el 3 % de l'estatura dreta i el 6 % de l'altura asseguda són marges de disseny de naus, no llindars clínics. Una predicció del motor és experimental: depèn de la referència terrestre individual en la mateixa postura, de la incertesa del sensor i de les hipòtesis indicades; estatura, altura asseguda i longitud estimada del cordó són magnituds diferents.
+
+Prepara l'equip amb connexió: instal·la les dependències fixades i les imatges Docker, configura el broker com s'indica a continuació i desa el model Ollama necessari. La [guia de l'agent](spine_monitor/agent/README.ca.md) descriu el volum de models i la configuració. Conserva aquest volum i els recursos d'evidència locals quan traslladis o actualitzis una instal·lació fora de línia; `docker compose down -v` esborra el volum de models. Comprova que el model exacte i els recursos hi siguin abans de desconnectar. El servei actual `ollama-pull` intenta descarregar els models absents, per tant no s'ha d'invocar sense connexió; sense model local no es pot generar amb aquest. Un informe generat ha de citar ubicacions comprovables de les fonts o indicar que l'evidència és insuficient.
+
+El corpus inclòs i el seu índex vectorial lèxic dispers són fitxers locals. Després d'actualitzar el corpus, reconstrueix l'índex corresponent des de `spine_monitor/` (no cal Internet):
+
+```bash
+uv run python -c "from pathlib import Path; from spine_mcp_server.evidence import build_index; p=Path('mcp_server/src/spine_mcp_server/evidence_data'); build_index(p/'corpus.json', p/'index.json')"
+```
+
+Copia tots dos fitxers junts en instal·lar o actualitzar fora de línia. `SPINE_EVIDENCE_DIR` pot apuntar al seu directori. Si falten, són invàlids o no coincideixen, la recuperació falla de manera explícita; l'índex no descarrega evidència ni proporciona embeddings semàntics.
+
 ## Entorn de desenvolupament (Python)
 
 `spine_monitor/` és un workspace d'uv: un sol `.venv` i un sol `uv.lock` per a tots els paquets. Treballa sempre des de `spine_monitor/` (`uv sync --all-packages`, `uv run pytest`). A PyCharm, obre la carpeta `spine_monitor/` i tria com a intèrpret el seu `.venv`.

@@ -2,6 +2,20 @@
 
 # nasa-hackathon
 
+## Anthropometry and offline evidence
+
+The [source inventory](docs/anthropometry-sources.md) records NASA design guidance and a related study, their populations, methods, page references, limitations and reuse status. NASA's approximately 3% of standing stature and 6% of sitting height are spacecraft design allowances, not clinical thresholds. An engine prediction is experimental: it depends on the individual terrestrial baseline in the same posture, sensor uncertainty and the stated assumptions; standing height, seated height and estimated cord length are different quantities.
+
+Prepare the machine while connected: install the locked dependencies and Docker images, set up the broker as below, and cache the required Ollama model. The [agent guide](spine_monitor/agent/README.md) describes its model volume and settings. Preserve that volume and the local evidence resources when transferring or updating an offline installation; `docker compose down -v` deletes the model volume. Verify the exact model and resources are present before disconnecting. The existing `ollama-pull` service attempts a download if a model is missing, so do not invoke it on a disconnected machine; absence of a local model prevents model generation. A generated report should cite retrievable source locations or say that evidence is insufficient.
+
+The bundled corpus and sparse lexical-vector index are local files. After updating the corpus, rebuild its matching index from `spine_monitor/` (no Internet access is needed):
+
+```bash
+uv run python -c "from pathlib import Path; from spine_mcp_server.evidence import build_index; p=Path('mcp_server/src/spine_mcp_server/evidence_data'); build_index(p/'corpus.json', p/'index.json')"
+```
+
+Copy both files together when installing or updating offline. `SPINE_EVIDENCE_DIR` can point to their directory. Missing, invalid or mismatched files make retrieval fail explicitly; the index does not download evidence or provide semantic embeddings.
+
 ## Development environment (Python)
 
 `spine_monitor/` is a uv workspace: a single `.venv` and a single `uv.lock` for every package. Always work from `spine_monitor/` (`uv sync --all-packages`, `uv run pytest`). In PyCharm, open the `spine_monitor/` folder and pick its `.venv` as the interpreter.

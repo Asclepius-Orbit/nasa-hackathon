@@ -12,9 +12,9 @@
     },
     "task_code": {
       "title": "TaskCode",
-      "description": "Something the astronaut still has to do. TASK_DAILY_REPORT: daily self-report. TASK_ODI: weekly Oswestry report. TASK_BASELINE_SESSION: a pre-flight reference session. TASK_SESSION: the planned exercise session.",
+      "description": "Something the astronaut still has to do. TASK_DAILY_REPORT: daily self-report. TASK_ODI: weekly Oswestry report. TASK_BASELINE_SESSION: a pre-flight reference session. TASK_SESSION: the planned exercise session. TASK_CORD_STRAIGHT and TASK_CORD_MAX_FLEXION: the cord-resistance session of that posture is due (Earth reference pre-flight, follow-up in flight).",
       "type": "string",
-      "enum": ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION", "TASK_SESSION"]
+      "enum": ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION", "TASK_SESSION", "TASK_CORD_STRAIGHT", "TASK_CORD_MAX_FLEXION"]
     },
     "session_state": {
       "title": "SessionState",

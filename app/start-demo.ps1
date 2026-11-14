@@ -1,11 +1,36 @@
 # Starts the demo stack (sim + llm) and the desktop UI with the tokens fixed in app/.env.
 # Usage (from anywhere): powershell -File app/start-demo.ps1 [-NoUi]
+# SPINE_APP_TELEMETRY_SOURCE (env or app/.env) picks the single telemetry producer: simulator (default) | device.
+#   simulator -> profile sim; device -> profile hardware (gateway + USB, Linux), or with SPINE_GATEWAY_DEMO=1
+#   profile gateway-demo (serial emulator, no board). SPINE_GATEWAY_DEMO=1 with simulator is rejected.
 param([switch]$NoUi)
 
 $ErrorActionPreference = 'Stop'
 $app = $PSScriptRoot
 $root = Split-Path $app -Parent
-$compose = @('compose', '-f', "$app/docker-compose.yml", '--profile', 'sim', '--profile', 'llm')
+
+function Get-Setting([string]$name, [string]$default) {
+    $v = [Environment]::GetEnvironmentVariable($name)
+    if (-not $v -and (Test-Path "$app/.env")) {
+        $line = Get-Content "$app/.env" | Where-Object { $_ -match "^$name=" } | Select-Object -Last 1
+        if ($line) { $v = ($line -replace "^$name=", '').Trim().Trim('"') }
+    }
+    if ($v) { return $v.Trim() } else { return $default }
+}
+
+$source = Get-Setting 'SPINE_APP_TELEMETRY_SOURCE' 'simulator'
+if ($source -notin 'simulator', 'device') {
+    Write-Error "SPINE_APP_TELEMETRY_SOURCE='$source' is invalid; allowed values: simulator, device"
+    exit 1
+}
+$demo = (Get-Setting 'SPINE_GATEWAY_DEMO' '0') -eq '1'
+if ($demo -and $source -ne 'device') {
+    Write-Error 'SPINE_GATEWAY_DEMO=1 requires SPINE_APP_TELEMETRY_SOURCE=device (never run simulator and gateway together)'
+    exit 1
+}
+$producer = if ($source -eq 'simulator') { 'sim' } elseif ($demo) { 'gateway-demo' } else { 'hardware' }
+$env:SPINE_APP_TELEMETRY_SOURCE = $source
+$compose = @('compose', '-f', "$app/docker-compose.yml", '--profile', $producer, '--profile', 'llm')
 
 function Get-EnvValue([string]$name) {
     $line = Get-Content "$app/.env" | Where-Object { $_ -match "^$name=" } | Select-Object -Last 1

@@ -55,6 +55,8 @@ en el primer arranque sin token. `/health` y la API de solo lectura no necesitan
 | PUT | `/ui/crew/{astronaut_id}` | Registra un id que asignó la UI (sin cuerpo: nombres y PIN se quedan en la UI). 201 si es nuevo, 200 si ya estaba |
 | GET | `/ui/crew` | Ids que conoce el backend (registrados o con datos), si cada uno tiene perfil y baseline, y cuántas sesiones (`ui-crew`, `ui-openapi.yaml`) |
 | GET | `/ui/crew/{astronaut_id}/devices` | Último estado de cada dispositivo |
+| GET | `/ui/crew/{astronaut_id}/views/cord-protocols` | Las dos sesiones de cordón independientes (espalda recta, máxima flexión): la referencia personal en la Tierra (pre-vuelo), el último seguimiento válido en vuelo, si toca uno (cadencia `CORD_FOLLOW_UP_INTERVAL_DAYS`, 7 días por defecto: un ejemplo, pendiente de Aguado) y una estimación de longitud cuando se puede hacer (`POST /stretch-estimate` del engine). Una medición es válida solo si su sesión se completó y su calidad es al menos `CORD_MIN_QUALITY_SCORE` (0,5 por defecto, un valor provisional). La estimación se rotula siempre como calculada, no medida ni validada clínicamente; nunca se guarda y no influye en el triaje. Solo la espalda recta tiene una distancia medida entre contactos (500 mm, `cord-measurements.json`); para la máxima flexión no está medida, así que la vista responde `ESTIMATE_REFERENCE_LENGTH_UNKNOWN` (pendiente de Aguado). Una sesión que toca aparece también como `TASK_CORD_STRAIGHT` o `TASK_CORD_MAX_FLEXION` en Today (`ui-cord-protocols`, `ui-openapi.yaml`) |
+| GET | `/ui/crew/{astronaut_id}/views/cord-history?limit=N` | Las últimas mediciones de cada postura, válidas e inválidas (fecha, gravedad, resistencia en ohmios, calidad, válida sí o no y el motivo), de la más reciente a la más antigua, como máximo `limit` por postura (de 1 a 100, 20 por defecto): el historial nunca se carga entero. Solo mediciones: la estimación nunca se lista (`ui-cord-history`, `ui-openapi.yaml`) |
 | POST/GET | `/ui/crew/{astronaut_id}/contacts` | Llamadas al oficial médico de a bordo (`domain/medical-contact`: quién, cuándo, nota opcional). Cada una vuelve a encolar el resumen de tierra de su día, que lleva el código y el instante, nunca la nota |
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Perfil del astronauta |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Contexto diario |
@@ -121,7 +123,7 @@ uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuración son variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TLS`, `MQTT_TLS_CA_FILE`, `ENGINE_URL`,
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
-`WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. En Docker Compose la base de datos vive en el volumen `backend_data`
+`WEEKLY_ODI_INTERVAL_DAYS`, `CORD_FOLLOW_UP_INTERVAL_DAYS`, `CORD_MIN_QUALITY_SCORE`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. En Docker Compose la base de datos vive en el volumen `backend_data`
 (`/data/spine_monitor.db`).
 
 Reintentos del análisis, también `SPINE_APP_*`:

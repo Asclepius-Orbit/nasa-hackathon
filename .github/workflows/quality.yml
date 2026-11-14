@@ -19,6 +19,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - name: Build quality image with layer cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: spine_monitor/quality/Dockerfile
+          load: true
+          tags: spine-quality:dev
+          cache-from: type=gha,scope=quality-tests
+          cache-to: type=gha,scope=quality-tests,mode=max,ignore-error=true
       - name: Broker credentials (throwaway, generated per run; app/.env and app/mosquitto/auth are gitignored)
         run: sh app/mosquitto/setup.sh
       - name: Quality gate (lint, types, tests, coverage)
@@ -43,6 +53,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - name: Build quality image with layer cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: spine_monitor/quality/Dockerfile
+          load: true
+          tags: spine-quality:dev
+          cache-from: type=gha,scope=quality-mutation
+          cache-to: type=gha,scope=quality-mutation,mode=max,ignore-error=true
       - name: Broker credentials (throwaway, generated per run; app/.env and app/mosquitto/auth are gitignored)
         run: sh app/mosquitto/setup.sh
       - name: Incremental mutation
@@ -78,6 +98,11 @@ jobs:
           node-version: 24
       - name: Enable corepack (pnpm version comes from package.json packageManager)
         run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/ui/pnpm-lock.yaml
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: UI quality gate (lint, types, contract types, tests+coverage, audit)

@@ -10,8 +10,9 @@ function Estimate({ posture }: { posture: CordPostureData }): React.JSX.Element 
   const { estimate } = posture;
   if (estimate === null) {
     const reason = posture.estimateUnavailable;
-    const text = reason === null ? undefined : copy.estimate.unavailable[reason];
-    return <p className={styles.note}>{text ?? copy.estimate.unavailable.ESTIMATE_ENGINE_UNAVAILABLE}</p>;
+    // A reason this version does not know is named as it came, never turned into another reason.
+    const text = reason === null ? copy.estimate.unavailable.ESTIMATE_ENGINE_UNAVAILABLE : (copy.estimate.unavailable[reason] ?? copy.estimate.unknownReason(reason));
+    return <p className={styles.note}>{text}</p>;
   }
   return (
     <div className={styles.estimate} data-testid="cord-estimate">

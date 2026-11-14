@@ -32,6 +32,9 @@ function isStageId(value: string | null): value is StageId {
 /** States in which the session is finished or failed: nothing more can be done to it but start another. */
 const OVER: readonly SessionState[] = ['rejected', 'ended', 'processed', 'processing_failed'];
 
+/** After one of these ends, the cord measurements and the calculated estimate are shown under the next-session choice. */
+const CORD_PROTOCOLS: readonly string[] = ['spine_resistance_straight_v1', 'spine_resistance_max_flexion_v1'];
+
 export function SessionView(): React.JSX.Element {
   // Reading the session again (after an action) is a new `select`: `useLoad` reloads when it changes.
   const [version, setVersion] = useState(0);
@@ -71,6 +74,8 @@ export function SessionView(): React.JSX.Element {
   };
   const undo = useVoiceUndo(stopForPain);
 
+  const queryProtocol = params.get('protocol');
+  const preselected = queryProtocol !== null && isProtocolId(queryProtocol) ? queryProtocol : null;
   const queryStage = params.get('stage');
   const viewing = chosen ?? (isStageId(queryStage) ? queryStage : (session?.steps.find((s) => s.status === 'now')?.id ?? 'reps'));
   const index = STAGE_IDS.indexOf(viewing);
@@ -89,7 +94,7 @@ export function SessionView(): React.JSX.Element {
           <h1 id="session-title">{copy.title}</h1>
           <p role="status">{copy.none}</p>
           <p className={styles.lede}>{copy.noneHint}</p>
-          <StartSession starter={starter} due={cord === null ? [] : cord.postures.filter((p) => p.due).map((p) => p.protocolId)} />
+          <StartSession starter={starter} initial={preselected} due={cord === null ? [] : cord.postures.filter((p) => p.due).map((p) => p.protocolId)} />
           {cord !== null && <CordSessions cord={cord} history={cordHistory} />}
         </>
       )}
@@ -249,7 +254,8 @@ export function SessionView(): React.JSX.Element {
           {OVER.includes(session.state) && (
             <>
               <h2 className={styles.another}>{copy.anotherTitle}</h2>
-              <StartSession starter={starter} />
+              <StartSession starter={starter} initial={preselected} />
+              {cord !== null && CORD_PROTOCOLS.includes(session.protocolId) && <CordSessions cord={cord} history={cordHistory} />}
             </>
           )}
           {import.meta.env.DEV && active && (

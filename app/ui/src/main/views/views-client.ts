@@ -98,6 +98,43 @@ const baselineShape = {
   sessions: z.array(object),
 };
 
+const CORD_PROTOCOL_IDS = ['spine_resistance_straight_v1', 'spine_resistance_max_flexion_v1'] as const;
+
+/** The calculated estimate: its flags are fixed by the contract (never measured, never validated, never triage) and nothing else may travel with it. */
+const cordEstimate = z.strictObject({
+  calculated: z.literal(true),
+  measured_length: z.literal(false),
+  clinically_validated: z.literal(false),
+  affects_triage: z.literal(false),
+  model: z.literal('experimental_uniform_resistance_v1'),
+  reference_length_mm: z.number(),
+  estimated_length_mm: z.number(),
+  elongation_mm: z.number(),
+  assumptions: z.array(z.enum(['ASSUMPTION_UNIFORM_RESISTANCE', 'ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE', 'ASSUMPTION_UNIFORM_DEFORMATION'])).min(1),
+});
+
+const cordPosture = z.looseObject({
+  protocol_id: z.enum(CORD_PROTOCOL_IDS),
+  due: z.boolean(),
+  due_reason: z.enum(['CORD_NO_EARTH_REFERENCE', 'CORD_NO_FOLLOW_UP', 'CORD_FOLLOW_UP_OVERDUE', 'CORD_UP_TO_DATE']),
+  earth_reference: object.nullable(),
+  last_follow_up: object.nullable(),
+  estimate: cordEstimate.nullable(),
+  estimate_unavailable: z
+    .enum(['ESTIMATE_NO_EARTH_REFERENCE', 'ESTIMATE_NO_FOLLOW_UP', 'ESTIMATE_REFERENCE_LENGTH_UNKNOWN', 'ESTIMATE_OUT_OF_MODEL_RANGE', 'ESTIMATE_ENGINE_UNAVAILABLE'])
+    .nullable(),
+});
+
+const cordHistoryPosture = z.looseObject({
+  protocol_id: z.enum(CORD_PROTOCOL_IDS),
+  measurements: z.array(
+    z.looseObject({
+      valid: z.boolean(),
+      invalid_reason: z.enum(['CORD_INVALID_NOT_COMPLETED', 'CORD_INVALID_NO_VALUE', 'CORD_INVALID_LOW_QUALITY']).nullable(),
+    }),
+  ),
+});
+
 const SCHEMAS = {
   strip: (astronautId: string) =>
     view({ astronaut_id: z.literal(astronautId), mission: object, harness: object.nullable() }),
@@ -105,8 +142,8 @@ const SCHEMAS = {
   history: () => view({ from: z.string(), to: z.string(), days: z.array(object) }),
   baseline: () => view(baselineShape),
   firstDay: () => view({ todo: z.array(z.string()), baseline: view(baselineShape) }),
-  cordProtocols: () => view({ cadence_days: z.number(), postures: z.array(object).length(2) }),
-  cordHistory: () => view({ limit: z.number(), postures: z.array(object).length(2) }),
+  cordProtocols: () => view({ cadence_days: z.number(), postures: z.array(cordPosture).length(2) }),
+  cordHistory: () => view({ limit: z.number(), postures: z.array(cordHistoryPosture).length(2) }),
   houston: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), summary: object.nullable(), ground_link: object.nullable() }),
   outbox: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), ground_link: object.nullable(), items: z.array(object) }),
   // `astronaut_id` is compared by the client (a mismatch is not_found, not a malformed body).

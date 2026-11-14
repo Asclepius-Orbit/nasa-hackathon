@@ -87,12 +87,12 @@ const TASKS: Readonly<Record<string, PlanText>> = {
   TASK_CORD_STRAIGHT: {
     title: 'Cord session, back straight',
     detail: 'Stand with your back straight while the cord reads your spine. Your Earth reference before launch; a follow-up in flight.',
-    action: { label: 'Open session', route: '/session', kind: 'quiet' },
+    action: { label: 'Open session', route: '/session?protocol=spine_resistance_straight_v1', kind: 'quiet' },
   },
   TASK_CORD_MAX_FLEXION: {
     title: 'Cord session, maximum flexion',
     detail: 'Curve your back as far as you comfortably can while the cord reads your spine. Your Earth reference before launch; a follow-up in flight.',
-    action: { label: 'Open session', route: '/session', kind: 'quiet' },
+    action: { label: 'Open session', route: '/session?protocol=spine_resistance_max_flexion_v1', kind: 'quiet' },
   },
 };
 

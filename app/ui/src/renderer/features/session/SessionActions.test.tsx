@@ -21,7 +21,7 @@ function Where(): React.JSX.Element {
 
 const view = (state: SessionPayload['state'], id = SESSION_ID): SessionPayload => ({ ...example<SessionPayload>('ui-session'), session_id: id, state });
 
-function world(options: { today: 'none' | 'running'; sessions?: Record<string, SessionPayload> }): ReturnType<typeof renderInWorld> {
+function world(options: { today: 'none' | 'running'; sessions?: Record<string, SessionPayload>; route?: string }): ReturnType<typeof renderInWorld> {
   const api = new FakeAsclepiusApi();
   api.viewData.today = example<TodayView>(options.today === 'none' ? 'ui-today' : 'ui-today.nodata');
   api.viewData.sessions = options.sessions ?? {};
@@ -34,7 +34,7 @@ function world(options: { today: 'none' | 'running'; sessions?: Record<string, S
       <Route path="/settings" element={<Where />} />
       <Route path="/profile" element={<Where />} />
     </Routes>,
-    { api, data: new RealDataSource(api.views, api.reps, api), route: '/session' },
+    { api, data: new RealDataSource(api.views, api.reps, api), route: options.route ?? '/session' },
   );
 }
 
@@ -77,6 +77,21 @@ describe('starting a session', () => {
     expect(within(estimate).getByText('The contacts add no resistance.')).toBeInTheDocument();
     // The posture without a measured contact distance gets no estimate, and says why.
     expect(within(panel).getByText(/distance between the contacts in this posture has not been measured/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['spine_resistance_straight_v1', 'Cord resistance, back straight'],
+    ['spine_resistance_max_flexion_v1', 'Cord resistance, maximum flexion (due)'],
+  ])('preselects the protocol named by ?protocol=%s, as a cord task card sends it', async (protocolId, name) => {
+    world({ today: 'none', sessions: {}, route: `/session?protocol=${protocolId}` });
+    expect(await screen.findByRole('radio', { name })).toBeChecked();
+    expect(startButton()).toBeEnabled();
+  });
+
+  it('preselects nothing for an unknown ?protocol', async () => {
+    world({ today: 'none', sessions: {}, route: '/session?protocol=nope' });
+    expect(await screen.findByRole('radio', { name: 'Cord resistance, back straight' })).not.toBeChecked();
+    expect(startButton()).toBeDisabled();
   });
 
   it('lists the cord measurements per posture, valid or not, with the reason and without any estimate', async () => {
@@ -378,5 +393,29 @@ describe('Stop: pain with the backend', () => {
     runningWorld();
     await screen.findByRole('button', { name: /Stop: pain/ });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('after a cord session', () => {
+  const ended = (state: SessionPayload['state'], protocolId: string): ReturnType<typeof renderInWorld> =>
+    world({ today: 'running', sessions: { [SESSION_ID]: { ...view(state), protocol_id: protocolId } } });
+
+  it('shows the cord estimate, labelled as calculated, with the measurements once the session is over', async () => {
+    ended('processed', 'spine_resistance_straight_v1');
+    const panel = await screen.findByTestId('cord-sessions');
+    const estimate = within(panel).getByTestId('cord-estimate');
+    expect(within(estimate).getByText(/not a measured length and not clinically validated/)).toBeInTheDocument();
+    expect(within(panel).getAllByText('5650 ohm, 8 Feb 09:00 GMT').length).toBeGreaterThan(0);
+  });
+
+  it('does not show it while the cord session is still running, nor after another protocol', async () => {
+    const running = ended('running', 'spine_resistance_straight_v1');
+    await screen.findByTestId('session-view');
+    await screen.findByRole('heading', { name: /Cord resistance/ });
+    expect(screen.queryByTestId('cord-sessions')).not.toBeInTheDocument();
+    running.unmount();
+    ended('processed', 'lat_pulldown_standing_v1');
+    await screen.findByRole('heading', { name: 'Start another session' });
+    expect(screen.queryByTestId('cord-sessions')).not.toBeInTheDocument();
   });
 });

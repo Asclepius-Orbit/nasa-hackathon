@@ -74,8 +74,8 @@ function StartFailure({ failure }: { failure: Failure }): React.JSX.Element {
 }
 
 /** The choice of protocol and the Start button, shown when there is no session (or the last one is over). */
-export function StartSession({ starter, due = [] }: { starter: Starter; due?: readonly ProtocolId[] }): React.JSX.Element {
-  const [protocol, setProtocol] = useState<ProtocolId | null>(null);
+export function StartSession({ starter, due = [], initial = null }: { starter: Starter; due?: readonly ProtocolId[]; initial?: ProtocolId | null }): React.JSX.Element {
+  const [protocol, setProtocol] = useState<ProtocolId | null>(initial);
   return (
     <div className={styles.panel}>
       <div role="radiogroup" aria-label={copy.group} className={styles.choices}>

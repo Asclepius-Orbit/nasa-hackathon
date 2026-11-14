@@ -49,6 +49,7 @@ export const cord = {
       ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE: 'The contacts add no resistance.',
       ASSUMPTION_UNIFORM_DEFORMATION: 'The cord stretches evenly and its contacts stay fixed to it.',
     } as Readonly<Record<string, string>>,
+    unknownReason: (code: string): string => `No estimate: ${code}`,
     unavailable: {
       ESTIMATE_NO_EARTH_REFERENCE: 'No estimate: there is no Earth reference yet.',
       ESTIMATE_NO_FOLLOW_UP: 'No estimate: there is no in-flight measurement yet.',

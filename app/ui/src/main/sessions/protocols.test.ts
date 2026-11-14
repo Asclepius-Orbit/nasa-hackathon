@@ -43,4 +43,16 @@ describe('PROTOCOLS', () => {
     expect(PROTOCOLS[protocolId].streams).toEqual(streams);
     expect(PROTOCOLS[protocolId].session_type).toBe(session['session_type']);
   });
+
+  it.each(['spine_resistance_straight_v1', 'spine_resistance_max_flexion_v1'] as const)(
+    'declares %s as a spine check with the full-spine stretch stream of the spine-check example',
+    (protocolId) => {
+      const session = readJson('examples/valid/domain/session.spine-check.json');
+      const streams = (session['streams'] as Record<string, unknown>[]).map(({ calibration_id: _id, ...stream }) => stream);
+      expect(PROTOCOLS[protocolId].session_type).toBe('spine_check');
+      expect(PROTOCOLS[protocolId].streams).toEqual(streams);
+      expect(PROTOCOLS[protocolId].load_declared).toBeUndefined();
+      expect(PROTOCOLS[protocolId].planned_reps).toBeUndefined();
+    },
+  );
 });

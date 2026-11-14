@@ -101,6 +101,9 @@ class Analysis:
 
     # --- session ended ------------------------------------------------------------------------
 
+    async def stretch_estimate(self, request: dict[str, Any]) -> dict[str, Any]:
+        return await self._engine.stretch_estimate(request)
+
     async def process_session(self, session_id: str) -> None:
         """features -> (baseline if pre-flight) -> assess. Only once per session (state `ended`)."""
         if not self._store.transition_session(session_id, ("ended",), "processing"):

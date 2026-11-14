@@ -52,3 +52,6 @@ class EngineClient:
 
     async def assess(self, request: dict[str, Any]) -> dict[str, Any]:
         return await self._post("/assess", "engine/assess-request", "domain/assessment", request)
+
+    async def stretch_estimate(self, request: dict[str, Any]) -> dict[str, Any]:
+        return await self._post("/stretch-estimate", "engine/stretch-estimate-request", "engine/stretch-estimate-response", request)

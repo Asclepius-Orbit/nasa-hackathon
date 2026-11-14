@@ -167,6 +167,7 @@ UI_CREW_DATA = {
 DEVICES_PATH = "/ui/crew/{astronaut_id}/devices"
 # Actions the UI posts: path -> status of success. Session commands answer 202 at once (the harness acks later).
 UI_ACTIONS = {
+    "/ui/crew/{astronaut_id}/sessions/{session_id}/stretch-prediction": "200",
     "/ui/crew/{astronaut_id}/sessions": "202",
     "/ui/sessions/{session_id}/stop": "202",
     "/ui/sessions/{session_id}/events": "202",

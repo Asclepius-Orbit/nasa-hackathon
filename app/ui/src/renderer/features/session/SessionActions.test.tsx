@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
-import type { RepStateView, SessionView as SessionPayload, StartSessionResult, TodayView } from '../../../shared/api';
+import type { CordHistoryView, CordProtocolsView, RepStateView, SessionView as SessionPayload, StartSessionResult, TodayView } from '../../../shared/api';
 import { MockDataSource } from '../../data/mock/MockDataSource';
 import { RealDataSource } from '../../data/real/RealDataSource';
 import { example } from '../../test/contract-examples';
@@ -25,6 +25,8 @@ function world(options: { today: 'none' | 'running'; sessions?: Record<string, S
   const api = new FakeAsclepiusApi();
   api.viewData.today = example<TodayView>(options.today === 'none' ? 'ui-today' : 'ui-today.nodata');
   api.viewData.sessions = options.sessions ?? {};
+  api.viewData.cordProtocols = example<CordProtocolsView>('ui-cord-protocols');
+  api.viewData.cordHistory = example<CordHistoryView>('ui-cord-history');
   return renderInWorld(
     <Routes>
       <Route path="/session" element={<SessionView />} />
@@ -54,6 +56,53 @@ const pushRep = async (api: FakeAsclepiusApi, rep?: number): Promise<void> => {
 };
 
 describe('starting a session', () => {
+  it('offers the cord sessions as two independent protocols and marks the one that is due', async () => {
+    const { api } = startWorld();
+    const group = await screen.findByRole('radiogroup', { name: 'Choose the session' });
+    expect(within(group).getByRole('radio', { name: 'Cord resistance, back straight' })).toBeInTheDocument();
+    await userEvent.click(within(group).getByRole('radio', { name: 'Cord resistance, maximum flexion (due)' }));
+    await userEvent.click(startButton());
+    expect(api.lastArg['sessions.start']).toEqual({ protocolId: 'spine_resistance_max_flexion_v1' });
+  });
+
+  it('shows the last valid measurement of each cord session and labels the estimate as calculated, with its assumptions', async () => {
+    startWorld();
+    const panel = await screen.findByTestId('cord-sessions');
+    expect(within(panel).getByText('4500 ohm, 20 Jan 09:00 GMT')).toBeInTheDocument();
+    expect(within(panel).getAllByText('5650 ohm, 8 Feb 09:00 GMT').length).toBeGreaterThan(0);
+    const estimate = within(panel).getByTestId('cord-estimate');
+    expect(within(estimate).getByText('Calculated length estimate')).toBeInTheDocument();
+    expect(within(estimate).getByText(/not a measured length and not clinically validated/)).toBeInTheDocument();
+    expect(within(estimate).getByText(/does not change your level/)).toBeInTheDocument();
+    expect(within(estimate).getByText('The contacts add no resistance.')).toBeInTheDocument();
+    // The posture without a measured contact distance gets no estimate, and says why.
+    expect(within(panel).getByText(/distance between the contacts in this posture has not been measured/)).toBeInTheDocument();
+  });
+
+  it('lists the cord measurements per posture, valid or not, with the reason and without any estimate', async () => {
+    startWorld();
+    const sections = await screen.findAllByTestId('cord-history');
+    const [straightSection, flexionSection] = sections;
+    if (straightSection === undefined || flexionSection === undefined) throw new Error('both postures expected');
+    expect(sections).toHaveLength(2);
+    const straight = within(straightSection);
+    expect(straight.getAllByRole('row')).toHaveLength(4);
+    expect(straight.getByText('The signal quality was below the minimum.')).toBeInTheDocument();
+    expect(straight.getByText('5100 ohm')).toBeInTheDocument();
+    expect(within(flexionSection).getByText('The session did not complete.')).toBeInTheDocument();
+    expect(straight.queryByText(/estimate/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps starting sessions possible when the cord sessions cannot be read', async () => {
+    const api = new FakeAsclepiusApi();
+    api.viewData.today = example<TodayView>('ui-today');
+    api.viewData.sessions = {};
+    api.viewErrors.cordProtocols = 'unavailable';
+    renderInWorld(<SessionView />, { api, data: new RealDataSource(api.views, api.reps, api), route: '/session' });
+    expect(await screen.findByRole('radio', { name: /Standing lat pulldown/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('cord-sessions')).not.toBeInTheDocument();
+  });
+
   it('offers the two protocols when there is no session, and Start stays disabled until one is chosen', async () => {
     startWorld();
     const group = await screen.findByRole('radiogroup', { name: 'Choose the session' });

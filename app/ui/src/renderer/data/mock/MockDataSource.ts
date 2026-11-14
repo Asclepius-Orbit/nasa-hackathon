@@ -18,6 +18,8 @@ import { CATALOG, ODI, REPORT_FORM } from '../form-data';
 import type {
   BaselineData,
   ContactEntry,
+  CordHistoryData,
+  CordProtocolsData,
   FirstDayData,
   HistoryData,
   HoustonData,
@@ -31,7 +33,7 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { BASELINE, buildDays, FIRST_DAY, SESSION, todayData } from './mock-data';
+import { BASELINE, buildDays, CORD_HISTORY, CORD_PROTOCOLS, FIRST_DAY, SESSION, todayData } from './mock-data';
 
 const REP_TICK_MS = 450;
 const CYCLE_TICKS = 10;
@@ -148,6 +150,14 @@ export class MockDataSource implements DataSource {
 
   getToday(): Promise<TodayData> {
     return Promise.resolve(todayData(this.now()));
+  }
+
+  getCordProtocols(): Promise<CordProtocolsData> {
+    return Promise.resolve(CORD_PROTOCOLS);
+  }
+
+  getCordHistory(): Promise<CordHistoryData> {
+    return Promise.resolve(CORD_HISTORY);
   }
 
   getFirstDay(): Promise<FirstDayData> {

@@ -2,6 +2,8 @@
 import type {
   AstronautProfile,
   BaselineView,
+  CordHistoryView,
+  CordProtocolsView,
   DailyContext,
   DeviceStatus,
   FirstDayView,
@@ -17,6 +19,8 @@ import type {
 export type {
   AstronautProfile,
   BaselineView,
+  CordHistoryView,
+  CordProtocolsView,
   DailyContext,
   DeviceStatus,
   FirstDayView,
@@ -142,7 +146,11 @@ export interface DailyContextFields {
 }
 
 /** Protocols the UI can start (`contracts/catalog/protocol-catalog.json`). */
-export type ProtocolId = 'lat_pulldown_standing_v1' | 'spine_length_rest_v1';
+export type ProtocolId =
+  | 'lat_pulldown_standing_v1'
+  | 'spine_length_rest_v1'
+  | 'spine_resistance_straight_v1'
+  | 'spine_resistance_max_flexion_v1';
 
 /** A start that reached the backend: the new session (still `starting` until the harness acks). */
 export interface StartedSession {
@@ -288,6 +296,10 @@ export interface AsclepiusApi {
     history(range?: ViewRange): Promise<HistoryView>;
     baseline(): Promise<BaselineView>;
     firstDay(): Promise<FirstDayResult>;
+    /** The two cord-resistance sessions (back straight, maximum flexion): last valid measurements, what is due, calculated estimate. */
+    cordProtocols(): Promise<CordProtocolsView>;
+    /** The latest cord measurements of each posture, valid and invalid with the reason (measurements only: never the estimate). */
+    cordHistory(): Promise<CordHistoryView>;
     session(sessionId: string): Promise<SessionView>;
     houston(): Promise<HoustonView>;
     outbox(): Promise<OutboxView>;

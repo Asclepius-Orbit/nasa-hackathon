@@ -58,6 +58,8 @@ describe('IPC_CHANNELS', () => {
       'asclepius:views:history',
       'asclepius:views:baseline',
       'asclepius:views:first-day',
+      'asclepius:views:cord-protocols',
+      'asclepius:views:cord-history',
       'asclepius:views:session',
       'asclepius:views:houston',
       'asclepius:views:outbox',

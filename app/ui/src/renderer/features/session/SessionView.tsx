@@ -13,6 +13,7 @@ import { protocolTitle } from '../../strings/codes';
 import { gmtClock, minutesBetween } from '../today/gmt';
 import { actionText, session as copy, voiceUndo } from '../../strings/session';
 import { CalibrateStage, CheckStage, FinishStage, FitStage, RepsStage, STAGE_IDS, type StageAction, type StageId } from './Stages';
+import { CordSessions } from './CordSessions';
 import { isProtocolId, StartSession, useStarter } from './StartSession';
 import { currentRep, useLiveReps } from './useLiveReps';
 import { useSessionActions } from './useSessionActions';
@@ -21,6 +22,8 @@ import { VoiceUndoAlert, useVoiceUndo } from './VoiceUndo';
 
 /** Wrapped so that "loading" (no data) differs from "no session in progress" (`session: null`). */
 const selectSession = (d: DataSource) => d.getSession().then((session) => ({ session }));
+const selectCord = (d: DataSource) => d.getCordProtocols();
+const selectCordHistory = (d: DataSource) => d.getCordHistory();
 
 function isStageId(value: string | null): value is StageId {
   return STAGE_IDS.some((id) => id === value);
@@ -41,6 +44,9 @@ export function SessionView(): React.JSX.Element {
   const session = loaded === null ? undefined : loaded.session;
   const reps = useLiveReps(session?.sessionId ?? null, session?.totalReps != null);
   const starter = useStarter(reload);
+  // The cord sessions only enrich the start panel: if they cannot be read, the sessions can still be started.
+  const { data: cord } = useLoad(selectCord, { refreshMs: REFRESH_MS });
+  const { data: cordHistory } = useLoad(selectCordHistory, { refreshMs: REFRESH_MS });
   const actions = useSessionActions(reload);
   const data = useData();
   const navigate = useNavigate();
@@ -83,7 +89,8 @@ export function SessionView(): React.JSX.Element {
           <h1 id="session-title">{copy.title}</h1>
           <p role="status">{copy.none}</p>
           <p className={styles.lede}>{copy.noneHint}</p>
-          <StartSession starter={starter} />
+          <StartSession starter={starter} due={cord === null ? [] : cord.postures.filter((p) => p.due).map((p) => p.protocolId)} />
+          {cord !== null && <CordSessions cord={cord} history={cordHistory} />}
         </>
       )}
       {session && (

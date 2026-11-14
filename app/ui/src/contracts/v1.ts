@@ -494,9 +494,15 @@ export type Placement = (
   description?: string;
 };
 /**
- * Something the astronaut still has to do. TASK_DAILY_REPORT: daily self-report. TASK_ODI: weekly Oswestry report. TASK_BASELINE_SESSION: a pre-flight reference session. TASK_SESSION: the planned exercise session.
+ * Something the astronaut still has to do. TASK_DAILY_REPORT: daily self-report. TASK_ODI: weekly Oswestry report. TASK_BASELINE_SESSION: a pre-flight reference session. TASK_SESSION: the planned exercise session. TASK_CORD_STRAIGHT and TASK_CORD_MAX_FLEXION: the cord-resistance session of that posture is due (Earth reference pre-flight, follow-up in flight).
  */
-export type TaskCode = "TASK_DAILY_REPORT" | "TASK_ODI" | "TASK_BASELINE_SESSION" | "TASK_SESSION";
+export type TaskCode =
+  | "TASK_DAILY_REPORT"
+  | "TASK_ODI"
+  | "TASK_BASELINE_SESSION"
+  | "TASK_SESSION"
+  | "TASK_CORD_STRAIGHT"
+  | "TASK_CORD_MAX_FLEXION";
 /**
  * State of the link with the ground station. 'up': the link works. 'down': it does not; back_in_min is the minutes until it is expected back, null when that is not known. A view that has no ground link configured or known carries null instead of this object.
  */
@@ -944,6 +950,8 @@ export interface ContractsV1 {
   "app/ui-baseline"?: BaselineView;
   "app/ui-common"?: UIViewDefinitions;
   "app/ui-contact-list"?: UiContactList;
+  "app/ui-cord-history"?: CordHistoryView;
+  "app/ui-cord-protocols"?: CordProtocolsView;
   "app/ui-crew"?: UiCrew;
   "app/ui-first-day"?: FirstDayView;
   "app/ui-history"?: HistoryView;
@@ -1999,6 +2007,155 @@ export interface MedicalContact {
    * Optional note of the crew; never leaves the station.
    */
   text?: string;
+}
+/**
+ * Response of GET /ui/crew/{astronaut_id}/views/cord-history: the most recent cord-resistance measurements of each posture (back straight, maximum flexion), valid and invalid, newest first. Bounded: at most `limit` per posture, never the whole history. A measurement is valid only if its session completed and the feature has a positive value and quality at or above the configured minimum score; an invalid one says why. Only measurements: a calculated length estimate is never stored nor listed here.
+ */
+export interface CordHistoryView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Maximum number of measurements listed per posture.
+   */
+  limit: number;
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  postures: [CordHistoryPosture, CordHistoryPosture];
+}
+export interface CordHistoryPosture {
+  protocol_id: "spine_resistance_straight_v1" | "spine_resistance_max_flexion_v1";
+  posture: "straight" | "max_flexion";
+  /**
+   * @maxItems 100
+   */
+  measurements: CordHistoryEntry[];
+}
+export interface CordHistoryEntry {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  measured_at: string;
+  /**
+   * Gravity the astronaut is exposed to while the data is recorded. Mandatory context: in microgravity an accelerometer does not see gravity, so Earth and space IMU data are not directly comparable.
+   */
+  gravity_environment: "earth_1g" | "microgravity" | "moon_0_16g" | "mars_0_38g";
+  /**
+   * Resistance reported by the session; null when the session produced none.
+   */
+  resistance_ohm: number | null;
+  /**
+   * Quality score of the resistance feature, 0 to 1; null when the session produced no such feature.
+   */
+  quality_score: number | null;
+  valid: boolean;
+  /**
+   * Why the measurement is not valid; null when it is. CORD_INVALID_NOT_COMPLETED: the session did not complete. CORD_INVALID_NO_VALUE: no positive resistance was obtained. CORD_INVALID_LOW_QUALITY: the quality score is below the configured minimum.
+   */
+  invalid_reason: ("CORD_INVALID_NOT_COMPLETED" | "CORD_INVALID_NO_VALUE" | "CORD_INVALID_LOW_QUALITY") | null;
+}
+/**
+ * Response of GET /ui/crew/{astronaut_id}/views/cord-protocols: the two independent cord-resistance sessions (back straight, maximum flexion), each with its personal Earth reference, its latest in-flight follow-up, whether one is due and an optional calculated length estimate. A measurement counts only if its session completed and the feature has quality at or above the configured minimum score. The estimate is calculated from the cord measurements under explicit assumptions: it is not a measured length, is not clinically validated and never feeds the triage (level, recommendations, escalation).
+ */
+export interface CordProtocolsView {
+  /**
+   * Semantic version of the contract the message was produced against. Major must be 1 for this schema set.
+   */
+  schema_version: string;
+  /**
+   * Days between in-flight measurements of each posture. Configurable; the default is an example, not a clinical cadence (pending Aguado).
+   */
+  cadence_days: number;
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  postures: [CordPosture, CordPosture];
+}
+export interface CordPosture {
+  protocol_id: "spine_resistance_straight_v1" | "spine_resistance_max_flexion_v1";
+  posture: "straight" | "max_flexion";
+  due: boolean;
+  /**
+   * CORD_NO_EARTH_REFERENCE: pre-flight and no valid Earth reference yet. CORD_NO_FOLLOW_UP: in flight and no valid follow-up yet. CORD_FOLLOW_UP_OVERDUE: the last valid follow-up is cadence_days old or older. CORD_UP_TO_DATE: nothing is due (reference taken pre-flight, follow-up recent, or the mission is not in the phase that asks for one).
+   */
+  due_reason: "CORD_NO_EARTH_REFERENCE" | "CORD_NO_FOLLOW_UP" | "CORD_FOLLOW_UP_OVERDUE" | "CORD_UP_TO_DATE";
+  earth_reference: CordEarthMeasurement | null;
+  last_follow_up: CordFollowUpMeasurement | null;
+  estimate: CordLengthEstimate | null;
+  /**
+   * Why there is no estimate; null when there is one. ESTIMATE_NO_EARTH_REFERENCE and ESTIMATE_NO_FOLLOW_UP: a measurement is missing. ESTIMATE_REFERENCE_LENGTH_UNKNOWN: the distance between the contacts in this posture is not measured (only the straight back has it; pending Aguado). ESTIMATE_OUT_OF_MODEL_RANGE: a resistance is outside the bench model. ESTIMATE_ENGINE_UNAVAILABLE: the engine did not answer.
+   */
+  estimate_unavailable:
+    | (
+        | "ESTIMATE_NO_EARTH_REFERENCE"
+        | "ESTIMATE_NO_FOLLOW_UP"
+        | "ESTIMATE_REFERENCE_LENGTH_UNKNOWN"
+        | "ESTIMATE_OUT_OF_MODEL_RANGE"
+        | "ESTIMATE_ENGINE_UNAVAILABLE"
+      )
+    | null;
+}
+/**
+ * A measurement taken pre-flight on Earth.
+ */
+export interface CordEarthMeasurement {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  measured_at: string;
+  resistance_ohm: number;
+  gravity_environment: "earth_1g";
+}
+/**
+ * A measurement taken in a gravity setting other than Earth's.
+ */
+export interface CordFollowUpMeasurement {
+  /**
+   * RFC 4122 UUID, lowercase.
+   */
+  session_id: string;
+  /**
+   * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+   */
+  measured_at: string;
+  resistance_ohm: number;
+  gravity_environment: "microgravity" | "moon_0_16g" | "mars_0_38g";
+}
+/**
+ * Calculated, never measured: the length of the span between the back contacts estimated from the follow-up and Earth reference resistances with the bench model. The flags state it explicitly so a UI cannot present it as a measurement.
+ */
+export interface CordLengthEstimate {
+  calculated: true;
+  measured_length: false;
+  clinically_validated: false;
+  affects_triage: false;
+  model: "experimental_uniform_resistance_v1";
+  reference_length_mm: number;
+  estimated_length_mm: number;
+  elongation_mm: number;
+  /**
+   * ASSUMPTION_UNIFORM_RESISTANCE: resistance per unit length is uniform along the cord. ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE: contact resistance is negligible. ASSUMPTION_UNIFORM_DEFORMATION: the cord deforms uniformly and its contacts stay fixed to the material.
+   *
+   * @minItems 1
+   */
+  assumptions: [
+    "ASSUMPTION_UNIFORM_RESISTANCE" | "ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE" | "ASSUMPTION_UNIFORM_DEFORMATION",
+    ...(
+      "ASSUMPTION_UNIFORM_RESISTANCE" | "ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE" | "ASSUMPTION_UNIFORM_DEFORMATION"
+    )[]
+  ];
 }
 /**
  * Response of GET /ui/crew: the astronaut ids the backend knows (registered by the UI or with data stored) and what it holds for each, ordered by id. Ids and flags only: no name, PIN or profile data. The UI keeps names and PINs and assigns the AST-NN ids.

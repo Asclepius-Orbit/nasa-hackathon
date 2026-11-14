@@ -14,6 +14,8 @@ import { z } from 'zod';
 
 import type {
   BaselineView,
+  CordHistoryView,
+  CordProtocolsView,
   FirstDayView,
   HistoryView,
   HoustonView,
@@ -42,6 +44,10 @@ export interface ViewsClient {
   history(astronautId: string, range: ViewRange): Promise<HistoryView>;
   baseline(astronautId: string): Promise<BaselineView>;
   firstDay(astronautId: string): Promise<FirstDayView>;
+  /** Cord-resistance protocols: last valid measurements, what is due and the calculated estimate (never a measured length). */
+  cordProtocols(astronautId: string): Promise<CordProtocolsView>;
+  /** The latest cord measurements of each posture, valid and invalid with the reason (bounded by the backend). */
+  cordHistory(astronautId: string): Promise<CordHistoryView>;
   /** The session view, but only if it belongs to `astronautId`: someone else's session is `not_found`. */
   session(astronautId: string, sessionId: string): Promise<SessionView>;
   /** What goes to the ground station and the link state; `summary` is `null` while there is none (still a 200). */
@@ -99,6 +105,8 @@ const SCHEMAS = {
   history: () => view({ from: z.string(), to: z.string(), days: z.array(object) }),
   baseline: () => view(baselineShape),
   firstDay: () => view({ todo: z.array(z.string()), baseline: view(baselineShape) }),
+  cordProtocols: () => view({ cadence_days: z.number(), postures: z.array(object).length(2) }),
+  cordHistory: () => view({ limit: z.number(), postures: z.array(object).length(2) }),
   houston: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), summary: object.nullable(), ground_link: object.nullable() }),
   outbox: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), ground_link: object.nullable(), items: z.array(object) }),
   // `astronaut_id` is compared by the client (a mismatch is not_found, not a malformed body).
@@ -184,6 +192,8 @@ export function createViewsClient({
     outbox: (id) => get(`/ui/crew/${encodeURIComponent(id)}/outbox`, SCHEMAS.outbox(id), id),
     baseline: (id) => get(crewPath(id, 'baseline'), SCHEMAS.baseline(), id),
     firstDay: (id) => get(crewPath(id, 'first-day'), SCHEMAS.firstDay(), id),
+    cordProtocols: (id) => get(crewPath(id, 'cord-protocols'), SCHEMAS.cordProtocols(), id),
+    cordHistory: (id) => get(crewPath(id, 'cord-history'), SCHEMAS.cordHistory(), id),
     async session(astronautId, sessionId) {
       const body = await get<SessionView>(`/ui/sessions/${encodeURIComponent(sessionId)}/view`, SCHEMAS.session(sessionId), astronautId, [403, 404]);
       // A session of another crew member must look like one that does not exist, never leak across astronauts.

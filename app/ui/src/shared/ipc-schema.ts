@@ -127,7 +127,7 @@ const repIndexSchema = z.int().min(1).nullable();
 const codeSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/u);
 
 export const startSessionInputSchema = z.strictObject({
-  protocolId: z.enum(['lat_pulldown_standing_v1', 'spine_length_rest_v1']),
+  protocolId: z.enum(['lat_pulldown_standing_v1', 'spine_length_rest_v1', 'spine_resistance_straight_v1', 'spine_resistance_max_flexion_v1']),
 });
 
 export const stopInputSchema: z.ZodType<StopInput> = z.discriminatedUnion('reason', [

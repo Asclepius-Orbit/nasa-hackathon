@@ -3,7 +3,7 @@
  * unlocked here, so a compromised renderer cannot read another crew member's views. With nobody signed in, or
  * behind the lock screen, every call fails with `locked` before any request is made.
  */
-import type { BaselineView, HistoryView, HoustonView, OutboxView, SessionView, StripView, TodayView } from '../../contracts/v1';
+import type { BaselineView, CordHistoryView, CordProtocolsView, HistoryView, HoustonView, OutboxView, SessionView, StripView, TodayView } from '../../contracts/v1';
 import type { FirstDayResult, ViewRange } from '../../shared/api';
 import type { AuthService } from '../auth/auth-service';
 import type { CrewStore } from '../store/crew-store';
@@ -17,6 +17,8 @@ export interface ViewsService {
   baseline(): Promise<BaselineView>;
   /** The backend view plus the member's first name, which only exists on this device. */
   firstDay(): Promise<FirstDayResult>;
+  cordProtocols(): Promise<CordProtocolsView>;
+  cordHistory(): Promise<CordHistoryView>;
   session(sessionId: string): Promise<SessionView>;
   houston(): Promise<HoustonView>;
   outbox(): Promise<OutboxView>;
@@ -62,6 +64,8 @@ export function createViewsService({ auth, crew, client }: ViewsServiceOptions):
       if (crewFirstName === undefined || crewFirstName === '') throw new ViewsError('unavailable');
       return { ...view, crewFirstName };
     },
+    cordProtocols: async () => client.cordProtocols(await astronaut()),
+    cordHistory: async () => client.cordHistory(await astronaut()),
     houston: async () => client.houston(await astronaut()),
     outbox: async () => client.outbox(await astronaut()),
     houstonReport: async () => client.houstonReport(await astronaut()),

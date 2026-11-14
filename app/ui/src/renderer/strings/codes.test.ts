@@ -46,6 +46,8 @@ describe('taskText', () => {
     ['TASK_ODI', '/oswestry'],
     ['TASK_BASELINE_SESSION', '/baseline'],
     ['TASK_SESSION', '/session'],
+    ['TASK_CORD_STRAIGHT', '/session'],
+    ['TASK_CORD_MAX_FLEXION', '/session'],
   ] as const)('%s has a title, a label and the route %s', (code, route) => {
     const text = taskText(code);
     expect(text.title.length).toBeGreaterThan(3);

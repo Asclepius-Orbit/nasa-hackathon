@@ -21,6 +21,8 @@ import { CATALOG, ODI, REPORT_FORM } from '../form-data';
 import type {
   BaselineData,
   ContactEntry,
+  CordHistoryData,
+  CordProtocolsData,
   FirstDayData,
   HistoryData,
   HoustonData,
@@ -34,7 +36,7 @@ import type {
   SymptomCatalog,
   TodayData,
 } from '../types';
-import { toBaseline, toContactEntry, toFirstDay, toGroundLink, toHistory, toHouston, toEndedRepState, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
+import { toBaseline, toContactEntry, toCordHistory, toCordProtocols, toFirstDay, toGroundLink, toHistory, toHouston, toEndedRepState, toLostRepState, toRepState, toSession, toStrip, toToday } from './map-views';
 
 /** The contract red-flag codes; the other urgent choices travel as `other_symptoms`. */
 const RED_FLAG_CODES: ReadonlySet<string> = new Set(CATALOG.flags.map((flag) => flag.code));
@@ -75,6 +77,14 @@ export class RealDataSource implements DataSource {
 
   async getFirstDay(): Promise<FirstDayData> {
     return toFirstDay(await this.views.firstDay());
+  }
+
+  async getCordProtocols(): Promise<CordProtocolsData> {
+    return toCordProtocols(await this.views.cordProtocols());
+  }
+
+  async getCordHistory(): Promise<CordHistoryData> {
+    return toCordHistory(await this.views.cordHistory());
   }
 
   async getHistory(): Promise<HistoryData> {

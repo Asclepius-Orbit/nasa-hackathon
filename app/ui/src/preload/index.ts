@@ -36,6 +36,8 @@ const api: AsclepiusApi = Object.freeze({
     history: (range = {}) => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsHistory, range)),
     baseline: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsBaseline)),
     firstDay: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsFirstDay)),
+    cordProtocols: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsCordProtocols)),
+    cordHistory: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsCordHistory)),
     session: (sessionId) => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsSession, { sessionId })),
     houston: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsHouston)),
     outbox: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsOutbox)),

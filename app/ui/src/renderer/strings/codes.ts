@@ -84,6 +84,16 @@ const TASKS: Readonly<Record<string, PlanText>> = {
     detail: 'The guided exercise session for today.',
     action: { label: 'Open session', route: '/session', kind: 'primary' },
   },
+  TASK_CORD_STRAIGHT: {
+    title: 'Cord session, back straight',
+    detail: 'Stand with your back straight while the cord reads your spine. Your Earth reference before launch; a follow-up in flight.',
+    action: { label: 'Open session', route: '/session', kind: 'quiet' },
+  },
+  TASK_CORD_MAX_FLEXION: {
+    title: 'Cord session, maximum flexion',
+    detail: 'Curve your back as far as you comfortably can while the cord reads your spine. Your Earth reference before launch; a follow-up in flight.',
+    action: { label: 'Open session', route: '/session', kind: 'quiet' },
+  },
 };
 
 export function taskText(code: TaskCode | (string & {})): PlanText {
@@ -200,6 +210,8 @@ export function checkDetail(status: 'good' | 'weak', state: 'active' | 'stalled'
 const PROTOCOLS: Readonly<Record<string, string>> = {
   lat_pulldown_standing_v1: 'Standing lat pulldown with band',
   spine_length_rest_v1: 'Spine length check',
+  spine_resistance_straight_v1: 'Cord resistance, back straight',
+  spine_resistance_max_flexion_v1: 'Cord resistance, maximum flexion',
 };
 
 export const protocolTitle = (protocolId: string): string => PROTOCOLS[protocolId] ?? protocolId;
@@ -207,6 +219,8 @@ export const protocolTitle = (protocolId: string): string => PROTOCOLS[protocolI
 const PROTOCOLS_SHORT: Readonly<Record<string, string>> = {
   lat_pulldown_standing_v1: 'standing lat pulldown',
   spine_length_rest_v1: 'spine length check',
+  spine_resistance_straight_v1: 'cord resistance, back straight',
+  spine_resistance_max_flexion_v1: 'cord resistance, maximum flexion',
 };
 
 /** Short protocol name for sentences such as "L-30, standing lat pulldown, complete". */

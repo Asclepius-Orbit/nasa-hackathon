@@ -20,6 +20,8 @@ import type {
   DailyContext,
   DailyContextFields,
   DeviceStatus,
+  CordHistoryView,
+  CordProtocolsView,
   FirstDayResult,
   HistoryView,
   HoustonReportResult,
@@ -302,12 +304,14 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     history?: HistoryView;
     baseline?: BaselineView;
     firstDay?: FirstDayResult;
+    cordProtocols?: CordProtocolsView;
+    cordHistory?: CordHistoryView;
     sessions?: Record<string, SessionView>;
     houston?: HoustonView;
     outbox?: OutboxView;
   } = {};
   /** Makes a view reject with this code instead of answering. */
-  viewErrors: Partial<Record<'strip' | 'today' | 'history' | 'baseline' | 'firstDay' | 'session' | 'houston' | 'outbox', ViewsErrorCode>> = {};
+  viewErrors: Partial<Record<'strip' | 'today' | 'history' | 'baseline' | 'firstDay' | 'cordProtocols' | 'cordHistory' | 'session' | 'houston' | 'outbox', ViewsErrorCode>> = {};
   /** Range of the last `views.history` call. */
   historyRange: ViewRange | undefined;
 
@@ -320,6 +324,8 @@ export class FakeAsclepiusApi implements AsclepiusApi {
     },
     baseline: () => this.view('baseline', this.viewData.baseline),
     firstDay: () => this.view('firstDay', this.viewData.firstDay),
+    cordProtocols: () => this.view('cordProtocols', this.viewData.cordProtocols),
+    cordHistory: () => this.view('cordHistory', this.viewData.cordHistory),
     session: (sessionId: string) => this.view('session', this.viewData.sessions?.[sessionId]),
     houston: () => this.view('houston', this.viewData.houston),
     outbox: () => this.view('outbox', this.viewData.outbox),

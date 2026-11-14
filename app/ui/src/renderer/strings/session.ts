@@ -67,9 +67,12 @@ export const start = {
   hints: {
     lat_pulldown_standing_v1: 'Exercise: reps with the band, measured by the harness.',
     spine_length_rest_v1: 'Spine check: stand upright and still, just before and just after the exercise, while the cord reads your spine.',
+    spine_resistance_straight_v1: 'Cord session, back straight: stand with your back straight while the cord reads it. Earth reference before launch, repeated in flight.',
+    spine_resistance_max_flexion_v1: 'Cord session, maximum flexion: curve your back as far as you comfortably can while the cord reads it. Earth reference before launch, repeated in flight.',
   },
   button: 'Start session',
   busy: 'Starting',
+  due: 'due',
   noHarness: {
     title: 'No harness is paired to you.',
     body: 'Pair one before starting a session.',

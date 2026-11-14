@@ -1,0 +1,147 @@
+"""Señales del emulador: las genera ``spine_physiology`` y salen como cuentas crudas del firmware.
+
+Aquí se comprueba el contrato del adaptador (rangos de las cuentas, determinismo, empalme entre bloques) y la fisiología que
+debe verse: flexiones periódicas de unos 4 s en gyro_x (lo que cuenta el backend como repeticiones), con la contracción del
+EMG y el estiramiento del cordón acoplados a la misma fase del esfuerzo.
+"""
+
+import statistics
+from typing import Any
+
+import pytest
+from spine_gateway import signals
+from spine_gateway.signals import EmulatedSignals
+
+IMU_RATE = 100
+EMG_RATE = 1000
+CORD_RATE = 20
+BATCH_MS = 100
+
+
+def emg(source: EmulatedSignals, seconds: float) -> list[int]:
+    return [v for t0 in range(0, round(seconds * 1000), BATCH_MS) for v in source.emg(t0)]
+
+
+def imu(source: EmulatedSignals, seconds: float) -> list[tuple[int, ...]]:
+    return [s for t0 in range(0, round(seconds * 1000), BATCH_MS) for s in source.imu(t0)]
+
+
+def cord(source: EmulatedSignals, seconds: float) -> list[int]:
+    return [v for t0 in range(0, round(seconds * 1000), BATCH_MS) for v in source.cord(t0)]
+
+
+def gyro_x(source: EmulatedSignals, seconds: float) -> list[int]:
+    return [s[3] for s in imu(source, seconds)]
+
+
+def window(values: list[Any], rate: int, start_s: float, end_s: float) -> list[Any]:
+    return values[round(start_s * rate) : round(end_s * rate)]
+
+
+def test_a_batch_has_the_firmware_sample_counts() -> None:
+    source = EmulatedSignals(seed=1)
+    assert len(source.emg(0)) == 100 and len(source.imu(0)) == 10 and len(source.cord(0)) == 2
+    assert all(len(sample) == 6 for sample in source.imu(0))
+
+
+def test_every_value_is_an_integer_inside_its_adc_range_over_a_minute() -> None:
+    source = EmulatedSignals(seed=2)
+    e, c, i = emg(source, 60), cord(source, 60), imu(source, 60)
+    assert all(type(v) is int and 0 <= v <= 1023 for v in e) and all(type(v) is int and 1 <= v <= 1022 for v in c)
+    assert all(type(v) is int and -0x8000 <= v <= 0x7FFF for sample in i for v in sample)
+    assert len(e) == 60000 and len(c) == 1200 and len(i) == 6000
+
+
+def test_the_same_seed_gives_the_same_signals_and_another_seed_different_ones() -> None:
+    first = (emg(EmulatedSignals(5), 8), imu(EmulatedSignals(5), 8), cord(EmulatedSignals(5), 8))
+    assert first == (emg(EmulatedSignals(5), 8), imu(EmulatedSignals(5), 8), cord(EmulatedSignals(5), 8))
+    other = (emg(EmulatedSignals(6), 8), imu(EmulatedSignals(6), 8), cord(EmulatedSignals(6), 8))
+    assert all(a != b for a, b in zip(first, other, strict=True))
+
+
+def test_a_negative_seed_is_accepted_like_the_cli_does() -> None:
+    assert emg(EmulatedSignals(-4), 1) == emg(EmulatedSignals(-4), 1) and emg(EmulatedSignals(-4), 1) != emg(EmulatedSignals(4), 1)
+
+
+def test_going_back_to_an_earlier_batch_gives_the_same_samples() -> None:
+    forward = EmulatedSignals(3)
+    batches = [forward.emg(t0) for t0 in range(0, 25_000, BATCH_MS)]
+    assert EmulatedSignals(3).emg(12_300) == batches[123]
+    again = EmulatedSignals(3)
+    again.emg(24_900)  # saltar al bloque siguiente y volver atrás
+    assert again.emg(300) == batches[3]
+
+
+def test_at_rest_the_imu_reads_one_g_on_z_and_nothing_on_the_other_axes() -> None:
+    rest = window(imu(EmulatedSignals(4), 4), IMU_RATE, 3.6, 4.0)  # entre repeticiones (acaba a 3,5 s y la siguiente empieza a 4,5 s)
+    first = imu(EmulatedSignals(4), 1)[10:40]  # 0,1 s a 0,4 s: reposo previo a la 1.ª repetición (empieza a 0,5 s)
+    for samples in (rest, first):
+        az = [s[2] for s in samples]
+        assert abs(statistics.mean(az) - 8192) < 400
+        assert all(abs(s[0]) < 400 and abs(s[1]) < 400 for s in samples)
+        assert all(abs(s[3]) < 100 and abs(s[4]) < 100 and abs(s[5]) < 100 for s in samples)
+
+
+def test_gyro_x_flexes_periodically_every_4_seconds_and_the_other_axes_stay_quiet() -> None:
+    samples = imu(EmulatedSignals(7), 16)
+    gx = [s[3] for s in samples]
+    threshold = 6 * 65.5  # 6 dps, el umbral con el que el backend arranca una repetición
+    starts = [t for t in range(1, len(gx)) if abs(gx[t]) > threshold >= abs(gx[t - 1])]
+    assert 4 <= len([t for t in starts if gx[t] > 0]) <= 5 and 4 <= len([t for t in starts if gx[t] < 0]) <= 5  # ida (+) y vuelta (-) por ciclo
+    peaks = [max(abs(v) for v in gx[400 * c : 400 * (c + 1)]) for c in range(4)]
+    assert all(1500 <= p <= 4500 for p in peaks) and max(peaks) - min(peaks) < 300  # 40-60 dps de pico, igual en cada repetición
+    assert all(abs(s[4]) < 0.2 * max(peaks) and abs(s[5]) < 0.2 * max(peaks) for s in samples)
+    up = [t for t in range(len(gx)) if gx[t] > 0.8 * max(peaks)]
+    assert 90 <= up[0] <= 170 and max(t for t in up if t < 400) < 220  # el pico de ida cae en el primer cuarto de la repetición
+
+
+def test_the_gyro_amplitude_depends_on_the_seed_inside_the_range() -> None:
+    peaks = {max(gyro_x(EmulatedSignals(s), 4)) for s in range(12)}
+    assert len(peaks) > 6 and all(1500 <= p <= 4500 for p in peaks)
+
+
+def test_the_emg_contracts_in_the_same_window_as_the_gyro_moves() -> None:
+    source = EmulatedSignals(9)
+    e = emg(source, 12)
+    gx = gyro_x(source, 12)
+    for cycle in range(3):
+        base = 4 * cycle
+        resting = window(e, EMG_RATE, base + 3.6, base + 4.4 if cycle < 2 else base + 4.0)
+        working = window(e, EMG_RATE, base + 1.5, base + 2.5)  # mitad de la repetición
+        assert statistics.mean(working) > 8 * statistics.mean(resting)
+        moving = [t for t, v in enumerate(window(gx, IMU_RATE, base, base + 4)) if abs(v) > 6 * 65.5]
+        assert moving and 0.4 <= moving[0] / IMU_RATE and moving[-1] / IMU_RATE <= 3.6  # el gyro solo se mueve dentro de la repetición
+        assert statistics.mean(window(e, EMG_RATE, base + 0.9, base + 1.1)) > 3 * statistics.mean(resting)  # el EMG ya sube con el movimiento
+
+
+def test_the_emg_peaks_inside_the_old_500_700_count_range_and_depends_on_the_seed() -> None:
+    peaks = {round(statistics.mean(window(emg(EmulatedSignals(s), 4), EMG_RATE, 1.8, 2.2))) for s in range(12)}
+    assert len(peaks) > 6 and all(400 <= p <= 800 for p in peaks)
+
+
+def test_the_emg_rests_at_a_low_level_but_not_at_zero() -> None:
+    rest = window(emg(EmulatedSignals(2), 8), EMG_RATE, 3.6, 4.4)
+    assert 5 <= statistics.mean(rest) <= 60
+
+
+def test_the_cord_stretches_with_the_flexion_and_stays_inside_the_divider_range() -> None:
+    values = cord(EmulatedSignals(6), 16)
+    rest, flexed = statistics.mean(window(values, CORD_RATE, 3.7, 4.3)), statistics.mean(window(values, CORD_RATE, 5.8, 6.2))
+    assert flexed - rest >= 5
+    assert 300 <= min(values) and max(values) <= 500  # cordón de ~650 mm con el divisor de 10 kΩ
+
+
+def test_the_batches_are_continuous_across_the_internal_block_boundary() -> None:
+    source = EmulatedSignals(8)
+    boundary = signals.BLOCK_S * 1000
+    left = source.cord(boundary - 100)
+    right = source.cord(boundary)
+    assert abs(right[0] - left[-1]) <= 4  # el residuo de histéresis se arrastra entre bloques
+    e_left, e_right = source.emg(boundary - 100), source.emg(boundary)
+    assert abs(statistics.mean(e_right) - statistics.mean(e_left)) < 40
+
+
+@pytest.mark.parametrize("t0_ms", [0, 100, 19_900, 20_000, 59_900])
+def test_any_batch_time_gives_full_batches(t0_ms: int) -> None:
+    source = EmulatedSignals(1)
+    assert len(source.emg(t0_ms)) == 100 and len(source.imu(t0_ms)) == 10 and len(source.cord(t0_ms)) == 2

@@ -17,6 +17,7 @@ import pytest
 from spine_gateway import emulator
 from spine_gateway.emulator import EmulatedArduino
 from spine_gateway.protocol import BadLine, Frame, FrameKind, Hello, Message, Tick, parse_line
+from spine_gateway.signals import EmulatedSignals
 
 SAMPLES = {FrameKind.EMG: 100, FrameKind.IMU: 10, FrameKind.CORD: 2}
 
@@ -260,53 +261,29 @@ def test_every_value_is_inside_its_range_over_a_minute() -> None:
     assert len(emg) == 60000 and len(cord) == 1200 and len(imu) == 6000 * 6
 
 
-def test_the_emg_rests_near_20_counts_and_contracts_every_4_seconds_up_to_500_700() -> None:
-    emg = samples_of(FrameKind.EMG, 12, seed=2)
-    rest = [v for t, v in enumerate(emg) if t % 4000 < 1900 or t % 4000 >= 3100]
-    assert 15 <= statistics.mean(rest) <= 25 and max(rest) <= 25 and min(rest) >= 15
-    peaks = [max(emg[4000 * c : 4000 * (c + 1)]) for c in range(3)]
-    assert all(500 <= p <= 730 for p in peaks)
-    centre = [emg[4000 * c + 2500] for c in range(3)]
-    assert all(c >= 480 for c in centre) and max(centre) - min(centre) <= 15  # la misma contracción cada ciclo
-    assert emg[4000 * 1 + 2000] <= 40 and emg[4000 * 2 + 3000] <= 40  # sube y baja suave desde el reposo
-    assert 100 < emg[2250] < 600  # a media subida
+def test_the_frames_carry_the_physiology_signals_of_the_seed_batch_by_batch() -> None:
+    reference = EmulatedSignals(seed=4)
+    lines = run(2.5, seed=4)[1]
+    for frame in frames(lines):
+        expected = {FrameKind.EMG: reference.emg, FrameKind.IMU: reference.imu, FrameKind.CORD: reference.cord}[frame.kind](frame.t0_ms)
+        assert tuple(frame.samples) == expected
 
 
-def test_the_contraction_peak_depends_on_the_seed_inside_the_range() -> None:
-    peaks = {max(samples_of(FrameKind.EMG, 4, seed=s)) for s in range(12)}
-    assert len(peaks) > 6 and all(500 <= p <= 730 for p in peaks)
+def test_the_signals_are_coupled_the_emg_contracts_while_gyro_x_flexes() -> None:
+    lines = run(8, seed=2)[1]
+    emg = [v for f in frames(lines, FrameKind.EMG) for v in f.samples]
+    gx = [s[3] for f in frames(lines, FrameKind.IMU) for s in f.samples if isinstance(s, tuple)]
+    assert statistics.mean(emg[1500:2500]) > 8 * statistics.mean(emg[3600:4400])  # a media repetición frente al reposo entre repeticiones
+    assert max(gx[100:150]) > 1500 and min(gx[250:300]) < -1500 and all(abs(v) < 100 for v in gx[360:440])
 
 
-def test_the_imu_reads_1g_on_z_with_a_small_noise_and_a_4_second_gyro_x_swing() -> None:
-    imu = samples_of(FrameKind.IMU, 12, seed=4)
-    ax, ay, az, gx, gy, gz = (list(axis) for axis in zip(*imu, strict=True))
-    assert all(abs(v) <= 40 for v in ax + ay) and all(abs(v - 8192) <= 40 for v in az)
-    assert abs(statistics.mean(az) - 8192) < 10 and abs(statistics.mean(ax)) < 10
-    assert all(abs(v) <= 30 for v in gy + gz)
-    amplitude = max(gx)
-    assert 3000 <= amplitude <= 6030 and abs(min(gx) + amplitude) <= 70 and statistics.pstdev(ax) > 5
-    # sinusoide de 4 s (100 muestras/s): máximo a 1 s, cruce a 2 s, mínimo a 3 s, de nuevo máximo a 5 s.
-    assert abs(gx[100] - amplitude) <= 100 and abs(gx[300] + amplitude) <= 100 and abs(gx[200]) <= 100 and abs(gx[500] - amplitude) <= 100
-    assert abs(gx[0]) <= 100 and abs(gx[400]) <= 100 and statistics.pstdev(gy) > 5 and statistics.pstdev(gz) > 5
-
-
-def test_the_gyro_amplitude_depends_on_the_seed_inside_the_range() -> None:
-    amplitudes = {samples_of(FrameKind.IMU, 2, seed=s)[100][3] for s in range(12)}  # gx a 1 s: el máximo de la sinusoide
-    assert len(amplitudes) > 6 and all(2900 <= a <= 6100 for a in amplitudes)
-
-
-def test_the_cord_oscillates_slowly_around_400() -> None:
-    cord = samples_of(FrameKind.CORD, 16, seed=6)  # 20 Hz
-    assert all(300 <= v <= 500 for v in cord)
-    assert 380 <= statistics.mean(cord) <= 420 and max(cord) - min(cord) > 120
-    assert statistics.pstdev(cord[:2]) < 30 and cord[40] > 440 and cord[120] < 360  # máximo a 2 s, mínimo a 6 s (periodo de 8 s)
-
-
-def test_clamp_keeps_values_inside_the_bounds_and_rounds() -> None:
-    assert emulator.clamp(5.4, 0, 10) == 5 and emulator.clamp(5.6, 0, 10) == 6
-    assert emulator.clamp(-3.0, 0, 10) == 0 and emulator.clamp(99.0, 0, 10) == 10
-    assert emulator.clamp(0.0, 0, 10) == 0 and emulator.clamp(10.0, 0, 10) == 10
-    assert emulator.clamp(-0x9000, -0x8000, 0x7FFF) == -0x8000 and emulator.clamp(0x9000, -0x8000, 0x7FFF) == 0x7FFF
+def test_a_reboot_restarts_the_signals_from_the_beginning() -> None:
+    arduino = EmulatedArduino(seed=3, reboot_after_s=1.0)
+    messages = parsed(arduino.lines_until(2000))
+    start = next(i for i, m in enumerate(messages) if isinstance(m, Hello) and m.millis == 0 and m != messages[0])
+    first = [f.samples for f in messages[:start] if isinstance(f, Frame) and f.kind is FrameKind.IMU][:3]
+    again = [f.samples for f in messages[start:] if isinstance(f, Frame) and f.kind is FrameKind.IMU][:3]
+    assert first == again
 
 
 @pytest.mark.golden
@@ -318,7 +295,7 @@ def test_golden_signal_digest_for_seed_0() -> None:
 
 
 EXPECTED_LINES = 321
-EXPECTED_DIGEST = "baa300ec52acecef8f30d4c6b39ca238d7746080d719c7379daf831779451f30"
+EXPECTED_DIGEST = "6e7c2e59ac7c25b7c1d8ec9fc7e4d6c23f7f779817683f1947da658f6266ab84"
 
 
 # --- servidor TCP ---

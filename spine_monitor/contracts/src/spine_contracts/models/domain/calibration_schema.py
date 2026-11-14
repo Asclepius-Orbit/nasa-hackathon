@@ -119,6 +119,10 @@ class StretchCalibration(CalibrationBase):
         extra='forbid',
     )
     calibration_type: Literal['stretch']
+    reference_posture: Literal['straight_back'] | None = Field(
+        None,
+        description='Explicitly attested posture during the reference measurement; omitted when unknown.',
+    )
     rest_resistance_ohm: PositiveFloat
     rest_length_mm: PositiveFloat = Field(
         ...,

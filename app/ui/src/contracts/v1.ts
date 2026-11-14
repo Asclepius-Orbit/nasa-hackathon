@@ -624,6 +624,10 @@ export type Calibration = StretchCalibration | EmgMvcCalibration | ImuCalibratio
  */
 export type StretchCalibration = CalibrationBase & {
   calibration_type: "stretch";
+  /**
+   * Explicitly attested posture during the reference measurement; omitted when unknown.
+   */
+  reference_posture?: "straight_back";
   rest_resistance_ohm: number;
   /**
    * Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.
@@ -937,6 +941,10 @@ export type CalibrateCommand = CommandBase & {
    */
   stream_ids: [string, ...string[]];
   duration_s?: number;
+  /**
+   * Operator attests that the stretch reference is measured with a straight back.
+   */
+  reference_posture?: "straight_back";
 };
 
 /**

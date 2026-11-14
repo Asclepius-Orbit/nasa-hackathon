@@ -124,6 +124,10 @@ class CalibrateCommand(CommandBase):
         ..., min_length=1
     )
     duration_s: PositiveFloat | None = None
+    reference_posture: Literal['straight_back'] | None = Field(
+        None,
+        description='Operator attests that the stretch reference is measured with a straight back.',
+    )
 
 
 class Command(

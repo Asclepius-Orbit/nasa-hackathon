@@ -42,6 +42,7 @@
           "type": "object",
           "properties": {
             "calibration_type": { "const": "stretch" },
+            "reference_posture": { "const": "straight_back", "description": "Explicitly attested posture during the reference measurement; omitted when unknown." },
             "rest_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
             "rest_length_mm": {
               "description": "Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.",

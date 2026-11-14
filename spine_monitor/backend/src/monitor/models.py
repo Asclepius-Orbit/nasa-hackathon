@@ -41,3 +41,10 @@ class CalibrateBody(_Body):
     calibration_type: CalibrationType
     stream_ids: list[str] = Field(min_length=1)
     duration_s: float | None = Field(default=None, gt=0)
+    reference_posture: Literal["straight_back"] | None = None
+
+    @model_validator(mode="after")
+    def _posture_only_for_stretch(self) -> Self:
+        if self.reference_posture is not None and self.calibration_type != "stretch":
+            raise ValueError("reference_posture is only accepted for stretch calibration")
+        return self

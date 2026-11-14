@@ -636,7 +636,7 @@ class Gateway:
             return
         duration = command.duration_s if command.duration_s is not None else self._settings.calibration_default_duration_s
         recorders = [
-            (s, CalibrationRecorder(calibration_type, s, duration, self._settings, self._new_id, session_id=command.session_id)) for s in command.stream_ids
+            (s, CalibrationRecorder(calibration_type, s, duration, self._settings, self._new_id, session_id=command.session_id, reference_posture=command.reference_posture)) for s in command.stream_ids
         ]
         calibration = _Calibration(cid, recorders)
         self._calibration = calibration

@@ -5,6 +5,10 @@
 Data contracts shared by every component: wearable gateway, MQTT broker, on-board app, engine and MCP server.
 **The JSON Schemas are the source of truth.** Everything else is generated from them or checked against them.
 
+The measured-threshold features distinguish cord resistance change from estimated length, and lumbar sensor X orientation from range of motion or anatomical curvature. A straight-back personal resistance reference is required (4,500 ohm is only an example). EMG normalized amplitude uses a personal reference and is evaluated only in an explicitly marked `reference_effort_start` / `reference_effort_end` interval, not during rest; it is not a direct force measurement. These features use five-second windows.
+
+IMU calibration records the mounting, bias and, when independently measured, `reference_orientation_x_deg` at `created_at`. Gyroscope integration cannot establish an absolute orientation on its own, especially in microgravity: an absent or invalid reference must leave the orientation unclassified. Threshold evidence can include `unit` and `source`; legacy evidence without these fields remains readable. Report thresholds are attributed to Polfer and Aguado, while other operational cuts must identify their own source.
+
 ## Layout
 | Path | What |
 |---|---|

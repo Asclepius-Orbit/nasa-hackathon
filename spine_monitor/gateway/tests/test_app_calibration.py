@@ -44,7 +44,7 @@ def test_stretch_calibration_is_published_retained_before_its_completed_ack_and_
         async with harness() as h:
             await h.boot()
             await h.run_device(1.0)
-            await h.send(calibrate(1, "stretch", ["stretch_spine"], duration_s=2))
+            await h.send(calibrate(1, "stretch", ["stretch_spine"], duration_s=2, reference_posture="straight_back"))
             assert [a["status"] for a in acks(h, 1)] == ["accepted"]
             await h.run_device(1.9)
             assert h.client.on("calibration") == []
@@ -57,6 +57,7 @@ def test_stretch_calibration_is_published_retained_before_its_completed_ack_and_
             body = calibration.payload
             assert body["calibration_id"] == FIRST_ID and body["calibration_type"] == "stretch" and body["session_id"] == SESSION
             assert body["rest_resistance_ohm"] == pytest.approx(10000 * 512 / (1023 - 512))
+            assert body["reference_posture"] == "straight_back"
             assert completed.payload["status"] == "completed" and completed.payload["result"] == {"calibration_id": FIRST_ID}
             assert completed.payload["timestamp"] == "2026-11-02T09:00:03Z"
             await h.run_device(1.0)

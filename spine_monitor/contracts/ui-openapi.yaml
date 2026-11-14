@@ -535,6 +535,10 @@ paths:
               properties:
                 calibration_type:
                   enum: [stretch, emg_mvc, imu]
+                reference_posture:
+                  type: string
+                  enum: [straight_back]
+                  description: Operator attestation for a straight-back stretch reference; only for stretch calibration.
                 stream_ids:
                   type: array
                   minItems: 1

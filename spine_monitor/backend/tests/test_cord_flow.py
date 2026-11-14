@@ -6,8 +6,15 @@ extraction, as in the other flow tests) and then read back through the cord-prot
 
 from typing import Any
 
+import httpx
+import numpy as np
 import pytest
-from spine_contracts import FeatureSet, validation
+from monitor.engine import EngineClient
+from spine_contracts import FeatureSet, topics, validation
+from spine_engine.features.composite import CompositeFeatureExtractor
+from spine_engine.features.registry import default_registry
+from spine_engine.features.stretch_curve import adc_to_resistance
+from spine_engine.settings import EngineSettings
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
@@ -163,3 +170,118 @@ async def test_history_view_lists_the_stored_measurements_and_honours_the_limit(
     limited = (await harness.http.get(f"/ui/crew/{AST}/views/cord-history", params={"limit": 1})).json()
     assert len(limited["postures"][0]["measurements"]) == 1 and limited["limit"] == 1
     assert (await harness.http.get(f"/ui/crew/{AST}/views/cord-history", params={"limit": 0})).status_code == 422
+
+
+async def test_history_lists_a_failed_session_as_invalid_and_the_limit_counts_every_session(harness):
+    measure_with(harness, {STRAIGHT: 4500.0, FLEXION: 5650.0})
+    await harness.setup_astronaut()
+    await profile(harness, launch_date="2026-12-13")
+    valid = await capture(harness, STRAIGHT)
+    harness.clock.advance(minutes=5)
+    failed, start = await harness.start_session(cord_plan(harness, STRAIGHT))
+    await harness.stop_session(failed, start)  # no chunks: the analysis fails for good
+    assert harness.store.session(failed).state == "processing_failed"
+
+    history = await view(harness, "cord-history", "app/ui-cord-history")
+    entries = history["postures"][0]["measurements"]
+    assert [(m["session_id"], m["valid"], m["invalid_reason"]) for m in entries] == [(failed, False, "CORD_INVALID_NO_VALUE"), (valid, True, None)]
+    assert entries[0]["resistance_ohm"] is None and entries[0]["quality_score"] is None
+
+    limited = (await harness.http.get(f"/ui/crew/{AST}/views/cord-history", params={"limit": 1})).json()
+    assert [m["session_id"] for m in limited["postures"][0]["measurements"]] == [failed]
+
+
+def problem(detail: str, status: int = 422) -> httpx.Response:
+    return httpx.Response(status, json={"type": "invalid_request", "title": "Invalid request", "status": status, "detail": detail})
+
+
+def unreachable(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("engine down", request=request)
+
+
+def timed_out(request: httpx.Request) -> httpx.Response:
+    raise httpx.ReadTimeout("engine too slow", request=request)
+
+
+@pytest.mark.parametrize(
+    ("answer", "unavailable"),
+    [
+        (unreachable, "ESTIMATE_ENGINE_UNAVAILABLE"),
+        (timed_out, "ESTIMATE_ENGINE_UNAVAILABLE"),
+        (lambda request: problem("boom", 500), "ESTIMATE_ENGINE_UNAVAILABLE"),
+        (lambda request: httpx.Response(200, json={"not": "an estimate"}), "ESTIMATE_ENGINE_UNAVAILABLE"),
+        # A 422 that is not "outside the measured curve" is not an out-of-range resistance.
+        (lambda request: problem("Inputs cannot be represented by the experimental model."), "ESTIMATE_ENGINE_UNAVAILABLE"),
+        (lambda request: problem("Resistance is outside the measured curve; extrapolation is not available."), "ESTIMATE_OUT_OF_MODEL_RANGE"),
+    ],
+)
+async def test_the_estimate_error_tells_the_engine_failing_from_a_resistance_out_of_the_model(harness, answer, unavailable):
+    measure_with(harness, {STRAIGHT: 4500.0, FLEXION: 5650.0})
+    await harness.setup_astronaut()
+    await profile(harness, launch_date="2026-12-13")
+    await capture(harness, STRAIGHT)
+    harness.clock.advance(days=40)
+    await harness.setup_astronaut(phase="inflight", gravity="microgravity")
+    await profile(harness, launch_date="2026-11-13", landing_date="2027-06-01")
+    measure_with(harness, {STRAIGHT: 5650.0, FLEXION: 5650.0})
+    await capture(harness, STRAIGHT)
+    http = httpx.AsyncClient(base_url="http://engine", transport=httpx.MockTransport(answer))
+    harness.runtime.analysis._engine = EngineClient(http)
+
+    response = await view(harness, "cord-protocols", "app/ui-cord-protocols")
+
+    straight = response["postures"][0]
+    assert straight["estimate"] is None and straight["estimate_unavailable"] == unavailable
+    assert straight["last_follow_up"]["resistance_ohm"] == 5650  # the measurement is still served
+    await http.aclose()
+
+
+async def extract_with_the_real_engine(harness) -> None:
+    """The engine answers /features with its real extraction (chunks in, features out), not with the fake one.
+
+    The device syncs its clock and sends its calibration first, as it does on the bus: without the anchor the chunks have no UTC time.
+    """
+    harness.extractor.extract = CompositeFeatureExtractor(default_registry(EngineSettings(_env_file=None))).extract
+    harness.mqtt.deliver(topics.clock(AST, harness.device_id), harness.example("telemetry/clock-sync.round-trip"))
+    harness.mqtt.deliver(topics.calibration(AST, harness.device_id, "stretch_spine"), harness.example("domain/calibration.stretch"))
+    await harness.settle()
+
+
+@pytest.mark.parametrize("protocol", [STRAIGHT, FLEXION])
+async def test_a_cord_session_gets_its_posture_resistance_from_the_real_feature_extraction(harness, protocol):
+    await extract_with_the_real_engine(harness)
+    await harness.setup_astronaut()
+    await profile(harness, launch_date="2026-12-13")
+
+    session_id = await capture(harness, protocol)
+
+    features = {f["feature_id"]: f for f in harness.store.feature_set(session_id)["features"]}
+    posture = features[FEATURE[protocol]]
+    other = FEATURE[FLEXION if protocol == STRAIGHT else STRAIGHT]
+    assert other not in features
+    chunk = harness.example("telemetry/stream-chunk.stretch")
+
+    circuit = chunk["circuit"]
+    counts = np.array(chunk["data"]["adc_counts"], dtype=float)
+    expected = adc_to_resistance(counts, adc_bits=circuit["adc_bits"], series_resistor_ohm=circuit["series_resistor_ohm"])
+    assert posture["unit"] == "ohm" and posture["n"] == len(expected)
+    assert posture["value"] == pytest.approx(float(expected.mean()))
+    history = await view(harness, "cord-history", "app/ui-cord-history")
+    entry = history["postures"][0 if protocol == STRAIGHT else 1]["measurements"][0]
+    assert (entry["session_id"], entry["valid"], entry["resistance_ohm"]) == (session_id, True, pytest.approx(posture["value"]))
+
+
+async def test_max_flexion_captured_with_the_real_extraction_has_no_estimate_for_lack_of_a_reference_length(harness):
+    await extract_with_the_real_engine(harness)
+    await harness.setup_astronaut()
+    await profile(harness, launch_date="2026-12-13")
+    earth = await capture(harness, FLEXION)
+    harness.clock.advance(days=40)
+    await harness.setup_astronaut(phase="inflight", gravity="microgravity")
+    await profile(harness, launch_date="2026-11-13", landing_date="2027-06-01")
+    follow_up = await capture(harness, FLEXION)
+
+    flexion = (await view(harness, "cord-protocols", "app/ui-cord-protocols"))["postures"][1]
+
+    assert flexion["earth_reference"]["session_id"] == earth and flexion["last_follow_up"]["session_id"] == follow_up
+    assert flexion["estimate"] is None and flexion["estimate_unavailable"] == "ESTIMATE_REFERENCE_LENGTH_UNKNOWN"

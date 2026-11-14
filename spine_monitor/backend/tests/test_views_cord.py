@@ -85,6 +85,23 @@ def test_earth_measurement_after_launch_is_not_a_reference() -> None:
     assert m[STRAIGHT].earth is None and m[STRAIGHT].follow_up is None
 
 
+@pytest.mark.parametrize(
+    ("phase", "gravity", "kind"),
+    [
+        ("preflight", "earth_1g", "earth"),
+        ("inflight", "microgravity", "follow_up"),
+        ("inflight", "moon_0_16g", "follow_up"),
+        ("preflight", "microgravity", None),  # e.g. a parabolic training flight: neither the reference nor an in-flight follow-up
+        ("postflight", "microgravity", None),
+        ("inflight", "earth_1g", None),  # in flight but at 1 g: not a reference (not pre-flight) nor a follow-up (not other gravity)
+        ("postflight", "earth_1g", None),
+    ],
+)
+def test_the_kind_of_measurement_is_told_by_phase_and_gravity_together(phase: str, gravity: str, kind: str | None) -> None:
+    m = measures(row(STRAIGHT, days_ago=3, gravity=gravity, phase=phase))[STRAIGHT]
+    assert (m.earth is not None, m.follow_up is not None) == (kind == "earth", kind == "follow_up")
+
+
 def due(m: Measurements, phase: str | None, protocol: str = STRAIGHT, cadence: int = 7) -> tuple[bool, str]:
     result = next(p for p in build_cord_protocols(m, phase, NOW, cadence, {})["postures"] if p["protocol_id"] == protocol)
     return result["due"], result["due_reason"]
@@ -176,3 +193,20 @@ def test_history_is_bounded_per_posture() -> None:
     rows = [row(STRAIGHT, days_ago=d) for d in range(1, 8)]
     kept = build_cord_history(rows, min_score=0.5, limit=3)["postures"][0]["measurements"]
     assert len(kept) == 3
+
+
+def test_history_lists_a_session_without_feature_set_as_invalid_at_its_start() -> None:
+    aborted, _ = row(STRAIGHT, days_ago=2, gravity="microgravity", phase="inflight", end_reason="aborted_pain")
+    failed, _ = row(FLEXION, days_ago=1, end_reason="completed")
+    aborted["started_at"] = "2027-02-08T09:00:00Z"
+    failed["started_at"] = "2027-02-09T09:00:00Z"
+
+    view = build_cord_history([(aborted, None), (failed, None)], min_score=0.5, limit=20)
+
+    assert validation.errors("app/ui-cord-history", view) == []
+    (straight,), (flexion,) = (p["measurements"] for p in view["postures"])
+    assert straight == {
+        "session_id": aborted["session_id"], "measured_at": "2027-02-08T09:00:00Z", "gravity_environment": "microgravity",
+        "resistance_ohm": None, "quality_score": None, "valid": False, "invalid_reason": "CORD_INVALID_NOT_COMPLETED",
+    }  # fmt: skip
+    assert (flexion["invalid_reason"], flexion["measured_at"], flexion["gravity_environment"]) == ("CORD_INVALID_NO_VALUE", "2027-02-09T09:00:00Z", "earth_1g")

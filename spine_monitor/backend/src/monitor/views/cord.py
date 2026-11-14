@@ -2,7 +2,8 @@
 
 Each posture has a personal Earth reference (pre-flight, 1 g) and periodic in-flight follow-ups. The last VALID measurement of
 a posture is the latest feature value of its protocol from a session that completed, with quality at or above the minimum score;
-Earth and flight are told apart by gravity (the reference is pre-flight on Earth, a follow-up is any other gravity).
+Earth and flight are told apart by phase and gravity together (the reference is pre-flight at 1 g, a follow-up is in flight at another gravity;
+any other combination is neither, e.g. a pre-flight session in microgravity).
 
 The cadence is an input (days between follow-ups), not a clinical rule: its default is an example, pending Aguado. The length estimate
 is calculated by the engine (`/stretch-estimate`) from the bench cord measurements under explicit assumptions; it is labelled as
@@ -56,8 +57,8 @@ def _feature(feature_set: Mapping[str, Any], feature_id: str) -> Mapping[str, An
     return next((f for f in feature_set["features"] if f["feature_id"] == feature_id), None)
 
 
-def _gravity(session: Mapping[str, Any], feature_set: Mapping[str, Any]) -> str:
-    return feature_set.get("gravity_environment") or session["mission_context"]["gravity_environment"]
+def _gravity(session: Mapping[str, Any], feature_set: Mapping[str, Any] | None) -> str:
+    return (feature_set or {}).get("gravity_environment") or session["mission_context"]["gravity_environment"]
 
 
 def _measurement(session: Mapping[str, Any], feature_set: Mapping[str, Any], feature_id: str, min_score: float) -> Measurement | None:
@@ -72,6 +73,15 @@ def _measurement(session: Mapping[str, Any], feature_set: Mapping[str, Any], fea
     }
 
 
+def _kind(phase: str, gravity: str) -> str | None:
+    """Phase and gravity together: the Earth reference is pre-flight at 1 g, a follow-up is in flight at another gravity; anything else is neither."""
+    if phase == "preflight" and gravity == EARTH_GRAVITY:
+        return "earth"
+    if phase == "inflight" and gravity != EARTH_GRAVITY:
+        return "follow_up"
+    return None
+
+
 def collect_measurements(rows: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]], min_score: float) -> Measurements:
     """Latest valid Earth reference and in-flight follow-up of each posture from (session, feature set) pairs."""
     found: dict[str, dict[str, Measurement]] = {protocol: {} for protocol in CORD_PROTOCOLS}
@@ -79,10 +89,7 @@ def collect_measurements(rows: Sequence[tuple[Mapping[str, Any], Mapping[str, An
         protocol = session["protocol_id"]
         if protocol not in _POSTURES or (m := _measurement(session, feature_set, _POSTURES[protocol][1], min_score)) is None:
             continue
-        if m["gravity_environment"] == EARTH_GRAVITY:
-            kind = "earth" if session["mission_context"]["phase"] == "preflight" else None
-        else:
-            kind = "follow_up"
+        kind = _kind(session["mission_context"]["phase"], m["gravity_environment"])
         if kind is not None and (kind not in found[protocol] or instant(m["measured_at"]) >= instant(found[protocol][kind]["measured_at"])):
             found[protocol][kind] = m
     return {p: PostureMeasurements(found[p].get("earth"), found[p].get("follow_up")) for p in CORD_PROTOCOLS}
@@ -179,8 +186,10 @@ def build_cord_protocols(
     return {"schema_version": SCHEMA_VERSION, "cadence_days": cadence_days, "postures": postures}
 
 
-def build_cord_history(rows: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]], min_score: float, limit: int) -> dict[str, Any]:
+def build_cord_history(rows: Sequence[tuple[Mapping[str, Any], Mapping[str, Any] | None]], min_score: float, limit: int) -> dict[str, Any]:
     """The view `app/ui-cord-history`: per posture the `limit` newest measurements, valid or not, from (session, feature set) pairs.
+
+    A session without feature set (aborted, rejected or whose analysis failed) is an invalid entry, dated at its start.
 
     Only measurements: the calculated estimate is never stored and has no place here.
     """
@@ -191,14 +200,15 @@ def build_cord_history(rows: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]
         for session, feature_set in rows:
             if session["protocol_id"] != protocol:
                 continue
-            feature = _feature(feature_set, feature_id)
+            feature = None if feature_set is None else _feature(feature_set, feature_id)
             reason = _invalid_reason(session, feature, min_score)
+            when = instant(session["started_at"]) if feature_set is None else measured_at(feature_set)
             entries.append(
                 (
-                    measured_at(feature_set),
+                    when,
                     {
                         "session_id": session["session_id"],
-                        "measured_at": measured_at(feature_set).isoformat().replace("+00:00", "Z"),
+                        "measured_at": when.isoformat().replace("+00:00", "Z"),
                         "gravity_environment": _gravity(session, feature_set),
                         "resistance_ohm": None if feature is None else feature["value"],
                         "quality_score": None if feature is None else feature["quality"]["score"],

@@ -165,8 +165,18 @@ def _same(body: dict[str, Any], key: str, value: Any) -> None:
 _DAY = timedelta(days=1)
 # Longest history window (`to` - `from` + 1 days); a longer one is an `invalid_range` (ui-openapi.yaml).
 MAX_HISTORY_DAYS = 366
+# The engine answers 422 `invalid_request` both for a resistance outside the measured curve and for inputs the model cannot represent;
+# only the detail tells them apart (the contract has no dedicated type), so it is matched here.
+_OUT_OF_MODEL_RANGE_DETAIL = "outside the measured curve"
+
+
+def _is_out_of_model_range(exc: EngineError) -> bool:
+    return exc.status == 422 and _OUT_OF_MODEL_RANGE_DETAIL in str((exc.problem or {}).get("detail", ""))
+
 # Entries of the outbox view: the most recent ones. Older ones stay in the database; the screen only follows the current delivery.
 OUTBOX_VIEW_LIMIT = 50
+# Session states that hold a finished cord measurement attempt (the rest are in progress).
+CORD_HISTORY_STATES = ("processed", "processing_failed", "rejected")
 
 
 @dataclass(frozen=True)
@@ -541,7 +551,7 @@ def build_router(
         try:
             return estimate_view(asked, await analysis.stretch_estimate(asked.body))
         except EngineError as exc:
-            return "ESTIMATE_OUT_OF_MODEL_RANGE" if exc.status == 422 else "ESTIMATE_ENGINE_UNAVAILABLE"
+            return "ESTIMATE_OUT_OF_MODEL_RANGE" if _is_out_of_model_range(exc) else "ESTIMATE_ENGINE_UNAVAILABLE"
 
     @router.get("/crew/{astronaut_id}/views/strip")
     async def strip_view(
@@ -639,16 +649,12 @@ def build_router(
     async def cord_history_view(astronaut_id: str, limit: Annotated[int, Query(ge=1, le=100)] = 20) -> dict[str, Any]:
         _astronaut(astronaut_id)
         rows = store.session_rows(astronaut_id)
-        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
         for protocol in CORD_PROTOCOLS:
-            # Newest first and only as many feature sets as needed: the history is never loaded whole.
-            found = 0
-            for row in reversed(rows):
-                if found == limit:
-                    break
-                if row.payload["protocol_id"] == protocol and (fs := store.feature_set(row.payload["session_id"])) is not None:
-                    pairs.append((row.payload, fs))
-                    found += 1
+            # Newest first and only as many sessions as needed: the history is never loaded whole. Sessions still in progress are not
+            # measurements yet; one without feature set (rejected, or whose analysis failed) is listed as invalid.
+            cord = [row for row in reversed(rows) if row.payload["protocol_id"] == protocol and row.state in CORD_HISTORY_STATES]
+            pairs.extend((row.payload, store.feature_set(row.payload["session_id"])) for row in cord[:limit])
         return _conforming("app/ui-cord-history", build_cord_history(pairs, views.cord_min_quality_score, limit))
 
     @router.get("/crew/{astronaut_id}/houston")

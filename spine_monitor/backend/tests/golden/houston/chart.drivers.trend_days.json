@@ -1,0 +1,298 @@
+{
+ "axes": [
+  {
+   "bars": [
+    {
+     "box": [
+      0,
+      -0.31,
+      1.8,
+      0.62
+     ],
+     "edge": "#00000000",
+     "face": "#1f5fbfff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      0.69,
+      2.4,
+      0.62
+     ],
+     "edge": "#00000000",
+     "face": "#c2410cff",
+     "hatch": null,
+     "zorder": 1
+    }
+   ],
+   "center_title": "",
+   "grid_ratios": [
+    1
+   ],
+   "legend": {
+    "anchor": null,
+    "cols": 1,
+    "frame": false,
+    "handles": [
+     {
+      "edgecolor": "#c2410cff",
+      "facecolor": "#c2410cff",
+      "hatch": null,
+      "linestyle": "solid",
+      "type": "Rectangle"
+     },
+     {
+      "edgecolor": "#1f5fbfff",
+      "facecolor": "#1f5fbfff",
+      "hatch": null,
+      "linestyle": "solid",
+      "type": "Rectangle"
+     }
+    ],
+    "loc": 4,
+    "texts": [
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "|z| >= 2",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "|z| < 2",
+      "weight": "normal"
+     }
+    ]
+   },
+   "lines": [
+    {
+     "color": "#1f2933ff",
+     "label": "_child2",
+     "marker": "None",
+     "size": 6.0,
+     "style": "-",
+     "width": 0.8,
+     "x": [
+      0,
+      0
+     ],
+     "y": [
+      0,
+      1
+     ],
+     "zorder": 2
+    },
+    {
+     "color": "#5f6b7aff",
+     "label": "_child3",
+     "marker": "None",
+     "size": 6.0,
+     "style": ":",
+     "width": 0.8,
+     "x": [
+      -2,
+      -2
+     ],
+     "y": [
+      0,
+      1
+     ],
+     "zorder": 2
+    },
+    {
+     "color": "#5f6b7aff",
+     "label": "_child4",
+     "marker": "None",
+     "size": 6.0,
+     "style": ":",
+     "width": 0.8,
+     "x": [
+      2,
+      2
+     ],
+     "y": [
+      0,
+      1
+     ],
+     "zorder": 2
+    }
+   ],
+   "points": [],
+   "shared_x": [],
+   "slot": [
+    0,
+    1,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      1.86,
+      0
+     ],
+     "size": 7.5,
+     "text": "+1.8",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      2.46,
+      1
+     ],
+     "size": 7.5,
+     "text": "+2.4",
+     "va": "center",
+     "weight": "bold"
+    }
+   ],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Main drivers: deviation from own baseline (z-score)",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "z (dotted lines at +/-2)",
+    "weight": "normal"
+   },
+   "xlim": [
+    -3.0,
+    3.0
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−3",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−1",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "1",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "3",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    -3.0,
+    -2.0,
+    -1.0,
+    0.0,
+    1.0,
+    2.0,
+    3.0
+   ],
+   "ylabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "ylim": [
+    -0.391,
+    1.391
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": false,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 6.8,
+     "text": "symptoms.pain_nrs_7d_mean",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 6.8,
+     "text": "stretch.full_spine.peak_elongation_mm",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    0,
+    1
+   ]
+  }
+ ],
+ "dpi": 200,
+ "face": "#ffffffff",
+ "layout": "ConstrainedLayoutEngine",
+ "size": [
+  7.2,
+  1.74
+ ]
+}

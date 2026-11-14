@@ -1,0 +1,460 @@
+{
+ "axes": [
+  {
+   "bars": [
+    {
+     "box": [
+      0,
+      -0.3,
+      1,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      0.7,
+      1,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      1.7,
+      1,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      2.7,
+      1,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      3.7,
+      5,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#c2410cff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      4.7,
+      4,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#c2410cff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      5.7,
+      3,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#1f5fbfff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      6.7,
+      2,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#1f5fbfff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      7.7,
+      1,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0,
+      8.7,
+      0,
+      0.6
+     ],
+     "edge": "#00000000",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    }
+   ],
+   "center_title": "",
+   "grid_ratios": [
+    1
+   ],
+   "legend": null,
+   "lines": [],
+   "points": [],
+   "shared_x": [],
+   "slot": [
+    0,
+    1,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      1.08,
+      0
+     ],
+     "size": 8.0,
+     "text": "1",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      1.08,
+      1
+     ],
+     "size": 8.0,
+     "text": "1",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      1.08,
+      2
+     ],
+     "size": 8.0,
+     "text": "1",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      1.08,
+      3
+     ],
+     "size": 8.0,
+     "text": "1",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      5.08,
+      4
+     ],
+     "size": 8.0,
+     "text": "5",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      4.08,
+      5
+     ],
+     "size": 8.0,
+     "text": "4",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      3.08,
+      6
+     ],
+     "size": 8.0,
+     "text": "3",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      2.08,
+      7
+     ],
+     "size": 8.0,
+     "text": "2",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      1.08,
+      8
+     ],
+     "size": 8.0,
+     "text": "1",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#000000ff",
+     "ha": "left",
+     "pos": [
+      0.08,
+      9
+     ],
+     "size": 8.0,
+     "text": "0",
+     "va": "center",
+     "weight": "bold"
+    }
+   ],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Oswestry items, 2027-02-06 (informative)",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "Score: 0 no limitation ... 5 maximum limitation",
+    "weight": "normal"
+   },
+   "xlim": [
+    0.0,
+    5.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "1",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "3",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "4",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "5",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "ylabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "ylim": [
+    -0.78,
+    9.78
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": false,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 9",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 8",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 7",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 6",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 5",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 4",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 3",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 1",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Item 0",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ]
+  }
+ ],
+ "dpi": 200,
+ "face": "#ffffffff",
+ "layout": "ConstrainedLayoutEngine",
+ "size": [
+  7.2,
+  4.55
+ ]
+}

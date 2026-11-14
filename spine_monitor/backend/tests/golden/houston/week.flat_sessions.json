@@ -1,0 +1,154 @@
+{
+ "assessments": [],
+ "astronaut_id": "AST-01",
+ "days": [
+  {
+   "date": "2027-02-04",
+   "level": "nodata",
+   "mission_day": 83,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-05",
+   "level": "nodata",
+   "mission_day": 84,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 1,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-06",
+   "level": "nodata",
+   "mission_day": 85,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 1,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-07",
+   "level": "nodata",
+   "mission_day": 86,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-08",
+   "level": "nodata",
+   "mission_day": 87,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-09",
+   "level": "nodata",
+   "mission_day": 88,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-10",
+   "level": "nodata",
+   "mission_day": 89,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  }
+ ],
+ "end": "2027-02-10",
+ "generated_at": "2027-02-10T18:00:00Z",
+ "has_data": true,
+ "latest_assessment": null,
+ "mission_day": {
+  "end": 89,
+  "start": 83
+ },
+ "odi": null,
+ "pain": {
+  "daily_reports": 0,
+  "max": null,
+  "max_worst_24h": null,
+  "mean": null
+ },
+ "schema_version": "1.0.0",
+ "sessions": [
+  {
+   "date": "2027-02-05",
+   "elongation_mm": 7.0,
+   "emg_pct_mvc": null,
+   "end_reason": "completed",
+   "pain_stop": false,
+   "pain_stop_rep": null,
+   "planned_reps": 0,
+   "protocol_id": "lat_pulldown_standing_v1",
+   "rep_duration_s": null,
+   "reps": 4,
+   "rom_deg": 7.0,
+   "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+   "session_type": "exercise",
+   "started_at": "2027-02-05T10:00:00Z",
+   "state": "processed"
+  },
+  {
+   "date": "2027-02-06",
+   "elongation_mm": 7.0,
+   "emg_pct_mvc": null,
+   "end_reason": "completed",
+   "pain_stop": false,
+   "pain_stop_rep": null,
+   "planned_reps": 60,
+   "protocol_id": "lat_pulldown_standing_v1",
+   "rep_duration_s": null,
+   "reps": 4,
+   "rom_deg": 0.0,
+   "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02",
+   "session_type": "exercise",
+   "started_at": "2027-02-06T10:00:00Z",
+   "state": "processed"
+  }
+ ],
+ "start": "2027-02-04",
+ "symptoms": {
+  "other_symptoms": [],
+  "red_flags": []
+ }
+}

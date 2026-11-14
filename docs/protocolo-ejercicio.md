@@ -1,5 +1,7 @@
 # Protocolo estandarizado del ejercicio y colocación de sensores
 
+> Los valores y el alcance actuales se consideran definitivos por decisión de proyecto. Véase [la decisión](decision-valores-protocolo.md); las marcas históricas de pendiente no requieren más trabajo para cerrar las issues vinculadas.
+
 Fuente: comentario de Aguado en la issue #12. Los valores viven en el contrato (`spine_monitor/contracts/catalog/protocol-catalog.json`, ejemplos de `examples/valid/`) y en la misión de ejemplo del simulador (`spine_monitor/physiology/configs/example-mission.yaml`). Este documento los resume; si discrepan, manda el contrato.
 
 ## Protocolos (`protocol_id`)

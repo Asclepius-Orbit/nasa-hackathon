@@ -1,0 +1,7 @@
+# Decisión sobre los valores y el alcance actuales
+
+El 14 de noviembre de 2026 el proyecto decidió adoptar como definitivos los valores, reglas y comportamiento existentes, cerrando el trabajo de las issues #38, #46, #53 y #130 con el alcance actual. Esta es una decisión de proyecto; no afirma nuevas mediciones ni una validación clínica por Aguado o Polfer. Las referencias históricas a valores provisionales o pendientes deben interpretarse a la luz de esta decisión.
+
+El motor conserva las direcciones y los rangos disponibles en el catálogo, los umbrales del informe y las reglas y cortes operativos actuales. Los estados y fuentes históricos del catálogo y de la política describen su procedencia, no una validación adicional. La recuperación del cordón usa por defecto 120 s y una fracción de 0,1; una calibración puede indicar otra espera. La captura MVC del gateway dura 5 s por defecto y usa una ventana RMS de 250 ms. La misión simulada declara tres intentos; el gateway no ejecuta automáticamente tres capturas.
+
+El cierre de alcance no añade funcionalidades. La integración de telemetría y ventanas conserva las capacidades y limitaciones documentadas en `spine_monitor/docs/measured-window-integration.md`: no hay planificación continua de ventanas en vivo ni adquisición de una referencia independiente de orientación IMU en el gateway. La estimación de longitud sigue siendo calculada, no una medición ni una validación clínica.

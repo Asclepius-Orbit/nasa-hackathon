@@ -81,16 +81,19 @@ export interface MainWindowOptions {
   policy: AppUrlPolicy;
   /** Dev builds only (`import.meta.env.DEV`). */
   devTools: boolean;
+  /** Absolute path of the window/taskbar icon (bundled by Vite via `?asset`, so it resolves in dev and inside the asar). */
+  icon: string;
 }
 
 export function createMainWindow<W extends BrowserWindowLike>(
   BrowserWindow: new (options: BrowserWindowConstructorOptions) => W,
-  { preloadPath, policy, devTools }: MainWindowOptions,
+  { preloadPath, policy, devTools, icon }: MainWindowOptions,
 ): W {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     show: false,
+    icon,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,

@@ -41,6 +41,7 @@ import { createRepsStreamClient } from './views/reps-stream';
 import { createViewsClient } from './views/views-client';
 import { createViewsService } from './views/views-service';
 import { createWriteClient } from './views/write-client';
+import icon from '../../build/icon.png?asset';
 import { createMainWindow, hardenSession, installWebContentsGuard } from './window';
 
 const devServerUrl = import.meta.env.DEV ? process.env['ELECTRON_RENDERER_URL'] : undefined;
@@ -59,7 +60,7 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow: BrowserWindow | null = null;
 
   const openWindow = (): void => {
-    mainWindow = createMainWindow(BrowserWindow, { preloadPath, policy, devTools: import.meta.env.DEV });
+    mainWindow = createMainWindow(BrowserWindow, { preloadPath, policy, devTools: import.meta.env.DEV, icon });
     mainWindow.on('closed', () => {
       mainWindow = null;
     });

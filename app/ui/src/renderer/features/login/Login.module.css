@@ -1,5 +1,6 @@
 .login { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; background: var(--ink); color: #E8ECEE; }
 .side { padding: 56px 56px 40px; display: flex; flex-direction: column; gap: 18px; border-right: 1px solid #2E3D48; }
+.logo { width: 72px; height: 72px; display: block; }
 .mark { font-size: 0.9375rem; color: #9FB0BA; }
 .side h1 { font-size: 2.5rem; color: #fff; margin: 0; }
 .side p { margin: 0; color: #C4D0D6; max-width: 40ch; }

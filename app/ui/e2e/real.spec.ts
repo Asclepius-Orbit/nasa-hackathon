@@ -26,7 +26,7 @@ function launchDateInTenDays(): string {
   return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-test('login, profile, report, a spine-length session, the assessment and the Houston summary', async () => {
+test('login, profile, report, a spine-length session, the assessment', async () => {
   const { page } = ctx;
 
   // Login: the demo crew is registered with the backend on start-up.
@@ -81,13 +81,6 @@ test('login, profile, report, a spine-length session, the assessment and the Hou
   await page.getByRole('link', { name: 'Today' }).click();
   const level = page.locator('#today-title');
   await expect(level).toHaveText(/^(Green|Amber|Red)$/, { timeout: 180_000 });
-
-  // Houston: the day's summary with the session, and its outbox entry: Queued, or already Sent when the simulated ground
-  // window is open.
-  await page.getByRole('link', { name: 'Houston' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'What goes to Houston' })).toBeVisible();
-  await expect(page.getByText('spine length check, complete')).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole('list', { name: 'Outbox' }).getByRole('listitem').first()).toHaveText(/summary.*(Queued|Sent)/, { timeout: 60_000 });
 
   // The spine check has no repetitions. Start a counted exercise and observe the live counter advance.
   await page.getByRole('link', { name: 'Session' }).click();

@@ -155,9 +155,10 @@ describe('createMainWindow', () => {
   }
 
   it('creates a sandboxed, isolated window with the preload, loads the app URL and shows when ready', () => {
-    const win = createMainWindow(FakeBrowserWindow, { preloadPath: '/app/out/preload/index.cjs', policy, devTools: false });
+    const win = createMainWindow(FakeBrowserWindow, { preloadPath: '/app/out/preload/index.cjs', policy, devTools: false, icon: '/app/out/main/icon.png' });
     expect(win).toBe(FakeBrowserWindow.last);
     expect(win.options.show).toBe(false);
+    expect(win.options.icon).toBe('/app/out/main/icon.png');
     expect(win.options.webPreferences).toEqual({
       preload: '/app/out/preload/index.cjs',
       contextIsolation: true,
@@ -178,7 +179,7 @@ describe('createMainWindow', () => {
   });
 
   it('enables devtools only when asked (dev builds)', () => {
-    const win = createMainWindow(FakeBrowserWindow, { preloadPath: '/p.cjs', policy, devTools: true });
+    const win = createMainWindow(FakeBrowserWindow, { preloadPath: '/p.cjs', policy, devTools: true, icon: '/i.png' });
     expect(win.options.webPreferences?.devTools).toBe(true);
   });
 });

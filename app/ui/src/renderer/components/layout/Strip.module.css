@@ -1,4 +1,6 @@
 .strip { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--ink); color: #E8ECEE; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.125rem; white-space: nowrap; }
+.logo { width: 24px; height: 24px; object-fit: contain; flex: none; }
 .who { font-weight: 800; font-size: 1.25rem; white-space: nowrap; }
 .fact { display: flex; flex-direction: column; line-height: 1.15; }
 .fact span:first-child { white-space: nowrap; font-size: .8125rem; color: #9FB0BA; }

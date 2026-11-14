@@ -1,0 +1,5 @@
+.root { position: relative; display: inline-block; vertical-align: middle; margin-left: 8px; font-weight: 400; }
+.trigger { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid var(--action); background: #fff; color: var(--action); font: italic 700 1rem/1 Georgia, serif; display: inline-grid; place-items: center; cursor: pointer; }
+.trigger:hover, .trigger[aria-expanded="true"] { background: var(--action); color: #fff; }
+.bubble { position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 12px 14px; background: var(--ink); color: #fff; border-radius: var(--radius-l); font-size: 1rem; line-height: 1.4; font-style: normal; text-align: left; box-shadow: 0 6px 18px rgba(27, 39, 48, .3); }
+.bubble::before { content: ""; position: absolute; left: -8px; right: -8px; top: -10px; height: 10px; }

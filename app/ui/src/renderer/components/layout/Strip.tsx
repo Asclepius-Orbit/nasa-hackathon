@@ -8,7 +8,8 @@ import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { useUrgent } from '../../features/urgent/UrgentContext';
 import { gmtStamp } from '../../features/today/gmt';
 import { useSettings } from '../../settings/SettingsProvider';
-import { groundLinkValue, harnessValue, lockButton, noData, noMonitor, signOutButton, strip, urgentButton } from '../../strings/common';
+import logo from '../../assets/logo-transparent.png';
+import { appName, groundLinkValue, harnessValue, lockButton, noData, noMonitor, signOutButton, strip, urgentButton } from '../../strings/common';
 import { phaseText } from '../../strings/codes';
 import { BatteryIcon, GroundLinkIcon } from './icons';
 import { isNoMonitor, useSessionRecheck } from './NoMonitor';
@@ -59,6 +60,10 @@ export function Strip(): React.JSX.Element {
 
   return (
     <header className={styles.strip}>
+      <span className={styles.brand}>
+        <img src={logo} alt={`${appName} logo`} className={styles.logo} />
+        <span>{appName}</span>
+      </span>
       <span className={styles.who}>{name}</span>
       {data !== null && (
         <>

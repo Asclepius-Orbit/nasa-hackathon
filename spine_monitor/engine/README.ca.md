@@ -39,6 +39,8 @@ curl -s -X POST http://127.0.0.1:8001/assess \
 
 Els exemples de `contracts/examples/valid/engine/` són peticions vàlides de cada endpoint, i `contracts/examples/valid/domain/` té respostes vàlides (`assessment.amber.json`, `baseline.json`, `feature-set.*.json`). Un mock només ha de tornar-les per la ruta que toqui i respondre els errors amb `engine/error.json`.
 
+`POST /stretch-estimate` accepta un objecte opcional `prediction`: postura basal terrestre i actual de la mateixa persona (ambdues `straight` o `max_flexion`), `elapsed_days`, `assumed_daily_change_mm` com a hipòtesi explícita i `sensor_uncertainty_ohm`. La referència predita suma al tram basal el canvi diari lineal suposat; la desviació resta aquesta referència del tram estimat. La incertesa és el canvi més gran en aplicar la incertesa de resistència a la mesura actual; l'interval ha de quedar dins la corba mesurada. `standing_height_mm`, `sitting_height_mm` i `exercise_phase` (`pre`, `post`, `unrelated`) són context, no longituds del cordó ni correccions. És una predicció experimental del motor, no una corba NASA validada ni una avaluació clínica; exclou la incertesa basal i del model.
+
 ## Baseline personal i desviacions
 
 `POST /baseline` construeix una entrada per feature + protocol + entorn de gravetat (mitjana, desviació típica, mediana i MAD) a partir de les sessions de referència, normalment pre-vol en 1 g. Una feature vista en una sola sessió també té entrada (`n` diu quant fiar-se'n). Qui crida desa la baseline i l'envia a cada `/assess`.

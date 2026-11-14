@@ -2994,7 +2994,7 @@ export interface SimulateResponse {
   };
 }
 /**
- * Experimental estimate using the astronaut's straight-back Earth reference and the current cord resistance. Both must be inside the experimental model's range; the measured reference length must be the distance between the back contacts. The model is not clinically validated.
+ * Experimental estimate using the astronaut's Earth reference and current cord resistance. With prediction, the reference and current measurement must use the same posture. Both resistances must be inside the experimental model's range; the measured reference length must be the distance between the back contacts. The model is not clinically validated.
  */
 export interface StretchEstimateRequest {
   /**
@@ -3004,6 +3004,20 @@ export interface StretchEstimateRequest {
   baseline_resistance_ohm: number;
   current_resistance_ohm: number;
   reference_length_mm: number;
+  /**
+   * Optional experimental temporal reference. The baseline is the same individual's Earth reference in the same posture. Daily change is an explicit assumption, not a NASA curve. Heights are context, not cord lengths.
+   */
+  prediction?: {
+    baseline_posture: "straight" | "max_flexion";
+    current_posture: "straight" | "max_flexion";
+    baseline_gravity: "earth_1g" | "microgravity";
+    elapsed_days: number;
+    assumed_daily_change_mm: number;
+    sensor_uncertainty_ohm: number;
+    standing_height_mm?: number;
+    sitting_height_mm?: number;
+    exercise_phase?: "pre" | "post" | "unrelated";
+  };
 }
 /**
  * Experimental estimate; this is not a measured length or a validated clinical result.
@@ -3016,6 +3030,21 @@ export interface StretchEstimateResponse {
   estimated_length_mm: number;
   elongation_mm: number;
   model: "experimental_uniform_resistance_v1";
+  /**
+   * Experimental engine prediction, not diagnosis. The reference is the personal Earth cord length plus an assumed linear daily change; uncertainty covers the current resistance only.
+   */
+  prediction?: {
+    reference_length_mm: number;
+    deviation_mm: number;
+    uncertainty_mm: number;
+    assumed_daily_change_mm: number;
+    elapsed_days: number;
+    sensor_uncertainty_ohm: number;
+    baseline_posture: "straight" | "max_flexion";
+    standing_height_mm?: number;
+    sitting_height_mm?: number;
+    exercise_phase?: "pre" | "post" | "unrelated";
+  };
 }
 /**
  * Output of the MCP tool compare_periods. The MCP server calls GET /crew/{astronaut_id}/history twice (period A, period B) and computes this comparison; there is no HTTP endpoint for it. Every delta is B minus A (positive means B is higher than A; whether higher is better or worse depends on the feature). Absence is never good news: a missing value is null, never omitted and never 0. Check warnings before interpreting the numbers.

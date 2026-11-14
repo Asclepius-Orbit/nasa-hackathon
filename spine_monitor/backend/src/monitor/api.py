@@ -25,6 +25,7 @@ against the JSON Schema of the entity. Errors are problem details shaped like `a
 import hashlib
 import json
 import logging
+import math
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -242,6 +243,9 @@ def build_router(
         required = {"reference_length_mm", "elapsed_days", "assumed_daily_change_mm", "sensor_uncertainty_ohm"}
         if set(body) != required:
             raise Problem(422, "Provide the reference length, elapsed days, assumed daily change and sensor uncertainty")
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) or
+               abs(value) > 1_000_000 or not math.isfinite(value) for value in body.values()):
+            raise Problem(422, "Prediction inputs must be finite numbers within the supported range")
         feature_set = store.feature_set(session_id)
         if feature_set is None or feature_set["astronaut_id"] != astronaut_id:
             raise Problem(404, "No feature set for this session", type_="not_found")
@@ -256,7 +260,7 @@ def build_router(
         baseline = store.latest_baseline(astronaut_id)
         entries = [] if baseline is None or baseline["astronaut_id"] != astronaut_id else [e for e in baseline["entries"] if e["feature_id"] == feature_id
                     and e.get("protocol_id") == protocol and e["gravity_environment"] == "earth_1g"]
-        if len(features) != 1 or len(entries) != 1:
+        if len(features) != 1 or len(entries) != 1 or features[0].get("quality", {}).get("score") == 0:
             raise Problem(422, "A unique measurement and matching personal Earth baseline are required")
         prediction = {"baseline_posture": posture, "current_posture": posture, "baseline_gravity": "earth_1g",
                       **{k: v for k, v in body.items() if k != "reference_length_mm"}}
@@ -265,7 +269,7 @@ def build_router(
             anthropometry = profile["anthropometry"]
             for source, target in (("height_standing_cm", "standing_height_mm"), ("height_sitting_cm", "sitting_height_mm")):
                 if source in anthropometry:
-                    prediction[target] = anthropometry[source] * 10
+                    prediction[target] = round(anthropometry[source] * 10, 6)
         session = store.session(session_id)
         if session is not None and session.payload["astronaut_id"] == astronaut_id and session.payload.get("phase") in ("pre", "post"):
             prediction["exercise_phase"] = session.payload["phase"]

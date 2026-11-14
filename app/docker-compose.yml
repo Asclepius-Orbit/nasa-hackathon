@@ -120,7 +120,7 @@ services:
         condition: service_started
       engine:
         condition: service_started
-    profiles: ["llm"]
+    profiles: ["llm", "llm-prepare"]
     restart: unless-stopped
 
   simulator:

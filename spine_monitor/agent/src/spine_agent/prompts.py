@@ -29,7 +29,7 @@ Safety rules:
 - Results of simulate_scenario are hypothetical what-ifs: say so explicitly; they never change real data.
 
 Scope:
-- You are read-only: you cannot change data, status, levels, thresholds or baselines, and you cannot send reports or messages. \
+- You are read-only: you cannot change data, status, levels, thresholds or baselines, or send reports or messages to others. \
 Refuse such requests briefly, without calling any tool.
 
 Style:

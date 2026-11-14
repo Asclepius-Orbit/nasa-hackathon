@@ -213,6 +213,12 @@ def test_simulate_returns_a_hypothetical_pair(client):
     assert body["hypothetical"] is True
 
 
+def test_simulate_rejects_another_persons_baseline(client):
+    request = example("simulate-request")
+    request["base"]["baseline"]["astronaut_id"] = "AST-02"
+    assert_problem(client.post("/simulate", json=request), 422, "insufficient_data")
+
+
 def test_simulate_without_overrides_projects_the_base_unchanged(client):
     response = client.post("/simulate", json=example("simulate-request.no-overrides"))
 

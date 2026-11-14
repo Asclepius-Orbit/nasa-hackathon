@@ -101,9 +101,6 @@ class Analysis:
 
     # --- session ended ------------------------------------------------------------------------
 
-    async def stretch_estimate(self, request: dict[str, Any]) -> dict[str, Any]:
-        return await self._engine.stretch_estimate(request)
-
     async def process_session(self, session_id: str) -> None:
         """features -> (baseline if pre-flight) -> assess. Only once per session (state `ended`)."""
         if not self._store.transition_session(session_id, ("ended",), "processing"):
@@ -186,6 +183,10 @@ class Analysis:
         self._store.put_baseline(baseline)
         self.request_assess(astronaut_id)
         return baseline
+
+    async def stretch_estimate(self, request: dict[str, Any]) -> dict[str, Any]:
+        """The engine's calculated cord length estimate; outside the assessment (it is neither stored nor sent to /assess)."""
+        return await self._engine.stretch_estimate(request)
 
     # --- assessment ------------------------------------------------------------------------------
 

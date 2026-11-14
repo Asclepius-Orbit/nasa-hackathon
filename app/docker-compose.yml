@@ -228,7 +228,8 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 10
-    profiles: ["llm"]
+    # Also in "llm-prepare": agent and ollama-pull depend on it, so `--profile llm-prepare` alone must resolve it.
+    profiles: ["llm", "llm-prepare"]
     restart: unless-stopped
 
   ollama-pull:

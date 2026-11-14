@@ -71,4 +71,8 @@ Dependencias nuevas: `pint` (unidades, en `physiology`), `pydantic-evals` (dev, 
 
 ## Licencia
 
-Todos los derechos reservados hasta el **15-11-2026 a las 16:00 (Europe/Madrid)**; a partir de ese momento el repositorio se licencia bajo la GNU General Public License v3. Los términos están en [`LICENSE`](LICENSE). El material de terceros, como todo lo que hay en `.claude/skills/`, mantiene su propia licencia y no está cubierto (ver [`.claude/skills/THIRD_PARTY.md`](.claude/skills/THIRD_PARTY.md)).
+Todos los derechos reservados hasta el **15-11-2026 a las 11:59 (Europe/Madrid)**; a partir de ese momento el repositorio se licencia bajo la GNU General Public License v3. Los términos están en [`LICENSE`](LICENSE). El material de terceros, como todo lo que hay en `.claude/skills/`, mantiene su propia licencia y no está cubierto (ver [`.claude/skills/THIRD_PARTY.md`](.claude/skills/THIRD_PARTY.md)).
+
+## Fuentes y recursos
+
+Consulta el [inventario de recursos del proyecto](docs/project-resources.md) para los datos de la NASA, referencias científicas, hardware, software, licencias y declaración de uso de IA.

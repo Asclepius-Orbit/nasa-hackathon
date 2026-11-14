@@ -4,7 +4,7 @@
 
 ## Description
 
-MCP server (stdio) that exposes 7 read-only and simulation tools to the local LLM agent. It never writes data, never touches the app database and never diagnoses. By default (`--dataset http`) it reads from the real app read API and simulates through the real engine; `--dataset demo` and `--dataset examples` run on generated data and on the contract examples (`spine_monitor/contracts/examples/valid/`). In every case the data comes in behind three Protocols (`AppReader`, `Simulator` and `AssessBaseSource` in `ports.py`), so the source can be swapped.
+MCP server (stdio) that exposes 8 read-only and simulation tools to the local LLM agent. It never writes data, never touches the app database and never diagnoses. By default (`--dataset http`) it reads from the real app read API and simulates through the real engine; `--dataset demo` and `--dataset examples` run on generated data and on the contract examples (`spine_monitor/contracts/examples/valid/`). In every case the data comes in behind three Protocols (`AppReader`, `Simulator` and `AssessBaseSource` in `ports.py`), so the source can be swapped.
 
 ## Run
 
@@ -92,3 +92,8 @@ The simulator applies the same mappings to engine errors, identifying the engine
 - If two assessments share `as_of`, `latest` is the worst level.
 - Missing data is `null`, never 0.
 - `warnings` flags empty periods (`period_a_empty`, `period_b_empty`) and truncated periods (`period_a_truncated`, `period_b_truncated`).
+
+
+### `search_evidence`
+
+Searches the bundled offline evidence index; returns source titles, URLs, page locators and limitations. No match means insufficient evidence. `SPINE_EVIDENCE_DIR` overrides the directory containing `corpus.json` and `index.json`; missing or stale resources return a tool error. Rebuild after editing the corpus from `spine_monitor/`: `uv run python -c "from pathlib import Path; from spine_mcp_server.evidence import build_index; p=Path('mcp_server/src/spine_mcp_server/evidence_data'); build_index(p/'corpus.json', p/'index.json')"`.

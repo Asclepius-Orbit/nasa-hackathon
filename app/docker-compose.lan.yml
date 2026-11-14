@@ -1,0 +1,15 @@
+# Optional LAN access to the broker over TLS (port 8883), for the real wearable gateway on another machine:
+#
+#   docker compose -f app/docker-compose.yml -f app/docker-compose.lan.yml up -d mosquitto
+#
+# SPINE_MQTT_TLS_DIR: folder with ca.crt, server.crt and server.key (never in the repo; see the backend README).
+# SPINE_MQTT_LAN_ADDRESS: host address the TLS port is published on (the LAN interface, e.g. 192.168.1.20).
+# Port 1883 stays plain and on 127.0.0.1; the LAN only sees 8883, with the same users and ACL.
+services:
+  mosquitto:
+    environment:
+      SPINE_MQTT_CONFIG: /mosquitto/config/mosquitto-lan.conf
+    ports:
+      - "${SPINE_MQTT_LAN_ADDRESS:?set SPINE_MQTT_LAN_ADDRESS to the LAN address to listen on}:8883:8883"
+    volumes:
+      - "${SPINE_MQTT_TLS_DIR:?set SPINE_MQTT_TLS_DIR to the folder with ca.crt, server.crt and server.key}:/mosquitto-certs:ro"

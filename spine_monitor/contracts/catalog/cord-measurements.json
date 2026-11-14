@@ -1,0 +1,16 @@
+{
+  "$schema": "./cord-measurements.schema.json",
+  "version": "0.1.0",
+  "bench": {
+    "contact_spacing_mm": 100,
+    "measurements": [
+      { "whole_cord_length_mm": 1000, "resistance_ohm": [630, 780, 795] },
+      { "whole_cord_length_mm": 1100, "resistance_ohm": [1020, 1165, 1125] },
+      { "whole_cord_length_mm": 1200, "resistance_ohm": [1110, 1255, 1260] },
+      { "whole_cord_length_mm": 1300, "resistance_ohm": [1270, 1320, 1300] },
+      { "whole_cord_length_mm": 1400, "resistance_ohm": [1350, 1355, 1350] }
+    ]
+  },
+  "back": { "contact_spacing_mm": 500, "straight_ohm": 4500, "max_flexion_ohm": 5650 },
+  "notes": "Reported by Aguado and Polfer via Uri. The bench lengths refer to the whole stretched cord, while resistance is measured across contacts 100 mm apart. Back measurements use contacts 500 mm apart. An approximate 500 mm resistance may be estimated as five times the 100 mm resistance, assuming uniform resistance along the cord and negligible contact resistance. That factor is a modelling assumption, not a measurement or a validated calibration (#106)."
+}

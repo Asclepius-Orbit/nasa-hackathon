@@ -1,0 +1,19 @@
+{
+  "$schema": "./calibration-defaults.schema.json",
+  "defaults_version": "0.1.0",
+  "stretch": {
+    "rest_length_mm": 650,
+    "rest_resistance_ohm": 6012,
+    "curve": [
+      { "resistance_ohm": 5400, "length_mm": 585 },
+      { "resistance_ohm": 6012, "length_mm": 650 },
+      { "resistance_ohm": 6790, "length_mm": 731 },
+      { "resistance_ohm": 7560, "length_mm": 812 }
+    ],
+    "notes": "PENDIENTE medición Aguado (#106): the curve and the 650 mm rest length (cord C3->S1) are unmeasured placeholders; the simulator mission uses the same values and a test keeps them equal."
+  },
+  "emg_mvc": {
+    "window_ms": 250,
+    "notes": "PENDIENTE medición Aguado (#106): the 250 ms sliding RMS window is the contract example, not a measured choice."
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "recorded": 0,
+  "required": 3,
+  "reference_version": null,
+  "built_from_sessions": 0,
+  "sessions": [
+    { "session_id": null, "protocol_id": "lat_pulldown_standing_v1", "status": "planned", "offset_days": -30, "date": null },
+    { "session_id": null, "protocol_id": "lat_pulldown_standing_v1", "status": "planned", "offset_days": -23, "date": null },
+    { "session_id": null, "protocol_id": "lat_pulldown_standing_v1", "status": "planned", "offset_days": -16, "date": null }
+  ]
+}

@@ -1,0 +1,414 @@
+{
+ "axes": [
+  {
+   "bars": [],
+   "center_title": "",
+   "grid_ratios": [
+    1
+   ],
+   "legend": {
+    "anchor": [
+     738.0,
+     -30.888,
+     0.0,
+     0.0
+    ],
+    "cols": 5,
+    "frame": false,
+    "handles": [
+     {
+      "color": "#1f2933ff",
+      "linestyle": "-",
+      "marker": "o",
+      "markerfacecolor": "#ffffffff",
+      "markersize": 6.0,
+      "type": "Line2D"
+     },
+     {
+      "color": "#0f766eff",
+      "linestyle": "--",
+      "marker": "D",
+      "markerfacecolor": "#0f766eff",
+      "markersize": 3.5,
+      "type": "Line2D"
+     },
+     {
+      "edgecolor": "#00000000",
+      "facecolor": "#2f855aff",
+      "hatch": null,
+      "linestyle": "solid",
+      "type": "Rectangle"
+     },
+     {
+      "edgecolor": "#00000000",
+      "facecolor": "#d69e2eff",
+      "hatch": null,
+      "linestyle": "solid",
+      "type": "Rectangle"
+     },
+     {
+      "edgecolor": "#00000000",
+      "facecolor": "#c53030ff",
+      "hatch": null,
+      "linestyle": "solid",
+      "type": "Rectangle"
+     }
+    ],
+    "loc": 9,
+    "texts": [
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "Risk score (point colour = level)",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "Confidence",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "Green",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "Amber",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.0,
+      "text": "Red",
+      "weight": "normal"
+     }
+    ]
+   },
+   "lines": [
+    {
+     "color": "#1f2933ff",
+     "label": "_child0",
+     "marker": "None",
+     "size": 6.0,
+     "style": "-",
+     "width": 1.2,
+     "x": [
+      0,
+      1
+     ],
+     "y": [
+      0.9,
+      0.4
+     ],
+     "zorder": 2
+    },
+    {
+     "color": "#0f766eff",
+     "label": "_child2",
+     "marker": "D",
+     "size": 3.5,
+     "style": "--",
+     "width": 1.2,
+     "x": [
+      0
+     ],
+     "y": [
+      0.5
+     ],
+     "zorder": 2
+    }
+   ],
+   "points": [
+    {
+     "edge": [
+      "#1f2933ff"
+     ],
+     "face": [
+      "#c53030ff",
+      "#d69e2eff"
+     ],
+     "label": "_child1",
+     "marker": [
+      [
+       0.0,
+       -0.5
+      ],
+      [
+       0.132602,
+       -0.5
+      ],
+      [
+       0.25979,
+       -0.447317
+      ],
+      [
+       0.353553,
+       -0.353553
+      ],
+      [
+       0.447317,
+       -0.25979
+      ],
+      [
+       0.5,
+       -0.132602
+      ],
+      [
+       0.5,
+       0.0
+      ],
+      [
+       0.5,
+       0.132602
+      ],
+      [
+       0.447317,
+       0.25979
+      ],
+      [
+       0.353553,
+       0.353553
+      ],
+      [
+       0.25979,
+       0.447317
+      ],
+      [
+       0.132602,
+       0.5
+      ],
+      [
+       0.0,
+       0.5
+      ],
+      [
+       -0.132602,
+       0.5
+      ],
+      [
+       -0.25979,
+       0.447317
+      ],
+      [
+       -0.353553,
+       0.353553
+      ],
+      [
+       -0.447317,
+       0.25979
+      ],
+      [
+       -0.5,
+       0.132602
+      ],
+      [
+       -0.5,
+       0.0
+      ],
+      [
+       -0.5,
+       -0.132602
+      ],
+      [
+       -0.447317,
+       -0.25979
+      ],
+      [
+       -0.353553,
+       -0.353553
+      ],
+      [
+       -0.25979,
+       -0.447317
+      ],
+      [
+       -0.132602,
+       -0.5
+      ],
+      [
+       0.0,
+       -0.5
+      ],
+      [
+       0.0,
+       -0.5
+      ]
+     ],
+     "sizes": [
+      60
+     ],
+     "width": [
+      0.6
+     ],
+     "xy": [
+      [
+       0.0,
+       0.9
+      ],
+      [
+       1.0,
+       0.4
+      ]
+     ],
+     "zorder": 3
+    }
+   ],
+   "shared_x": [],
+   "slot": [
+    0,
+    1,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Engine risk score and confidence per assessment",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.05,
+    1.05
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "02-04\n09:00",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "02-10\n09:00",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    0,
+    1
+   ],
+   "ylabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "0 - 1",
+    "weight": "normal"
+   },
+   "ylim": [
+    -0.05,
+    1.05
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−0.2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0.0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0.2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0.4",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0.6",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0.8",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "1.0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "1.2",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    -0.2,
+    0.0,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.0,
+    1.2
+   ]
+  }
+ ],
+ "dpi": 200,
+ "face": "#ffffffff",
+ "layout": "ConstrainedLayoutEngine",
+ "size": [
+  7.2,
+  2.6
+ ]
+}

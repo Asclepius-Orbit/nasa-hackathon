@@ -1,0 +1,105 @@
+import { weakStreamText } from './codes';
+
+/** Copy shared by every screen (strip, navigation, banner). Feature copy lives in one file per feature next to this one. */
+
+export type DisplayLevel = 'green' | 'amber' | 'red' | 'nodata';
+
+export const appName = 'Asclepius Orbit';
+
+export const strip = {
+  missionDay: 'Mission day',
+  gmt: 'GMT',
+  phase: 'Phase',
+  groundLink: 'Ground link',
+  harness: (id: string): string => `Harness ${id}`,
+  harnessNone: 'Harness',
+} as const;
+
+export const urgentButton = 'Urgent symptom';
+
+export const lockButton = 'Lock';
+export const signOutButton = 'Sign out';
+
+export const nav = {
+  label: 'Sections',
+  today: 'Today',
+  report: 'Report',
+  session: 'Session',
+  history: 'History',
+  ask: 'Ask',
+  houston: 'Houston',
+  settings: 'Settings',
+} as const;
+
+export const mockMenu = {
+  title: 'Mock screens',
+  firstDay: 'First day',
+  baseline: 'Preflight reference',
+  oswestry: 'Weekly Oswestry',
+  stopped: 'After Stop: pain',
+  houston: 'Report to Houston',
+  login: 'Login',
+  lock: 'Lock screen',
+  offline: 'App offline',
+} as const;
+
+export const banner = {
+  title: 'The app cannot reach its data service.',
+  body: 'What you enter is kept on this tablet and saved when it reconnects. Urgent symptom still works.',
+  lastContact: (min: number): string => `Last contact ${String(min)} min ago (simulated link).`,
+  retry: 'Try again',
+} as const;
+
+export const units = { mm: 'mm', in: 'inches' } as const;
+
+export const levels: Record<DisplayLevel, string> = {
+  green: 'Green',
+  amber: 'Amber',
+  red: 'Red',
+  nodata: 'No data',
+};
+
+export const notPairedYet = 'Not paired yet';
+
+export const levelLabel = (level: DisplayLevel): string => levels[level];
+export const minutes = (n: number): string => `${String(n)} min`;
+export const triesLeft = (n: number): string => `${String(n)} ${n === 1 ? 'try' : 'tries'} left.`;
+export const dueLabel = (n: number): string => `${String(n)} due`;
+
+export const noData = 'No data';
+export const sessionCheck = 'Checking your session.';
+export const notKnown = 'Not known';
+/** A screen whose backend does not exist yet (issues #61 to #63): not an outage, so it never says the monitor did not answer. */
+export const notBuilt = {
+  title: 'Not available yet',
+  body: 'This screen is not connected to the monitor yet.',
+} as const;
+export const noMonitor = {
+  title: 'No connection to the monitor',
+  body: 'The on-board monitor did not answer, so nothing is shown here rather than something out of date. Try again in a moment.',
+} as const;
+
+/** The only ground link that exists today is simulated; the strip does not carry the transport yet, so every known state says so. */
+const SIMULATED_LINK = ' (simulated)';
+
+export function groundLinkValue(link: { state: 'up' } | { state: 'down'; backInMin: number | null } | null): string {
+  if (link === null) return notKnown;
+  if (link.state === 'up') return `Up${SIMULATED_LINK}`;
+  return `${link.backInMin === null ? 'Down' : `Down, back in ${minutes(link.backInMin)}`}${SIMULATED_LINK}`;
+}
+
+/**
+ * `lastSeen` is the GMT time of the harness's last status, already written (`09:58` or `3 Nov 09:58`). A stale harness is
+ * shown only as last seen: its battery, degraded flag and streams are old readings and must not read as current.
+ */
+export function harnessValue(
+  harness: { batteryPct: number | null; degraded: boolean; stale: boolean; weakStreams: readonly { stream: string; state: string }[] } | null,
+  lastSeen: string,
+): string {
+  if (harness === null) return notPairedYet;
+  if (harness.stale) return `Last seen ${lastSeen} GMT`;
+  const parts = [harness.batteryPct === null ? 'Battery not reported' : `${String(harness.batteryPct)} %`];
+  if (harness.degraded) parts.push('degraded');
+  parts.push(...harness.weakStreams.map(weakStreamText));
+  return parts.join(', ');
+}

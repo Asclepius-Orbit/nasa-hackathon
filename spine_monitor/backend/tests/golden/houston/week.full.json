@@ -1,0 +1,282 @@
+{
+ "assessments": [
+  {
+   "as_of": "2027-02-05T07:00:00Z",
+   "confidence": 0.74,
+   "level": "green",
+   "risk_score": 0.62
+  },
+  {
+   "as_of": "2027-02-05T09:00:00Z",
+   "confidence": 0.74,
+   "level": "amber",
+   "risk_score": 0.62
+  },
+  {
+   "as_of": "2027-02-09T09:00:00Z",
+   "confidence": 0.74,
+   "level": "red",
+   "risk_score": 0.62
+  }
+ ],
+ "astronaut_id": "AST-01",
+ "days": [
+  {
+   "date": "2027-02-04",
+   "level": "nodata",
+   "mission_day": 83,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-05",
+   "level": "amber",
+   "mission_day": 84,
+   "other_symptoms": [],
+   "pain_nrs": 3,
+   "pain_nrs_worst_24h": 4,
+   "red_flags": [],
+   "reports": 1,
+   "sessions": 1,
+   "sleep_hours": 5.5,
+   "stiffness_nrs": 6
+  },
+  {
+   "date": "2027-02-06",
+   "level": "nodata",
+   "mission_day": 85,
+   "other_symptoms": [],
+   "pain_nrs": 5,
+   "pain_nrs_worst_24h": 6,
+   "red_flags": [
+    "leg_weakness"
+   ],
+   "reports": 1,
+   "sessions": 0,
+   "sleep_hours": 5.5,
+   "stiffness_nrs": 6
+  },
+  {
+   "date": "2027-02-07",
+   "level": "nodata",
+   "mission_day": 86,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 1,
+   "sessions": 1,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-08",
+   "level": "nodata",
+   "mission_day": 87,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-09",
+   "level": "red",
+   "mission_day": 88,
+   "other_symptoms": [],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 0,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  },
+  {
+   "date": "2027-02-10",
+   "level": "nodata",
+   "mission_day": 89,
+   "other_symptoms": [
+    "very_severe_pain"
+   ],
+   "pain_nrs": null,
+   "pain_nrs_worst_24h": null,
+   "red_flags": [],
+   "reports": 1,
+   "sessions": 0,
+   "sleep_hours": null,
+   "stiffness_nrs": null
+  }
+ ],
+ "end": "2027-02-10",
+ "generated_at": "2027-02-10T18:00:00Z",
+ "has_data": true,
+ "latest_assessment": {
+  "as_of": "2027-02-09T09:00:00Z",
+  "completeness": {
+   "missing": [
+    {
+     "reason": "sensor_offline",
+     "what": "emg.latissimus_dorsi.right.median_freq_hz"
+    }
+   ],
+   "score": 0.83
+  },
+  "confidence": 0.74,
+  "domains": [
+   {
+    "domain": "spine_length",
+    "evaluated": true,
+    "level": "amber",
+    "score": 0.7
+   },
+   {
+    "domain": "muscle",
+    "evaluated": true,
+    "level": "amber",
+    "score": 0.55
+   },
+   {
+    "domain": "kinematics",
+    "evaluated": true,
+    "level": "green",
+    "score": 0.2
+   },
+   {
+    "domain": "symptoms",
+    "evaluated": true,
+    "level": "amber",
+    "score": 0.5
+   }
+  ],
+  "drivers": [
+   {
+    "contribution": 0.31,
+    "deviation_z": 2.4,
+    "feature_id": "stretch.full_spine.peak_elongation_mm",
+    "unit": "mm",
+    "value": 9.1
+   },
+   {
+    "contribution": 0.18,
+    "deviation_z": 1.8,
+    "feature_id": "symptoms.pain_nrs_7d_mean",
+    "unit": "nrs",
+    "value": 5.1
+   }
+  ],
+  "escalation": {
+   "reasons": [
+    "RULE_SYMPTOM_PAIN_TREND"
+   ],
+   "required": true,
+   "urgency": "same_day"
+  },
+  "fired_rules": [
+   {
+    "domain": "symptoms",
+    "level": "amber",
+    "overrides_model": false,
+    "rule_id": "RULE_SYMPTOM_PAIN_TREND"
+   }
+  ],
+  "level": "red",
+  "recommendations": [
+   "REC_LUMBAR_STAB_01",
+   "REC_INCREASE_ARED"
+  ],
+  "risk_score": 0.62,
+  "trend": {
+   "days_to_threshold": 12,
+   "projected_level": "red"
+  }
+ },
+ "mission_day": {
+  "end": 89,
+  "start": 83
+ },
+ "odi": {
+  "date": "2027-02-07",
+  "items": [
+   {
+    "item_id": "item_0",
+    "score": 2
+   },
+   {
+    "item_id": "item_1",
+    "score": 3
+   },
+   {
+    "item_id": "item_2",
+    "score": 1
+   },
+   {
+    "item_id": "item_3",
+    "score": 2
+   }
+  ],
+  "mission_day": 86,
+  "percent": 40.0
+ },
+ "pain": {
+  "daily_reports": 2,
+  "max": 5,
+  "max_worst_24h": 6,
+  "mean": 4.0
+ },
+ "schema_version": "1.0.0",
+ "sessions": [
+  {
+   "date": "2027-02-05",
+   "elongation_mm": 8.0,
+   "emg_pct_mvc": 25.0,
+   "end_reason": "completed",
+   "pain_stop": false,
+   "pain_stop_rep": null,
+   "planned_reps": 60,
+   "protocol_id": "lat_pulldown_standing_v1",
+   "rep_duration_s": 3.04,
+   "reps": 12,
+   "rom_deg": 41.25,
+   "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+   "session_type": "exercise",
+   "started_at": "2027-02-05T10:00:00Z",
+   "state": "processed"
+  },
+  {
+   "date": "2027-02-07",
+   "elongation_mm": 9.5,
+   "emg_pct_mvc": null,
+   "end_reason": "aborted_pain",
+   "pain_stop": true,
+   "pain_stop_rep": 7,
+   "planned_reps": 60,
+   "protocol_id": "lat_pulldown_standing_v1",
+   "rep_duration_s": null,
+   "reps": 6,
+   "rom_deg": null,
+   "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a02",
+   "session_type": "exercise",
+   "started_at": "2027-02-07T10:00:00Z",
+   "state": "processed"
+  }
+ ],
+ "start": "2027-02-04",
+ "symptoms": {
+  "other_symptoms": [
+   "very_severe_pain"
+  ],
+  "red_flags": [
+   "leg_weakness"
+  ]
+ }
+}

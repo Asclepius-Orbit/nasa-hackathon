@@ -1,0 +1,294 @@
+"""Test harness: the app wired to an in-memory MQTT broker and to the real engine over ASGI.
+
+The engine runs its real baseline builder and assessment pipeline; only the feature extractor is
+replaced (the real one is not implemented yet) by one that returns the pre-flight example features
+for the requested session.
+"""
+
+import asyncio
+import contextlib
+import copy
+import json
+from collections.abc import AsyncIterator, Iterable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from functools import cache
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import aiomqtt
+import httpx
+import pytest
+import spine_physiology
+from monitor.main import create_app
+from monitor.settings import AppSettings
+from spine_contracts import FeatureSet, FeaturesRequest, topics
+from spine_engine.api import create_app as create_engine_app
+from spine_engine.factory import default_baseline_builder, default_pipeline
+from spine_engine.settings import EngineSettings
+from spine_physiology.config import ExerciseProtocol, load_config
+from spine_physiology.device import SimDevice, plan_device_live
+from spine_physiology.envelope import EnvelopeKind
+from spine_physiology.generator import MissionGenerator
+from spine_physiology.signals import exercise_duration_s
+
+EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
+ASTRONAUT, DEVICE = "AST-01", "wb-01"
+UI_TOKEN = "test-ui-token"
+# What the Electron main process sends with every /ui request: the shared token and the unlocked astronaut.
+UI_HEADERS = {"Authorization": f"Bearer {UI_TOKEN}", "X-Astronaut-Id": ASTRONAUT}
+NOW = datetime(2026, 11, 13, 10, 0, tzinfo=UTC)
+# From the installed simulator package, not this file: mutmut runs a copy of the tests in another directory.
+SIM_CONFIG = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
+SIM_PROTOCOL = "lat_pulldown_standing_v1"
+SIM_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+
+
+def example(name: str) -> dict[str, Any]:
+    return json.loads((EXAMPLES / f"{name}.json").read_text(encoding="utf-8"))
+
+
+@cache
+def _simulated_imu_chunks() -> tuple[dict[str, Any], ...]:
+    """The imu_t9 chunks of one real simulated exercise (the whole lat pulldown: every set), with no wall clock."""
+    config = load_config(SIM_CONFIG)
+    start = datetime(2030, 1, 1, 10, tzinfo=UTC)
+    plan = plan_device_live(config, config.seed, ASTRONAUT, boot_at=start - timedelta(hours=1), horizon=timedelta(hours=1))
+    stream = MissionGenerator(config).live_session(
+        astronaut_id=ASTRONAUT, day=1, device=SimDevice(config, plan), session_id=SIM_SESSION, session_type="exercise",
+        protocol_id=SIM_PROTOCOL, stream_ids=("imu_t9",), start=start,
+    )  # fmt: skip
+    protocol = config.protocols[SIM_PROTOCOL]
+    assert isinstance(protocol, ExerciseProtocol)
+    chunks: list[dict[str, Any]] = []
+    for envelope in stream:
+        if envelope.kind is EnvelopeKind.STREAM_CHUNK:
+            chunks.append(envelope.payload)
+            if (chunks[-1]["t0_device_ms"] - chunks[0]["t0_device_ms"]) / 1000.0 > exercise_duration_s(protocol):
+                return tuple(chunks)
+    raise AssertionError("the live session iterator never ends")
+
+
+def simulated_reps() -> int:
+    """Repetitions the simulator performs in the protocol: the whole session, all sets."""
+    protocol = load_config(SIM_CONFIG).protocols[SIM_PROTOCOL]
+    assert isinstance(protocol, ExerciseProtocol)
+    return protocol.planned_reps
+
+
+def imu_chunks(session_id: str) -> list[dict[str, Any]]:
+    """The simulated chunks, as chunks of this session and of the harness device."""
+    return [{**chunk, "session_id": session_id, "device_id": DEVICE} for chunk in _simulated_imu_chunks()]
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+class Clock:
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, **delta: float) -> None:
+        self.now += timedelta(**delta)
+
+
+class FakeMqtt:
+    """In-memory broker for one client: records publishes and feeds queued messages."""
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue[tuple[str, bytes]] = asyncio.Queue()
+        self.published: list[tuple[str, dict[str, Any], int, bool]] = []
+        self.subscriptions: list[tuple[str, int]] = []
+        self.fail_publish = False
+
+    def factory(self) -> _FakeClient:
+        return _FakeClient(self)
+
+    def deliver(self, topic: str, payload: dict[str, Any] | bytes) -> None:
+        body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+        self.queue.put_nowait((topic, body))
+
+    def commands(self, kind: str | None = None) -> list[dict[str, Any]]:
+        return [p for t, p, _, _ in self.published if t.endswith("/cmd") and (kind is None or p["type"] == kind)]
+
+    async def _messages(self) -> AsyncIterator[SimpleNamespace]:
+        while True:
+            topic, payload = await self.queue.get()
+            try:
+                yield SimpleNamespace(topic=topic, payload=payload)
+            finally:
+                self.queue.task_done()
+
+
+class _FakeClient:
+    def __init__(self, broker: FakeMqtt) -> None:
+        self._broker = broker
+
+    async def __aenter__(self) -> _FakeClient:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def subscribe(self, topic: str, qos: int) -> None:
+        self._broker.subscriptions.append((topic, qos))
+
+    async def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> None:
+        if self._broker.fail_publish:
+            raise aiomqtt.MqttError("broker down")
+        self._broker.published.append((topic, json.loads(payload), qos, retain))
+
+    @property
+    def messages(self) -> AsyncIterator[SimpleNamespace]:
+        return self._broker._messages()
+
+
+class ExampleExtractor:
+    """Returns the pre-flight example features for whatever session is requested."""
+
+    def __init__(self) -> None:
+        self.requests: list[FeaturesRequest] = []
+
+    def extract(self, request: FeaturesRequest) -> FeatureSet:
+        self.requests.append(request)
+        session = request.session
+        payload = example("domain/feature-set.preflight")
+        payload.update(
+            session_id=session.session_id,
+            astronaut_id=session.astronaut_id,
+            protocol_id=session.protocol_id,
+            gravity_environment=session.mission_context.gravity_environment.value,
+            computed_at=NOW.isoformat(),
+        )
+        payload.pop("window", None)
+        return FeatureSet.model_validate(payload)
+
+
+@dataclass
+class Harness:
+    http: httpx.AsyncClient
+    mqtt: FakeMqtt
+    runtime: Any
+    clock: Clock
+    extractor: ExampleExtractor
+    acks: int = field(default=0)
+
+    # Test modules are imported with importlib, so they reach the helpers through the fixture.
+    astronaut_id = ASTRONAUT
+    device_id = DEVICE
+    example = staticmethod(example)
+    plan = staticmethod(lambda **overrides: session_plan(**overrides))
+    imu_chunks = staticmethod(imu_chunks)
+    simulated_reps = staticmethod(simulated_reps)
+    simulated_reps = staticmethod(simulated_reps)
+
+    @property
+    def store(self):
+        return self.runtime.store
+
+    async def settle(self) -> None:
+        """Waits until every delivered message is handled and the background analysis is done."""
+        await self.mqtt.queue.join()
+        await self.runtime.control.idle()
+        # A reassessment may start more ground work, so look at both again until nothing is left.
+        await self.runtime.analysis.idle()
+        await self.runtime.control.idle()
+
+    async def ack(self, command: dict[str, Any], status: str, **extra: Any) -> None:
+        self.acks += 1
+        payload = {
+            "schema_version": "1.0.0",
+            "command_id": command["command_id"],
+            "astronaut_id": command["astronaut_id"],
+            "device_id": command["device_id"],
+            "timestamp": (self.clock() + timedelta(milliseconds=self.acks)).isoformat(),
+            "status": status,
+            **extra,
+        }
+        self.mqtt.deliver(topics.ack(command["astronaut_id"], command["device_id"]), payload)
+        await self.settle()
+
+    async def setup_astronaut(self, phase: str = "preflight", gravity: str = "earth_1g") -> None:
+        profile = example("domain/astronaut-profile")
+        assert (await self.http.put(f"/ui/crew/{ASTRONAUT}/profile", json=profile)).status_code == 200
+        context = {"mission_day": -30, "phase": phase, "gravity_environment": gravity}
+        day = self.clock().date().isoformat()
+        assert (await self.http.put(f"/ui/crew/{ASTRONAUT}/daily-context/{day}", json=context)).status_code == 200
+
+    async def start_session(self, plan: dict[str, Any] | None = None, **overrides: Any) -> tuple[str, dict[str, Any]]:
+        """Creates an exercise session (or the given `plan`) and acks its start_session as accepted."""
+        response = await self.http.post(f"/ui/crew/{ASTRONAUT}/sessions", json=plan if plan is not None else session_plan(**overrides))
+        assert response.status_code == 202, response.text
+        body = response.json()
+        await self.ack(body["command"], "accepted")
+        return body["session"]["session_id"], body["command"]
+
+    async def send_chunks(self, session_id: str, *, seq_offset: int = 0) -> None:
+        for name in ("stream-chunk.emg", "stream-chunk.imu", "stream-chunk.stretch"):
+            chunk = example(f"telemetry/{name}")
+            chunk["session_id"] = session_id
+            chunk["seq"] += seq_offset
+            self.mqtt.deliver(topics.stream(chunk["astronaut_id"], chunk["device_id"], chunk["stream_id"]), chunk)
+        await self.settle()
+
+    async def send_stream_chunks(self, chunks: Iterable[dict[str, Any]]) -> None:
+        """Delivers chunks over the bus one by one, each one handled before the next, like a live stream."""
+        for chunk in chunks:
+            self.mqtt.deliver(topics.stream(chunk["astronaut_id"], chunk["device_id"], chunk["stream_id"]), chunk)
+            await self.mqtt.queue.join()
+
+    async def stop_session(self, session_id: str, start_command: dict[str, Any], reason: str = "completed") -> None:
+        response = await self.http.post(f"/ui/sessions/{session_id}/stop", json={"reason": reason})
+        assert response.status_code == 202, response.text
+        stop = response.json()["command"]
+        await self.ack(stop, "accepted")
+        await self.ack(start_command, "completed")
+        await self.ack(stop, "completed")
+
+
+def session_plan(**overrides: Any) -> dict[str, Any]:
+    session = example("domain/session.exercise")
+    plan = {
+        k: copy.deepcopy(session[k])
+        for k in ("device_id", "session_type", "protocol_id", "load_declared", "planned_reps", "planned_sets", "reps_per_set", "streams")
+    }
+    plan.update(overrides)
+    return plan
+
+
+@pytest.fixture
+def harness_settings() -> dict[str, Any]:
+    """Extra AppSettings of the harness; a test module overrides this fixture to change them."""
+    return {}
+
+
+@pytest.fixture
+async def harness(tmp_path: Path, anyio_backend: str, harness_settings: dict[str, Any]) -> AsyncIterator[Harness]:
+    mqtt = FakeMqtt()
+    clock = Clock(NOW)
+    extractor = ExampleExtractor()
+    engine_app = create_engine_app(
+        pipeline=default_pipeline(EngineSettings(_env_file=None)),
+        baseline_builder=default_baseline_builder(),
+        feature_extractor=extractor,
+    )
+    defaults = {"reassess_debounce_s": 0.0, "ui_token": UI_TOKEN}
+    settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2, **{**defaults, **harness_settings})
+    app = create_app(settings, mqtt_client_factory=mqtt.factory, engine_transport=httpx.ASGITransport(app=engine_app), clock=clock)
+    runtime = app.state.runtime
+    bus_task = asyncio.create_task(runtime.bus.run(runtime.ingest))
+    await asyncio.wait_for(runtime.bus.connected.wait(), 2)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://app", headers=UI_HEADERS) as http:
+        yield Harness(http, mqtt, runtime, clock, extractor)
+    bus_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await bus_task
+    await runtime.control.idle()
+    runtime.control.close()
+    runtime.store.close()

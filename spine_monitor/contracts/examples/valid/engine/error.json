@@ -1,0 +1,12 @@
+{
+  "type": "missing_calibration",
+  "title": "A required calibration is missing",
+  "status": 422,
+  "detail": "Stream emg_lat_left references a calibration_id that was not sent.",
+  "errors": [
+    {
+      "pointer": "/calibrations",
+      "message": "calibration 7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f12 not found"
+    }
+  ]
+}

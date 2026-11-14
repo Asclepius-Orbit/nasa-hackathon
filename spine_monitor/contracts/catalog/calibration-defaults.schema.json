@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/catalog/calibration-defaults.schema.json",
+  "title": "CalibrationDefaults",
+  "description": "Provisional defaults of the calibrations the gateway records (cord curve and rest point, EMG MVC window). One source read by the gateway and checked against the simulator mission by the tests. Every value is a placeholder until Aguado measures it.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "defaults_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "stretch": {
+      "type": "object",
+      "properties": {
+        "rest_length_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "rest_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+        "curve": {
+          "description": "Absolute (resistance, length) points of the cord curve at the reference rest point; both rise strictly. The gateway scales them to the measured rest resistance R0: resistance = R0 * R / rest_resistance_ohm, length = L0 * L / rest_length_mm.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+              "length_mm": { "type": "number", "exclusiveMinimum": 0 }
+            },
+            "required": ["resistance_ohm", "length_mm"],
+            "additionalProperties": false
+          }
+        },
+        "notes": { "type": "string" }
+      },
+      "required": ["rest_length_mm", "rest_resistance_ohm", "curve", "notes"],
+      "additionalProperties": false
+    },
+    "emg_mvc": {
+      "type": "object",
+      "properties": {
+        "window_ms": { "type": "integer", "exclusiveMinimum": 0 },
+        "notes": { "type": "string" }
+      },
+      "required": ["window_ms", "notes"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["defaults_version", "stretch", "emg_mvc"],
+  "additionalProperties": false
+}

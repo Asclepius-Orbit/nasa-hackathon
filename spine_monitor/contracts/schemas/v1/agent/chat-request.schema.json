@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/agent/chat-request.schema.json",
+  "title": "ChatRequest",
+  "description": "Body of POST /chat of the LLM agent (agent-openapi.yaml): one question of a conversation about one astronaut. The client generates `conversation_id`: a new id starts a new conversation, the same id continues it (the agent keeps the history in memory; the client never sends it). A conversation belongs to the astronaut of its first question.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": {
+      "description": "The astronaut the conversation is about. Must equal the X-Astronaut-Id header (the unlocked astronaut).",
+      "$ref": "../common.schema.json#/$defs/astronaut_id"
+    },
+    "conversation_id": {
+      "description": "Client-generated UUID (lowercase) of the conversation.",
+      "$ref": "../common.schema.json#/$defs/uuid"
+    },
+    "question": {
+      "description": "What the astronaut asks, as typed. 1 to 2000 characters, at least one of them not blank.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "pattern": "\\S"
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "conversation_id", "question"],
+  "additionalProperties": false
+}

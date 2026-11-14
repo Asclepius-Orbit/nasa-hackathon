@@ -1,0 +1,332 @@
+services:
+  mosquitto:
+    # Authenticated broker with ACLs (#96). Run `sh app/mosquitto/setup.sh` first: it writes app/.env and
+    # app/mosquitto/auth/ (both gitignored), and every compose command fails until it has run.
+    # LAN access over TLS: add -f app/docker-compose.lan.yml (see the backend README).
+    image: eclipse-mosquitto:2.0.22
+    # The generated passwd and acl (and the LAN certificates, when mounted) are copied out of the read-only mounts so the
+    # broker owns them with mode 0600, whoever owns them on the host.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /mosquitto/auth
+        install -o mosquitto -g mosquitto -m 0600 /mosquitto-auth/passwd /mosquitto-auth/acl /mosquitto/auth/
+        if [ -d /mosquitto-certs ]; then
+          mkdir -p /mosquitto/certs
+          install -o mosquitto -g mosquitto -m 0600 /mosquitto-certs/ca.crt /mosquitto-certs/server.crt /mosquitto-certs/server.key /mosquitto/certs/
+        fi
+        exec mosquitto -c "$${SPINE_MQTT_CONFIG:-/mosquitto/config/mosquitto.conf}"
+    environment:
+      SPINE_MQTT_HEALTH_PASSWORD: "${SPINE_MQTT_HEALTH_PASSWORD:?run sh app/mosquitto/setup.sh}"
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/auth:/mosquitto-auth:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -u spine-health -P \"$$SPINE_MQTT_HEALTH_PASSWORD\" -t '$$SYS/broker/uptime' -C 1 -W 3 > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  engine:
+    build:
+      context: ..
+      dockerfile: spine_monitor/engine/Dockerfile
+    image: spine-engine:dev
+    ports:
+      - "127.0.0.1:8001:8001"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: spine_monitor/backend/Dockerfile
+    image: spine-backend:dev
+    environment:
+      SPINE_APP_MQTT_HOST: mosquitto
+      SPINE_APP_MQTT_PORT: "1883"
+      SPINE_APP_MQTT_USERNAME: spine-app
+      SPINE_APP_MQTT_PASSWORD: "${SPINE_MQTT_APP_PASSWORD:?run sh app/mosquitto/setup.sh}"
+      SPINE_APP_ENGINE_URL: http://engine:8001
+      SPINE_APP_GROUND_WINDOW_ANCHOR: "2026-01-01T00:00:00Z"
+      SPINE_APP_GROUND_WINDOW_PERIOD_MIN: "15"
+      SPINE_APP_GROUND_WINDOW_UP_MIN: "5"
+      # Shared with the Electron main process (ASCLEPIUS_BACKEND_TOKEN). Empty: generated in /data/ui-token.
+      SPINE_APP_UI_TOKEN: "${SPINE_APP_UI_TOKEN:-}"
+      # Preflight sessions the baseline needs (the demo and pnpm e2e:real pass 1).
+      SPINE_APP_BASELINE_REQUIRED: "${SPINE_APP_BASELINE_REQUIRED:-3}"
+    volumes:
+      - backend_data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      engine:
+        condition: service_started
+    restart: unless-stopped
+
+  read-api:
+    # Read-only API of the app for the MCP server (contracts/app-openapi.yaml). Same image as the backend,
+    # its own process and port, reading the same SQLite with a query-only connection.
+    build:
+      context: ..
+      dockerfile: spine_monitor/backend/Dockerfile
+    image: spine-backend:dev
+    command: ["uvicorn", "--factory", "monitor.readonly:create_read_app", "--host", "0.0.0.0", "--port", "8002"]
+    volumes:
+      - backend_data:/data
+    ports:
+      - "127.0.0.1:8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  agent:
+    # Chat HTTP+SSE API of the LLM agent for the desktop app (contracts/agent-openapi.yaml), profile "llm".
+    # Its MCP server runs as a subprocess on the real app data (--dataset http): read API and engine.
+    build:
+      context: ..
+      dockerfile: spine_monitor/agent/Dockerfile
+    image: spine-agent:dev
+    environment:
+      SPINE_AGENT_OLLAMA_BASE_URL: http://ollama:11434/v1
+      SPINE_AGENT_MODEL: "${SPINE_AGENT_MODEL:-qwen3.5:4b}"
+      SPINE_AGENT_MCP_ARGS: '["-m", "spine_mcp_server", "--dataset", "http"]'
+      SPINE_APP_URL: http://read-api:8002
+      SPINE_ENGINE_URL: http://engine:8001
+      # Shared with the Electron main process (ASCLEPIUS_AGENT_TOKEN). Empty: generated in /data/agent-http-token.
+      SPINE_AGENT_HTTP_TOKEN: "${SPINE_AGENT_HTTP_TOKEN:-}"
+    volumes:
+      - agent_data:/data
+    ports:
+      - "127.0.0.1:8003:8003"
+    depends_on:
+      ollama:
+        condition: service_healthy
+      read-api:
+        condition: service_started
+      engine:
+        condition: service_started
+    profiles: ["llm", "llm-prepare"]
+    restart: unless-stopped
+
+  simulator:
+    build:
+      context: ..
+      dockerfile: spine_monitor/physiology/Dockerfile
+    image: spine-simulator:dev
+    environment:
+      SPINE_SIM_CONFIG: /app/configs/example-mission.yaml
+      SPINE_SIM_MQTT_HOST: mosquitto
+      SPINE_SIM_MQTT_PORT: "1883"
+      # Each simulated device connects as its own user (sim-01, sim-02...), all with the simulator password.
+      SPINE_SIM_MQTT_USERNAME: "{device_id}"
+      SPINE_SIM_MQTT_PASSWORD: "${SPINE_MQTT_SIM_PASSWORD:?run sh app/mosquitto/setup.sh}"
+      SPINE_SIM_SPEED: "1"
+      SPINE_SIM_START_DAY: "0"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    profiles: ["sim"]
+    restart: unless-stopped
+
+  gateway:
+    # Real wearable gateway (issue #13): Arduino over USB serial -> MQTT v1 chunks. Profile "hardware":
+    #   docker compose -f app/docker-compose.yml --profile hardware up -d gateway
+    # Only works on Linux: Docker Desktop on Windows/macOS cannot pass a USB device through to a container.
+    # On Windows the gateway runs natively instead (from spine_monitor/): uv run spine-gateway
+    # with SPINE_GATEWAY_SERIAL_URL=COM3 and SPINE_GATEWAY_MQTT_HOST=127.0.0.1.
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
+    image: spine-gateway:dev
+    environment:
+      SPINE_GATEWAY_MQTT_HOST: mosquitto
+      SPINE_GATEWAY_ASTRONAUT_ID: "${SPINE_GATEWAY_ASTRONAUT_ID:-AST-01}"
+      SPINE_GATEWAY_DEVICE_ID: "${SPINE_GATEWAY_DEVICE_ID:-wb-01}"
+      SPINE_GATEWAY_MQTT_USERNAME: "${SPINE_GATEWAY_MQTT_USERNAME:-${SPINE_GATEWAY_DEVICE_ID:-wb-01}}"
+      SPINE_GATEWAY_MQTT_PASSWORD: "${SPINE_GATEWAY_MQTT_PASSWORD:-${SPINE_MQTT_DEVICE_PASSWORD_WB_01:-}}"
+      # Port as seen inside the container: the device below is always mapped to /dev/ttyACM0.
+      SPINE_GATEWAY_SERIAL_URL: "${SPINE_GATEWAY_SERIAL_URL:-/dev/ttyACM0}"
+    devices:
+      - "${SPINE_GATEWAY_SERIAL_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
+    group_add:
+      - "${SPINE_GATEWAY_SERIAL_GID:-20}"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    profiles: ["hardware"]
+    restart: unless-stopped
+
+  arduino-emulator:
+    # Fake Arduino over TCP (spine_gateway.emulator) for the gateway demo without hardware. Profile "gateway-demo":
+    #   docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
+    image: spine-gateway:dev
+    command: ["spine-arduino-emulator", "--host", "0.0.0.0", "--port", "5000"]
+    profiles: ["gateway-demo"]
+    restart: unless-stopped
+
+  gateway-demo:
+    # The real gateway reading the emulator through pyserial's socket:// instead of a USB port.
+    build:
+      context: ..
+      dockerfile: spine_monitor/gateway/Dockerfile
+    image: spine-gateway:dev
+    command: ["spine-gateway"]
+    environment:
+      SPINE_GATEWAY_SERIAL_URL: socket://arduino-emulator:5000
+      SPINE_GATEWAY_MQTT_HOST: mosquitto
+      SPINE_GATEWAY_DEVICE_ID: gw-demo
+      SPINE_GATEWAY_MQTT_USERNAME: gw-demo
+      SPINE_GATEWAY_MQTT_PASSWORD: "${SPINE_MQTT_SIM_PASSWORD:?run sh app/mosquitto/setup.sh}"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      arduino-emulator:
+        condition: service_started
+    profiles: ["gateway-demo"]
+    restart: "no"
+
+  ollama:
+    # Local LLM runtime for the spine agent (profile "llm": docker compose --profile llm up -d).
+    # Model cache: the ollama-models volume survives `down`/`up`, so models are downloaded once.
+    # `down -v` deletes it and forces a re-download.
+    image: ollama/ollama:0.40.14
+    environment:
+      # Ollama truncates silently at 4k tokens by default, which breaks tool calling.
+      OLLAMA_CONTEXT_LENGTH: "16384"
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
+    profiles: ["llm"]
+    restart: unless-stopped
+
+  ollama-pull:
+    # One-shot: pulls only the models missing from the cache (SPINE_AGENT_LLM_MODELS, space-separated).
+    # Exits non-zero if any pull fails; fully cached models need no network.
+    image: ollama/ollama:0.40.14
+    environment:
+      OLLAMA_HOST: ollama:11434
+      SPINE_AGENT_LLM_MODELS: "${SPINE_AGENT_LLM_MODELS:-qwen3.5:4b}"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rc=0
+        for m in $$SPINE_AGENT_LLM_MODELS; do
+          ollama show "$$m" >/dev/null 2>&1 || ollama pull "$$m" || rc=1
+        done
+        exit $$rc
+    depends_on:
+      ollama:
+        condition: service_healthy
+    profiles: ["llm-prepare"]
+    restart: "no"
+
+  quality:
+    build:
+      context: ..
+      dockerfile: spine_monitor/quality/Dockerfile
+    image: spine-quality:dev
+    # Shares mosquitto's network namespace so the tests' 127.0.0.1:1883 reaches the broker.
+    network_mode: "service:mosquitto"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    # The whole repo, not just spine_monitor: quality/mutation.sh needs .git to find the changed files.
+    # .git is remounted read-only: the gate only reads history.
+    volumes:
+      - ..:/work
+      - ../.git:/work/.git:ro
+    environment:
+      GATE_MUTATION: "${GATE_MUTATION:-off}"
+      MUTATION_BASE: "${MUTATION_BASE:-}"
+      MUTATION_PACKAGES: "${MUTATION_PACKAGES:-}"
+      MUTATION_MIN_SAMPLE: "${MUTATION_MIN_SAMPLE:-}"
+      SPINE_REQUIRE_BROKER: "1"
+      # Broker users of the mosquitto-marked tests (app/mosquitto/acl.template).
+      SPINE_TEST_MQTT_USERNAME: spine-itest
+      SPINE_TEST_MQTT_PASSWORD: "${SPINE_MQTT_ITEST_PASSWORD:?run sh app/mosquitto/setup.sh}"
+      SPINE_TEST_MQTT_DEVICE_PASSWORD: "${SPINE_MQTT_ITEST_DEVICE_PASSWORD:?run sh app/mosquitto/setup.sh}"
+    profiles: ["quality"]
+
+  ui:
+    # The Electron app on a virtual display, shown in the browser: http://localhost:6080/vnc.html (profile "ui").
+    # Reaches the backend through a loopback forward (the app only accepts loopback URLs).
+    build:
+      context: ./ui
+    image: spine-ui:dev
+    environment:
+      ASCLEPIUS_BACKEND_TOKEN: "${SPINE_APP_UI_TOKEN:-}"
+      SPINE_UI_VNC_PASSWORD: "${SPINE_UI_VNC_PASSWORD:-}"
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - ui_data:/home/node/.config
+    shm_size: 512m
+    depends_on:
+      backend:
+        condition: service_started
+    profiles: ["ui"]
+    restart: unless-stopped
+
+  ui-quality:
+    # Gate of app/ui (pnpm check). The repo is mounted whole: check:types reads spine_monitor/contracts/schemas/v1.
+    # node_modules lives in a named volume so the host's (Windows) one is never reused across platforms.
+    build:
+      context: ..
+      dockerfile: app/ui/quality.Dockerfile
+    image: spine-ui-quality:dev
+    working_dir: /work/app/ui
+    volumes:
+      - ..:/work
+      - ui_node_modules:/work/app/ui/node_modules
+    environment:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    command: ["sh", "-c", "pnpm install --frozen-lockfile && pnpm check"]
+    profiles: ["quality"]
+
+  firmware-build:
+    # Build reproducible del firmware del wearable (issue #13): test de paridad del protocolo en host (gcc)
+    # y compilacion del sketch para arduino:avr:uno. No depende del broker. Perfil "firmware":
+    #   docker compose -f app/docker-compose.yml --profile firmware run --rm firmware-build
+    # Sale distinto de 0 si falla el test o la compilacion (el comando esta en firmware/Dockerfile).
+    build:
+      context: ..
+      dockerfile: firmware/Dockerfile
+    image: spine-firmware:dev
+    # Las fuentes del host pisan la copia de la imagen: editar y volver a ejecutar sin reconstruir.
+    volumes:
+      - ../firmware:/work/firmware:ro
+    profiles: ["firmware"]
+
+volumes:
+  backend_data:
+  agent_data:
+  ui_node_modules:
+  ui_data:
+  ollama-models:

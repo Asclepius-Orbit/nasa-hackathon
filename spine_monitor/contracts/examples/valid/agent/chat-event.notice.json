@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0.0",
+  "type": "notice",
+  "code": "correction",
+  "text": "Correction: the previous answer contained wording that sounds like a medical diagnosis. This assistant cannot diagnose; please consult the flight surgeon."
+}

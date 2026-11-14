@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/explanation.schema.json",
+  "title": "Explanation",
+  "description": "Response of GET /assessments/{assessment_id}/explanation; backs the MCP tool explain_assessment. The stored assessment (drivers, fired_rules, based_on) plus what based_on points to, already resolved, so the model does not have to chase ids. Anything cited by based_on that no longer exists is listed in unresolved instead of being dropped silently.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "assessment": { "$ref": "../domain/assessment.schema.json" },
+    "baseline": {
+      "description": "Baseline used by the assessment; null when the assessment did not cite one.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "baseline_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+            "version": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["baseline_id", "version"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "baseline_entries": {
+      "description": "Baseline entries of the assessment drivers only (reference median and MAD to read each deviation_z).",
+      "type": "array",
+      "items": { "$ref": "../domain/baseline.schema.json#/$defs/entry" }
+    },
+    "feature_sets": {
+      "description": "Feature sets of the sessions listed in based_on.",
+      "type": "array",
+      "items": { "$ref": "../domain/feature-set.schema.json" }
+    },
+    "self_reports": {
+      "description": "Self-reports listed in based_on.",
+      "type": "array",
+      "items": { "$ref": "../domain/self-report.schema.json" }
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["baseline", "session", "self_report"] },
+          "id": { "$ref": "../common.schema.json#/$defs/uuid" }
+        },
+        "required": ["kind", "id"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "assessment", "baseline", "baseline_entries", "feature_sets", "self_reports", "unresolved"],
+  "additionalProperties": false
+}

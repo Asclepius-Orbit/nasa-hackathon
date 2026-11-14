@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/features-request.schema.json",
+  "title": "FeaturesRequest",
+  "description": "POST /features. Raw data of ONE session in, FeatureSet out. The engine reads the stream declarations in 'session' (placement, rate) and the calibrations to turn raw chunks into derived metrics (EMG RMS and %MVC, median frequency, IMU range of motion, cord elongation...). Stateless: the app sends everything the computation needs.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "session": { "$ref": "../domain/session.schema.json" },
+    "chunks": {
+      "description": "All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "../telemetry/stream-chunk.schema.json" }
+    },
+    "calibrations": {
+      "description": "Every calibration referenced by session.streams[].calibration_id or by a chunk.",
+      "type": "array",
+      "items": { "$ref": "../domain/calibration.schema.json" },
+      "default": []
+    },
+    "clock_syncs": {
+      "description": "Clock anchors of the session, to map device time to UTC.",
+      "type": "array",
+      "items": { "$ref": "../telemetry/clock-sync.schema.json" },
+      "default": []
+    },
+    "profile": {
+      "description": "Optional: lets the engine adjust features that depend on anthropometry (e.g. skinfold over the electrodes).",
+      "$ref": "../domain/astronaut-profile.schema.json"
+    }
+  },
+  "required": ["schema_version", "session", "chunks"],
+  "additionalProperties": false
+}

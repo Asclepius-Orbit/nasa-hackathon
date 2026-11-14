@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0.0",
+  "type": "tool_call",
+  "tool_name": "get_current_status",
+  "tool_args": { "astronaut_id": "AST-01" }
+}

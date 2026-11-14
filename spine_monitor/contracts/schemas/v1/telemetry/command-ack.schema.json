@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/telemetry/command-ack.schema.json",
+  "title": "CommandAck",
+  "description": "Gateway answer to a command, published QoS 1 on .../device/{device_id}/ack. A command normally gets 'accepted' first and 'completed' (or 'failed') later; rejected is final.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "command_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+    "timestamp": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "status": { "type": "string", "enum": ["accepted", "rejected", "completed", "failed"] },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": ["busy", "unknown_stream", "no_session", "device_offline", "calibration_failed", "invalid_command", "internal"]
+        },
+        "message": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["code"],
+      "additionalProperties": false
+    },
+    "result": {
+      "description": "Present on completed calibrations.",
+      "type": "object",
+      "properties": {
+        "calibration_id": { "$ref": "../common.schema.json#/$defs/uuid" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "command_id", "astronaut_id", "device_id", "timestamp", "status"],
+  "if": { "properties": { "status": { "enum": ["rejected", "failed"] } }, "required": ["status"] },
+  "then": { "required": ["error"] },
+  "additionalProperties": false
+}

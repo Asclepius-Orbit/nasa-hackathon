@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/telemetry/stream-chunk.schema.json",
+  "title": "StreamChunk",
+  "description": "A block of consecutive samples of ONE sensor stream, published by the gateway (or the simulator) on asclepius/v1/crew/{astronaut_id}/device/{device_id}/stream/{stream_id}. Data is columnar: one array per channel, all arrays of a chunk have n_samples entries. Streams have independent sample rates (EMG 1000 Hz, IMU 100 Hz, stretch 20 Hz by default); the schema accepts any rate. Time of sample i is t0_device_ms + i * 1000 / sample_rate_hz on the device monotonic clock; use the clock-sync message to map it to UTC.",
+  "oneOf": [
+    { "$ref": "#/$defs/emg_chunk" },
+    { "$ref": "#/$defs/imu_chunk" },
+    { "$ref": "#/$defs/stretch_chunk" }
+  ],
+  "$defs": {
+    "chunk_base": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+        "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+        "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+        "stream_id": { "$ref": "../common.schema.json#/$defs/stream_id" },
+        "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "source": { "$ref": "../common.schema.json#/$defs/source" },
+        "boot_id": {
+          "description": "Random 32-bit value chosen by the device at every boot. seq and t0_device_ms only make sense inside one boot_id.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "seq": {
+          "description": "Chunk counter per stream and boot_id, starting at 0. A jump means lost chunks.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "t0_device_ms": {
+          "description": "Device monotonic clock (ms since boot) at the first sample of the chunk.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "received_at": {
+          "description": "UTC instant at which the gateway received the chunk. Subject to link jitter (BLE: tens of ms): do not use it for sample timing.",
+          "$ref": "../common.schema.json#/$defs/utc_timestamp"
+        },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "n_samples": { "type": "integer", "minimum": 1 },
+        "dropped_samples": {
+          "description": "Samples the device knows it lost inside this chunk (buffer overrun).",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "required": [
+        "schema_version", "astronaut_id", "device_id", "stream_id", "session_id", "source",
+        "boot_id", "seq", "t0_device_ms", "received_at", "sample_rate_hz", "n_samples"
+      ]
+    },
+    "emg_chunk": {
+      "title": "EmgChunk",
+      "description": "Surface EMG, one differential channel, millivolts. Raw signal is needed for spectral features (median frequency, fatigue); if the analog module only provides a rectified/envelope signal, say so in signal_kind and the engine will skip spectral features.",
+      "allOf": [
+        { "$ref": "#/$defs/chunk_base" },
+        {
+          "type": "object",
+          "properties": {
+            "stream_kind": { "const": "emg" },
+            "signal_kind": { "type": "string", "enum": ["raw", "rectified", "envelope"] },
+            "units": {
+              "type": "object",
+              "properties": { "emg": { "const": "mV" } },
+              "required": ["emg"],
+              "additionalProperties": false
+            },
+            "data": {
+              "type": "object",
+              "properties": { "emg": { "type": "array", "items": { "type": "number" }, "minItems": 1 } },
+              "required": ["emg"],
+              "additionalProperties": false
+            },
+            "quality": {
+              "type": "object",
+              "properties": { "emg": { "$ref": "../common.schema.json#/$defs/quality" } },
+              "required": ["emg"],
+              "additionalProperties": false
+            },
+            "acquisition": {
+              "description": "How the voltage was digitised, so mV can be audited.",
+              "type": "object",
+              "properties": {
+                "adc_bits": { "type": "integer", "minimum": 8, "maximum": 24 },
+                "vref_v": { "type": "number", "exclusiveMinimum": 0 },
+                "gain": { "type": "number", "exclusiveMinimum": 0 },
+                "input_pin": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
+            "filter": {
+              "description": "Filtering applied before the samples were sent (analog module or firmware). Null/absent field = no filter.",
+              "type": "object",
+              "properties": {
+                "highpass_hz": { "type": "number", "minimum": 0 },
+                "lowpass_hz": { "type": "number", "exclusiveMinimum": 0 },
+                "notch_hz": { "type": "number", "enum": [50, 60] }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": ["stream_kind", "signal_kind", "units", "data", "quality"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "imu_chunk": {
+      "title": "ImuChunk",
+      "description": "6-axis IMU (MPU-6050). Axes are the SENSOR axes; the mapping to body axes lives in the imu calibration. In microgravity accel does not contain gravity.",
+      "allOf": [
+        { "$ref": "#/$defs/chunk_base" },
+        {
+          "type": "object",
+          "properties": {
+            "stream_kind": { "const": "imu" },
+            "units": {
+              "type": "object",
+              "properties": {
+                "accel_x": { "const": "g" }, "accel_y": { "const": "g" }, "accel_z": { "const": "g" },
+                "gyro_x": { "const": "deg/s" }, "gyro_y": { "const": "deg/s" }, "gyro_z": { "const": "deg/s" }
+              },
+              "required": ["accel_x", "accel_y", "accel_z", "gyro_x", "gyro_y", "gyro_z"],
+              "additionalProperties": false
+            },
+            "data": {
+              "type": "object",
+              "description": "Six equally long arrays.",
+              "properties": {
+                "accel_x": { "$ref": "#/$defs/number_array" },
+                "accel_y": { "$ref": "#/$defs/number_array" },
+                "accel_z": { "$ref": "#/$defs/number_array" },
+                "gyro_x": { "$ref": "#/$defs/number_array" },
+                "gyro_y": { "$ref": "#/$defs/number_array" },
+                "gyro_z": { "$ref": "#/$defs/number_array" }
+              },
+              "required": ["accel_x", "accel_y", "accel_z", "gyro_x", "gyro_y", "gyro_z"],
+              "additionalProperties": false
+            },
+            "quality": {
+              "type": "object",
+              "properties": {
+                "accel": { "$ref": "../common.schema.json#/$defs/quality" },
+                "gyro": { "$ref": "../common.schema.json#/$defs/quality" }
+              },
+              "required": ["accel", "gyro"],
+              "additionalProperties": false
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "accel_range_g": { "type": "integer", "enum": [2, 4, 8, 16] },
+                "gyro_range_dps": { "type": "integer", "enum": [250, 500, 1000, 2000] },
+                "dlpf_hz": { "type": "number", "exclusiveMinimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": ["stream_kind", "units", "data", "quality"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "stretch_chunk": {
+      "title": "StretchChunk",
+      "description": "Conductive rubber cord (Adafruit 519). adc_counts is the ground truth; resistance_ohm is derived from the divider circuit; length_mm is derived through a stretch calibration (non-linear, with 1-2 min recovery hysteresis) and requires calibration_id. Never send only derived values.",
+      "allOf": [
+        { "$ref": "#/$defs/chunk_base" },
+        {
+          "type": "object",
+          "properties": {
+            "stream_kind": { "const": "stretch" },
+            "units": {
+              "type": "object",
+              "properties": {
+                "adc_counts": { "const": "count" },
+                "resistance_ohm": { "const": "ohm" },
+                "length_mm": { "const": "mm" }
+              },
+              "required": ["adc_counts"],
+              "additionalProperties": false
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "adc_counts": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 1 },
+                "resistance_ohm": { "$ref": "#/$defs/number_array" },
+                "length_mm": { "$ref": "#/$defs/number_array" }
+              },
+              "required": ["adc_counts"],
+              "additionalProperties": false
+            },
+            "calibration_id": {
+              "description": "stretch calibration used to derive length_mm. Required when length_mm is present.",
+              "$ref": "../common.schema.json#/$defs/uuid"
+            },
+            "quality": {
+              "type": "object",
+              "properties": {
+                "adc_counts": { "$ref": "../common.schema.json#/$defs/quality" },
+                "length_mm": { "$ref": "../common.schema.json#/$defs/quality" }
+              },
+              "required": ["adc_counts"],
+              "additionalProperties": false
+            },
+            "circuit": {
+              "description": "Divider and ADC used to read the cord.",
+              "type": "object",
+              "properties": {
+                "adc_bits": { "type": "integer", "minimum": 8, "maximum": 24 },
+                "vref_v": { "type": "number", "exclusiveMinimum": 0 },
+                "series_resistor_ohm": { "type": "number", "exclusiveMinimum": 0 },
+                "input_pin": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": ["stream_kind", "units", "data", "quality"],
+          "if": { "required": ["data"], "properties": { "data": { "required": ["length_mm"] } } },
+          "then": { "required": ["calibration_id"] }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "number_array": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 1
+    }
+  }
+}

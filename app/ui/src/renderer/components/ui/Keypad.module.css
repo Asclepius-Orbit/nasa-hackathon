@@ -1,0 +1,3 @@
+.keypad { display: grid; grid-template-columns: repeat(3, 96px); gap: 10px; }
+.keypad button { min-height: 76px; border-radius: var(--radius-l); border: 2px solid var(--rail); background: transparent; color: #fff; font-size: 1.75rem; font-weight: 800; cursor: pointer; }
+.keypad button.small { font-size: 1rem; }

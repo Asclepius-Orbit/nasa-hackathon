@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/telemetry/device-status.schema.json",
+  "title": "DeviceStatus",
+  "description": "Health of a wearable as seen by the gateway. Published RETAINED on .../device/{device_id}/status. The gateway also registers it as MQTT Last Will with status=offline so the broker announces a dead gateway.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "device_id": { "$ref": "../common.schema.json#/$defs/device_id" },
+    "timestamp": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "status": {
+      "description": "ok: everything streams. degraded: something works but a stream is stalled/low battery. offline: no data.",
+      "type": "string",
+      "enum": ["ok", "degraded", "offline"]
+    },
+    "source": { "$ref": "../common.schema.json#/$defs/source" },
+    "boot_id": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "uptime_ms": { "type": "integer", "minimum": 0 },
+    "firmware_version": { "type": "string", "maxLength": 32 },
+    "battery_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+    "temperature_c": { "type": "number" },
+    "link": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["ble", "usb_serial", "simulated"] },
+        "rssi_dbm": { "type": "integer", "maximum": 0 }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "streams": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "stream_id": { "$ref": "../common.schema.json#/$defs/stream_id" },
+          "stream_kind": { "$ref": "../common.schema.json#/$defs/stream_kind" },
+          "state": { "type": "string", "enum": ["active", "stalled", "disabled"] },
+          "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+          "last_seq": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["stream_id", "stream_kind", "state"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "device_id", "timestamp", "status", "source"],
+  "additionalProperties": false
+}

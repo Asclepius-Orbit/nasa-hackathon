@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0.0",
+  "type": "error",
+  "code": "unavailable",
+  "message": "the MCP tool server cannot be reached"
+}

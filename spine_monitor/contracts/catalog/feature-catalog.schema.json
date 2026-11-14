@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/catalog/feature-catalog.schema.json",
+  "title": "FeatureCatalog",
+  "description": "Registry of every derived metric (feature) the system knows. Adding a feature means editing the catalog, not the message schemas, which only check the id pattern. A feature_id may contain placeholders in braces ({muscle}, {side}, {spine_level}, {spine_region}, {anatomical_plane}); each placeholder is a $defs name of common.schema.json and expands to that enum. Reference ranges are filled in by the clinical owner (Aguado); null means not decided yet, never a default.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "catalog_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "required": ["catalog_version", "entries"],
+  "additionalProperties": false,
+  "$defs": {
+    "range": {
+      "description": "Closed interval; either bound may be null for open-ended.",
+      "type": "object",
+      "properties": {
+        "min": { "type": ["number", "null"] },
+        "max": { "type": ["number", "null"] }
+      },
+      "required": ["min", "max"],
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "properties": {
+        "feature_id": {
+          "description": "Dotted id, possibly with {placeholders}.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.([a-z0-9_]+|\\{[a-z_]+\\}))+$"
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "domain": {
+          "type": "string",
+          "enum": ["spine_length", "muscle", "kinematics", "symptoms", "exercise"]
+        },
+        "unit": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "inputs": {
+          "description": "Data it is computed from.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["emg", "imu", "stretch", "self_report", "session_events"] },
+          "uniqueItems": true
+        },
+        "requires": {
+          "description": "Preconditions. Without them the engine lists the feature in 'skipped' instead of guessing.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["emg_mvc_calibration", "raw_emg", "stretch_calibration", "imu_calibration", "baseline"]
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "risk_direction": {
+          "description": "Which way is worse. 'unspecified' until the clinical owner decides: the contract does not assert clinical claims.",
+          "type": "string",
+          "enum": ["higher_is_worse", "lower_is_worse", "either_is_worse", "none", "unspecified"]
+        },
+        "ranges": {
+          "description": "Normal / alert / critical ranges, owned by Aguado. Null until set.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "normal": { "$ref": "#/$defs/range" },
+                "alert": { "$ref": "#/$defs/range" },
+                "critical": { "$ref": "#/$defs/range" },
+                "source": { "type": "string", "minLength": 1, "description": "Citation or rationale." }
+              },
+              "required": ["normal", "alert", "critical", "source"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "status": { "type": "string", "enum": ["proposed", "validated", "deprecated"] },
+        "notes": { "type": "string" }
+      },
+      "required": ["feature_id", "label", "description", "domain", "unit", "inputs", "risk_direction", "ranges", "status"],
+      "additionalProperties": false
+    }
+  }
+}

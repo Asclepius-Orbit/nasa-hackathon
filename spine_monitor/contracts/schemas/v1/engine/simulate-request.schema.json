@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/engine/simulate-request.schema.json",
+  "title": "SimulateRequest",
+  "description": "POST /simulate. A what-if: take a normal assess request, change some features (or none: an empty overrides array projects the base trajectory as it is), and see how the assessment would move. Read-only: nothing is stored and no real assessment is produced. Backs the MCP tool simulate_scenario.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "base": { "$ref": "assess-request.schema.json" },
+    "overrides": {
+      "description": "Feature changes to apply. Required, but may be empty: an empty array means no changes, so the base trajectory is projected as it is.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
+          "mode": {
+            "description": "set: replace the value. add: add value to it. scale: multiply it by value.",
+            "type": "string",
+            "enum": ["set", "add", "scale"]
+          },
+          "value": { "type": "number" }
+        },
+        "required": ["feature_id", "mode", "value"],
+        "additionalProperties": false
+      }
+    },
+    "project_days": {
+      "description": "Optional horizon for the trend of the scenario.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365
+    }
+  },
+  "required": ["schema_version", "base", "overrides"],
+  "additionalProperties": false
+}

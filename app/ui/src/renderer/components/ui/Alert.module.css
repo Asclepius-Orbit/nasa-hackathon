@@ -1,0 +1,6 @@
+.alert { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 14px 18px; border-radius: var(--radius-l); max-width: 960px; font-size: 1.0625rem; }
+.alert[data-variant="urgent"] { border: 2px solid var(--urgent); background: var(--urgent-soft); }
+.alert[data-variant="urgent"] .title { color: var(--urgent); font-size: 1.1875rem; }
+.alert[data-variant="warning"] { border: 1px solid #E5D29A; background: #FFF4D6; }
+.alert[data-variant="info"] { border: 0; background: var(--action-soft); border-radius: var(--radius-s); }
+.title { font-size: 1.125rem; }

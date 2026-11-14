@@ -1,0 +1,7 @@
+.scale { display: grid; grid-template-columns: repeat(var(--cols, 11), minmax(54px, 1fr)); gap: 8px; max-width: 920px; }
+.option { position: relative; display: block; }
+.option > span:first-of-type { height: 100%; }
+.option input:checked + span { background: var(--ink); border-color: var(--ink); color: #fff; }
+.option input:focus-visible + span { outline: 4px solid var(--focus); outline-offset: 2px; }
+.ends { display: flex; justify-content: space-between; max-width: 920px; font-size: .9375rem; color: var(--muted); margin-top: 6px; }
+@media (max-width: 900px) { .scale { grid-template-columns: repeat(6, 1fr); } }

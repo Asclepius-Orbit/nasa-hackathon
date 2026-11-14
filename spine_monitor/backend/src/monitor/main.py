@@ -1,0 +1,202 @@
+"""On-board app: bus ingestion, commands, engine calls and the UI API.
+
+`create_app` is a factory (`uvicorn --factory monitor.main:create_app`), so the database is not opened
+on import. The lifespan recovers what a dead process left (command timers, `processing` sessions), then starts
+the bus connection, the ground sender, one "analysis-recovery" task (the `ended` sessions, then the retry loop of
+transient analysis failures), the "assessment-refresh" loop (stale assessments are requested again) and the
+"store-maintenance" loop (backup copies, then the retention of raw chunks), and stops them all. Opening the store migrates
+an older file after copying it; every /ui route goes through the token guard of `monitor.ui_auth`. Startup never waits for
+the engine. Tests inject the MQTT
+client, the HTTP transport of the engine, the ground transport and the clock; in production they come from
+`AppSettings` (SPINE_APP_*), and the ground transport is the simulated one, the only adapter so far.
+"""
+
+import asyncio
+import contextlib
+import logging
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from typing import Any
+
+import aiomqtt
+import httpx
+from fastapi import FastAPI
+
+from monitor.analysis import Analysis
+from monitor.analysis_retry import ProcessingRetrier
+from monitor.api import ViewSettings, build_router, install_problem_handlers
+from monitor.assessment_refresh import StaleAssessmentRefresher
+from monitor.control import Control
+from monitor.db import Store
+from monitor.engine import EngineClient
+from monitor.ground.enqueue import enqueue_ground_day, enqueue_ground_summary
+from monitor.ground.sender import GroundSender
+from monitor.ground.transport import FakeGroundTransport, GroundTransport
+from monitor.ingest import Bus, ClientFactory, Ingest
+from monitor.live.stream import RepStream, closing_on_exit_signal
+from monitor.live.tracker import RepHub
+from monitor.maintenance import Maintenance
+from monitor.settings import AppSettings, backup_dir_of
+from monitor.ui_auth import ui_guard, ui_token_of
+
+_log = logging.getLogger(__name__)
+
+
+@dataclass
+class Runtime:
+    store: Store
+    bus: Bus
+    control: Control
+    analysis: Analysis
+    ingest: Ingest
+    hub: RepHub
+    reps: RepStream
+    ground: GroundTransport
+    sender: GroundSender
+    retrier: ProcessingRetrier
+    refresher: StaleAssessmentRefresher
+
+
+def default_mqtt_client_factory(settings: AppSettings, *, client: Callable[..., Any] = aiomqtt.Client) -> ClientFactory:
+    """The production bus client: broker, identifier, credentials and TLS from `settings`. `client` is aiomqtt.Client
+    except in tests."""
+    password = settings.mqtt_password.get_secret_value() if settings.mqtt_password is not None else None
+    tls = None
+    if settings.mqtt_tls:
+        tls = aiomqtt.TLSParameters(ca_certs=str(settings.mqtt_tls_ca_file) if settings.mqtt_tls_ca_file is not None else None)
+    return lambda: client(
+        settings.mqtt_host,
+        settings.mqtt_port,
+        identifier=settings.mqtt_client_id,
+        clean_session=False,  # persistent session: the broker keeps QoS 1 messages during an outage
+        username=settings.mqtt_username,
+        password=password,
+        tls_params=tls,
+    )
+
+
+def create_app(
+    settings: AppSettings | None = None,
+    *,
+    mqtt_client_factory: ClientFactory | None = None,
+    engine_transport: httpx.AsyncBaseTransport | None = None,
+    ground_transport: GroundTransport | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> FastAPI:
+    settings = settings or AppSettings()
+    factory = mqtt_client_factory or default_mqtt_client_factory(settings)
+
+    store = Store(settings.db_path, backup_dir=backup_dir_of(settings))
+    guard = ui_guard(ui_token_of(settings), store)
+    maintenance = Maintenance(
+        store,
+        backup_dir_of(settings),
+        interval_s=settings.backup_interval_s,
+        keep=settings.backup_keep,
+        chunk_retention_days=settings.chunk_retention_days,
+        clock=clock,
+    )
+    http = httpx.AsyncClient(base_url=settings.engine_url, timeout=settings.engine_timeout_s, transport=engine_transport)
+    ground = ground_transport or FakeGroundTransport(clock)
+    sender = GroundSender(
+        store,
+        ground,
+        settings.ground_windows,
+        clock=clock,
+        retry_min_s=settings.ground_retry_min_s,
+        retry_max_s=settings.ground_retry_max_s,
+        tick_s=settings.ground_tick_s,
+        send_timeout_s=settings.ground_send_timeout_s,
+    )
+
+    def queue_for_ground(assessment: dict[str, Any]) -> None:
+        enqueue_ground_summary(store, assessment, clock())
+        sender.wake()
+
+    def queue_day_for_ground(astronaut_id: str, day: date) -> None:
+        enqueue_ground_day(store, astronaut_id, day, clock())
+        sender.wake()
+
+    analysis = Analysis(
+        store,
+        EngineClient(http),
+        window_days=settings.assess_window_days,
+        clock=clock,
+        on_assessment=queue_for_ground,
+        retry_min_s=settings.processing_retry_min_s,
+        retry_max_s=settings.processing_retry_max_s,
+        debounce_s=settings.reassess_debounce_s,
+    )
+    retrier = ProcessingRetrier(store, analysis, clock=clock, max_attempts=settings.processing_max_attempts, tick_s=settings.processing_retry_tick_s)
+    refresher = StaleAssessmentRefresher(store, analysis, clock=clock, stale_hours=settings.stale_assessment_hours, tick_s=settings.reassess_tick_s)
+    hub = RepHub(store, clock, no_signal_s=settings.live_no_signal_s)
+    bus = Bus(factory, reconnect_min_s=settings.mqtt_reconnect_min_s, reconnect_max_s=settings.mqtt_reconnect_max_s)
+    control = Control(store, bus, analysis.process_session, ack_timeout_s=settings.ack_timeout_s, clock=clock, on_session_closed=hub.finish)
+    ingest = Ingest(store, control, store_unknown_session_chunks=settings.store_unknown_session_chunks, live=hub)
+    reps = RepStream(hub, tick_s=settings.live_tick_s, heartbeat_s=settings.live_heartbeat_s)
+    runtime = Runtime(store, bus, control, analysis, ingest, hub, reps, ground, sender, retrier, refresher)
+
+    async def recover_and_retry() -> None:
+        """Background, so the engine's timeout (per session) does not delay startup: sessions left `ended`, then retries."""
+        try:
+            await analysis.process_pending()
+        except Exception as exc:
+            _log.error("recovery of pending analyses failed: %s", type(exc).__name__)  # type only: text may quote health data
+        await retrier.run()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # Both are sync and run before the bus exists: no ack or session end can interleave with them.
+        control.recover()
+        analysis.reset_interrupted()
+        bus_task = asyncio.create_task(bus.run(ingest), name="mqtt-bus")
+        sender_task = asyncio.create_task(sender.run(), name="ground-sender")
+        recovery_task = asyncio.create_task(recover_and_retry(), name="analysis-recovery")
+        refresh_task = asyncio.create_task(refresher.run(), name="assessment-refresh")
+        maintenance_task = asyncio.create_task(maintenance.run(), name="store-maintenance")
+        loop = asyncio.get_running_loop()
+        try:
+            # A signal handler runs between two bytecodes of whatever the loop was doing: the hub is closed from the loop.
+            with closing_on_exit_signal(lambda: loop.call_soon_threadsafe(hub.close)):
+                yield
+        finally:
+            hub.close()
+            # A send in flight stays queued. An analysis still running below may queue more: the next start sends it.
+            for task in (maintenance_task, refresh_task, recovery_task, sender_task, bus_task):
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            await control.idle()
+            await analysis.close()
+            control.close()
+            await http.aclose()
+            store.close()
+
+    app = FastAPI(title="Spine Monitor app", version="0.1.0", lifespan=lifespan)
+    app.state.runtime = runtime
+    install_problem_handlers(app)
+    app.include_router(
+        build_router(
+            store,
+            control,
+            analysis,
+            odi_interval_days=settings.weekly_odi_interval_days,
+            views=ViewSettings.from_app(settings),
+            reps=reps,
+            clock=clock,
+            queue_day=queue_day_for_ground,
+            guard=guard,
+        )
+    )
+
+    @app.get("/health")
+    async def health() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "mqtt_connected": runtime.bus.connected.is_set(),
+            "messages": runtime.ingest.counts,
+        }
+
+    return app

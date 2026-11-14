@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-cord-protocols.schema.json",
+  "title": "CordProtocolsView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/views/cord-protocols: the two independent cord-resistance sessions (back straight, maximum flexion), each with its personal Earth reference, its latest in-flight follow-up, whether one is due and an optional calculated length estimate. A measurement counts only if its session completed and the feature has quality at or above the configured minimum score. The estimate is calculated from the cord measurements under explicit assumptions: it is not a measured length, is not clinically validated and never feeds the triage (level, recommendations, escalation).",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "cadence_days": {
+      "description": "Days between in-flight measurements of each posture. Configurable; the default is an example, not a clinical cadence (pending Aguado).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "postures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/posture" },
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "required": ["schema_version", "cadence_days", "postures"],
+  "additionalProperties": false,
+  "$defs": {
+    "measurement": {
+      "title": "CordMeasurement",
+      "description": "Latest valid cord resistance of one posture in one gravity setting.",
+      "type": "object",
+      "properties": {
+        "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "measured_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+        "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" }
+      },
+      "required": ["session_id", "measured_at", "resistance_ohm", "gravity_environment"],
+      "additionalProperties": false
+    },
+    "earth_measurement": {
+      "title": "CordEarthMeasurement",
+      "description": "A measurement taken pre-flight on Earth.",
+      "type": "object",
+      "properties": {
+        "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "measured_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+        "gravity_environment": { "const": "earth_1g" }
+      },
+      "required": ["session_id", "measured_at", "resistance_ohm", "gravity_environment"],
+      "additionalProperties": false
+    },
+    "follow_up_measurement": {
+      "title": "CordFollowUpMeasurement",
+      "description": "A measurement taken in a gravity setting other than Earth's.",
+      "type": "object",
+      "properties": {
+        "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "measured_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
+        "gravity_environment": { "enum": ["microgravity", "moon_0_16g", "mars_0_38g"] }
+      },
+      "required": ["session_id", "measured_at", "resistance_ohm", "gravity_environment"],
+      "additionalProperties": false
+    },
+    "estimate": {
+      "title": "CordLengthEstimate",
+      "description": "Calculated, never measured: the length of the span between the back contacts estimated from the follow-up and Earth reference resistances with the bench model. The flags state it explicitly so a UI cannot present it as a measurement.",
+      "type": "object",
+      "properties": {
+        "calculated": { "const": true },
+        "measured_length": { "const": false },
+        "clinically_validated": { "const": false },
+        "affects_triage": { "const": false },
+        "model": { "const": "experimental_uniform_resistance_v1" },
+        "reference_length_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "estimated_length_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "elongation_mm": { "type": "number" },
+        "assumptions": {
+          "description": "ASSUMPTION_UNIFORM_RESISTANCE: resistance per unit length is uniform along the cord. ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE: contact resistance is negligible. ASSUMPTION_UNIFORM_DEFORMATION: the cord deforms uniformly and its contacts stay fixed to the material.",
+          "type": "array",
+          "items": { "enum": ["ASSUMPTION_UNIFORM_RESISTANCE", "ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE", "ASSUMPTION_UNIFORM_DEFORMATION"] },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["calculated", "measured_length", "clinically_validated", "affects_triage", "model", "reference_length_mm", "estimated_length_mm", "elongation_mm", "assumptions"],
+      "additionalProperties": false
+    },
+    "posture": {
+      "title": "CordPosture",
+      "type": "object",
+      "properties": {
+        "protocol_id": { "enum": ["spine_resistance_straight_v1", "spine_resistance_max_flexion_v1"] },
+        "posture": { "enum": ["straight", "max_flexion"] },
+        "due": { "type": "boolean" },
+        "due_reason": {
+          "description": "CORD_NO_EARTH_REFERENCE: pre-flight and no valid Earth reference yet. CORD_NO_FOLLOW_UP: in flight and no valid follow-up yet. CORD_FOLLOW_UP_OVERDUE: the last valid follow-up is cadence_days old or older. CORD_UP_TO_DATE: nothing is due (reference taken pre-flight, follow-up recent, or the mission is not in the phase that asks for one).",
+          "enum": ["CORD_NO_EARTH_REFERENCE", "CORD_NO_FOLLOW_UP", "CORD_FOLLOW_UP_OVERDUE", "CORD_UP_TO_DATE"]
+        },
+        "earth_reference": { "oneOf": [{ "$ref": "#/$defs/earth_measurement" }, { "type": "null" }] },
+        "last_follow_up": { "oneOf": [{ "$ref": "#/$defs/follow_up_measurement" }, { "type": "null" }] },
+        "estimate": { "oneOf": [{ "$ref": "#/$defs/estimate" }, { "type": "null" }] },
+        "estimate_unavailable": {
+          "description": "Why there is no estimate; null when there is one. ESTIMATE_NO_EARTH_REFERENCE and ESTIMATE_NO_FOLLOW_UP: a measurement is missing. ESTIMATE_REFERENCE_LENGTH_UNKNOWN: the distance between the contacts in this posture is not measured (only the straight back has it; pending Aguado). ESTIMATE_OUT_OF_MODEL_RANGE: a resistance is outside the bench model. ESTIMATE_ENGINE_UNAVAILABLE: the engine did not answer.",
+          "oneOf": [
+            { "enum": ["ESTIMATE_NO_EARTH_REFERENCE", "ESTIMATE_NO_FOLLOW_UP", "ESTIMATE_REFERENCE_LENGTH_UNKNOWN", "ESTIMATE_OUT_OF_MODEL_RANGE", "ESTIMATE_ENGINE_UNAVAILABLE"] },
+            { "type": "null" }
+          ]
+        }
+      },
+      "required": ["protocol_id", "posture", "due", "due_reason", "earth_reference", "last_follow_up", "estimate", "estimate_unavailable"],
+      "additionalProperties": false
+    }
+  }
+}

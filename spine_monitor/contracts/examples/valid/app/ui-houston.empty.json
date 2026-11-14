@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "summary": null,
+  "ground_link": null,
+  "last_contact_at": null,
+  "transport": "simulated",
+  "content_validated": false
+}

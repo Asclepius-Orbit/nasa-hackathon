@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "astronaut_id": "AST-01",
+  "updated_at": "2026-11-10T09:00:00Z",
+  "date_of_birth": "1988-04-12",
+  "sex_at_birth": "female",
+  "gender_identity": "woman",
+  "anthropometry": {
+    "height_standing_cm": 172,
+    "height_sitting_cm": 90,
+    "body_mass_kg": 68,
+    "body_mass_measured_at": "2026-11-10T08:30:00Z",
+    "skinfold_mm": [
+      { "muscle": "latissimus_dorsi", "side": "left", "thickness_mm": 11 },
+      { "muscle": "latissimus_dorsi", "side": "right", "thickness_mm": 11.5 }
+    ]
+  },
+  "spine_history": {
+    "low_back_pain_history": true,
+    "disc_herniation": { "has_history": false },
+    "spine_surgery": { "has_history": false },
+    "scoliosis": { "present": false },
+    "degenerative_discs_on_preflight_mri": { "present": true, "levels": ["l4", "l5"] },
+    "notes": "Fictional profile used for examples."
+  },
+  "space_history": {
+    "previous_missions": 1,
+    "cumulative_microgravity_days": 186,
+    "last_mission_end_date": "2023-03-05"
+  },
+  "fitness": {
+    "dominant_side": "right",
+    "training_level": "high",
+    "lat_pulldown_reference_load_kg": 45
+  }
+}

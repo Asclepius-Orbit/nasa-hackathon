@@ -1,0 +1,218 @@
+[English](README.md) · [Español](README.es.md) · **Català**
+
+# spine-backend (l'app de bord)
+
+L'endpoint autenticat `POST /ui/crew/{astronaut_id}/sessions/{session_id}/stretch-prediction` utilitza la resistència desada i la baseline terrestre de la mateixa persona, postura i protocol. El client aporta `reference_length_mm` (distància terrestre mesurada entre contactes), `elapsed_days`, `assumed_daily_change_mm` i `sensor_uncertainty_ohm`. Les dades absents o una postura incompatible produeixen un error. La resposta és la predicció experimental del motor i `X-Baseline-Id` identifica la baseline; les altures opcionals provenen del perfil. No és una avaluació clínica. La petició no desa dades.
+
+Amb els contractes v1 l'app és la propietària de la part amb estat: escolta el bus, ho desa tot a
+SQLite, envia les comandes que guien el protocol i crida el motor, que no té estat.
+
+## Què fa
+- **Ingesta del bus** (`ingest.py`): se subscriu amb QoS 1 a tots els `topics.SUBSCRIBE_ALL_*`
+  (streams, estat, acks, àncores de rellotge, calibratges). Cada missatge es valida amb
+  `spine_contracts.validation` (el JSON Schema complet, amb les regles `if/then` que Pydantic no
+  recull), i els seus ids han de coincidir amb els del seu topic. Els missatges invàlids van a
+  `rejected_messages` (acotada); la ingesta no s'atura mai. Els chunks es dedupliquen per stream +
+  `boot_id` + `seq`.
+- **Emmagatzematge** (`db.py`): sessions, chunks, calibratges, àncores de rellotge, estat dels
+  dispositius, comandes i acks, feature sets, baselines, avaluacions, perfil, autoinformes i context
+  diari. Cada entitat es desa tal com la defineix el seu schema.
+- **Comandes** (`control.py`): `start_session`, `stop_session`, `mark_event`, `calibrate`, publicades
+  a `.../cmd` i seguides pels seus acks (`accepted` -> `completed`/`failed`, `rejected`, o `timeout` en
+  local). Els acks actualitzen la sessió (en curs, acabada, esdeveniments, ids de calibratge).
+  **Recuperació després d'un reinici**: en engegar, una comanda `sent` passada d'`ack_timeout_s` passa a
+  `timeout`; a les altres se'ls rearma el temporitzador amb el temps que els queda. Una sessió `starting`
+  el `start_session` de la qual va caducar, o que no té comanda pendent, passa a `rejected` amb
+  `ack_timeout` (un `accepted` tardà encara la revifa). Una sessió que un procés mort va deixar en
+  `processing` torna a `ended`, i tota sessió `ended` es processa en segon pla: l'engegada mai no espera
+  el motor.
+- **Crides al motor** (`analysis.py`): quan acaba una sessió, `/features`. Si és de pre-vol,
+  `/baseline` amb tots els feature sets de pre-vol (una versió nova cada vegada). Després, `/assess` amb
+  perfil, baseline, feature sets recents, autoinformes i context diari. Cada autoinforme també dispara
+  `/assess`. Desar el perfil o el context diari, o una baseline nova, demana una reavaluació amb
+  debounce per astronauta (`REASSESS_DEBOUNCE_S`, 5 s després de l'última petició; una ràfega en fa
+  una sola, i un `/assess` immediat mentrestant la substitueix). Un bucle de fons (`assessment-refresh`,
+  cada `REASSESS_TICK_S`, 1 h) la demana per a cada astronauta amb perfil l'última avaluació del qual
+  falta o és més antiga que `STALE_ASSESSMENT_HOURS`; si no es pot avaluar, es reintenta al tick següent. Sense perfil, baseline o feature sets l'avaluació s'omet i es diu per què. L'absència mai
+  no es converteix en un verd. Una fallada de `/features` perquè el motor no respon o contesta 5xx es
+  reintenta amb backoff exponencial (de `PROCESSING_RETRY_MIN_S` a `PROCESSING_RETRY_MAX_S`), fins a
+  `PROCESSING_MAX_ATTEMPTS` intents, comptats a SQLite (`processing_attempts`) perquè un reinici
+  continuï el compte. Els 4xx, els errors de contracte i les sessions sense chunks són definitius
+  (`processing_failed`).
+- **Ids pseudònims**: només ids del tipus `AST-01`. Les comandes només porten els camps del schema
+  (que no n'admet d'altres). El perfil és una dada personal i mai no va pel bus.
+
+## API de la UI (`/ui`, `api.py`)
+Costat d'escriptura per a la UI. Separada de l'API de només lectura de `contracts/app-openapi.yaml`
+que fa servir el servidor MCP (vegeu més avall). L'app omple ids, `schema_version`, instants i `source`, i valida
+l'entitat contra el seu schema. Els errors són problem details d'`app/error`.
+
+Tota petició a `/ui` necessita `Authorization: Bearer <token>` (si no, 401) i, quan tracta d'un astronauta (la ruta el
+nomena, o nomena una sessió o una comanda seves), `X-Astronaut-Id` amb l'astronauta desbloquejat a la UI: un altre és un 403
+amb problem details. `GET /ui/crew` i `PUT /ui/crew/{id}` només necessiten el token. El token és `SPINE_APP_UI_TOKEN`, o el
+contingut de `SPINE_APP_UI_TOKEN_FILE` (per defecte `ui-token` al costat de la base de dades), que s'hi genera amb permisos
+només del propietari en la primera arrencada sense token. `/health` i l'API de només lectura no necessiten token.
+
+| Mètode | Ruta | Què |
+|---|---|---|
+| PUT | `/ui/crew/{astronaut_id}` | Registra un id que ha assignat la UI (sense cos: noms i PIN es queden a la UI). 201 si és nou, 200 si ja hi era |
+| GET | `/ui/crew` | Ids que coneix el backend (registrats o amb dades), si cadascun té perfil i baseline, i quantes sessions (`ui-crew`, `ui-openapi.yaml`) |
+| GET | `/ui/crew/{astronaut_id}/devices` | Últim estat de cada dispositiu |
+| GET | `/ui/crew/{astronaut_id}/views/cord-protocols` | Les dues sessions de cordó independents (esquena recta, màxima flexió): la referència personal a la Terra (pre-vol), l'últim seguiment vàlid en vol, si toca'n un (cadència `CORD_FOLLOW_UP_INTERVAL_DAYS`, 7 dies per defecte: un exemple, pendent d'Aguado) i una estimació de longitud quan es pot fer (`POST /stretch-estimate` de l'engine). Una mesura és vàlida només si la seva sessió es va completar i la seva qualitat és com a mínim `CORD_MIN_QUALITY_SCORE` (0,5 per defecte, un valor provisional). L'estimació es rotula sempre com a calculada, no mesurada ni validada clínicament; mai es desa i no influeix en el triatge. Només l'esquena recta té una distància mesurada entre contactes (500 mm, `cord-measurements.json`); per a la màxima flexió no està mesurada, de manera que la vista respon `ESTIMATE_REFERENCE_LENGTH_UNKNOWN` (pendent d'Aguado). Una sessió que toca apareix també com a `TASK_CORD_STRAIGHT` o `TASK_CORD_MAX_FLEXION` a Today (`ui-cord-protocols`, `ui-openapi.yaml`) |
+| GET | `/ui/crew/{astronaut_id}/views/cord-history?limit=N` | Les últimes mesures de cada postura, vàlides i invàlides, incloses les sessions que han acabat sense mesura (avortades, rebutjades o amb anàlisi fallida), llistades com a invàlides a l'inici (data, gravetat, resistència en ohms, qualitat, vàlida sí o no i el motiu), de la més recent a la més antiga, com a màxim `limit` per postura (d'1 a 100, 20 per defecte): l'historial mai es carrega sencer. Només mesures: l'estimació mai es llista (`ui-cord-history`, `ui-openapi.yaml`) |
+| POST/GET | `/ui/crew/{astronaut_id}/contacts` | Trucades a l'oficial mèdic de bord (`domain/medical-contact`: qui, quan, nota opcional). Cadascuna torna a encuar el resum de terra del seu dia, que porta el codi i l'instant, mai la nota |
+| PUT/GET | `/ui/crew/{astronaut_id}/profile` | Perfil de l'astronauta |
+| PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Context diari |
+| POST | `/ui/crew/{astronaut_id}/self-reports` | Diari, ODI setmanal o bandera vermella (amb `other_symptoms`: `very_severe_pain`, `other`, a part de les banderes vermelles fins que Aguado decideixi com es trien); retorna l'informe i la nova avaluació (o per què s'ha omès). Repetir el mateix `report_id` és idempotent |
+| GET | `/ui/crew/{astronaut_id}/self-reports/due` | Si toca l'autoinforme diari i l'ODI setmanal; les banderes vermelles sempre estan disponibles. L'Oswestry es desa i es mostra (pantalla Oswestry, historial) però no puntua risc: el motor, el model de risc i les regles l'ignoren. Si entra al resum de Houston està pendent (#85); `ground-summary` no té camp d'ODI per ara |
+| POST | `/ui/crew/{astronaut_id}/sessions` | Pla de la sessió (dispositiu, tipus, protocol, streams, càrrega...) -> `start_session`. `mission_context` agafa per defecte el context diari d'avui |
+| GET | `/ui/sessions/{session_id}` | Sessió, estat (`starting`, `running`, `ended`, `processing`, `processed`, `processing_failed`, `rejected`) i feature set |
+| POST | `/ui/sessions/{session_id}/reprocess` | Només per a `processing_failed` (409 en un altre cas, 404 si no existeix): reinicia els intents, la passa a `ended` i la processa en segon pla. 202 `{"session": id, "state": "ended"}`. És l'única manera de rellançar una sessió que ha fallat de manera definitiva o abans que es comptessin els intents |
+| POST | `/ui/sessions/{session_id}/events` | `mark_event` |
+| POST | `/ui/sessions/{session_id}/calibrations` | `calibrate` |
+| POST | `/ui/sessions/{session_id}/stop` | `stop_session` amb un motiu. `aborted_pain` admet `rep_index` opcional (422 amb un altre motiu): la sessió rep un esdeveniment `pain_reported` amb la repetició i l'instant, el resum de terra del dia el mostra (`pain_stop`) i es demana un /assess |
+| GET | `/ui/sessions/{session_id}/reps` | Server-sent events amb el comptador de repeticions en viu (`ui-openapi.yaml`): `state` a cada canvi, `end` quan acaba la sessió |
+| GET | `/ui/commands/{command_id}` | Estat de la comanda i els seus acks (la UI el consulta per passar al pas següent) |
+| GET | `/ui/crew/{astronaut_id}/houston-report.pdf?end=YYYY-MM-DD` | Informe PDF per a Houston dels últims 7 dies UTC fins a `end` (per defecte avui; 422 `invalid_range` si és futur). `Content-Disposition: attachment; filename="houston-report-<id>-<start>_<end>.pdf"`. Només aquesta setmana: informes diaris, red flags i símptomes urgents com a codis (mai notes lliures), últim Oswestry (informatiu), sessions amb les seves mètriques i les valoracions del motor (nivell, confiança, drivers, `REC_*`, escalada, `RULE_*`). Sense text de l'MCP ni de l'agent i sense dades de perfil, només l'id pseudònim. Una setmana buida dóna igualment un PDF que diu `No data` (mai verd). Es construeix a `monitor/report/` (`week.py` dades pures, `charts.py` matplotlib/Agg, `houston_pdf.py` reportlab) |
+| GET | `/health` | Vida, connexió MQTT i comptadors de missatges |
+
+## API de només lectura per al servidor MCP (`readonly.py`)
+`contracts/app-openapi.yaml`, servida per una app FastAPI pròpia al port 8002 (servei `read-api` de
+compose), així el servidor MCP mai no arriba als endpoints d'escriptura `/ui`. Obre la mateixa SQLite amb
+`PRAGMA query_only`: només `GET`, i la connexió no pot escriure.
+
+- `/crew/{astronaut_id}/status` (`get_current_status`): última avaluació, sessió i autoinforme,
+  dispositius, baseline activa i frescor. El que falta és `null` amb `stale: true`; els llindars són
+  `SPINE_APP_STALE_*_HOURS`.
+- `/crew/{astronaut_id}/history?from&to&limit` (`get_history`, i dues vegades per a `compare_periods`):
+  feature sets per l'inici de la seva sessió, avaluacions per `as_of`.
+- `/assessments/{assessment_id}/explanation` (`explain_assessment`): l'avaluació amb les seves entrades de
+  baseline (només dels drivers), feature sets i autoinformes resolts; el que ja no existeix va a
+  `unresolved`.
+- `/crew/{astronaut_id}/assess-base` (`simulate_scenario`): la petició /assess que l'app enviaria ara (perfil,
+  darrer baseline, i feature sets, autoinformes i context diari dels darrers `assess_window_days`, amb
+  `as_of` = el rellotge de l'app), construïda pel mateix codi que la valoració real i mai enviada. Un
+  astronauta desconegut, o sense dades per construir-la, és `404 not_found` amb `detail` `no_profile`, `no_baseline`
+  o `no_feature_sets`.
+- Recursos: una avaluació, sessió (només les que es van executar), feature set d'una sessió, autoinforme o
+  baseline, i llistes d'avaluacions, sessions i autoinformes d'una finestra.
+- Les finestres són inclusives, RFC 3339 amb offset; `to` anterior a `from` és `invalid_range`. Les
+  llistes van de més antic a més recent, acotades per `limit` (1-500, per defecte 100), conservant el més
+  recent i marcant `truncated`.
+- Un astronauta o entitat desconeguts donen `404 not_found`; els errors són problem details d'`app/error`.
+- Es prova contra el contracte amb `openapi_drift` i es fuzzeja amb Schemathesis.
+
+Engegar-la sola: `uv run uvicorn --factory monitor.readonly:create_read_app --port 8002`.
+
+## Base de dades: migracions, còpies, retenció i exportació
+
+- L'esquema està versionat (`PRAGMA user_version`, `STORE_SCHEMA_VERSION` a `db.py`). Un fitxer més antic es copia primer
+  amb l'API de backup de sqlite3 a `backups/<nom>.v<N>.<instant>.db` i després es migra pas a pas (`MIGRATIONS[n]`: n -> n+1)
+  en una transacció amb el canvi de versió: una migració que falla el deixa com estava. Un fitxer més nou, o aliè, es rebutja.
+- WAL. L'API de només lectura (connexió query-only) mai escriu ni migra: rebutja un fitxer que el backend encara no ha migrat
+  i llegeix el que el backend escriu mentre tots dos estan oberts.
+- Cada `SPINE_APP_BACKUP_INTERVAL_S` (per defecte un dia) va una còpia a `SPINE_APP_BACKUP_DIR` (per defecte `backups/` al
+  costat de la base de dades, o sigui al volum `backend_data`), i es guarden les `SPINE_APP_BACKUP_KEEP` (7) més recents.
+  Després d'aquesta còpia s'esborren els chunks crus de les sessions `processed` que van començar fa més de
+  `SPINE_APP_CHUNK_RETENTION_DAYS` (30; amb `=null` es guarden sempre) i la sessió queda marcada (`chunks_purged_at`). Feature
+  sets, baselines, avaluacions i autoinformes no s'esborren mai.
+- `GET /ui/crew/{astronaut_id}/export`: tot el que hi ha guardat de l'astronauta (perfil, contextos diaris, sessions amb el seu
+  estat, feature sets, baselines, avaluacions, autoinformes, contactes mèdics, estats de dispositius) llevat dels chunks crus.
+
+## Engegar-la
+```
+uv run uvicorn --factory monitor.main:create_app --port 8000
+```
+La configuració són variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TLS`, `MQTT_TLS_CA_FILE`, `ENGINE_URL`,
+`DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
+`WEEKLY_ODI_INTERVAL_DAYS`, `CORD_FOLLOW_UP_INTERVAL_DAYS`, `CORD_MIN_QUALITY_SCORE`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. A Docker Compose la base de dades viu al volum `backend_data`
+(`/data/spine_monitor.db`).
+
+Reintents de l'anàlisi, també `SPINE_APP_*`:
+
+| Variable | Per defecte | Significat |
+|---|---|---|
+| `PROCESSING_RETRY_MIN_S` | 30 | Espera abans del primer reintent d'una fallada transitòria de `/features`; es dobla a cada fallada. |
+| `PROCESSING_RETRY_MAX_S` | 900 | Espera màxima; no menor que la mínima. |
+| `PROCESSING_MAX_ATTEMPTS` | 5 | Intents abans que la sessió es quedi en `processing_failed`. |
+| `PROCESSING_RETRY_TICK_S` | 5 | Cada quant el reintentador busca un backoff vençut. |
+
+Enllaç amb terra: cada assessment encua el resum del seu dia UTC a SQLite (`ground_outbox`) i una tasca de fons l'envia, per un
+transport simulat, mentre hi ha enllaç; `GET /ui/crew/{id}/houston` i `/outbox` el mostren. Un enviament fallit es reintenta amb un
+backoff per entrada i sense límit d'intents; després d'un reinici segueix des de SQLite. Variables, també `SPINE_APP_*`; un valor incorrecte impedeix engegar:
+
+| Variable | Per defecte | Significat |
+|---|---|---|
+| `GROUND_WINDOW_ANCHOR` | sense definir | Inici d'una finestra, RFC 3339 amb zona. Sense definir: no hi ha enllaç configurat, `ground_link` és null i no s'envia res. |
+| `GROUND_WINDOW_PERIOD_MIN` | 90 | Minuts entre l'inici de dues finestres. |
+| `GROUND_WINDOW_UP_MIN` | 10 | Minuts d'enllaç a cada finestra; menys que el període. |
+| `GROUND_RETRY_MIN_S` | 1 | Espera després de la primera fallada d'una entrada; es dobla a cada fallada. |
+| `GROUND_RETRY_MAX_S` | 300 | Espera màxima; no menor que la mínima. |
+| `GROUND_TICK_S` | 1 | Cada quant l'emissor busca una finestra oberta o un backoff vençut. |
+| `GROUND_SEND_TIMEOUT_S` | 30 | Espera màxima que terra respongui a un enviament; passada, l'enviament falla amb codi `timeout` i s'aplica backoff. |
+
+## Broker MQTT: usuaris, ACL i accés per la LAN
+El Mosquitto de bord (`app/docker-compose.yml`) rebutja els clients anònims: cada client s'identifica i només arriba als
+topics de la seva ACL (`app/mosquitto/acl.template` i `acl-device.template`, a partir dels topics de `contracts/asyncapi.yaml`).
+Al repo no hi ha cap credencial. Abans del primer `docker compose`, des de l'arrel del repo (Linux, macOS o Git Bash a
+Windows; només necessita docker):
+```bash
+sh app/mosquitto/setup.sh
+```
+Escriu contrasenyes aleatòries a `app/.env` i genera `app/mosquitto/auth/passwd` (amb el hash de `mosquitto_passwd` dins de
+la imatge del broker) i `app/mosquitto/auth/acl`; tots són al `.gitignore`, i qualsevol ordre de compose falla amb
+`run sh app/mosquitto/setup.sh` mentre faltin. Tornar-lo a executar conserva les contrasenyes; `--force` les rota. Després
+de qualsevol canvi, recrea el broker (`docker compose -f app/docker-compose.yml up -d --force-recreate mosquitto`) i, després
+d'una rotació, els clients. La CI en genera unes d'un sol ús a cada execució.
+
+| Usuari | Qui | Permisos |
+|---|---|---|
+| `spine-app` | backend | llegeix `stream/+`, `status`, `ack`, `clock` i `calibration/+` de tots els dispositius; escriu tot `cmd` |
+| `spine-health` | healthcheck de compose | llegeix `$SYS/broker/uptime` |
+| `spine-itest` | tests `mosquitto` | els mateixos que `spine-app` |
+| `<device_id>` | un dispositiu: `sim-01`, `sim-02` (simulador), `itest-01`, `itest-02` (tests), els reals | només sota `asclepius/v1/crew/<astronaut_id>/device/<device_id>/`: escriu `stream/+`, `status`, `ack`, `clock`, `calibration/+`; llegeix `cmd` |
+
+Un publish que l'ACL denega es descarta en silenci, i una subscripció denegada no rep res. La configuració del backend és
+`SPINE_APP_MQTT_USERNAME`, `SPINE_APP_MQTT_PASSWORD` (mai no es registra ni es mostra), `SPINE_APP_MQTT_TLS` (`true` per
+connectar per TLS) i `SPINE_APP_MQTT_TLS_CA_FILE` (la CA que va signar el certificat del broker; sense, les CA del sistema).
+Compose fixa les dues primeres des d'`app/.env`.
+
+### Donar d'alta un dispositiu
+```bash
+sh app/mosquitto/setup.sh --device AST-03:wb-01
+docker compose -f app/docker-compose.yml up -d --force-recreate mosquitto
+```
+L'usuari és el device id (`wb-01`) i la seva contrasenya és `SPINE_MQTT_DEVICE_PASSWORD_WB_01` d'`app/.env`; configura tots
+dos al gateway del dispositiu (al gateway simulat, `SPINE_SIM_MQTT_USERNAME` i `SPINE_SIM_MQTT_PASSWORD`). Els ids segueixen
+`spine_contracts.topics` (`AST-NN`, `[a-z0-9][a-z0-9_-]{1,31}`); amb només `wb-01` el dispositiu pot publicar per a
+qualsevol astronauta. Per donar-lo de baixa, esborra'l de `SPINE_MQTT_DEVICES` juntament amb la línia de la seva
+contrasenya a `app/.env`, torna a executar l'script i recrea el broker.
+
+### Accés per la LAN amb TLS
+El port 1883 (MQTT sense xifrar) només es publica a `127.0.0.1`. Per a un gateway en una altra màquina,
+`app/docker-compose.lan.yml` afegeix un listener TLS al 8883, amb els mateixos usuaris i ACL, publicat en una adreça de
+l'amfitrió i amb els certificats muntats des d'una carpeta fora del repo (mai no es commitegen):
+```bash
+export SPINE_MQTT_TLS_DIR="$HOME/spine-mqtt-certs" SPINE_MQTT_LAN_ADDRESS=192.168.1.20
+docker compose -f app/docker-compose.yml -f app/docker-compose.lan.yml up -d mosquitto
+```
+La carpeta conté `ca.crt`, `server.crt` i `server.key`. Una CA privada i un certificat per a aquesta adreça:
+```bash
+mkdir -p "$SPINE_MQTT_TLS_DIR" && cd "$SPINE_MQTT_TLS_DIR"
+openssl req -x509 -newkey rsa:3072 -nodes -days 365 -keyout ca.key -out ca.crt -subj "/CN=spine-mqtt-ca"
+openssl req -newkey rsa:3072 -nodes -keyout server.key -out server.csr -subj "/CN=spine-broker"
+printf 'subjectAltName=IP:%s\n' "$SPINE_MQTT_LAN_ADDRESS" > san.ext
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 365 -extfile san.ext -out server.crt
+chmod 600 ca.key server.key
+```
+Treu `ca.key` de l'estació un cop signat el certificat. El gateway es connecta a aquesta adreça al port 8883 amb TLS i
+`ca.crt` com a CA (`SPINE_SIM_MQTT_TLS=true`, `SPINE_SIM_MQTT_TLS_CA_FILE=ca.crt`).
+
+## Tipus TypeScript per a la UI
+`app/ui/src/contracts/v1.ts` es genera des de `contracts/schemas/v1`. Executa `pnpm run gen:types` a
+`app/ui` després de qualsevol canvi de schema; `pnpm run check:types` falla si el fitxer no està al dia.
+
+## Tests
+`uv run pytest backend/tests` (des de `spine_monitor`). Executen l'app contra un broker MQTT en memòria
+i contra el motor real per ASGI. Només se substitueix l'extractor de features del motor, perquè el real
+encara no està implementat.

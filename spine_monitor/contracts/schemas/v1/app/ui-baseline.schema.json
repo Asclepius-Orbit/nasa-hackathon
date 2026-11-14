@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-baseline.schema.json",
+  "title": "BaselineView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/views/baseline: progress of the pre-flight reference sessions and of the baseline built from them, for the Baseline screen of the desktop UI.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "recorded": {
+      "description": "Reference sessions already recorded.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "required": {
+      "description": "Reference sessions the baseline needs.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "reference_version": {
+      "description": "version of the active baseline; null while none was built.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "built_from_sessions": {
+      "description": "Number of sessions in built_from_session_ids of the active baseline; 0 while none was built.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "sessions": {
+      "description": "Reference sessions, recorded and planned, in date order.",
+      "type": "array",
+      "items": {
+        "title": "BaselineViewSession",
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "description": "Null for a planned session.",
+            "oneOf": [{ "$ref": "../common.schema.json#/$defs/uuid" }, { "type": "null" }]
+          },
+          "protocol_id": { "$ref": "../common.schema.json#/$defs/protocol_id" },
+          "status": { "type": "string", "enum": ["complete", "planned"] },
+          "offset_days": {
+            "description": "Days relative to launch: L-30 is -30.",
+            "type": "integer"
+          },
+          "date": {
+            "description": "Calendar date; null when it cannot be derived (no launch date).",
+            "oneOf": [{ "$ref": "../common.schema.json#/$defs/date" }, { "type": "null" }]
+          }
+        },
+        "required": ["session_id", "protocol_id", "status", "offset_days", "date"],
+        "if": { "properties": { "status": { "const": "complete" } }, "required": ["status"] },
+        "then": { "properties": { "session_id": { "type": "string" } } },
+        "else": { "properties": { "session_id": { "type": "null" } } },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "recorded", "required", "reference_version", "built_from_sessions", "sessions"],
+  "additionalProperties": false
+}

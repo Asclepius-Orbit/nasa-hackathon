@@ -1,0 +1,6 @@
+{
+  "type": "not_found",
+  "title": "Assessment not found",
+  "status": 404,
+  "detail": "No assessment with id a55e55e0-0000-4000-8000-0000000000ff."
+}

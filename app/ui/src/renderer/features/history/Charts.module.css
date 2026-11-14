@@ -1,0 +1,17 @@
+.chart { margin: 0 0 14px; padding: 14px 20px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l); }
+.chart h2 { font-size: 1.125rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.9375rem; margin: 2px 0 6px; }
+.legend { display: flex; gap: 22px; font-size: 0.9375rem; color: var(--muted); margin: 0 0 4px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 22px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.swatchRange { background: var(--action-soft); }
+.swatchValue { background: var(--action); }
+.swatchNoData { background: var(--nodata); }
+.chart svg { display: block; width: 100%; height: auto; }
+.hatchBase { fill: #E8ECEE; }
+.hatchStripe { fill: #D5DCE0; }
+.band { fill: var(--action-soft); }
+.axis { stroke: var(--line); }
+.label { fill: var(--muted); font-size: 14px; font-family: inherit; }
+.line { fill: none; stroke: var(--action); stroke-width: 4; stroke-linejoin: round; }
+.dots { fill: var(--action); }
+.bars { fill: var(--ink); }

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-crew.schema.json",
+  "title": "UiCrew",
+  "description": "Response of GET /ui/crew: the astronaut ids the backend knows (registered by the UI or with data stored) and what it holds for each, ordered by id. Ids and flags only: no name, PIN or profile data. The UI keeps names and PINs and assigns the AST-NN ids.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "crew": {
+      "type": "array",
+      "items": {
+        "title": "UiCrewMember",
+        "type": "object",
+        "properties": {
+          "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+          "registered": { "description": "The UI registered this id (PUT /ui/crew/{astronaut_id}).", "type": "boolean" },
+          "has_profile": { "description": "A profile is stored; without one /assess is skipped.", "type": "boolean" },
+          "has_baseline": { "type": "boolean" },
+          "sessions": { "description": "Sessions stored, in any state.", "type": "integer", "minimum": 0 }
+        },
+        "required": ["astronaut_id", "registered", "has_profile", "has_baseline", "sessions"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "crew"],
+  "additionalProperties": false
+}

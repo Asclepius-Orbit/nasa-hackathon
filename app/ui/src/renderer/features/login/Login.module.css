@@ -1,0 +1,36 @@
+.login { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; background: var(--ink); color: #E8ECEE; }
+.side { padding: 56px 56px 40px; display: flex; flex-direction: column; gap: 18px; border-right: 1px solid #2E3D48; }
+.mark { font-size: 0.9375rem; color: #9FB0BA; }
+.side h1 { font-size: 2.5rem; color: #fff; margin: 0; }
+.side p { margin: 0; color: #C4D0D6; max-width: 40ch; }
+.side .privacy { font-size: 0.9375rem; color: #9FB0BA; }
+.facts { margin: auto 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 0.9375rem; color: #9FB0BA; }
+.facts dd { margin: 0 0 0 40px; }
+.facts b { color: #E8ECEE; }
+.main { padding: 56px; display: flex; flex-direction: column; gap: 18px; }
+.main h2 { color: #fff; font-size: 1.625rem; margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.tile { min-height: 104px; border-radius: var(--radius-l); border: 2px solid var(--rail); background: transparent; color: #fff; text-align: left; padding: 14px 18px; cursor: pointer; font: inherit; }
+.tile b { display: block; font-size: 1.875rem; overflow-wrap: anywhere; }
+.tile span { color: #9FB0BA; font-size: 0.9375rem; }
+.tile[aria-pressed="true"] { border-color: #fff; background: #26343E; }
+.tile.other b { font-size: 1.25rem; padding-top: 8px; }
+.tile .name { font-size: 1.5rem; }
+.tile .ini { float: left; width: 48px; height: 48px; border-radius: 50%; background: #34495A; display: grid; place-items: center; font-size: 1.125rem; font-weight: 800; margin: 0 14px 0 0; color: #fff; }
+.newMember { display: flex; flex-direction: column; gap: 8px; max-width: 460px; }
+.newMember label { font-weight: 700; color: #E8ECEE; }
+.newMember input { min-height: var(--target); font: inherit; font-size: 1.5rem; font-weight: 700; padding: 0 16px; border-radius: var(--radius-s); border: 2px solid var(--rail); background: #26343E; color: #fff; }
+.hint { margin: 0; color: #9FB0BA; font-size: 0.9375rem; }
+.hint b { color: #E8ECEE; white-space: nowrap; }
+.buttons { display: flex; gap: 10px; }
+.quietOnDark { color: #fff; border-color: var(--rail); }
+.alignStart { align-self: flex-start; }
+.pinStep { display: flex; flex-direction: column; gap: 14px; }
+.error { min-height: 26px; color: #FFB4AB; font-weight: 700; margin: 0; }
+.urgent { align-self: flex-start; margin-top: auto; font-size: 1.1875rem; }
+.login button:focus-visible, .login input:focus-visible { outline: 4px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 900px) {
+  .login { grid-template-columns: 1fr; }
+  .side { border-right: 0; border-bottom: 1px solid #2E3D48; padding: 32px 24px; }
+  .main { padding: 32px 24px; }
+}

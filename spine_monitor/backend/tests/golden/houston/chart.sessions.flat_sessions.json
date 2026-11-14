@@ -1,0 +1,644 @@
+{
+ "axes": [
+  {
+   "bars": [
+    {
+     "box": [
+      -0.275,
+      0,
+      0.55,
+      4
+     ],
+     "edge": "#ffffffff",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0.725,
+      0,
+      0.55,
+      4
+     ],
+     "edge": "#ffffffff",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    }
+   ],
+   "center_title": "",
+   "grid_ratios": [
+    1,
+    1
+   ],
+   "legend": {
+    "anchor": null,
+    "cols": 3,
+    "frame": false,
+    "handles": [
+     {
+      "edgecolor": "#00000000",
+      "facecolor": "#0f766eff",
+      "hatch": null,
+      "linestyle": "solid",
+      "type": "Rectangle"
+     },
+     {
+      "edgecolor": "#ffffffff",
+      "facecolor": "#c53030ff",
+      "hatch": "///",
+      "linestyle": "solid",
+      "type": "Rectangle"
+     },
+     {
+      "color": "#1f2933ff",
+      "linestyle": "None",
+      "marker": "_",
+      "markerfacecolor": "#1f2933ff",
+      "markersize": 10.0,
+      "type": "Line2D"
+     }
+    ],
+    "loc": 1,
+    "texts": [
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Not stopped for pain",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Stopped for pain",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Planned",
+      "weight": "normal"
+     }
+    ]
+   },
+   "lines": [],
+   "points": [
+    {
+     "edge": [
+      "#1f2933ff"
+     ],
+     "face": [
+      "#1f2933ff"
+     ],
+     "label": "_child4",
+     "marker": [
+      [
+       0.5,
+       -0.0
+      ],
+      [
+       -0.5,
+       0.0
+      ]
+     ],
+     "sizes": [
+      420
+     ],
+     "width": [
+      1.6
+     ],
+     "xy": [
+      [
+       1.0,
+       60.0
+      ]
+     ],
+     "zorder": 4
+    }
+   ],
+   "shared_x": [
+    true,
+    true
+   ],
+   "slot": [
+    0,
+    1,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [
+    {
+     "box": [
+      "Round",
+      "#1f2933ff"
+     ],
+     "color": "#ffffffff",
+     "ha": "center",
+     "pos": [
+      0,
+      2.0
+     ],
+     "size": 8.0,
+     "text": "4",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": [
+      "Round",
+      "#1f2933ff"
+     ],
+     "color": "#ffffffff",
+     "ha": "center",
+     "pos": [
+      1,
+      2.0
+     ],
+     "size": 8.0,
+     "text": "4",
+     "va": "center",
+     "weight": "bold"
+    }
+   ],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Repetitions per session",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    1.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": false,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [],
+   "xticks": [
+    0,
+    1
+   ],
+   "ylabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "Repetitions",
+    "weight": "normal"
+   },
+   "ylim": [
+    0.0,
+    78.0
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "20",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "40",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "60",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "80",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    0.0,
+    20.0,
+    40.0,
+    60.0,
+    80.0
+   ]
+  },
+  {
+   "bars": [],
+   "center_title": "",
+   "grid_ratios": [
+    1,
+    1
+   ],
+   "legend": {
+    "anchor": [
+     738.0,
+     4.4,
+     0.0,
+     0.0
+    ],
+    "cols": 2,
+    "frame": false,
+    "handles": [
+     {
+      "color": "#1f5fbfff",
+      "linestyle": "-",
+      "marker": "o",
+      "markerfacecolor": "#1f5fbfff",
+      "markersize": 6.0,
+      "type": "Line2D"
+     },
+     {
+      "color": "#c2410cff",
+      "linestyle": "-",
+      "marker": "s",
+      "markerfacecolor": "#c2410cff",
+      "markersize": 6.0,
+      "type": "Line2D"
+     }
+    ],
+    "loc": 9,
+    "texts": [
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Peak elongation (mm)",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "IMU range of motion (deg)",
+      "weight": "normal"
+     }
+    ]
+   },
+   "lines": [
+    {
+     "color": "#1f5fbfff",
+     "label": "Peak elongation (mm)",
+     "marker": "o",
+     "size": 5.0,
+     "style": "-",
+     "width": 1.6,
+     "x": [
+      0,
+      1
+     ],
+     "y": [
+      7.0,
+      7.0
+     ],
+     "zorder": 2
+    }
+   ],
+   "points": [],
+   "shared_x": [
+    true,
+    true
+   ],
+   "slot": [
+    1,
+    2,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Lumbar elongation and range of motion",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    1.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Fri 05\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Sat 06\n10:00Z",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    0,
+    1
+   ],
+   "ylabel": {
+    "color": "#1f5fbfff",
+    "size": 8.0,
+    "text": "mm",
+    "weight": "normal"
+   },
+   "ylim": [
+    6.0,
+    8.0
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "6.0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "6.5",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "7.0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "7.5",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "8.0",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    6.0,
+    6.5,
+    7.0,
+    7.5,
+    8.0
+   ]
+  },
+  {
+   "bars": [],
+   "center_title": "",
+   "grid_ratios": [
+    1,
+    1
+   ],
+   "legend": null,
+   "lines": [
+    {
+     "color": "#c2410cff",
+     "label": "IMU range of motion (deg)",
+     "marker": "s",
+     "size": 5.0,
+     "style": "-",
+     "width": 1.6,
+     "x": [
+      0,
+      1
+     ],
+     "y": [
+      7.0,
+      0.0
+     ],
+     "zorder": 2
+    }
+   ],
+   "points": [],
+   "shared_x": [
+    true,
+    true
+   ],
+   "slot": [
+    1,
+    2,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     true,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [],
+   "title": {
+    "color": "#000000ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    1.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": false,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Fri 05\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Sat 06\n10:00Z",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    0,
+    1
+   ],
+   "ylabel": {
+    "color": "#c2410cff",
+    "size": 8.0,
+    "text": "deg",
+    "weight": "normal"
+   },
+   "ylim": [
+    -1.75,
+    8.75
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": false,
+    "grid_width": 0.6,
+    "label_on": false,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "4",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "6",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "8",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "10",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    -2.0,
+    0.0,
+    2.0,
+    4.0,
+    6.0,
+    8.0,
+    10.0
+   ]
+  }
+ ],
+ "dpi": 200,
+ "face": "#ffffffff",
+ "layout": "ConstrainedLayoutEngine",
+ "size": [
+  7.2,
+  4.4
+ ]
+}

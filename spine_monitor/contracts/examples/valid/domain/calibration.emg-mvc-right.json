@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "calibration_id": "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f14",
+  "astronaut_id": "AST-01",
+  "device_id": "wb-01",
+  "stream_id": "emg_lat_right",
+  "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01",
+  "created_at": "2026-11-13T10:00:12Z",
+  "source": "device",
+  "calibration_type": "emg_mvc",
+  "muscle": "latissimus_dorsi",
+  "side": "right",
+  "mvc_rms_mv": 1.79,
+  "window_ms": 250,
+  "n_trials": 3,
+  "signal_kind": "raw",
+  "resting_baseline_mv": 0.03
+}

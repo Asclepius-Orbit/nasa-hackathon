@@ -1,0 +1,12 @@
+appId: org.asclepiusorbit.app
+productName: Asclepius Orbit
+asar: true
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+win:
+  target: nsis
+afterPack: scripts/after-pack.cjs
+publish: null

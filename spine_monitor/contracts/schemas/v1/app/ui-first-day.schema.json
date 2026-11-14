@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-first-day.schema.json",
+  "title": "FirstDayView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/views/first-day: what is left to set up before the first assessment, for the first-day screen of the desktop UI. Carries no name of the astronaut: the desktop app adds it locally.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "todo": {
+      "description": "Tasks still to do, in the order the UI shows them.",
+      "type": "array",
+      "items": { "$ref": "ui-common.schema.json#/$defs/task_code" },
+      "uniqueItems": true
+    },
+    "baseline": {
+      "description": "Same body as the baseline view.",
+      "$ref": "ui-baseline.schema.json"
+    }
+  },
+  "required": ["schema_version", "todo", "baseline"],
+  "additionalProperties": false
+}

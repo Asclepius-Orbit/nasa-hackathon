@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0.0",
+  "baseline_resistance_ohm": 4500,
+  "current_resistance_ohm": 5650,
+  "reference_length_mm": 500
+}

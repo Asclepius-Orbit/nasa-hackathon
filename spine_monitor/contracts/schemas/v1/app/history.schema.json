@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/history.schema.json",
+  "title": "History",
+  "description": "Response of GET /crew/{astronaut_id}/history; backs the MCP tool get_history (and, with two calls, compare_periods, which the MCP server computes). Feature sets and assessments of a time window. Feature sets are filtered by the start of their session, assessments by as_of. limit caps each collection; truncated says some collection had more, and the most recent items are kept.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "astronaut_id": { "$ref": "../common.schema.json#/$defs/astronaut_id" },
+    "from": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "to": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 500 },
+    "truncated": { "type": "boolean" },
+    "feature_sets": {
+      "type": "array",
+      "items": { "$ref": "../domain/feature-set.schema.json" }
+    },
+    "assessments": {
+      "type": "array",
+      "items": { "$ref": "../domain/assessment.schema.json" }
+    }
+  },
+  "required": ["schema_version", "astronaut_id", "from", "to", "limit", "truncated", "feature_sets", "assessments"],
+  "additionalProperties": false
+}

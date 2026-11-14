@@ -1,0 +1,803 @@
+{
+ "axes": [
+  {
+   "bars": [
+    {
+     "box": [
+      -0.275,
+      0,
+      0.55,
+      0
+     ],
+     "edge": "#ffffffff",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    },
+    {
+     "box": [
+      0.725,
+      0,
+      0.55,
+      5.5
+     ],
+     "edge": "#ffffffff",
+     "face": "#c53030ff",
+     "hatch": "///",
+     "zorder": 1
+    },
+    {
+     "box": [
+      2.725,
+      0,
+      0.55,
+      10
+     ],
+     "edge": "#ffffffff",
+     "face": "#0f766eff",
+     "hatch": null,
+     "zorder": 1
+    }
+   ],
+   "center_title": "",
+   "grid_ratios": [
+    1,
+    1
+   ],
+   "legend": {
+    "anchor": null,
+    "cols": 3,
+    "frame": false,
+    "handles": [
+     {
+      "edgecolor": "#00000000",
+      "facecolor": "#0f766eff",
+      "hatch": null,
+      "linestyle": "solid",
+      "type": "Rectangle"
+     },
+     {
+      "edgecolor": "#ffffffff",
+      "facecolor": "#c53030ff",
+      "hatch": "///",
+      "linestyle": "solid",
+      "type": "Rectangle"
+     },
+     {
+      "color": "#1f2933ff",
+      "linestyle": "None",
+      "marker": "_",
+      "markerfacecolor": "#1f2933ff",
+      "markersize": 10.0,
+      "type": "Line2D"
+     }
+    ],
+    "loc": 1,
+    "texts": [
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Not stopped for pain",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Stopped for pain",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Planned",
+      "weight": "normal"
+     }
+    ]
+   },
+   "lines": [],
+   "points": [
+    {
+     "edge": [
+      "#1f2933ff"
+     ],
+     "face": [
+      "#1f2933ff"
+     ],
+     "label": "_child9",
+     "marker": [
+      [
+       0.5,
+       -0.0
+      ],
+      [
+       -0.5,
+       0.0
+      ]
+     ],
+     "sizes": [
+      420
+     ],
+     "width": [
+      1.6
+     ],
+     "xy": [
+      [
+       1.0,
+       60.0
+      ],
+      [
+       2.0,
+       60.0
+      ],
+      [
+       3.0,
+       60.0
+      ],
+      [
+       4.0,
+       60.0
+      ],
+      [
+       5.0,
+       60.0
+      ]
+     ],
+     "zorder": 4
+    }
+   ],
+   "shared_x": [
+    true,
+    true
+   ],
+   "slot": [
+    0,
+    1,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [
+    {
+     "box": [
+      "Round",
+      "#1f2933ff"
+     ],
+     "color": "#ffffffff",
+     "ha": "center",
+     "pos": [
+      0,
+      0.0
+     ],
+     "size": 8.0,
+     "text": "0",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": [
+      "Round",
+      "#1f2933ff"
+     ],
+     "color": "#ffffffff",
+     "ha": "center",
+     "pos": [
+      1,
+      2.75
+     ],
+     "size": 8.0,
+     "text": "5.5",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#5f6b7aff",
+     "ha": "center",
+     "pos": [
+      2,
+      0.5
+     ],
+     "size": 6.5,
+     "text": "no\nmeasure",
+     "va": "bottom",
+     "weight": "normal"
+    },
+    {
+     "box": [
+      "Round",
+      "#1f2933ff"
+     ],
+     "color": "#ffffffff",
+     "ha": "center",
+     "pos": [
+      3,
+      5.0
+     ],
+     "size": 8.0,
+     "text": "10",
+     "va": "center",
+     "weight": "bold"
+    },
+    {
+     "box": null,
+     "color": "#5f6b7aff",
+     "ha": "center",
+     "pos": [
+      4,
+      0.5
+     ],
+     "size": 6.5,
+     "text": "no\nmeasure",
+     "va": "bottom",
+     "weight": "normal"
+    },
+    {
+     "box": null,
+     "color": "#5f6b7aff",
+     "ha": "center",
+     "pos": [
+      5,
+      0.5
+     ],
+     "size": 6.5,
+     "text": "no\nmeasure",
+     "va": "bottom",
+     "weight": "normal"
+    }
+   ],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Repetitions per session",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    5.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": false,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [],
+   "xticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "ylabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "Repetitions",
+    "weight": "normal"
+   },
+   "ylim": [
+    0.0,
+    78.0
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "20",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "40",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "60",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "80",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    0.0,
+    20.0,
+    40.0,
+    60.0,
+    80.0
+   ]
+  },
+  {
+   "bars": [],
+   "center_title": "",
+   "grid_ratios": [
+    1,
+    1
+   ],
+   "legend": {
+    "anchor": [
+     738.0,
+     4.4,
+     0.0,
+     0.0
+    ],
+    "cols": 2,
+    "frame": false,
+    "handles": [
+     {
+      "color": "#1f5fbfff",
+      "linestyle": "-",
+      "marker": "o",
+      "markerfacecolor": "#1f5fbfff",
+      "markersize": 6.0,
+      "type": "Line2D"
+     },
+     {
+      "color": "#c2410cff",
+      "linestyle": "-",
+      "marker": "s",
+      "markerfacecolor": "#c2410cff",
+      "markersize": 6.0,
+      "type": "Line2D"
+     }
+    ],
+    "loc": 9,
+    "texts": [
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "Peak elongation (mm)",
+      "weight": "normal"
+     },
+     {
+      "color": "#000000ff",
+      "size": 7.5,
+      "text": "IMU range of motion (deg)",
+      "weight": "normal"
+     }
+    ]
+   },
+   "lines": [
+    {
+     "color": "#1f5fbfff",
+     "label": "Peak elongation (mm)",
+     "marker": "o",
+     "size": 5.0,
+     "style": "-",
+     "width": 1.6,
+     "x": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+     ],
+     "y": [
+      -2.0,
+      4.0,
+      null,
+      4.0,
+      null,
+      null
+     ],
+     "zorder": 2
+    }
+   ],
+   "points": [],
+   "shared_x": [
+    true,
+    true
+   ],
+   "slot": [
+    1,
+    2,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     false,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [],
+   "title": {
+    "color": "#1f2933ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "Lumbar elongation and range of motion",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    5.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Thu 04\n10:05Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Fri 05\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Sat 06\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Sun 07\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Mon 08\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 7.0,
+     "text": "Tue 09\n10:00Z",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "ylabel": {
+    "color": "#1f5fbfff",
+    "size": 8.0,
+    "text": "mm",
+    "weight": "normal"
+   },
+   "ylim": [
+    -3.5,
+    5.5
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": true,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−4",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "2",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "4",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "6",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    -4.0,
+    -2.0,
+    0.0,
+    2.0,
+    4.0,
+    6.0
+   ]
+  },
+  {
+   "bars": [],
+   "center_title": "",
+   "grid_ratios": [
+    1,
+    1
+   ],
+   "legend": null,
+   "lines": [
+    {
+     "color": "#c2410cff",
+     "label": "IMU range of motion (deg)",
+     "marker": "s",
+     "size": 5.0,
+     "style": "-",
+     "width": 1.6,
+     "x": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+     ],
+     "y": [
+      10.0,
+      null,
+      null,
+      -5.0,
+      null,
+      null
+     ],
+     "zorder": 2
+    }
+   ],
+   "points": [],
+   "shared_x": [
+    true,
+    true
+   ],
+   "slot": [
+    1,
+    2,
+    0,
+    1
+   ],
+   "spines": {
+    "bottom": [
+     true,
+     "#5f6b7aff"
+    ],
+    "left": [
+     true,
+     "#5f6b7aff"
+    ],
+    "right": [
+     true,
+     "#5f6b7aff"
+    ],
+    "top": [
+     false,
+     "#5f6b7aff"
+    ]
+   },
+   "texts": [],
+   "title": {
+    "color": "#000000ff",
+    "loc_visible": true,
+    "size": 9.5,
+    "text": "",
+    "weight": "bold"
+   },
+   "xlabel": {
+    "color": "#1f2933ff",
+    "size": 8.0,
+    "text": "",
+    "weight": "normal"
+   },
+   "xlim": [
+    -0.6,
+    5.6
+   ],
+   "xtick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": false,
+    "grid_width": 0.6,
+    "label_on": true,
+    "tick_color": "#1f2933ff"
+   },
+   "xticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Thu 04\n10:05Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Fri 05\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Sat 06\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Sun 07\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Mon 08\n10:00Z",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "Tue 09\n10:00Z",
+     "weight": "normal"
+    }
+   ],
+   "xticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "ylabel": {
+    "color": "#c2410cff",
+    "size": 8.0,
+    "text": "deg",
+    "weight": "normal"
+   },
+   "ylim": [
+    -8.75,
+    13.75
+   ],
+   "ytick_look": {
+    "grid_color": "#d9dee5ff",
+    "grid_on": false,
+    "grid_width": 0.6,
+    "label_on": false,
+    "tick_color": "#1f2933ff"
+   },
+   "yticklabels": [
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−10",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "−5",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "0",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "5",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "10",
+     "weight": "normal"
+    },
+    {
+     "color": "#1f2933ff",
+     "size": 8.0,
+     "text": "15",
+     "weight": "normal"
+    }
+   ],
+   "yticks": [
+    -10.0,
+    -5.0,
+    0.0,
+    5.0,
+    10.0,
+    15.0
+   ]
+  }
+ ],
+ "dpi": 200,
+ "face": "#ffffffff",
+ "layout": "ConstrainedLayoutEngine",
+ "size": [
+  7.2,
+  4.4
+ ]
+}

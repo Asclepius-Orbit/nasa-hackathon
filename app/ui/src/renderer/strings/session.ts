@@ -1,0 +1,186 @@
+/** Copy of the session screen (mock: SESSION). Session data (title, load, steps) comes from the DataSource. */
+
+/** 120 -> "2 min", 90 -> "1 min 30 s", 45 -> "45 s". */
+export function restDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `${String(rest)} s`;
+  return rest === 0 ? `${String(minutes)} min` : `${String(minutes)} min ${String(rest)} s`;
+}
+
+export const session = {
+  loadError: 'The session could not be loaded.',
+  loading: 'Loading the session.',
+  lede: 'Keep your hands on the band. The harness counts the reps; you do not need to touch the screen.',
+  /** `Green, 25 kg nominal`: the color is a code of the contract (`green`), written with a capital. */
+  band: (color: string, kg: number): string => `${color.charAt(0).toUpperCase()}${color.slice(1)}, ${String(kg)} kg nominal`,
+  stretched: (cm: number): string => `Stretched ${String(cm)} cm at start`,
+  reps: (n: number): string => `${String(n)} reps`,
+  sets: (sets: number, repsPerSet: number): string => `${String(sets)} sets of ${String(repsPerSet)} reps`,
+  title: 'Session',
+  none: 'No session is in progress.',
+  noneHint: 'Choose one below to start it. It appears here with its steps.',
+  /** The session is starting: the harness has not confirmed yet. */
+  anotherTitle: 'Start another session',
+  starting: 'Starting. Waiting for the harness to confirm.',
+  rejected: {
+    title: 'The harness did not accept the session.',
+    body: 'Check that the harness is on and fitted, then try again.',
+    retry: 'Try again',
+  },
+  failed: {
+    title: 'The analysis of this session failed.',
+    body: 'The recording is kept. Reprocess it to analyse it again.',
+    reprocess: 'Reprocess',
+  },
+  started: (started: string): string => `Started ${started} GMT.`,
+  /** `minutes` is signed: positive when it started after the planned time, negative when before. */
+  late: (started: string, minutes: number, planned: string): string => {
+    if (minutes === 0) return `Started ${started} GMT, at the planned ${planned}.`;
+    return `Started ${started} GMT, ${String(Math.abs(minutes))} min ${minutes > 0 ? 'after' : 'before'} the planned ${planned}.`;
+  },
+  stopPain: 'Stop: pain',
+  stopPainHint: 'or say “stop, pain”',
+  stopNotRecorded: {
+    title: 'The stop was not recorded.',
+    body: 'Stop the exercise now and tell the crew medical officer. Press Urgent symptom to alert the flight surgeon.',
+    retry: 'Try to record the stop again',
+  },
+  stepsLabel: 'Protocol steps',
+  stepLabels: {
+    fit: 'Fit electrodes, ground, IMU and cord',
+    check: 'Check the harness is sending',
+    mvc: 'Calibrate maximum effort',
+    reps: 'Do the reps',
+    finish: 'Rest and finish',
+  },
+  countingBy: 'IMU at T9, automatic',
+  backup: 'Say “mark rep” or press the foot pedal',
+  stepsHint: 'Tap a step to see it.',
+  pending: 'Placement and procedure pending Aguado',
+  back: 'Back',
+  next: 'Next step',
+} as const;
+
+export const start = {
+  group: 'Choose the session',
+  hints: {
+    lat_pulldown_standing_v1: 'Exercise: reps with the band, measured by the harness.',
+    spine_length_rest_v1: 'Spine check: stand upright and still, just before and just after the exercise, while the cord reads your spine.',
+    spine_resistance_straight_v1: 'Cord session, back straight: stand with your back straight while the cord reads it. Earth reference before launch, repeated in flight.',
+    spine_resistance_max_flexion_v1: 'Cord session, maximum flexion: curve your back as far as you comfortably can while the cord reads it. Earth reference before launch, repeated in flight.',
+  },
+  button: 'Start session',
+  busy: 'Starting',
+  due: 'due',
+  noHarness: {
+    title: 'No harness is paired to you.',
+    body: 'Pair one before starting a session.',
+    link: 'Pair a harness in Settings',
+  },
+  noContext: {
+    title: 'The monitor needs today’s mission context before a session can start.',
+    body: 'Set the phase and gravity for today, then start again.',
+    link: 'Set it in Profile',
+  },
+  failure: {
+    conflict: 'The harness is busy or offline.',
+    locked: 'The app is locked. Unlock it, then start again.',
+    unavailable: 'The monitor did not answer. Nothing was started; try again.',
+  },
+} as const;
+
+/** Outcomes of the actions on a running session (finish, calibrate, mark an artefact, reprocess). */
+export const actionText = {
+  failure: {
+    unavailable: 'The monitor did not answer. Nothing was sent; try again.',
+    locked: 'The app is locked. Unlock it, then try again.',
+    invalid: 'The monitor refused the request. Nothing was sent.',
+    conflict: 'The harness is busy or the session is not running any more. Nothing was sent.',
+  },
+  finished: 'Finish sent. The session is being saved.',
+  calibrated: 'Calibration requested. Waiting for the harness to confirm.',
+  artefact: 'Artefact marked.',
+  reprocessing: 'Reprocessing. The result shows here when it is done.',
+  notFailed: 'This session is no longer failed.',
+} as const;
+
+export const voiceUndo = {
+  heard: 'Heard “stop, pain”.',
+  countdown: (s: number): string => `Stopping in ${String(s)} s.`,
+  keepGoing: 'Keep going, it was not me',
+  stopNow: 'Stop now',
+  mockTrigger: 'Mock: hear “stop, pain”',
+} as const;
+
+export const stages = {
+  fit: {
+    title: '1. Fit electrodes, ground, IMU and cord',
+    lede: 'Ask a crewmate to fit and check the back: you cannot see it. Tick each one when it is on.',
+  },
+  check: {
+    title: '2. Check the harness is sending',
+    lede: 'Stand still for 10 s. Each sensor must send a clean signal before you start.',
+    good: 'Good',
+    weak: 'Weak',
+    again: 'Check again',
+    without: 'Continue without right EMG',
+    hint: "Continuing without it leaves the right-side muscle values out of today's assessment, and says so.",
+    none: 'No sensor check has been reported yet.',
+  },
+  mvc: {
+    title: '3. Calibrate maximum effort',
+    lede: 'Pull the band down as hard as you can for 5 s, three times, with 1 min of rest between pulls. This sets the 100 % of your muscle signal for today.',
+    notSent: 'No calibration command was sent yet.',
+    waiting: 'Calibration sent. Waiting for the harness to confirm.',
+    saved: (gmt: string): string => `Calibration saved at ${gmt} GMT.`,
+    calibrate: 'Calibrate',
+  },
+  reps: {
+    of: (total: number): string => `of ${String(total)}`,
+    pulling: 'Pulling down',
+    lettingUp: 'Letting up',
+    resting: 'Resting between reps',
+    restingBetweenSets: 'Rest between sets',
+    set: (set: number, total: number): string => `Set ${String(set)} of ${String(total)}`,
+    inTotal: (rep: number, total: number): string => `${String(rep)} of ${String(total)} reps in total`,
+    /** Between two sets: the one that ended, the nominal recovery (pending the clinical owner) and the next one. */
+    setDone: (set: number, total: number, restS: number | null, next: number): string =>
+      restS === null
+        ? `Set ${String(set)} of ${String(total)} done. Next, set ${String(next)} of ${String(total)}.`
+        : `Set ${String(set)} of ${String(total)} done. Rest about ${String(restS)} s, then set ${String(next)} of ${String(total)}.`,
+    countingBy: 'Counting by',
+    lastRep: 'Last rep',
+    backup: 'Backup',
+    noLast: 'No rep counted yet',
+    noCount: 'No live rep count yet.',
+    /** Shown instead of a live counter: the sensor sent nothing. */
+    noSignal: 'No signal from the sensor',
+    noSignalHint: 'Check the harness. The count below is the last one received.',
+    /** The stream to the monitor dropped; main is retrying. */
+    lost: 'Reconnecting to the monitor',
+    lostHint: 'The count below is the last one received.',
+    /** Reconnecting before any count arrived: there is no count to point at. */
+    lostNoCountHint: 'No count has been received yet.',
+    /** The session is over: the number is the final one, not a live one. */
+    finalCount: 'Final count',
+    stale: 'Last count, not live',
+    unavailable: 'The live count is not available',
+    unavailableHint: 'The monitor is not answering. Count the reps yourself and tell the crew medical officer if something hurts.',
+    noReps: 'This protocol has no repetitions. Stand still while the cord reads.',
+    last: (rep: number, seconds: number): string => `Rep ${String(rep)}, ${seconds.toFixed(1)} s, recorded by the harness`,
+    artefact: 'Mark an artefact',
+    recount: 'Recount this rep',
+    progress: 'Movement progress',
+  },
+  finish: {
+    title: '5. Rest and finish',
+    /** The rest comes from the protocol (`restSeconds`), so the text never repeats the catalog value. */
+    lede: (restSeconds: number | null): string =>
+      `Let the band go slack and stand still${restSeconds === null ? '' : ` for ${restDuration(restSeconds)}`}. The stretch cord needs time to settle before its last reading.`,
+    resting: 'Resting',
+    noRest: 'This protocol has no rest period.',
+    finish: 'Finish session',
+    hint: 'Finish once the rest is over. Then the session is saved and a new assessment runs.',
+  },
+} as const;

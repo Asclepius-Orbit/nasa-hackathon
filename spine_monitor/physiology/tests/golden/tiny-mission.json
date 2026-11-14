@@ -1,0 +1,16 @@
+{
+  "seed": 20261102,
+  "messages": 5025,
+  "by_kind": {
+    "calibration": 28,
+    "clock_sync": 320,
+    "daily_context": 8,
+    "device_status": 648,
+    "ground_truth": 112,
+    "profile": 2,
+    "self_report": 8,
+    "session": 32,
+    "stream_chunk": 3867
+  },
+  "sha256": "b8ba7f7e7632eef621d655c0978b88a4a19aa3b4a8d95896f2861ba738cff495"
+}

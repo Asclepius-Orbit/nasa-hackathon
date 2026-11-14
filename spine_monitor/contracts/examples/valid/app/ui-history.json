@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0.0",
+  "from": "2027-02-07",
+  "to": "2027-02-09",
+  "today_day": 87,
+  "preflight_range_mm": { "lo": -3.2, "hi": 4.1 },
+  "days": [
+    {
+      "date": "2027-02-07",
+      "mission_day": 85,
+      "level": "nodata",
+      "length_delta_mm": null,
+      "pain_nrs": null,
+      "session": null,
+      "report": null
+    },
+    {
+      "date": "2027-02-08",
+      "mission_day": 86,
+      "level": "green",
+      "length_delta_mm": 5.0,
+      "pain_nrs": 3,
+      "session": {
+        "session_id": "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a03",
+        "state": "processed",
+        "protocol_id": "lat_pulldown_standing_v1"
+      },
+      "report": { "kind": "daily", "red_flags": [] }
+    },
+    {
+      "date": "2027-02-09",
+      "mission_day": 87,
+      "level": "amber",
+      "length_delta_mm": 6.4,
+      "pain_nrs": 5,
+      "session": null,
+      "report": { "kind": "weekly_odi", "red_flags": [] }
+    }
+  ]
+}

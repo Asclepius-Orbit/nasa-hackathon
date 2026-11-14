@@ -1,0 +1,36 @@
+.chat { display: flex; flex-direction: column; min-height: 100%; max-width: 960px; }
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.lede { color: var(--muted); margin: 0 0 14px; max-width: 66ch; }
+.disclaimer { margin: 0 0 22px; padding: 10px 16px; border-left: 4px solid var(--action); background: var(--action-soft); border-radius: 0 var(--radius-s) var(--radius-s) 0; font-weight: 700; max-width: 66ch; }
+.empty { color: var(--muted); margin: 8px 0 22px; max-width: 60ch; }
+
+.thread { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-direction: column; gap: 22px; }
+.turn { display: flex; flex-direction: column; gap: 10px; }
+.who { display: block; margin-bottom: 4px; font-size: 1rem; color: var(--muted); }
+.plain, .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.text { max-width: 70ch; line-height: 1.55; }
+
+/* The question sits on the right, shorter than the answer, so a long thread reads as a dialogue. */
+.question { align-self: flex-end; max-width: min(80%, 640px); padding: 12px 18px; border-radius: var(--radius-l) var(--radius-l) 4px var(--radius-l); background: var(--action-soft); }
+.answer { display: flex; flex-direction: column; gap: 10px; }
+.answer > * { margin-top: 0; margin-bottom: 0; }
+
+.tools { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 2px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 1rem; }
+.thinking { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; color: var(--muted); }
+.thinking span { font-weight: 700; color: var(--ink); }
+.thinking small { font-size: 1rem; }
+.fallback { font-weight: 800; color: var(--muted); }
+.notice { padding: 8px 12px; border-radius: var(--radius-s); background: var(--panel); font-size: 1rem; }
+
+.composer { position: sticky; bottom: 0; margin-top: auto; padding: 14px 0 6px; background: var(--panel); border-top: 1px solid var(--line); }
+.label { display: block; margin-bottom: 6px; font-weight: 800; }
+.row { display: flex; gap: 12px; align-items: stretch; }
+.input { flex: 1; min-height: var(--target); padding: 12px 14px; font: inherit; color: var(--ink); background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius-s); resize: vertical; }
+.row button { align-self: stretch; }
+.hint { display: block; margin-top: 6px; color: var(--muted); font-size: 1rem; }
+
+@media (max-width: 900px) {
+  .question { max-width: 92%; }
+  .row { flex-direction: column; }
+}

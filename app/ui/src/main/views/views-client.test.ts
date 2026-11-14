@@ -1,0 +1,360 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { createViewsClient, type ViewFetch, type ViewsClient } from './views-client';
+import { ViewsError } from './views-error';
+
+const BASE = 'http://127.0.0.1:8000';
+const ASTRONAUT = 'AST-01';
+const SESSION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
+
+const APP_EXAMPLES = join(import.meta.dirname, '../../../../../spine_monitor/contracts/examples/valid/app');
+const appExample = (name: string): Record<string, unknown> => JSON.parse(readFileSync(join(APP_EXAMPLES, `${name}.json`), 'utf8')) as Record<string, unknown>;
+
+const baseline = {
+  schema_version: '1.0.0',
+  recorded: 1,
+  required: 3,
+  reference_version: null,
+  built_from_sessions: 0,
+  sessions: [],
+};
+const BODIES = {
+  strip: { schema_version: '1.0.0', astronaut_id: ASTRONAUT, mission: { day: 3, start: null }, harness: null },
+  today: { schema_version: '1.0.0', level: 'nodata', recommendations: [], reasons: [] },
+  history: { schema_version: '1.1.0', from: '2026-11-01', to: '2026-11-07', days: [] },
+  baseline,
+  firstDay: { schema_version: '1.0.0', todo: ['pair_harness'], baseline },
+  cordProtocols: appExample('ui-cord-protocols'),
+  cordHistory: appExample('ui-cord-history'),
+  houston: { schema_version: '1.0.0', astronaut_id: ASTRONAUT, summary: null, ground_link: null },
+  outbox: { schema_version: '1.0.0', astronaut_id: ASTRONAUT, ground_link: null, items: [] },
+  session: {
+    schema_version: '1.0.0',
+    session_id: SESSION,
+    astronaut_id: ASTRONAUT,
+    state: 'created',
+    protocol_id: 'lat_pulldown_standing_v1',
+  },
+};
+
+interface Call {
+  url: string;
+  init: Parameters<ViewFetch>[1];
+}
+
+/** Hand-written fake of the HTTP boundary: records calls and answers with a canned `Response`. */
+function fakeFetch(respond: () => Promise<Response> | Response): { fetch: ViewFetch; calls: Call[] } {
+  const calls: Call[] = [];
+  const fetch: ViewFetch = (url, init) => {
+    calls.push({ url, init });
+    return Promise.resolve(respond());
+  };
+  return { fetch, calls };
+}
+
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+const problem = (status: number, type = 'internal'): Response =>
+  new Response(JSON.stringify({ type, title: 'x', status }), {
+    status,
+    headers: { 'content-type': 'application/problem+json' },
+  });
+
+async function codeOf(promise: Promise<unknown>): Promise<string> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof ViewsError) return error.code;
+    throw error;
+  }
+  throw new Error('expected a ViewsError');
+}
+
+describe('createViewsClient requests', () => {
+  const cases: [string, (c: ViewsClient) => Promise<unknown>, string, unknown][] = [
+    ['strip', (c) => c.strip(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/strip`, BODIES.strip],
+    ['today', (c) => c.today(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/today`, BODIES.today],
+    ['baseline', (c) => c.baseline(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/baseline`, BODIES.baseline],
+    ['first-day', (c) => c.firstDay(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/first-day`, BODIES.firstDay],
+    ['cord-protocols', (c) => c.cordProtocols(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/cord-protocols`, BODIES.cordProtocols],
+    ['cord-history', (c) => c.cordHistory(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/cord-history`, BODIES.cordHistory],
+    ['houston', (c) => c.houston(ASTRONAUT), `/ui/crew/${ASTRONAUT}/houston`, BODIES.houston],
+    ['outbox', (c) => c.outbox(ASTRONAUT), `/ui/crew/${ASTRONAUT}/outbox`, BODIES.outbox],
+    ['session', (c) => c.session(ASTRONAUT, SESSION), `/ui/sessions/${SESSION}/view`, BODIES.session],
+    ['history without range', (c) => c.history(ASTRONAUT, {}), `/ui/crew/${ASTRONAUT}/views/history`, BODIES.history],
+  ];
+
+  it.each(cases)('GET %s hits the contract path and returns the body untouched', async (_name, call, path, body) => {
+    const { fetch, calls } = fakeFetch(() => json(body));
+    const result = await call(createViewsClient({ baseUrl: BASE, fetch }));
+    expect(result).toEqual(body);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(`${BASE}${path}`);
+    expect(calls[0]?.init).toMatchObject({ method: 'GET', redirect: 'error', headers: { accept: 'application/json' } });
+    expect(calls[0]?.init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each([
+    [{ from: '2026-11-01', to: '2026-11-07' }, '?from=2026-11-01&to=2026-11-07'],
+    [{ from: '2026-11-01' }, '?from=2026-11-01'],
+    [{ to: '2026-11-07' }, '?to=2026-11-07'],
+    [{}, ''],
+  ])('history range %j becomes the query %j', async (range, query) => {
+    const { fetch, calls } = fakeFetch(() => json(BODIES.history));
+    await createViewsClient({ baseUrl: BASE, fetch }).history(ASTRONAUT, range);
+    expect(calls[0]?.url).toBe(`${BASE}/ui/crew/${ASTRONAUT}/views/history${query}`);
+  });
+
+  it('percent-encodes ids so they cannot add path segments or query parameters', async () => {
+    const { fetch, calls } = fakeFetch(() => json({}));
+    const client = createViewsClient({ baseUrl: BASE, fetch });
+    await codeOf(client.strip('AST-01/../x?y=1#z'));
+    await codeOf(client.session(ASTRONAUT, 'a/b?c'));
+    expect(calls[0]?.url).toBe(`${BASE}/ui/crew/AST-01%2F..%2Fx%3Fy%3D1%23z/views/strip`);
+    expect(calls[1]?.url).toBe(`${BASE}/ui/sessions/a%2Fb%3Fc/view`);
+  });
+
+  it('asks for one device of the strip with a percent-encoded device_id query', async () => {
+    const { fetch, calls } = fakeFetch(() => json(BODIES.strip));
+    const client = createViewsClient({ baseUrl: BASE, fetch });
+    await client.strip(ASTRONAUT, 'wb-01');
+    await client.strip(ASTRONAUT, 'a&b=1#c');
+    await client.strip(ASTRONAUT);
+    expect(calls.map((call) => call.url)).toEqual([
+      `${BASE}/ui/crew/${ASTRONAUT}/views/strip?device_id=wb-01`,
+      `${BASE}/ui/crew/${ASTRONAUT}/views/strip?device_id=a%26b%3D1%23c`,
+      `${BASE}/ui/crew/${ASTRONAUT}/views/strip`,
+    ]);
+  });
+
+  it('refuses a base URL that is not loopback', () => {
+    expect(() => createViewsClient({ baseUrl: 'http://example.com:8000' })).toThrow(/loopback/);
+    expect(() => createViewsClient({ baseUrl: 'http://127.0.0.1.evil.com' })).toThrow(/loopback/);
+  });
+});
+
+describe('createViewsClient errors', () => {
+  const client = (respond: () => Promise<Response> | Response): ViewsClient =>
+    createViewsClient({ baseUrl: BASE, fetch: fakeFetch(respond).fetch });
+
+  it('maps 404 (problem+json) to not_found', async () => {
+    expect(await codeOf(client(() => problem(404, 'not_found')).strip(ASTRONAUT))).toBe('not_found');
+    expect(await codeOf(client(() => problem(404, 'not_found')).session(ASTRONAUT, SESSION))).toBe('not_found');
+  });
+
+  it.each([400, 401, 403, 422, 500, 502, 503])('maps HTTP %i to unavailable', async (status) => {
+    expect(await codeOf(client(() => problem(status)).today(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it('maps a success status other than 200 to unavailable', async () => {
+    expect(await codeOf(client(() => new Response(null, { status: 204 })).today(ASTRONAUT))).toBe('unavailable');
+    expect(await codeOf(client(() => new Response(null, { status: 301 })).today(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it('maps a network failure to unavailable and keeps the cause for the log', async () => {
+    const cause = new TypeError('fetch failed');
+    const failing = client(() => Promise.reject(cause));
+    const error = await failing.today(ASTRONAUT).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ViewsError);
+    expect(error).toMatchObject({ code: 'unavailable', cause });
+  });
+
+  it('maps a timeout to unavailable by aborting the request', async () => {
+    let aborted = false;
+    const hanging: ViewFetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => {
+          aborted = true;
+          reject(init.signal.reason as Error);
+        });
+      });
+    const slow = createViewsClient({ baseUrl: BASE, fetch: hanging, timeoutMs: 20 });
+    expect(await codeOf(slow.today(ASTRONAUT))).toBe('unavailable');
+    expect(aborted).toBe(true);
+  });
+
+  it('times out while reading a body that never ends too', async () => {
+    const stalled: ViewFetch = (_url, init) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          init.signal.addEventListener('abort', () => {
+            controller.error(init.signal.reason);
+          });
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200 }));
+    };
+    const slow = createViewsClient({ baseUrl: BASE, fetch: stalled, timeoutMs: 20 });
+    expect(await codeOf(slow.today(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it('maps a body that is not JSON to unavailable', async () => {
+    expect(await codeOf(client(() => new Response('<html>oops</html>', { status: 200 })).today(ASTRONAUT))).toBe(
+      'unavailable',
+    );
+    expect(await codeOf(client(() => new Response('', { status: 200 })).today(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it.each([
+    ['null', null],
+    ['an array', []],
+    ['a string', 'ok'],
+    ['an empty object', {}],
+    ['a future major', { ...BODIES.today, schema_version: '2.0.0' }],
+    ['a malformed version', { ...BODIES.today, schema_version: 'latest' }],
+    ['a missing field', { schema_version: '1.0.0', level: 'nodata' }],
+    ['a wrongly typed field', { ...BODIES.today, recommendations: 'none' }],
+  ])('maps a 200 with %s to unavailable (never invents data)', async (_label, body) => {
+    expect(await codeOf(client(() => json(body)).today(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it('rejects a view that belongs to someone else or to another session', async () => {
+    expect(await codeOf(client(() => json({ ...BODIES.strip, astronaut_id: 'AST-02' })).strip(ASTRONAUT))).toBe(
+      'unavailable',
+    );
+    expect(await codeOf(client(() => json({ ...BODIES.session, session_id: 'other' })).session(ASTRONAUT, SESSION))).toBe(
+      'unavailable',
+    );
+  });
+
+  it('answers not_found for a session that belongs to another astronaut', async () => {
+    const foreign = client(() => json({ ...BODIES.session, astronaut_id: 'AST-02' }));
+    expect(await codeOf(foreign.session(ASTRONAUT, SESSION))).toBe('not_found');
+  });
+
+  it('answers not_found when the backend guard answers 403 for another astronaut session', async () => {
+    expect(await codeOf(client(() => problem(403, 'forbidden')).session(ASTRONAUT, SESSION))).toBe('not_found');
+  });
+
+  it('rejects a session view that names no astronaut as unavailable', async () => {
+    const { astronaut_id: _omitted, ...anonymous } = BODIES.session;
+    expect(await codeOf(client(() => json(anonymous)).session(ASTRONAUT, SESSION))).toBe('unavailable');
+  });
+
+  const onlyVersion = json({ schema_version: '1.0.0' });
+  it.each<[string, (c: ViewsClient) => Promise<unknown>]>([
+    ['strip', (c) => c.strip(ASTRONAUT)],
+    ['history', (c) => c.history(ASTRONAUT, {})],
+    ['baseline', (c) => c.baseline(ASTRONAUT)],
+    ['first-day', (c) => c.firstDay(ASTRONAUT)],
+    ['cord-protocols', (c) => c.cordProtocols(ASTRONAUT)],
+    ['cord-history', (c) => c.cordHistory(ASTRONAUT)],
+    ['session', (c) => c.session(ASTRONAUT, SESSION)],
+    ['houston', (c) => c.houston(ASTRONAUT)],
+    ['outbox', (c) => c.outbox(ASTRONAUT)],
+  ])('validates the %s shape', async (_name, call) => {
+    expect(await codeOf(call(client(() => onlyVersion.clone())))).toBe('unavailable');
+  });
+
+  it('keeps no cache: after a success, a failure is still an error', async () => {
+    let healthy = true;
+    const flaky = client(() => (healthy ? json(BODIES.today) : problem(503)));
+    expect(await flaky.today(ASTRONAUT)).toEqual(BODIES.today);
+    healthy = false;
+    expect(await codeOf(flaky.today(ASTRONAUT))).toBe('unavailable');
+  });
+});
+
+describe('houston and outbox identity', () => {
+  it.each<[string, (c: ViewsClient) => Promise<unknown>, unknown]>([
+    ['houston', (c) => c.houston(ASTRONAUT), BODIES.houston],
+    ['outbox', (c) => c.outbox(ASTRONAUT), BODIES.outbox],
+  ])('rejects a %s view of another astronaut as unavailable', async (_name, call, body) => {
+    const { fetch } = fakeFetch(() => json({ ...(body as object), astronaut_id: 'AST-02' }));
+    expect(await codeOf(call(createViewsClient({ baseUrl: BASE, fetch })))).toBe('unavailable');
+  });
+});
+
+describe('createViewsClient houstonReport', () => {
+  const NAME = `houston-report-${ASTRONAUT}-2026-11-01_2026-11-07.pdf`;
+  const pdf = (headers: Record<string, string> = {}, body: string = '%PDF-1.7 body', status = 200): Response =>
+    new Response(body, {
+      status,
+      headers: { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="${NAME}"`, ...headers },
+    });
+
+  it('GETs the PDF path asking for application/pdf and returns the bytes with the name of the header', async () => {
+    const { fetch, calls } = fakeFetch(() => pdf());
+    const result = await createViewsClient({ baseUrl: BASE, fetch, token: 't' }).houstonReport(ASTRONAUT);
+    expect(calls[0]?.url).toBe(`${BASE}/ui/crew/${ASTRONAUT}/houston-report.pdf`);
+    expect(calls[0]?.init).toMatchObject({ method: 'GET', redirect: 'error', headers: { accept: 'application/pdf' } });
+    expect(result.fileName).toBe(NAME);
+    expect(new TextDecoder().decode(result.bytes)).toBe('%PDF-1.7 body');
+  });
+
+  it('falls back to a plain name when the header is missing or carries a path', async () => {
+    for (const disposition of ['attachment', 'attachment; filename="../../evil.pdf"', 'attachment; filename="C:\\x.pdf"']) {
+      const { fetch } = fakeFetch(() => pdf({ 'content-disposition': disposition }));
+      expect((await createViewsClient({ baseUrl: BASE, fetch }).houstonReport(ASTRONAUT)).fileName).toBe('houston-report.pdf');
+    }
+  });
+
+  it.each([
+    ['404', () => pdf({}, '', 404), 'not_found'],
+    ['500', () => pdf({}, '', 500), 'unavailable'],
+    ['a body that is not a PDF', () => pdf({}, '<html>'), 'unavailable'],
+    ['another content type', () => pdf({ 'content-type': 'application/json' }), 'unavailable'],
+  ])('maps %s to %s', async (_name, respond, code) => {
+    const { fetch } = fakeFetch(respond);
+    expect(await codeOf(createViewsClient({ baseUrl: BASE, fetch }).houstonReport(ASTRONAUT))).toBe(code);
+  });
+
+  it('maps a network failure to unavailable', async () => {
+    const fetch: ViewFetch = () => Promise.reject(new TypeError('fetch failed'));
+    expect(await codeOf(createViewsClient({ baseUrl: BASE, fetch }).houstonReport(ASTRONAUT))).toBe('unavailable');
+  });
+});
+
+describe('cord views are checked strictly', () => {
+  const client = (respond: () => Response): ViewsClient => createViewsClient({ baseUrl: BASE, fetch: fakeFetch(respond).fetch });
+  type Posture = Record<string, unknown>;
+  const protocols = (): { postures: Posture[] } & Record<string, unknown> => structuredClone(BODIES.cordProtocols) as { postures: Posture[] } & Record<string, unknown>;
+  const withEstimate = (patch: Record<string, unknown>): unknown => {
+    const body = protocols();
+    const [straight] = body.postures;
+    if (straight === undefined) throw new Error('example has postures');
+    straight['estimate'] = { ...(straight['estimate'] as object), ...patch };
+    return body;
+  };
+
+  it('accepts the contract examples', async () => {
+    expect(await client(() => json(BODIES.cordProtocols)).cordProtocols(ASTRONAUT)).toEqual(BODIES.cordProtocols);
+    expect(await client(() => json(BODIES.cordHistory)).cordHistory(ASTRONAUT)).toEqual(BODIES.cordHistory);
+  });
+
+  it.each([
+    ['calculated is not true', { calculated: false }],
+    ['measured_length is true', { measured_length: true }],
+    ['clinically_validated is true', { clinically_validated: true }],
+    ['affects_triage is true', { affects_triage: true }],
+    ['an unknown assumption code', { assumptions: ['ASSUMPTION_NEW'] }],
+    ['no assumptions', { assumptions: [] }],
+    ['an unexpected field', { measured_mm: 12 }],
+  ])('rejects an estimate with %s', async (_name, patch) => {
+    expect(await codeOf(client(() => json(withEstimate(patch))).cordProtocols(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it.each([
+    ['an unknown estimate_unavailable code', { estimate: null, estimate_unavailable: 'ESTIMATE_NEW' }],
+    ['an unknown due_reason', { due_reason: 'CORD_NEW' }],
+    ['an unknown protocol_id', { protocol_id: 'spine_resistance_other_v1' }],
+  ])('rejects a posture with %s', async (_name, patch) => {
+    const body = protocols();
+    const [straight] = body.postures;
+    if (straight === undefined) throw new Error('example has postures');
+    Object.assign(straight, patch);
+    expect(await codeOf(client(() => json(body)).cordProtocols(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it('rejects a history measurement with an unknown invalid_reason', async () => {
+    const body = structuredClone(BODIES.cordHistory) as { postures: { measurements: Posture[] }[] };
+    const measurement = body.postures[0]?.measurements.find((m) => m['valid'] === false);
+    if (measurement === undefined) throw new Error('example has an invalid measurement');
+    measurement['invalid_reason'] = 'CORD_INVALID_NEW';
+    expect(await codeOf(client(() => json(body)).cordHistory(ASTRONAUT))).toBe('unavailable');
+  });
+});

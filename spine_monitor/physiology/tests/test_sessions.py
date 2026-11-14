@@ -52,7 +52,8 @@ def test_plan_day_lists_scheduled_sessions_and_background_sorted(config, timelin
         assert plan.chunk_ms == sess.chunk_ms_for(config, background=plan.background)
         assert (plan.end - plan.start) % timedelta(milliseconds=plan.chunk_ms) == timedelta(0)
     exercise = next(p for p in plans if p.ref.slot == "lat_pulldown")
-    assert exercise.session_type == "exercise" and exercise.reps == rep_schedule(config.protocol("lat_pulldown_standing_v1"))
+    expected_rng = RngTree(config.seed).rng(A, day.index, "lat_pulldown", "exercise")
+    assert exercise.session_type == "exercise" and exercise.reps == rep_schedule(config.protocol("lat_pulldown_standing_v1"), rng=expected_rng)
     assert abs((exercise.start - day.at(config.schedule.sessions[1].time_utc)).total_seconds()) < 5 * 600
     background = next(p for p in plans if p.background)
     assert background.session_type == "spine_check" and background.stream_ids == ("imu_t9", "stretch_spine")

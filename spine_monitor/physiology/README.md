@@ -197,3 +197,14 @@ Tests that need a real broker are marked `mosquitto` and are skipped when nothin
 - The weekly ODI questionnaire is informational: the simulator does not generate it and it never scores risk; only the daily self-report is generated.
 - Sessions, self-reports, daily context, profiles and ground truth have no MQTT topic: they only exist in JSONL (domain objects never go to the bus). Calibrations do go to the bus.
 - Every number in the example config is a placeholder, not a clinical reference.
+# Exercise model assumptions
+
+The example mission starts exercise at rest and uses the same seeded repetition
+schedule for movement, EMG, cord and session events. Each repetition has a
+smooth pull and return separated from the next by a pause. Fatigue grows with
+relative effort and time and decays exponentially during pauses. The YAML
+fields `effort_load`, `fatigue_resistance`, `recovery_per_s` and
+`individual_variability` control this model. The reduction in movement capacity,
+slower repetitions and compensatory increase in EMG activation are modelling
+assumptions, not measured force or validated clinical relationships.
+

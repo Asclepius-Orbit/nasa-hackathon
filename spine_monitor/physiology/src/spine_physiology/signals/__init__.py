@@ -5,6 +5,7 @@ el sellado de tiempo son de `faults` y `device`. Aquí viven los tipos compartid
 señal (ya implementados: son deterministas y triviales).
 """
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -20,6 +21,10 @@ class Rep:
     start_s: float
     end_s: float
     set_index: int = 1  # 1-based, serie a la que pertenece
+    fatigue: float = 0.0
+    capacity: float = 1.0
+    amplitude_factor: float = 1.0
+    fatigue_end: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,22 +41,33 @@ def _set_period_s(protocol: ExerciseProtocol) -> float:
     return protocol.reps_per_set * (protocol.rep_duration_s + protocol.rest_between_reps_s)
 
 
-def rep_schedule(protocol: ExerciseProtocol) -> tuple[Rep, ...]:
+def rep_schedule(protocol: ExerciseProtocol, *, rng: np.random.Generator | None = None) -> tuple[Rep, ...]:
     """Repeticiones del protocolo: lead_in, y por serie `reps_per_set` × (rep + descanso entre reps);
     entre series, `rest_between_sets_s`. `Rep.index` cuenta a lo largo de la sesión."""
-    period = protocol.rep_duration_s + protocol.rest_between_reps_s
+    rng = rng if rng is not None else np.random.default_rng(0)
     reps: list[Rep] = []
+    cursor = protocol.lead_in_s
+    fatigue = 0.0
     for s in range(protocol.planned_sets):
-        set_start = protocol.lead_in_s + s * (_set_period_s(protocol) + protocol.rest_between_sets_s)
-        for i in range(protocol.reps_per_set):
-            start = set_start + i * period
-            reps.append(Rep(index=len(reps) + 1, start_s=start, end_s=start + protocol.rep_duration_s, set_index=s + 1))
+        for _ in range(protocol.reps_per_set):
+            variation = float(rng.uniform(-protocol.individual_variability, protocol.individual_variability))
+            capacity = max(1.0 - 0.4 * fatigue, 0.4)
+            duration = protocol.rep_duration_s * (1.0 + 0.5 * fatigue + variation)
+            end_fatigue = min(1.0, fatigue + protocol.effort_load * duration / protocol.fatigue_resistance)
+            reps.append(Rep(index=len(reps) + 1, start_s=cursor, end_s=cursor + duration, set_index=s + 1,
+                            fatigue=fatigue, capacity=capacity, amplitude_factor=capacity * (1.0 + variation), fatigue_end=end_fatigue))
+            fatigue = end_fatigue
+            cursor += duration + protocol.rest_between_reps_s
+            fatigue *= math.exp(-protocol.recovery_per_s * protocol.rest_between_reps_s)
+        if s + 1 < protocol.planned_sets:
+            cursor += protocol.rest_between_sets_s
+            fatigue *= math.exp(-protocol.recovery_per_s * protocol.rest_between_sets_s)
     return tuple(reps)
 
 
-def set_schedule(protocol: ExerciseProtocol) -> tuple[SetWindow, ...]:
+def set_schedule(protocol: ExerciseProtocol, reps: tuple[Rep, ...] | None = None) -> tuple[SetWindow, ...]:
     """Series del protocolo: de la primera rep a la última de cada una."""
-    reps = rep_schedule(protocol)
+    reps = rep_schedule(protocol) if reps is None else reps
     windows: list[SetWindow] = []
     for s in range(1, protocol.planned_sets + 1):
         in_set = [r for r in reps if r.set_index == s]
@@ -59,10 +75,10 @@ def set_schedule(protocol: ExerciseProtocol) -> tuple[SetWindow, ...]:
     return tuple(windows)
 
 
-def exercise_duration_s(protocol: ExerciseProtocol) -> float:
+def exercise_duration_s(protocol: ExerciseProtocol, reps: tuple[Rep, ...] | None = None) -> float:
     """lead_in + series × reps_per_set × (rep + descanso entre reps) + (series − 1) × descanso entre series + lead_out."""
-    p = protocol
-    return p.lead_in_s + p.planned_sets * _set_period_s(p) + (p.planned_sets - 1) * p.rest_between_sets_s + p.lead_out_s
+    reps = rep_schedule(protocol) if reps is None else reps
+    return reps[-1].end_s + protocol.rest_between_reps_s + protocol.lead_out_s
 
 
 def n_samples(duration_s: float, rate_hz: float, samples_per_chunk: int) -> int:

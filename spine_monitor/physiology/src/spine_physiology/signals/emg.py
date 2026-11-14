@@ -101,6 +101,21 @@ def fatigue_profile(reps: Sequence[Rep], *, fatigue_per_rep: float, n_samples: i
     return np.clip(profile, 0.0, 1.0)
 
 
+def exercise_fatigue_profile(reps: Sequence[Rep], *, n_samples: int, rate_hz: float, recovery_per_s: float) -> np.ndarray:
+    """Interpolate the model's rep fatigue and exponential recovery between efforts."""
+    times = np.arange(n_samples, dtype=np.float64) / rate_hz
+    profile = np.zeros(n_samples, dtype=np.float64)
+    for index, rep in enumerate(reps):
+        end_level = rep.fatigue_end
+        inside = (times >= rep.start_s) & (times < rep.end_s)
+        u = (times[inside] - rep.start_s) / (rep.end_s - rep.start_s)
+        profile[inside] = rep.fatigue + (end_level - rep.fatigue) * u
+        next_start = reps[index + 1].start_s if index + 1 < len(reps) else np.inf
+        rest = (times >= rep.end_s) & (times < next_start)
+        profile[rest] = end_level * np.exp(-recovery_per_s * (times[rest] - rep.end_s))
+    return profile
+
+
 def _band_sos(params: EmgSignalConfig, fatigue: float, rate_hz: float) -> np.ndarray:
     """Butterworth paso banda con ambos bordes desplazados un `fatigue_band_shift × fatiga` relativo."""
     scale = max(1.0 - params.fatigue_band_shift * fatigue, _MIN_BAND_SCALE)

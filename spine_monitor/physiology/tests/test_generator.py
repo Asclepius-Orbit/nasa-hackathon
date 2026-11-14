@@ -860,7 +860,7 @@ def test_live_exercise_session_announces_its_features_then_streams_contiguous_ch
     for m in block_ends:
         assert (m.retained, m.topic, m.astronaut_id, m.day) == (False, None, "AST-01", 1)
         assert m.payload["session_id"] == LIVE_SESSION and m.payload["type"] in {"quality_faults", "lost_chunks"}
-    protocol_end = T0 + 44 * timedelta(milliseconds=config.signals.chunk_ms)
+    protocol_end = T0 + 45 * timedelta(milliseconds=config.signals.chunk_ms)
     assert block_ends and block_ends[0].at == protocol_end
     assert all((m.at - protocol_end) % timedelta(seconds=config.device.status_interval_s) == timedelta(0) for m in block_ends)
 
@@ -925,4 +925,4 @@ def test_live_output_for_a_fixed_seed_is_pinned():
     background = list(itertools.islice(live, 60))
     calibration = generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="imu", stream_ids=["imu_t9"], at=T0)
     digests = (_live_digest(session), _live_digest(background), _live_digest(calibration))
-    assert digests == ("bd04a0f7115b6f2d", "b264399f9b335d35", "0dbc3fd32676669c")
+    assert digests == ("0e7382cfb03df7ad", "b264399f9b335d35", "0dbc3fd32676669c")

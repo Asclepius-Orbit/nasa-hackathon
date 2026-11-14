@@ -84,6 +84,11 @@ protocols:
     planned_sets: 4
     reps_per_set: 15
     rep_duration_s: 3.0
+    # Hipótesis de simulación, no valores fisiológicos medidos.
+    effort_load: 1.0
+    fatigue_resistance: 120.0
+    recovery_per_s: 0.01
+    individual_variability: 0.03
     rest_between_reps_s: 0.6
     rest_between_sets_s: 30.0
     lead_out_s: 15.0

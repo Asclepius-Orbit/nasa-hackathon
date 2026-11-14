@@ -193,3 +193,7 @@ Default cutoffs: `amber_cutoff` 0.3, `red_cutoff` 0.8, `unknown_flag_urgency` `i
 | `RULE_SELF_REPORT_PAIN_SEVERE` | self_report `pain_nrs` >= 7 | amber | - | `REC_CONTACT_FLIGHT_SURGEON` | a pain NRS of 7 or more on the 0-10 scale is the usual convention for severe pain; cutoff to be confirmed |
 
 All recommendation codes reuse ids the UI already renders. What Aguado must confirm: the risk cutoffs, the level and urgency of each red flag (in particular `trauma_event` and the three amber flags), the pain threshold, whether further rules (deviation- or risk-based) and further recommendation codes are needed, and the wording of each recommendation.
+
+### Five-second measured limits
+
+The measured-feature extractor reports the last five seconds of a session request in each feature's own `window`; the FeatureSet window still describes the complete request. Cord resistance is compared with an explicitly attested straight-back personal reference, independently of the cord length estimate. Lumbar sensor X orientation requires the specified left-facing mounting, an absolute reference angle and uninterrupted, uniformly timed gyroscope samples from that reference to the end of the window. EMG amplitude is normalized to the personal RMS reference only when the entire window is bracketed by reference-effort events. Missing, ambiguous, invalid, or non-classifiable readings remain incomplete and cannot produce a green assessment. The assessment uses a measurement only when its window ends within five seconds of `as_of`.

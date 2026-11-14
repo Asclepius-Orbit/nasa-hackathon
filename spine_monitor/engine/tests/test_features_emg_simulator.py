@@ -18,6 +18,7 @@ from spine_contracts import FeaturesRequest, dump, validation
 from spine_contracts.catalog import unit_for
 from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
+from spine_engine.measurements import UNITS
 
 # vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
 _MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
@@ -42,7 +43,7 @@ SYMMETRY_ABS_PCT = 20.0
 
 def _is_amplitude(feature_id: str) -> bool:
     """Los ids ``emg.*`` de #42; los espectrales de #43 (``emg_spectral``) se prueban en su propio fichero."""
-    return feature_id.startswith("emg.") and not feature_id.endswith(("median_freq_hz", "median_freq_slope_hz_per_rep"))
+    return feature_id.startswith("emg.") and feature_id not in UNITS and not feature_id.endswith(("median_freq_hz", "median_freq_slope_hz_per_rep"))
 
 
 def _mission_config(*, faults: bool) -> Any:
@@ -120,7 +121,7 @@ def test_the_amplitude_features_match_the_simulator_truth(seed: int, gravity: st
     assert emg_ids == {f"emg.{MUSCLE}.{side}.{name}" for side in SIDES.values() for name in ("rms_mv", "rest_rms_mv", "rms_pct_mvc", "peak_pct_mvc")} | {
         SYMMETRY
     }
-    assert result.get("skipped", []) == []
+    assert not [s for s in result.get("skipped", []) if s["feature_id"] not in UNITS]
     for side in SIDES.values():
         prefix = f"emg.{MUSCLE}.{side}"
         assert features[f"{prefix}.rms_mv"]["value"] == pytest.approx(truth[f"{prefix}.rms_mv"], rel=RMS_MV_REL)
@@ -158,7 +159,7 @@ def test_without_the_calibrations_the_amplitude_stays_and_the_mvc_features_are_s
 
     emg = {f for f in _by_id(result) if _is_amplitude(f)}
     assert emg == {f"emg.{MUSCLE}.{side}.{name}" for side in SIDES.values() for name in ("rms_mv", "rest_rms_mv")}
-    skipped = {s["feature_id"]: s["reason"] for s in result["skipped"]}
+    skipped = {s["feature_id"]: s["reason"] for s in result["skipped"] if s["feature_id"] not in UNITS}
     assert set(skipped.values()) == {"no_calibration"}
     assert set(skipped) == {f"emg.{MUSCLE}.{side}.{name}" for side in SIDES.values() for name in ("rms_pct_mvc", "peak_pct_mvc")} | {SYMMETRY}
 
@@ -171,7 +172,7 @@ def test_expired_calibrations_skip_the_mvc_features_as_calibration_expired():
 
     result = _extract(payload)
 
-    assert {s["reason"] for s in result["skipped"]} == {"calibration_expired"}
+    assert {s["reason"] for s in result["skipped"] if s["feature_id"] not in UNITS} == {"calibration_expired"}
     assert SYMMETRY in {s["feature_id"] for s in result["skipped"]}
 
 

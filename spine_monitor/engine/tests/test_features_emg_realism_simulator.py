@@ -16,6 +16,7 @@ import pytest
 from spine_contracts import FeaturesRequest, dump, validation
 from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
+from spine_engine.measurements import UNITS
 
 _SPEC = importlib.util.spec_from_file_location("_emg_amplitude_simulator", Path(__file__).with_name("test_features_emg_simulator.py"))
 assert _SPEC is not None and _SPEC.loader is not None
@@ -72,7 +73,7 @@ def _simulated() -> tuple[dict[str, Any], dict[str, float]]:
 def _extract(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     result = dump(CompositeFeatureExtractor(default_registry()).extract(FeaturesRequest.model_validate(payload)))
     assert validation.errors("domain/feature-set", result) == []
-    assert result.get("skipped", []) == []
+    assert not [s for s in result.get("skipped", []) if s["feature_id"] not in UNITS]
     return {f["feature_id"]: f for f in result["features"]}
 
 

@@ -49,3 +49,22 @@ def test_missing_measurements_reduce_completeness():
     assert result.score == 0
     assert {item.what for item in result.missing} == {STRETCH, IMU, EMG}
 
+
+
+def test_newer_skipped_window_invalidates_an_older_measurement():
+    older = feature_set(STRETCH, 7.5, end=NOW - timedelta(seconds=1))
+    newer = feature_set(STRETCH, 0)
+    newer.features = []
+    from spine_contracts.models.domain.feature_set_schema import SkippedItem
+    newer.skipped = [SkippedItem(feature_id=STRETCH, reason="no_calibration")]
+    assert measurements([older, newer], NOW) == {}
+    assert measurements([newer, older], NOW) == {}
+
+
+def test_newer_invalid_measurement_does_not_fall_back_to_stale_reading():
+    older = feature_set(IMU, 42, end=NOW - timedelta(seconds=1))
+    newer = feature_set(IMU, 24)
+    assert measurements([older, newer], NOW) == {}
+    assert measurements([newer, older], NOW) == {}
+    simultaneous = feature_set(IMU, 42)
+    assert measurements([simultaneous, newer], NOW) == {}

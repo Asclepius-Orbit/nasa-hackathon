@@ -52,6 +52,16 @@ def test_imu_orientation_reference_is_explicit_and_bounded(validator_for):
     assert not validator.is_valid(calibration)
 
 
+def test_feature_can_carry_its_own_window(validator_for):
+    feature_set = load_json(EXAMPLES_DIR / "valid/domain/feature-set.preflight.json")
+    feature = feature_set["features"][0]
+    feature["window"] = {"start": "2026-11-13T10:00:00Z", "end": "2026-11-13T10:00:05Z"}
+    validator = validator_for("domain/feature-set")
+    assert validator.is_valid(feature_set)
+    del feature["window"]["end"]
+    assert not validator.is_valid(feature_set)
+
+
 def test_stretch_estimate_contract_rejects_invalid_inputs_and_extras(validator_for):
     request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500, "current_resistance_ohm": 5650, "reference_length_mm": 500}
     validator = validator_for("engine/stretch-estimate-request")

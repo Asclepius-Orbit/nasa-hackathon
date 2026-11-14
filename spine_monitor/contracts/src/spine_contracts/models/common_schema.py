@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -22,6 +23,14 @@ class CommonDefinitions(RootModel[Any]):
         ...,
         description='Shared building blocks for every Asclepius Orbit contract. Nothing here is a message by itself: other schemas $ref these definitions. Canonical units are fixed per channel type and never converted on reception: g (standard gravity), deg/s, mV, ohm, mm, cm, kg, Hz, ms, s.',
         title='Common definitions',
+    )
+
+
+class UtcTimestamp(RootModel[AwareDatetime]):
+    root: AwareDatetime = Field(
+        ...,
+        description='RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.',
+        examples=['2026-11-13T10:00:00.250Z'],
     )
 
 

@@ -1398,6 +1398,19 @@ export interface FeatureSet {
     value: number;
     unit: string;
     /**
+     * Time span of this feature when it differs from the enclosing feature set's window.
+     */
+    window?: {
+      /**
+       * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+       */
+      start: string;
+      /**
+       * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+       */
+      end: string;
+    };
+    /**
      * How many repetitions, samples or days the value summarises.
      */
     n?: number;

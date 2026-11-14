@@ -34,6 +34,16 @@
           "feature_id": { "$ref": "../common.schema.json#/$defs/feature_id" },
           "value": { "type": "number" },
           "unit": { "type": "string", "maxLength": 16 },
+          "window": {
+            "description": "Time span of this feature when it differs from the enclosing feature set's window.",
+            "type": "object",
+            "properties": {
+              "start": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+              "end": { "$ref": "../common.schema.json#/$defs/utc_timestamp" }
+            },
+            "required": ["start", "end"],
+            "additionalProperties": false
+          },
           "n": {
             "description": "How many repetitions, samples or days the value summarises.",
             "type": "integer",

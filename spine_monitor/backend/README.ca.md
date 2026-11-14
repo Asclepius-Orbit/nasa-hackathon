@@ -56,6 +56,8 @@ només del propietari en la primera arrencada sense token. `/health` i l'API de 
 | PUT | `/ui/crew/{astronaut_id}` | Registra un id que ha assignat la UI (sense cos: noms i PIN es queden a la UI). 201 si és nou, 200 si ja hi era |
 | GET | `/ui/crew` | Ids que coneix el backend (registrats o amb dades), si cadascun té perfil i baseline, i quantes sessions (`ui-crew`, `ui-openapi.yaml`) |
 | GET | `/ui/crew/{astronaut_id}/devices` | Últim estat de cada dispositiu |
+| GET | `/ui/crew/{astronaut_id}/views/cord-protocols` | Les dues sessions de cordó independents (esquena recta, màxima flexió): la referència personal a la Terra (pre-vol), l'últim seguiment vàlid en vol, si toca'n un (cadència `CORD_FOLLOW_UP_INTERVAL_DAYS`, 7 dies per defecte: un exemple, pendent d'Aguado) i una estimació de longitud quan es pot fer (`POST /stretch-estimate` de l'engine). Una mesura és vàlida només si la seva sessió es va completar i la seva qualitat és com a mínim `CORD_MIN_QUALITY_SCORE` (0,5 per defecte, un valor provisional). L'estimació es rotula sempre com a calculada, no mesurada ni validada clínicament; mai es desa i no influeix en el triatge. Només l'esquena recta té una distància mesurada entre contactes (500 mm, `cord-measurements.json`); per a la màxima flexió no està mesurada, de manera que la vista respon `ESTIMATE_REFERENCE_LENGTH_UNKNOWN` (pendent d'Aguado). Una sessió que toca apareix també com a `TASK_CORD_STRAIGHT` o `TASK_CORD_MAX_FLEXION` a Today (`ui-cord-protocols`, `ui-openapi.yaml`) |
+| GET | `/ui/crew/{astronaut_id}/views/cord-history?limit=N` | Les últimes mesures de cada postura, vàlides i invàlides, incloses les sessions que han acabat sense mesura (avortades, rebutjades o amb anàlisi fallida), llistades com a invàlides a l'inici (data, gravetat, resistència en ohms, qualitat, vàlida sí o no i el motiu), de la més recent a la més antiga, com a màxim `limit` per postura (d'1 a 100, 20 per defecte): l'historial mai es carrega sencer. Només mesures: l'estimació mai es llista (`ui-cord-history`, `ui-openapi.yaml`) |
 | POST/GET | `/ui/crew/{astronaut_id}/contacts` | Trucades a l'oficial mèdic de bord (`domain/medical-contact`: qui, quan, nota opcional). Cadascuna torna a encuar el resum de terra del seu dia, que porta el codi i l'instant, mai la nota |
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Perfil de l'astronauta |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Context diari |
@@ -121,7 +123,7 @@ uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 La configuració són variables `SPINE_APP_*` (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TLS`, `MQTT_TLS_CA_FILE`, `ENGINE_URL`,
 `DB_PATH`, `ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`,
-`WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. A Docker Compose la base de dades viu al volum `backend_data`
+`WEEKLY_ODI_INTERVAL_DAYS`, `CORD_FOLLOW_UP_INTERVAL_DAYS`, `CORD_MIN_QUALITY_SCORE`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. A Docker Compose la base de dades viu al volum `backend_data`
 (`/data/spine_monitor.db`).
 
 Reintents de l'anàlisi, també `SPINE_APP_*`:

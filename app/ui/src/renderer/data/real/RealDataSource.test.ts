@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { BaselineView, FirstDayResult, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
+import type { BaselineView, CordHistoryView, CordProtocolsView, FirstDayResult, HistoryView, HoustonView, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
 import { example } from '../../test/contract-examples';
 import { FakeAsclepiusApi } from '../../test/fake-api';
 import type { RepsUpdate } from '../types';
@@ -118,6 +118,35 @@ describe('getFirstDay', () => {
     expect(result.todo).toEqual(['TASK_BASELINE_SESSION', 'TASK_DAILY_REPORT']);
     expect(result.baseline.recorded).toBe(2);
     expect(result.baseline.sessions).toHaveLength(3);
+  });
+});
+
+describe('getCordProtocols', () => {
+  it('maps both postures, their measurements and the calculated estimate, or why there is none', async () => {
+    api.viewData.cordProtocols = example<CordProtocolsView>('ui-cord-protocols');
+    const result = await data.getCordProtocols();
+    expect(result.cadenceDays).toBe(7);
+    const [straight, flexion] = result.postures;
+    expect(straight).toMatchObject({
+      protocolId: 'spine_resistance_straight_v1',
+      due: false,
+      earthReference: { resistanceOhm: 4500, gravity: 'earth_1g' },
+      lastFollowUp: { resistanceOhm: 5650, gravity: 'microgravity' },
+      estimate: { referenceLengthMm: 500, elongationMm: 38.5723222423 },
+      estimateUnavailable: null,
+    });
+    expect(flexion).toMatchObject({ protocolId: 'spine_resistance_max_flexion_v1', due: true, estimate: null, estimateUnavailable: 'ESTIMATE_REFERENCE_LENGTH_UNKNOWN' });
+  });
+});
+
+describe('getCordHistory', () => {
+  it('maps valid and invalid measurements with their reason', async () => {
+    api.viewData.cordHistory = example<CordHistoryView>('ui-cord-history');
+    const [straight, flexion] = (await data.getCordHistory()).postures;
+    if (straight === undefined || flexion === undefined) throw new Error('both postures expected');
+    expect(straight.measurements.map((m) => [m.valid, m.invalidReason])).toEqual([[true, null], [false, 'CORD_INVALID_LOW_QUALITY'], [true, null]]);
+    expect(straight.measurements[0]).toMatchObject({ resistanceOhm: 5650, gravity: 'microgravity', qualityScore: 0.9 });
+    expect(flexion.measurements[0]).toMatchObject({ resistanceOhm: null, qualityScore: null, invalidReason: 'CORD_INVALID_NOT_COMPLETED' });
   });
 });
 

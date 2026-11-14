@@ -53,6 +53,8 @@ the first start without one. `/health` and the read-only API need no token.
 | PUT | `/ui/crew/{astronaut_id}` | Registers an id the UI assigned (no body: names and PINs stay in the UI). 201 new, 200 already registered |
 | GET | `/ui/crew` | Ids known to the backend (registered or with data) and whether each has a profile and a baseline, and how many sessions (`ui-crew`, `ui-openapi.yaml`) |
 | GET | `/ui/crew/{astronaut_id}/devices` | Latest status of each device |
+| GET | `/ui/crew/{astronaut_id}/views/cord-protocols` | The two independent cord sessions (back straight, maximum flexion): the personal Earth reference (pre-flight), the latest valid in-flight follow-up, whether one is due (cadence `CORD_FOLLOW_UP_INTERVAL_DAYS`, default 7 days: an example, pending Aguado) and a length estimate when it can be made (`POST /stretch-estimate` of the engine). A measurement is valid only if its session completed and its quality is at least `CORD_MIN_QUALITY_SCORE` (default 0.5, a placeholder). The estimate is always labelled calculated, not measured and not clinically validated; it is never stored and has no effect on the triage. Only the straight back has a measured distance between contacts (500 mm, `cord-measurements.json`); for maximum flexion it is not measured, so the view answers `ESTIMATE_REFERENCE_LENGTH_UNKNOWN` (pending Aguado). A due session also shows up as `TASK_CORD_STRAIGHT` or `TASK_CORD_MAX_FLEXION` in Today (`ui-cord-protocols`, `ui-openapi.yaml`) |
+| GET | `/ui/crew/{astronaut_id}/views/cord-history?limit=N` | The latest measurements of each posture, valid and invalid, including sessions that ended without a measurement (aborted, rejected or whose analysis failed), listed as invalid at their start (date, gravity, resistance in ohm, quality, valid yes or no and the reason), newest first, at most `limit` per posture (1 to 100, default 20): the history is never loaded whole. Measurements only: the estimate is never listed (`ui-cord-history`, `ui-openapi.yaml`) |
 | POST/GET | `/ui/crew/{astronaut_id}/contacts` | Calls to the crew medical officer (`domain/medical-contact`: who, when, optional note). Each one requeues the ground summary of its day, which carries the code and the instant, never the note |
 | PUT/GET | `/ui/crew/{astronaut_id}/profile` | Astronaut profile |
 | PUT/GET | `/ui/crew/{astronaut_id}/daily-context/{date}` | Daily context |
@@ -113,7 +115,7 @@ Run it alone: `uv run uvicorn --factory monitor.readonly:create_read_app --port 
 uv run uvicorn --factory monitor.main:create_app --port 8000
 ```
 Settings are `SPINE_APP_*` variables (`settings.py`): `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TLS`, `MQTT_TLS_CA_FILE`, `ENGINE_URL`, `DB_PATH`,
-`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`, `WEEKLY_ODI_INTERVAL_DAYS`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. In
+`ACK_TIMEOUT_S`, `ASSESS_WINDOW_DAYS`, `STORE_UNKNOWN_SESSION_CHUNKS`, `LIVE_NO_SIGNAL_S`, `LIVE_HEARTBEAT_S`, `LIVE_TICK_S`, `WEEKLY_ODI_INTERVAL_DAYS`, `CORD_FOLLOW_UP_INTERVAL_DAYS`, `CORD_MIN_QUALITY_SCORE`, `REASSESS_DEBOUNCE_S`, `REASSESS_TICK_S`. In
 Docker Compose the database lives in the `backend_data` volume (`/data/spine_monitor.db`).
 
 Analysis retries, also `SPINE_APP_*`:

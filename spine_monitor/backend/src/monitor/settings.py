@@ -62,6 +62,12 @@ class AppSettings(BaseSettings):
     # The Oswestry is due when the last one is older than this many days.
     weekly_odi_interval_days: int = 7
 
+    # Cord-resistance protocols (back straight, maximum flexion): days between in-flight follow-ups of each posture and the minimum
+    # quality score of a feature for the measurement to count as valid. Both are placeholders (7 days is an example, not a fixed
+    # cadence; the score is not a validated threshold): PENDIENTE Aguado.
+    cord_follow_up_interval_days: int = Field(default=7, ge=1)
+    cord_min_quality_score: float = Field(default=0.5, ge=0, le=1)
+
     # Read-only API: data older than this many hours is reported as `stale` in the status.
     stale_assessment_hours: float = 24.0
     stale_session_hours: float = 48.0

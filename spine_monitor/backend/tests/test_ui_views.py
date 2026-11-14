@@ -16,6 +16,8 @@ LAUNCH = "2026-12-13"  # L-30 on the harness date (2026-11-13): preflight, missi
 LAT = "lat_pulldown_standing_v1"
 SPINE_CHECK = "spine_length_rest_v1"
 ELONGATION = "stretch.full_spine.peak_elongation_mm"
+# Pre-flight with no cord measurement yet: the Earth reference of both cord postures is due.
+CORD_TASKS = ["TASK_CORD_STRAIGHT", "TASK_CORD_MAX_FLEXION"]
 
 
 def url(view: str) -> str:
@@ -228,7 +230,7 @@ async def test_today_with_assessment_lumbar_delta_session_and_baseline_pending(h
     assert today["session_in_progress"]["session_id"] == session_id(2)
     assert today["session_in_progress"]["total_reps"] == 60
     # The running session is not complete, so 0 of 3 reference sessions are recorded; one started today, so no TASK_SESSION.
-    assert today["also_today"] == ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION"]
+    assert today["also_today"] == ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION", *CORD_TASKS]
 
 
 async def test_today_a_rejected_session_today_does_not_count_as_done(harness):
@@ -487,7 +489,7 @@ async def test_first_day_in_preflight_lists_the_baseline_task(harness):
 
     first_day = await get(harness, url("first-day"), "app/ui-first-day")
 
-    assert first_day["todo"] == ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION", "TASK_SESSION"]
+    assert first_day["todo"] == ["TASK_DAILY_REPORT", "TASK_ODI", "TASK_BASELINE_SESSION", "TASK_SESSION", *CORD_TASKS]
 
 
 # --- session view ----------------------------------------------------------------------------------

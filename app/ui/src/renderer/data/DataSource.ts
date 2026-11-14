@@ -18,6 +18,8 @@ import type {
 import type {
   BaselineData,
   ContactEntry,
+  CordHistoryData,
+  CordProtocolsData,
   FirstDayData,
   HistoryData,
   HoustonData,
@@ -39,6 +41,10 @@ export interface DataSource {
   getStrip(): Promise<StripData>;
   getToday(): Promise<TodayData>;
   getFirstDay(): Promise<FirstDayData>;
+  /** The two cord-resistance protocols: what is due, the last valid measurement of each and the calculated estimate. */
+  getCordProtocols(): Promise<CordProtocolsData>;
+  /** The latest cord measurements of each posture, valid and invalid; measurements only, never the estimate. */
+  getCordHistory(): Promise<CordHistoryData>;
   getHistory(): Promise<HistoryData>;
   getReportForm(): Promise<ReportFormData>;
   /**

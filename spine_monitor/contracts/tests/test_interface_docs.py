@@ -152,6 +152,8 @@ UI_VIEWS = {
     "/ui/crew/{astronaut_id}/views/history": "app/ui-history",
     "/ui/crew/{astronaut_id}/views/baseline": "app/ui-baseline",
     "/ui/crew/{astronaut_id}/views/first-day": "app/ui-first-day",
+    "/ui/crew/{astronaut_id}/views/cord-protocols": "app/ui-cord-protocols",
+    "/ui/crew/{astronaut_id}/views/cord-history": "app/ui-cord-history",
     "/ui/crew/{astronaut_id}/houston": "app/ui-houston",
     "/ui/crew/{astronaut_id}/outbox": "app/ui-outbox",
     "/ui/sessions/{session_id}/view": "app/ui-session",

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.asclepius-orbit.example/v1/app/ui-cord-history.schema.json",
+  "title": "CordHistoryView",
+  "description": "Response of GET /ui/crew/{astronaut_id}/views/cord-history: the most recent cord-resistance measurements of each posture (back straight, maximum flexion), valid and invalid, newest first. Bounded: at most `limit` per posture, never the whole history. A measurement is valid only if its session completed and the feature has a positive value and quality at or above the configured minimum score; an invalid one says why. Only measurements: a calculated length estimate is never stored nor listed here.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "../common.schema.json#/$defs/schema_version" },
+    "limit": {
+      "description": "Maximum number of measurements listed per posture.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "postures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/posture" },
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "required": ["schema_version", "limit", "postures"],
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "title": "CordHistoryEntry",
+      "type": "object",
+      "properties": {
+        "session_id": { "$ref": "../common.schema.json#/$defs/uuid" },
+        "measured_at": { "$ref": "../common.schema.json#/$defs/utc_timestamp" },
+        "gravity_environment": { "$ref": "../common.schema.json#/$defs/gravity_environment" },
+        "resistance_ohm": {
+          "description": "Resistance reported by the session; null when the session produced none.",
+          "oneOf": [{ "type": "number" }, { "type": "null" }]
+        },
+        "quality_score": {
+          "description": "Quality score of the resistance feature, 0 to 1; null when the session produced no such feature.",
+          "oneOf": [{ "type": "number", "minimum": 0, "maximum": 1 }, { "type": "null" }]
+        },
+        "valid": { "type": "boolean" },
+        "invalid_reason": {
+          "description": "Why the measurement is not valid; null when it is. CORD_INVALID_NOT_COMPLETED: the session did not complete. CORD_INVALID_NO_VALUE: no positive resistance was obtained. CORD_INVALID_LOW_QUALITY: the quality score is below the configured minimum.",
+          "oneOf": [{ "enum": ["CORD_INVALID_NOT_COMPLETED", "CORD_INVALID_NO_VALUE", "CORD_INVALID_LOW_QUALITY"] }, { "type": "null" }]
+        }
+      },
+      "required": ["session_id", "measured_at", "gravity_environment", "resistance_ohm", "quality_score", "valid", "invalid_reason"],
+      "additionalProperties": false
+    },
+    "posture": {
+      "title": "CordHistoryPosture",
+      "type": "object",
+      "properties": {
+        "protocol_id": { "enum": ["spine_resistance_straight_v1", "spine_resistance_max_flexion_v1"] },
+        "posture": { "enum": ["straight", "max_flexion"] },
+        "measurements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entry" },
+          "maxItems": 100
+        }
+      },
+      "required": ["protocol_id", "posture", "measurements"],
+      "additionalProperties": false
+    }
+  }
+}

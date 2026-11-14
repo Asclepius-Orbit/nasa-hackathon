@@ -9,7 +9,12 @@ import { protocolTitle } from '../../strings/codes';
 import { start as copy } from '../../strings/session';
 import styles from './StartSession.module.css';
 
-export const PROTOCOLS: readonly ProtocolId[] = ['lat_pulldown_standing_v1', 'spine_length_rest_v1'];
+export const PROTOCOLS: readonly ProtocolId[] = [
+  'lat_pulldown_standing_v1',
+  'spine_length_rest_v1',
+  'spine_resistance_straight_v1',
+  'spine_resistance_max_flexion_v1',
+];
 
 export function isProtocolId(value: string): value is ProtocolId {
   return PROTOCOLS.some((id) => id === value);
@@ -69,8 +74,8 @@ function StartFailure({ failure }: { failure: Failure }): React.JSX.Element {
 }
 
 /** The choice of protocol and the Start button, shown when there is no session (or the last one is over). */
-export function StartSession({ starter }: { starter: Starter }): React.JSX.Element {
-  const [protocol, setProtocol] = useState<ProtocolId | null>(null);
+export function StartSession({ starter, due = [], initial = null }: { starter: Starter; due?: readonly ProtocolId[]; initial?: ProtocolId | null }): React.JSX.Element {
+  const [protocol, setProtocol] = useState<ProtocolId | null>(initial);
   return (
     <div className={styles.panel}>
       <div role="radiogroup" aria-label={copy.group} className={styles.choices}>
@@ -87,7 +92,10 @@ export function StartSession({ starter }: { starter: Starter }): React.JSX.Eleme
               }}
               className={styles.radio}
             />
-            <span id={`protocol-title-${id}`} className={styles.title}>{protocolTitle(id)}</span>
+            <span id={`protocol-title-${id}`} className={styles.title}>
+              {protocolTitle(id)}
+              {due.includes(id) && ` (${copy.due})`}
+            </span>
             <span id={`protocol-${id}`} className={styles.hint}>
               {copy.hints[id]}
             </span>

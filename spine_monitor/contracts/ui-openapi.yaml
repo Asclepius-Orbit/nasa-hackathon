@@ -652,6 +652,43 @@ paths:
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/views/cord-protocols:
+    get:
+      operationId: getCordProtocolsView
+      summary: Cord-resistance protocols
+      description: The two independent cord sessions (back straight, maximum flexion) with the personal Earth reference, the latest valid in-flight follow-up and whether one is due, plus a calculated length estimate when it can be made. The estimate is calculated, never a measured length, not clinically validated and outside the triage (its flags say so). Carries no name of the astronaut.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: The cord protocols view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-cord-protocols.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /ui/crew/{astronaut_id}/views/cord-history:
+    get:
+      operationId: getCordHistoryView
+      summary: Cord-resistance measurement history
+      description: The most recent cord measurements of each posture, valid and invalid with the reason, newest first and at most `limit` per posture (never the whole history). Measurements only; the calculated length estimate is never stored nor listed. Carries no name of the astronaut.
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - $ref: '#/components/parameters/CordHistoryLimit'
+      responses:
+        '200':
+          description: The cord history view.
+          content:
+            application/json:
+              schema:
+                $ref: 'schemas/v1/app/ui-cord-history.schema.json'
+        '422':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /ui/crew/{astronaut_id}/houston:
     get:
       operationId: getHoustonView
@@ -807,6 +844,16 @@ components:
       required: true
       schema:
         $ref: 'schemas/v1/common.schema.json#/$defs/astronaut_id'
+    CordHistoryLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum measurements per posture (default 20).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
     SessionId:
       name: session_id
       in: path

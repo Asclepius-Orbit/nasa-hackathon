@@ -46,11 +46,18 @@ describe('taskText', () => {
     ['TASK_ODI', '/oswestry'],
     ['TASK_BASELINE_SESSION', '/baseline'],
     ['TASK_SESSION', '/session'],
+    ['TASK_CORD_STRAIGHT', '/session?protocol=spine_resistance_straight_v1'],
+    ['TASK_CORD_MAX_FLEXION', '/session?protocol=spine_resistance_max_flexion_v1'],
   ] as const)('%s has a title, a label and the route %s', (code, route) => {
     const text = taskText(code);
     expect(text.title.length).toBeGreaterThan(3);
     expect(text.action?.label.length).toBeGreaterThan(3);
     expect(text.action?.route).toBe(route);
+  });
+
+  it('names each cord posture in its task card, and the two titles differ', () => {
+    expect(taskText('TASK_CORD_STRAIGHT').title).toBe('Cord session, back straight');
+    expect(taskText('TASK_CORD_MAX_FLEXION').title).toBe('Cord session, maximum flexion');
   });
 
   it('shows an unknown task code as it is', () => {

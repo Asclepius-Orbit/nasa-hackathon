@@ -1,7 +1,7 @@
 /** Pure mapping from the contract view payloads (snake_case) to the view-models the screens read. Codes and nulls pass through unchanged. */
-import type { BaselineView, FirstDayResult, HistoryView, HoustonView, MedicalContactEntry, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
+import type { BaselineView, CordHistoryView, CordProtocolsView, FirstDayResult, HistoryView, HoustonView, MedicalContactEntry, OutboxView, RepStateView, SessionView, StripView, TodayView } from '../../../shared/api';
 import { gmtClock } from '../../features/today/gmt';
-import type { BaselineData, ContactEntry, FirstDayData, GroundLink, HistoryData, HoustonData, RepState, SessionData, StripData, TodayData } from '../types';
+import type { BaselineData, ContactEntry, CordHistoryData, CordMeasurementData, CordProtocolsData, FirstDayData, GroundLink, HistoryData, HoustonData, RepState, SessionData, StripData, TodayData } from '../types';
 
 const PERCENT = 100;
 
@@ -76,6 +76,49 @@ export function toBaseline(view: BaselineView): BaselineData {
       status: s.status,
       offsetDays: s.offset_days,
       date: s.date,
+    })),
+  };
+}
+
+const toCordMeasurement = (m: { session_id: string; measured_at: string; resistance_ohm: number; gravity_environment: string } | null): CordMeasurementData | null =>
+  m === null ? null : { sessionId: m.session_id, measuredAt: m.measured_at, resistanceOhm: m.resistance_ohm, gravity: m.gravity_environment };
+
+export function toCordProtocols(view: CordProtocolsView): CordProtocolsData {
+  return {
+    cadenceDays: view.cadence_days,
+    postures: view.postures.map((p) => ({
+      protocolId: p.protocol_id,
+      due: p.due,
+      dueReason: p.due_reason,
+      earthReference: toCordMeasurement(p.earth_reference),
+      lastFollowUp: toCordMeasurement(p.last_follow_up),
+      estimate:
+        p.estimate === null
+          ? null
+          : {
+              referenceLengthMm: p.estimate.reference_length_mm,
+              estimatedLengthMm: p.estimate.estimated_length_mm,
+              elongationMm: p.estimate.elongation_mm,
+              assumptions: p.estimate.assumptions,
+            },
+      estimateUnavailable: p.estimate_unavailable,
+    })),
+  };
+}
+
+export function toCordHistory(view: CordHistoryView): CordHistoryData {
+  return {
+    postures: view.postures.map((p) => ({
+      protocolId: p.protocol_id,
+      measurements: p.measurements.map((m) => ({
+        sessionId: m.session_id,
+        measuredAt: m.measured_at,
+        gravity: m.gravity_environment,
+        resistanceOhm: m.resistance_ohm,
+        qualityScore: m.quality_score,
+        valid: m.valid,
+        invalidReason: m.invalid_reason,
+      })),
     })),
   };
 }

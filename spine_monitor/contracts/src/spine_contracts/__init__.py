@@ -31,6 +31,8 @@ from spine_contracts.models.app.status_schema import Status
 from spine_contracts.models.app.ui_baseline_schema import BaselineView
 from spine_contracts.models.app.ui_common_schema import DayLevel, GroundLinkDown, GroundLinkUp, OutboxState, SessionState, TaskCode
 from spine_contracts.models.app.ui_contact_list_schema import UiContactList
+from spine_contracts.models.app.ui_cord_history_schema import CordHistoryView
+from spine_contracts.models.app.ui_cord_protocols_schema import CordProtocolsView
 from spine_contracts.models.app.ui_crew_schema import UiCrew
 from spine_contracts.models.app.ui_first_day_schema import FirstDayView
 from spine_contracts.models.app.ui_history_schema import HistoryView
@@ -138,6 +140,8 @@ __all__ = [
     "FeatureSet",
     "FeatureValue",
     "FiredRule",
+    "CordHistoryView",
+    "CordProtocolsView",
     "FirstDayView",
     "GravityEnvironment",
     "GroundLinkDown",

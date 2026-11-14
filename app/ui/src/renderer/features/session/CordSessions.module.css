@@ -1,0 +1,20 @@
+.section { margin-top: 28px; max-width: 760px; }
+.lede { color: var(--muted); }
+.list { display: grid; gap: 12px; margin-top: 12px; padding: 0; list-style: none; }
+.posture { display: grid; gap: 6px; padding: 14px 18px; border: 2px solid var(--line); border-radius: var(--radius-s); background: var(--surface); }
+.head { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
+.title { font-size: 1.1875rem; font-weight: 800; margin: 0; }
+.badge { font-weight: 800; }
+.badge[data-due="true"] { color: var(--ink); text-decoration: underline; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+.estimate { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.estimateTitle { font-weight: 800; }
+.note { color: var(--muted); font-size: 1rem; }
+.assumptions { margin: 4px 0 0; padding-left: 20px; }
+.historyBlock { margin-top: 24px; }
+.history { margin-top: 12px; overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.table th, .table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 700; }

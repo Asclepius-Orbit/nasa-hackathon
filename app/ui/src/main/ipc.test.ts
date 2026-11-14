@@ -154,6 +154,8 @@ function fakeViewsClient(): ViewsClient {
     history: (id, range) => view('history', id, range),
     baseline: (id) => view('baseline', id),
     firstDay: (id) => view('firstDay', id),
+    cordProtocols: (id) => view('cordProtocols', id),
+    cordHistory: (id) => view('cordHistory', id),
     session: (astronautId, id) => view('session', astronautId, id),
     houston: (id) => view('houston', id),
     outbox: (id) => view('outbox', id),
@@ -273,6 +275,8 @@ describe('registerIpc', () => {
     [IPC_CHANNELS.houstonReportGenerate, [{ path: '/tmp/x.pdf' }]],
     [IPC_CHANNELS.viewsBaseline, ['AST-02']],
     [IPC_CHANNELS.viewsFirstDay, [{ astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.viewsCordProtocols, [{ astronautId: 'AST-02' }]],
+    [IPC_CHANNELS.viewsCordHistory, [{ astronautId: 'AST-02' }]],
     [IPC_CHANNELS.viewsHistory, []],
     [IPC_CHANNELS.viewsHistory, ['2026-11-01']],
     [IPC_CHANNELS.viewsHistory, [{ from: '2026-13-01' }]],
@@ -484,7 +488,7 @@ describe('views channels', () => {
     });
   });
 
-  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay, IPC_CHANNELS.viewsHouston, IPC_CHANNELS.viewsOutbox])(
+  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay, IPC_CHANNELS.viewsCordProtocols, IPC_CHANNELS.viewsCordHistory, IPC_CHANNELS.viewsHouston, IPC_CHANNELS.viewsOutbox])(
     'rejects %s with "locked" before login and behind the lock screen',
     async (channel) => {
       await expect(call(channel)).rejects.toThrow(/^locked$/);

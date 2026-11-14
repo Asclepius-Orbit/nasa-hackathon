@@ -184,6 +184,10 @@ class Analysis:
         self.request_assess(astronaut_id)
         return baseline
 
+    async def stretch_estimate(self, request: dict[str, Any]) -> dict[str, Any]:
+        """The engine's calculated cord length estimate; outside the assessment (it is neither stored nor sent to /assess)."""
+        return await self._engine.stretch_estimate(request)
+
     # --- assessment ------------------------------------------------------------------------------
 
     async def assess(self, astronaut_id: str, as_of: datetime | None = None) -> AssessOutcome:

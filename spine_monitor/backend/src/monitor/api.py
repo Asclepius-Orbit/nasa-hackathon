@@ -41,6 +41,7 @@ from spine_contracts import SCHEMA_VERSION, topics, validation
 from monitor.analysis import Analysis
 from monitor.control import CommandError, Control
 from monitor.db import SessionRow, Store, day_span
+from monitor.engine import EngineError
 from monitor.ground.link import GroundWindows, link_state
 from monitor.live.stream import RepEventResponse, RepStream
 from monitor.live.tracker import has_live_reps
@@ -50,6 +51,18 @@ from monitor.report.week import build_week_report, week_start
 from monitor.settings import AppSettings
 from monitor.ui_auth import AuthProblem
 from monitor.views.baseline import build_baseline, build_first_day
+from monitor.views.cord import (
+    CORD_PROTOCOLS,
+    EstimateRequest,
+    Measurements,
+    Outcome,
+    build_cord_history,
+    build_cord_protocols,
+    collect_measurements,
+    due_protocols,
+    estimate_request,
+    estimate_view,
+)
 from monitor.views.due import reports_due
 from monitor.views.history import build_history
 from monitor.views.houston import build_houston, build_outbox
@@ -152,8 +165,18 @@ def _same(body: dict[str, Any], key: str, value: Any) -> None:
 _DAY = timedelta(days=1)
 # Longest history window (`to` - `from` + 1 days); a longer one is an `invalid_range` (ui-openapi.yaml).
 MAX_HISTORY_DAYS = 366
+# The engine answers 422 `invalid_request` both for a resistance outside the measured curve and for inputs the model cannot represent;
+# only the detail tells them apart (the contract has no dedicated type), so it is matched here.
+_OUT_OF_MODEL_RANGE_DETAIL = "outside the measured curve"
+
+
+def _is_out_of_model_range(exc: EngineError) -> bool:
+    return exc.status == 422 and _OUT_OF_MODEL_RANGE_DETAIL in str((exc.problem or {}).get("detail", ""))
+
 # Entries of the outbox view: the most recent ones. Older ones stay in the database; the screen only follows the current delivery.
 OUTBOX_VIEW_LIMIT = 50
+# Session states that hold a finished cord measurement attempt (the rest are in progress).
+CORD_HISTORY_STATES = ("processed", "processing_failed", "rejected")
 
 
 @dataclass(frozen=True)
@@ -167,6 +190,8 @@ class ViewSettings:
     stale_session_hours: float
     stale_device_hours: float
     ground_windows: GroundWindows | None
+    cord_follow_up_interval_days: int = 7
+    cord_min_quality_score: float = 0.5
 
     @classmethod
     def from_app(cls, settings: AppSettings) -> ViewSettings:
@@ -178,6 +203,8 @@ class ViewSettings:
             settings.stale_session_hours,
             settings.stale_device_hours,
             settings.ground_windows,
+            settings.cord_follow_up_interval_days,
+            settings.cord_min_quality_score,
         )
 
 
@@ -505,7 +532,26 @@ def build_router(
         baseline_pending = mission_for(profile, now.date())["phase"] == "preflight" and baseline["recorded"] < baseline["required"]
         start, end = day_span(now.date(), now.date())
         session_today = any(row.state != "rejected" for row in store.session_rows(astronaut_id, start=start, end=end))
-        return list(tasks_for(daily_due, odi_due, baseline_pending, session_today))
+        cord_due = due_protocols(cord_measurements(astronaut_id), mission_for(profile, now.date())["phase"], now, views.cord_follow_up_interval_days)
+        return list(tasks_for(daily_due, odi_due, baseline_pending, session_today, cord_due))
+
+    def cord_measurements(astronaut_id: str) -> Measurements:
+        """Valid cord measurements from the sessions already analysed: (session, feature set) pairs of the cord protocols."""
+        rows = [(row.payload, store.feature_set(row.payload["session_id"])) for row in store.session_rows(astronaut_id) if row.state == "processed"]
+        pairs = [(session, fs) for session, fs in rows if session["protocol_id"] in CORD_PROTOCOLS and fs is not None]
+        return collect_measurements(pairs, views.cord_min_quality_score)
+
+    async def cord_estimate(protocol_id: str, measurements: Measurements) -> Outcome:
+        asked = estimate_request(protocol_id, measurements[protocol_id])
+        if isinstance(asked, str):
+            return asked
+        return await _ask_estimate(asked)
+
+    async def _ask_estimate(asked: EstimateRequest) -> Outcome:
+        try:
+            return estimate_view(asked, await analysis.stretch_estimate(asked.body))
+        except EngineError as exc:
+            return "ESTIMATE_OUT_OF_MODEL_RANGE" if _is_out_of_model_range(exc) else "ESTIMATE_ENGINE_UNAVAILABLE"
 
     @router.get("/crew/{astronaut_id}/views/strip")
     async def strip_view(
@@ -588,6 +634,28 @@ def build_router(
         profile = store.profile(astronaut_id)
         baseline = baseline_view(astronaut_id, profile)
         return _conforming("app/ui-first-day", build_first_day(open_tasks(astronaut_id, profile, baseline, clock()), baseline))
+
+    @router.get("/crew/{astronaut_id}/views/cord-protocols")
+    async def cord_protocols_view(astronaut_id: str) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        now = clock()
+        measurements = cord_measurements(astronaut_id)
+        estimates = {protocol: await cord_estimate(protocol, measurements) for protocol in CORD_PROTOCOLS}
+        phase = mission_for(store.profile(astronaut_id), now.date())["phase"]
+        view = build_cord_protocols(measurements, phase, now, views.cord_follow_up_interval_days, estimates)
+        return _conforming("app/ui-cord-protocols", view)
+
+    @router.get("/crew/{astronaut_id}/views/cord-history")
+    async def cord_history_view(astronaut_id: str, limit: Annotated[int, Query(ge=1, le=100)] = 20) -> dict[str, Any]:
+        _astronaut(astronaut_id)
+        rows = store.session_rows(astronaut_id)
+        pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+        for protocol in CORD_PROTOCOLS:
+            # Newest first and only as many sessions as needed: the history is never loaded whole. Sessions still in progress are not
+            # measurements yet; one without feature set (rejected, or whose analysis failed) is listed as invalid.
+            cord = [row for row in reversed(rows) if row.payload["protocol_id"] == protocol and row.state in CORD_HISTORY_STATES]
+            pairs.extend((row.payload, store.feature_set(row.payload["session_id"])) for row in cord[:limit])
+        return _conforming("app/ui-cord-history", build_cord_history(pairs, views.cord_min_quality_score, limit))
 
     @router.get("/crew/{astronaut_id}/houston")
     async def houston_view(astronaut_id: str) -> dict[str, Any]:

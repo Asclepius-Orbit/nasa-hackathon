@@ -13,6 +13,7 @@ import { protocolTitle } from '../../strings/codes';
 import { gmtClock, minutesBetween } from '../today/gmt';
 import { actionText, session as copy, voiceUndo } from '../../strings/session';
 import { CalibrateStage, CheckStage, FinishStage, FitStage, RepsStage, STAGE_IDS, type StageAction, type StageId } from './Stages';
+import { CordSessions } from './CordSessions';
 import { isProtocolId, StartSession, useStarter } from './StartSession';
 import { currentRep, useLiveReps } from './useLiveReps';
 import { useSessionActions } from './useSessionActions';
@@ -21,6 +22,8 @@ import { VoiceUndoAlert, useVoiceUndo } from './VoiceUndo';
 
 /** Wrapped so that "loading" (no data) differs from "no session in progress" (`session: null`). */
 const selectSession = (d: DataSource) => d.getSession().then((session) => ({ session }));
+const selectCord = (d: DataSource) => d.getCordProtocols();
+const selectCordHistory = (d: DataSource) => d.getCordHistory();
 
 function isStageId(value: string | null): value is StageId {
   return STAGE_IDS.some((id) => id === value);
@@ -28,6 +31,9 @@ function isStageId(value: string | null): value is StageId {
 
 /** States in which the session is finished or failed: nothing more can be done to it but start another. */
 const OVER: readonly SessionState[] = ['rejected', 'ended', 'processed', 'processing_failed'];
+
+/** After one of these ends, the cord measurements and the calculated estimate are shown under the next-session choice. */
+const CORD_PROTOCOLS: readonly string[] = ['spine_resistance_straight_v1', 'spine_resistance_max_flexion_v1'];
 
 export function SessionView(): React.JSX.Element {
   // Reading the session again (after an action) is a new `select`: `useLoad` reloads when it changes.
@@ -41,6 +47,9 @@ export function SessionView(): React.JSX.Element {
   const session = loaded === null ? undefined : loaded.session;
   const reps = useLiveReps(session?.sessionId ?? null, session?.totalReps != null);
   const starter = useStarter(reload);
+  // The cord sessions only enrich the start panel: if they cannot be read, the sessions can still be started.
+  const { data: cord } = useLoad(selectCord, { refreshMs: REFRESH_MS });
+  const { data: cordHistory } = useLoad(selectCordHistory, { refreshMs: REFRESH_MS });
   const actions = useSessionActions(reload);
   const data = useData();
   const navigate = useNavigate();
@@ -65,6 +74,8 @@ export function SessionView(): React.JSX.Element {
   };
   const undo = useVoiceUndo(stopForPain);
 
+  const queryProtocol = params.get('protocol');
+  const preselected = queryProtocol !== null && isProtocolId(queryProtocol) ? queryProtocol : null;
   const queryStage = params.get('stage');
   const viewing = chosen ?? (isStageId(queryStage) ? queryStage : (session?.steps.find((s) => s.status === 'now')?.id ?? 'reps'));
   const index = STAGE_IDS.indexOf(viewing);
@@ -83,7 +94,8 @@ export function SessionView(): React.JSX.Element {
           <h1 id="session-title">{copy.title}</h1>
           <p role="status">{copy.none}</p>
           <p className={styles.lede}>{copy.noneHint}</p>
-          <StartSession starter={starter} />
+          <StartSession starter={starter} initial={preselected} due={cord === null ? [] : cord.postures.filter((p) => p.due).map((p) => p.protocolId)} />
+          {cord !== null && <CordSessions cord={cord} history={cordHistory} />}
         </>
       )}
       {session && (
@@ -242,7 +254,8 @@ export function SessionView(): React.JSX.Element {
           {OVER.includes(session.state) && (
             <>
               <h2 className={styles.another}>{copy.anotherTitle}</h2>
-              <StartSession starter={starter} />
+              <StartSession starter={starter} initial={preselected} />
+              {cord !== null && CORD_PROTOCOLS.includes(session.protocolId) && <CordSessions cord={cord} history={cordHistory} />}
             </>
           )}
           {import.meta.env.DEV && active && (

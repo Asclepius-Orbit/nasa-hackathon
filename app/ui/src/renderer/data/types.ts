@@ -7,6 +7,7 @@ import type {
   TaskCode as ContractTaskCode,
   TodayView,
 } from '../../contracts/v1';
+import type { ProtocolId } from '../../shared/api';
 
 /** Traffic light of an assessment (contract `Assessment.level`). */
 export type Level = Assessment['level'];
@@ -124,6 +125,69 @@ export interface BaselineData {
   referenceVersion: number | null;
   builtFromSessions: number;
   sessions: readonly BaselineSession[];
+}
+
+/** A valid cord-resistance measurement of one posture (completed session, signal quality above the minimum). */
+export interface CordMeasurementData {
+  sessionId: string;
+  /** ISO timestamp. */
+  measuredAt: string;
+  resistanceOhm: number;
+  gravity: string;
+}
+
+/**
+ * The length estimate of a posture. It is ALWAYS calculated from the cord measurements under `assumptions`; it is never a
+ * measured length, is not clinically validated and takes no part in the assessment. The screens must say so next to it.
+ */
+export interface CordEstimateData {
+  referenceLengthMm: number;
+  estimatedLengthMm: number;
+  elongationMm: number;
+  assumptions: readonly string[];
+}
+
+export interface CordPostureData {
+  protocolId: ProtocolId;
+  due: boolean;
+  /** Contract code `CORD_*`; the words come from strings/cord. */
+  dueReason: string;
+  earthReference: CordMeasurementData | null;
+  lastFollowUp: CordMeasurementData | null;
+  estimate: CordEstimateData | null;
+  /** Contract code `ESTIMATE_*` of why there is no estimate; `null` when there is one. */
+  estimateUnavailable: string | null;
+}
+
+export interface CordProtocolsData {
+  /** Days between in-flight measurements of a posture (configurable; the words never present it as a fixed rule). */
+  cadenceDays: number;
+  postures: readonly CordPostureData[];
+}
+
+/** One stored cord measurement, valid or not. It is a measurement only: the calculated estimate is never part of it. */
+export interface CordHistoryEntryData {
+  sessionId: string;
+  /** ISO timestamp. */
+  measuredAt: string;
+  gravity: string;
+  /** `null` when the session produced no resistance. */
+  resistanceOhm: number | null;
+  /** 0 to 1; `null` when there was no resistance feature. */
+  qualityScore: number | null;
+  valid: boolean;
+  /** Contract code `CORD_INVALID_*` of why it is not valid; `null` when it is. */
+  invalidReason: string | null;
+}
+
+export interface CordHistoryPostureData {
+  protocolId: ProtocolId;
+  /** Newest first, already bounded by the backend. */
+  measurements: readonly CordHistoryEntryData[];
+}
+
+export interface CordHistoryData {
+  postures: readonly CordHistoryPostureData[];
 }
 
 export interface FirstDayData {

@@ -38,6 +38,8 @@ export const IPC_CHANNELS = Object.freeze({
   viewsHistory: 'asclepius:views:history',
   viewsBaseline: 'asclepius:views:baseline',
   viewsFirstDay: 'asclepius:views:first-day',
+  viewsCordProtocols: 'asclepius:views:cord-protocols',
+  viewsCordHistory: 'asclepius:views:cord-history',
   viewsSession: 'asclepius:views:session',
   viewsHouston: 'asclepius:views:houston',
   viewsOutbox: 'asclepius:views:outbox',

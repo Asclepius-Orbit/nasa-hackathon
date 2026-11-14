@@ -27,6 +27,7 @@ import { HoustonReportCard } from './HoustonReportCard';
 import { SpineFigure } from './SpineFigure';
 import styles from './TodayView.module.css';
 import { TodoRows } from './TodoRows';
+import { isSessionRoute, SESSION_ROUTE } from './session-route';
 
 const selectToday = (d: DataSource): ReturnType<DataSource['getToday']> => d.getToday();
 const selectCatalog = (d: DataSource): ReturnType<DataSource['getCatalog']> => d.getCatalog();
@@ -72,12 +73,10 @@ function PlanRow({ item, extra }: { item: PlanText; extra: string | null }): Rea
   );
 }
 
-const SESSION_ROUTE = '/session';
-
 function Verdict({ today, liveRep }: { today: TodayData; liveRep: number | null }): React.JSX.Element {
   const running = today.sessionInProgress;
   const plan = today.recommendations.map((code) => ({ code, item: recommendationText(code) }));
-  const sessionInPlan = plan.some(({ item }) => item.action?.route === SESSION_ROUTE);
+  const sessionInPlan = plan.some(({ item }) => isSessionRoute(item.action?.route));
   const runningLine = (): string | null =>
     running === null
       ? null
@@ -97,7 +96,7 @@ function Verdict({ today, liveRep }: { today: TodayData; liveRep: number | null 
       </p>
       <ul className={styles.plan} aria-label={copy.planLabel}>
         {plan.map(({ code, item }) => (
-          <PlanRow key={code} item={item} extra={item.action?.route === SESSION_ROUTE ? runningLine() : null} />
+          <PlanRow key={code} item={item} extra={isSessionRoute(item.action?.route) ? runningLine() : null} />
         ))}
         {running !== null && !sessionInPlan && (
           <PlanRow

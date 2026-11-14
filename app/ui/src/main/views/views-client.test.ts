@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { createViewsClient, type ViewFetch, type ViewsClient } from './views-client';
@@ -6,6 +9,9 @@ import { ViewsError } from './views-error';
 const BASE = 'http://127.0.0.1:8000';
 const ASTRONAUT = 'AST-01';
 const SESSION = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
+
+const APP_EXAMPLES = join(import.meta.dirname, '../../../../../spine_monitor/contracts/examples/valid/app');
+const appExample = (name: string): Record<string, unknown> => JSON.parse(readFileSync(join(APP_EXAMPLES, `${name}.json`), 'utf8')) as Record<string, unknown>;
 
 const baseline = {
   schema_version: '1.0.0',
@@ -21,6 +27,8 @@ const BODIES = {
   history: { schema_version: '1.1.0', from: '2026-11-01', to: '2026-11-07', days: [] },
   baseline,
   firstDay: { schema_version: '1.0.0', todo: ['pair_harness'], baseline },
+  cordProtocols: appExample('ui-cord-protocols'),
+  cordHistory: appExample('ui-cord-history'),
   houston: { schema_version: '1.0.0', astronaut_id: ASTRONAUT, summary: null, ground_link: null },
   outbox: { schema_version: '1.0.0', astronaut_id: ASTRONAUT, ground_link: null, items: [] },
   session: {
@@ -72,6 +80,8 @@ describe('createViewsClient requests', () => {
     ['today', (c) => c.today(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/today`, BODIES.today],
     ['baseline', (c) => c.baseline(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/baseline`, BODIES.baseline],
     ['first-day', (c) => c.firstDay(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/first-day`, BODIES.firstDay],
+    ['cord-protocols', (c) => c.cordProtocols(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/cord-protocols`, BODIES.cordProtocols],
+    ['cord-history', (c) => c.cordHistory(ASTRONAUT), `/ui/crew/${ASTRONAUT}/views/cord-history`, BODIES.cordHistory],
     ['houston', (c) => c.houston(ASTRONAUT), `/ui/crew/${ASTRONAUT}/houston`, BODIES.houston],
     ['outbox', (c) => c.outbox(ASTRONAUT), `/ui/crew/${ASTRONAUT}/outbox`, BODIES.outbox],
     ['session', (c) => c.session(ASTRONAUT, SESSION), `/ui/sessions/${SESSION}/view`, BODIES.session],
@@ -231,6 +241,8 @@ describe('createViewsClient errors', () => {
     ['history', (c) => c.history(ASTRONAUT, {})],
     ['baseline', (c) => c.baseline(ASTRONAUT)],
     ['first-day', (c) => c.firstDay(ASTRONAUT)],
+    ['cord-protocols', (c) => c.cordProtocols(ASTRONAUT)],
+    ['cord-history', (c) => c.cordHistory(ASTRONAUT)],
     ['session', (c) => c.session(ASTRONAUT, SESSION)],
     ['houston', (c) => c.houston(ASTRONAUT)],
     ['outbox', (c) => c.outbox(ASTRONAUT)],
@@ -294,5 +306,55 @@ describe('createViewsClient houstonReport', () => {
   it('maps a network failure to unavailable', async () => {
     const fetch: ViewFetch = () => Promise.reject(new TypeError('fetch failed'));
     expect(await codeOf(createViewsClient({ baseUrl: BASE, fetch }).houstonReport(ASTRONAUT))).toBe('unavailable');
+  });
+});
+
+describe('cord views are checked strictly', () => {
+  const client = (respond: () => Response): ViewsClient => createViewsClient({ baseUrl: BASE, fetch: fakeFetch(respond).fetch });
+  type Posture = Record<string, unknown>;
+  const protocols = (): { postures: Posture[] } & Record<string, unknown> => structuredClone(BODIES.cordProtocols) as { postures: Posture[] } & Record<string, unknown>;
+  const withEstimate = (patch: Record<string, unknown>): unknown => {
+    const body = protocols();
+    const [straight] = body.postures;
+    if (straight === undefined) throw new Error('example has postures');
+    straight['estimate'] = { ...(straight['estimate'] as object), ...patch };
+    return body;
+  };
+
+  it('accepts the contract examples', async () => {
+    expect(await client(() => json(BODIES.cordProtocols)).cordProtocols(ASTRONAUT)).toEqual(BODIES.cordProtocols);
+    expect(await client(() => json(BODIES.cordHistory)).cordHistory(ASTRONAUT)).toEqual(BODIES.cordHistory);
+  });
+
+  it.each([
+    ['calculated is not true', { calculated: false }],
+    ['measured_length is true', { measured_length: true }],
+    ['clinically_validated is true', { clinically_validated: true }],
+    ['affects_triage is true', { affects_triage: true }],
+    ['an unknown assumption code', { assumptions: ['ASSUMPTION_NEW'] }],
+    ['no assumptions', { assumptions: [] }],
+    ['an unexpected field', { measured_mm: 12 }],
+  ])('rejects an estimate with %s', async (_name, patch) => {
+    expect(await codeOf(client(() => json(withEstimate(patch))).cordProtocols(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it.each([
+    ['an unknown estimate_unavailable code', { estimate: null, estimate_unavailable: 'ESTIMATE_NEW' }],
+    ['an unknown due_reason', { due_reason: 'CORD_NEW' }],
+    ['an unknown protocol_id', { protocol_id: 'spine_resistance_other_v1' }],
+  ])('rejects a posture with %s', async (_name, patch) => {
+    const body = protocols();
+    const [straight] = body.postures;
+    if (straight === undefined) throw new Error('example has postures');
+    Object.assign(straight, patch);
+    expect(await codeOf(client(() => json(body)).cordProtocols(ASTRONAUT))).toBe('unavailable');
+  });
+
+  it('rejects a history measurement with an unknown invalid_reason', async () => {
+    const body = structuredClone(BODIES.cordHistory) as { postures: { measurements: Posture[] }[] };
+    const measurement = body.postures[0]?.measurements.find((m) => m['valid'] === false);
+    if (measurement === undefined) throw new Error('example has an invalid measurement');
+    measurement['invalid_reason'] = 'CORD_INVALID_NEW';
+    expect(await codeOf(client(() => json(body)).cordHistory(ASTRONAUT))).toBe('unavailable');
   });
 });

@@ -14,6 +14,8 @@ import { z } from 'zod';
 
 import type {
   BaselineView,
+  CordHistoryView,
+  CordProtocolsView,
   FirstDayView,
   HistoryView,
   HoustonView,
@@ -42,6 +44,10 @@ export interface ViewsClient {
   history(astronautId: string, range: ViewRange): Promise<HistoryView>;
   baseline(astronautId: string): Promise<BaselineView>;
   firstDay(astronautId: string): Promise<FirstDayView>;
+  /** Cord-resistance protocols: last valid measurements, what is due and the calculated estimate (never a measured length). */
+  cordProtocols(astronautId: string): Promise<CordProtocolsView>;
+  /** The latest cord measurements of each posture, valid and invalid with the reason (bounded by the backend). */
+  cordHistory(astronautId: string): Promise<CordHistoryView>;
   /** The session view, but only if it belongs to `astronautId`: someone else's session is `not_found`. */
   session(astronautId: string, sessionId: string): Promise<SessionView>;
   /** What goes to the ground station and the link state; `summary` is `null` while there is none (still a 200). */
@@ -92,6 +98,43 @@ const baselineShape = {
   sessions: z.array(object),
 };
 
+const CORD_PROTOCOL_IDS = ['spine_resistance_straight_v1', 'spine_resistance_max_flexion_v1'] as const;
+
+/** The calculated estimate: its flags are fixed by the contract (never measured, never validated, never triage) and nothing else may travel with it. */
+const cordEstimate = z.strictObject({
+  calculated: z.literal(true),
+  measured_length: z.literal(false),
+  clinically_validated: z.literal(false),
+  affects_triage: z.literal(false),
+  model: z.literal('experimental_uniform_resistance_v1'),
+  reference_length_mm: z.number(),
+  estimated_length_mm: z.number(),
+  elongation_mm: z.number(),
+  assumptions: z.array(z.enum(['ASSUMPTION_UNIFORM_RESISTANCE', 'ASSUMPTION_NEGLIGIBLE_CONTACT_RESISTANCE', 'ASSUMPTION_UNIFORM_DEFORMATION'])).min(1),
+});
+
+const cordPosture = z.looseObject({
+  protocol_id: z.enum(CORD_PROTOCOL_IDS),
+  due: z.boolean(),
+  due_reason: z.enum(['CORD_NO_EARTH_REFERENCE', 'CORD_NO_FOLLOW_UP', 'CORD_FOLLOW_UP_OVERDUE', 'CORD_UP_TO_DATE']),
+  earth_reference: object.nullable(),
+  last_follow_up: object.nullable(),
+  estimate: cordEstimate.nullable(),
+  estimate_unavailable: z
+    .enum(['ESTIMATE_NO_EARTH_REFERENCE', 'ESTIMATE_NO_FOLLOW_UP', 'ESTIMATE_REFERENCE_LENGTH_UNKNOWN', 'ESTIMATE_OUT_OF_MODEL_RANGE', 'ESTIMATE_ENGINE_UNAVAILABLE'])
+    .nullable(),
+});
+
+const cordHistoryPosture = z.looseObject({
+  protocol_id: z.enum(CORD_PROTOCOL_IDS),
+  measurements: z.array(
+    z.looseObject({
+      valid: z.boolean(),
+      invalid_reason: z.enum(['CORD_INVALID_NOT_COMPLETED', 'CORD_INVALID_NO_VALUE', 'CORD_INVALID_LOW_QUALITY']).nullable(),
+    }),
+  ),
+});
+
 const SCHEMAS = {
   strip: (astronautId: string) =>
     view({ astronaut_id: z.literal(astronautId), mission: object, harness: object.nullable() }),
@@ -99,6 +142,8 @@ const SCHEMAS = {
   history: () => view({ from: z.string(), to: z.string(), days: z.array(object) }),
   baseline: () => view(baselineShape),
   firstDay: () => view({ todo: z.array(z.string()), baseline: view(baselineShape) }),
+  cordProtocols: () => view({ cadence_days: z.number(), postures: z.array(cordPosture).length(2) }),
+  cordHistory: () => view({ limit: z.number(), postures: z.array(cordHistoryPosture).length(2) }),
   houston: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), summary: object.nullable(), ground_link: object.nullable() }),
   outbox: (astronautId: string) => view({ astronaut_id: z.literal(astronautId), ground_link: object.nullable(), items: z.array(object) }),
   // `astronaut_id` is compared by the client (a mismatch is not_found, not a malformed body).
@@ -184,6 +229,8 @@ export function createViewsClient({
     outbox: (id) => get(`/ui/crew/${encodeURIComponent(id)}/outbox`, SCHEMAS.outbox(id), id),
     baseline: (id) => get(crewPath(id, 'baseline'), SCHEMAS.baseline(), id),
     firstDay: (id) => get(crewPath(id, 'first-day'), SCHEMAS.firstDay(), id),
+    cordProtocols: (id) => get(crewPath(id, 'cord-protocols'), SCHEMAS.cordProtocols(), id),
+    cordHistory: (id) => get(crewPath(id, 'cord-history'), SCHEMAS.cordHistory(), id),
     async session(astronautId, sessionId) {
       const body = await get<SessionView>(`/ui/sessions/${encodeURIComponent(sessionId)}/view`, SCHEMAS.session(sessionId), astronautId, [403, 404]);
       // A session of another crew member must look like one that does not exist, never leak across astronauts.

@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS feature_sets (
 );
 CREATE INDEX IF NOT EXISTS feature_sets_by_astronaut ON feature_sets (astronaut_id, anchor_at);
 
+CREATE TABLE IF NOT EXISTS measured_windows (
+    astronaut_id TEXT NOT NULL, session_id TEXT NOT NULL, boot_id INTEGER NOT NULL,
+    window_start TEXT NOT NULL, window_end TEXT NOT NULL, payload TEXT NOT NULL,
+    PRIMARY KEY (astronaut_id, session_id, boot_id, window_start, window_end)
+);
+
 CREATE TABLE IF NOT EXISTS baselines (
     baseline_id TEXT PRIMARY KEY, astronaut_id TEXT NOT NULL, version INTEGER NOT NULL,
     created_at TEXT NOT NULL, payload TEXT NOT NULL,
@@ -127,7 +133,7 @@ CREATE INDEX IF NOT EXISTS medical_contacts_by_astronaut ON medical_contacts (as
 
 # Stored in PRAGMA user_version. Bump it with any change to SCHEMA that an existing file would not get
 # from CREATE ... IF NOT EXISTS (new columns, changed tables), and add the step to MIGRATIONS.
-STORE_SCHEMA_VERSION = 2
+STORE_SCHEMA_VERSION = 3
 
 _log = logging.getLogger(__name__)
 
@@ -138,7 +144,14 @@ def _v1_to_v2(db: sqlite3.Connection) -> None:
 
 
 # MIGRATIONS[n] takes a file of version n to n+1. It runs inside the migration transaction: it must not commit.
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2}
+def _v2_to_v3(db: sqlite3.Connection) -> None:
+    db.execute("""CREATE TABLE IF NOT EXISTS measured_windows (
+        astronaut_id TEXT NOT NULL, session_id TEXT NOT NULL, boot_id INTEGER NOT NULL,
+        window_start TEXT NOT NULL, window_end TEXT NOT NULL, payload TEXT NOT NULL,
+        PRIMARY KEY (astronaut_id, session_id, boot_id, window_start, window_end))""")
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2, 2: _v2_to_v3}
 
 
 class IncompatibleDatabaseError(RuntimeError):
@@ -338,7 +351,7 @@ class Store:
     def astronaut_known(self, astronaut_id: str) -> bool:
         """True when anything at all was recorded for the astronaut."""
         tables = (
-            "crew", "profiles", "daily_context", "sessions", "self_reports", "assessments", "baselines", "device_status", "feature_sets",
+            "crew", "profiles", "daily_context", "sessions", "self_reports", "assessments", "baselines", "device_status", "feature_sets", "measured_windows",
             "medical_contacts",
         )  # fmt: skip
         query = " UNION ALL ".join(f"SELECT 1 FROM {t} WHERE astronaut_id = ?" for t in tables)
@@ -624,6 +637,26 @@ class Store:
             (feature_set["astronaut_id"], session_id, phase, utc_key(anchor_at), _dumps(feature_set)),
         )
 
+    def put_measured_window(self, feature_set: dict[str, Any], *, boot_id: int) -> bool:
+        """Persist a five-second result independently; duplicate delivery cannot overwrite it."""
+        window = feature_set.get("window")
+        if not window or feature_set.get("session_id") is None:
+            raise ValueError("a session and window are required")
+        start, end = datetime.fromisoformat(window["start"]), datetime.fromisoformat(window["end"])
+        if start.utcoffset() is None or end.utcoffset() is None or end - start != timedelta(seconds=5):
+            raise ValueError("window must be five seconds with timezone-aware bounds")
+        result = self._db.execute(
+            "INSERT OR IGNORE INTO measured_windows VALUES (?, ?, ?, ?, ?, ?)",
+            (feature_set["astronaut_id"], feature_set["session_id"], boot_id, utc_key(start), utc_key(end), _dumps(feature_set)),
+        )
+        return result.rowcount == 1
+
+    def measured_windows(self, astronaut_id: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        return self._all(
+            "SELECT payload FROM measured_windows WHERE astronaut_id = ? AND window_end >= ? AND window_end <= ? ORDER BY window_end, session_id, boot_id",
+            astronaut_id, utc_key(start), utc_key(end),
+        )
+
     def feature_set(self, session_id: str) -> dict[str, Any] | None:
         return self._one("SELECT payload FROM feature_sets WHERE session_id = ?", session_id)
 
@@ -869,6 +902,7 @@ class Store:
                 for r in sessions
             ],
             "feature_sets": every("feature_sets", "anchor_at"),
+            "measured_windows": every("measured_windows", "window_end"),
             "baselines": every("baselines", "version"),
             "assessments": every("assessments", "as_of"),
             "self_reports": every("self_reports", "timestamp"),

@@ -8,8 +8,7 @@ import { launch, signInAs, type Launched } from './helpers';
 const SESSION_MS = 120_000; // `spine_length_rest_v1` in spine_monitor/physiology/configs/example-mission.yaml
 const tokenFile = process.env['ASCLEPIUS_BACKEND_TOKEN_FILE'];
 // The producer of this run (set by scripts/e2e-real.mjs): the harness id it publishes as (sim-01 for the simulator,
-// gw-demo for the gateway reading the Arduino emulator). The seeded crew is paired to sim-01, so the spec pairs it by UI.
-const harness = process.env['E2E_REAL_HARNESS'] ?? 'sim-01';
+// gw-demo for the gateway reading the Arduino emulator). The e2e-real build seeds the crew's harness from it (demo-crew.ts).
 const device = process.env['E2E_REAL_SOURCE'] === 'device';
 
 let ctx: Launched;
@@ -30,7 +29,7 @@ function launchDateInTenDays(): string {
   return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-test('login, profile, report, a spine-length session, the assessment and the Houston summary', async () => {
+test('login, profile, report, a spine-length session, the assessment', async () => {
   const { page } = ctx;
 
   // Login: the demo crew is registered with the backend on start-up.
@@ -63,26 +62,11 @@ test('login, profile, report, a spine-length session, the assessment and the Hou
   await page.getByRole('button', { name: 'Save daily report' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Daily report saved.' })).toBeVisible({ timeout: 30_000 });
 
-  // Error path no_harness: unpaired, a start is refused with the way out; pairing the producer's harness (as seen on the
-  // bus) fixes it. This also makes the crew match the producer in device mode (gw-demo) instead of the seeded sim-01.
-  await page.getByRole('link', { name: 'Settings' }).click();
-  const pairing = page.getByRole('region', { name: 'Harness' });
-  await pairing.getByRole('button', { name: 'Unpair' }).click();
-  await expect(pairing.getByText('Not paired yet')).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('link', { name: /Session/ }).click();
-  await page.getByRole('radiogroup', { name: 'Choose the session' }).getByText('Spine length check').click();
-  await page.getByRole('button', { name: 'Start session' }).click();
-  await expect(page.getByText('No harness is paired to you.')).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('link', { name: 'Pair a harness in Settings' }).click();
-  await expect(pairing.getByRole('listitem', { name: harness })).toBeVisible({ timeout: 60_000 }); // seen on the bus
-  await pairing.getByRole('button', { name: `Pair ${harness}` }).click();
-  await expect(pairing.getByText(`Paired with ${harness}`)).toBeVisible({ timeout: 30_000 });
-  // The other mode's harness is never offered for pairing (only this producer's data is on the bus for AST-01).
-  await expect(pairing.getByRole('listitem', { name: device ? 'sim-01' : 'gw-demo' })).toHaveCount(0);
+  // The harness is paired by the build (the app has no pairing screen): the demo crew is seeded with this run's producer.
 
   if (device) {
     // Device mode (Arduino emulator behind the real gateway): its signals are synthetic and there is no rep counting, so the
-    // spine-length assessment, the Houston summary and the live rep counter (all fed by simulated physiology) are not run.
+    // spine-length assessment and the live rep counter (all fed by simulated physiology) are not run.
     // The lat pulldown is not started either: the app declares emg_lat_left and emg_lat_right, the gateway serves one EMG
     // stream (emg_lat_left), so it rejects the start (unknown stream) and the UI shows "The harness did not accept the
     // session". That mismatch is a gap to fix in the product, not something this spec asserts.
@@ -120,13 +104,6 @@ test('login, profile, report, a spine-length session, the assessment and the Hou
     await page.getByRole('link', { name: 'Today' }).click();
     const level = page.locator('#today-title');
     await expect(level).toHaveText(/^(Green|Amber|Red)$/, { timeout: 180_000 });
-
-    // Houston: the day's summary with the session, and its outbox entry: Queued, or already Sent when the simulated ground
-    // window is open.
-    await page.getByRole('link', { name: 'Houston' }).click();
-    await expect(page.getByRole('heading', { level: 1, name: 'What goes to Houston' })).toBeVisible();
-    await expect(page.getByText('spine length check, complete')).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole('list', { name: 'Outbox' }).getByRole('listitem').first()).toHaveText(/summary.*(Queued|Sent)/, { timeout: 60_000 });
 
     // The spine check has no repetitions. Start a counted exercise and observe the live counter advance.
     await page.getByRole('link', { name: 'Session' }).click();

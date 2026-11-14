@@ -108,6 +108,10 @@ El tooling de Node usa només pnpm (`pnpm install`, `pnpm run`, `pnpm dlx`); mai
 
 Dependències noves: `pint` (unitats, a `physiology`), `pydantic-evals` (dev, per als evals de l'agent), i `vitest` i `uplot` (dev, a `app/ui`).
 
+## Logo
+
+El logo d'Asclepius Orbit (`app/ui/build/icon.png` i `app/ui/src/renderer/assets/logo.png`) ha estat generat amb IA per OpenAI.
+
 ## Llicència
 
 Tots els drets reservats fins al **15-11-2026 a les 11:59 (Europe/Madrid)**; a partir d'aquell moment el repositori es llicencia sota la GNU General Public License v3. Els termes són a [`LICENSE`](LICENSE). El material de tercers, com tot el que hi ha a `.claude/skills/`, manté la seva pròpia llicència i no està cobert (vegeu [`.claude/skills/THIRD_PARTY.md`](.claude/skills/THIRD_PARTY.md)).

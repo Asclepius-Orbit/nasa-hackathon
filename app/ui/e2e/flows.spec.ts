@@ -155,8 +155,8 @@ test('ask: type a question and read the sample answer (mock data, no agent)', as
   const { page } = ctx;
   await signInAs(page, 'Elena Ruiz');
   await page.getByRole('link', { name: 'Ask' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Ask' })).toBeVisible();
-  await expect(page.getByText(/The assistant does not diagnose/)).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Ask Asclepius' })).toBeVisible();
+  await expect(page.getByText(/It does not diagnose/)).toBeVisible();
   await page.getByRole('textbox', { name: 'Your question' }).fill('How is my back today?');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('list', { name: 'Conversation' }).getByText('How is my back today?')).toBeVisible();

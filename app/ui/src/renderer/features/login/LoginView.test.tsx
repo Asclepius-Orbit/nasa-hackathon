@@ -48,7 +48,7 @@ describe('LoginView', () => {
     api.crewMembers.push({ id: 'AST-03', name: '<img src=x onerror=alert(1)>', harnessId: null });
     const { container } = setup(api);
     expect(await screen.findByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
-    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('img[src="x"]')).toBeNull();
   });
 
   it('shows a clear message when the crew list cannot be read', async () => {

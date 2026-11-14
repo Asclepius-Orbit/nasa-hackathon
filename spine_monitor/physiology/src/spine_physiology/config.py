@@ -532,6 +532,25 @@ class EmgSignalConfig(_Model):
     deconditioning_fatigue_gain: NonNegFloat
     acquisition: EmgAcquisition
     filter: EmgFilterMeta
+    # Realismo del módulo (#131, docs/sensor-sources.md). Todo lo marcado "hipótesis" (hip.) es una suposición
+    # sin cifra verificada, no una medida: los valores de interferencia son 0 (apagado) salvo que la misión
+    # los pida.
+    # Tipo de señal publicada: raw | rectified | envelope (rectificada y suavizada, como el Muscle Sensor V3).
+    # Hipótesis: la unidad comprada no está confirmada; "envelope" es el defecto del firmware/gateway.
+    signal_kind: Literal["raw", "rectified", "envelope"] = "envelope"
+    # Corte (Hz) del suavizado de la envolvente. Hipótesis: sin cifra leída del módulo.
+    envelope_lowpass_hz: PositiveFloat = 5.0
+    # Deriva lenta de línea base: RMS (mV) y frecuencia de corte (Hz). Hipótesis, sin cifra verificada.
+    baseline_wander_mv: NonNegFloat = 0.0
+    baseline_wander_hz: PositiveFloat = 0.5
+    # Interferencia de red: amplitud pico (mV) y frecuencia (50 Hz en Europa). Hipótesis, sin cifra de magnitud.
+    mains_amplitude_mv: NonNegFloat = 0.0
+    mains_hz: PositiveFloat = 50.0
+    # Contaminación tipo ECG: amplitud pico (mV) y ritmo cardiaco. Hipótesis, sin cifra verificada.
+    ecg_leak_mv: NonNegFloat = 0.0
+    ecg_heart_rate_bpm: PositiveFloat = 70.0
+    # Cuantiza a la resolución del ADC de `acquisition` (adc_bits, vref_v, gain), referida a la entrada.
+    quantize_adc: bool = False
 
     @model_validator(mode="after")
     def _band(self) -> Self:
@@ -569,12 +588,27 @@ class ImuSignalConfig(_Model):
     """IMU de 6 ejes: repeticiones minimum-jerk; gyro = derivada; accel = gravedad rotada + movimiento."""
 
     sample_rate_hz: PositiveFloat
-    accel_noise_g: NonNegFloat
-    gyro_noise_dps: NonNegFloat
+    # Densidad espectral de ruido blanco del chip (spec MPU-6050 rev. 3.4, docs/sensor-sources.md): accel en
+    # ug/sqrt(Hz) (400, spec), gyro en dps/sqrt(Hz) (0.005, spec marcada (*): contrastar con la hoja). La desviacion
+    # por muestra es densidad x sqrt(ancho de banda efectivo = min(dlpf_hz, sample_rate_hz / 2)).
+    accel_noise_density_ug_rthz: NonNegFloat
+    gyro_noise_density_dps_rthz: NonNegFloat
+    # Sesgo inicial (offset de cero) de cada eje; sobre el se superpone la deriva lenta (Ornstein-Uhlenbeck).
     accel_bias_g: Xyz
     gyro_bias_dps: Xyz
+    # Maximos del sesgo total por eje (spec, NO tipicos): gyro 20 dps; accel 0.05 g X/Y y 0.08 g Z (*) (contrastar).
+    accel_bias_max_g: Xyz
+    gyro_bias_max_dps: NonNegFloat
+    # Deriva del sesgo (HIPOTESIS, sin cifra de la hoja): constante de tiempo y desviacion estacionaria del OU.
+    bias_drift_tau_s: PositiveFloat
+    accel_bias_drift_sigma_g: NonNegFloat
+    gyro_bias_drift_sigma_dps: NonNegFloat
+    # Cuantiza a cuentas int16 (LSB = 32768 / rango en g, 131 * 250 / rango en dps; la salida sigue en g y deg/s).
+    quantize_output: bool
     accel_range_g: Literal[2, 4, 8, 16]
     gyro_range_dps: Literal[250, 500, 1000, 2000]
+    # Paso bajo causal de 1er orden a dlpf_hz (el MPU-6050 real: 44 Hz con CONFIG=0x03; ancho de banda y retardo
+    # exactos sin verificar). Sin efecto si dlpf_hz >= sample_rate_hz / 2.
     dlpf_hz: PositiveFloat
     mounting: Mounting
     # Distancia del eje de flexión al sensor (aceleraciones tangencial y centrípeta).
@@ -620,6 +654,18 @@ class StretchSignalConfig(_Model):
     elongation_coupling: NonNegFloat
     # Acortamiento a lo largo del día de vigilia (encendido -> apagado) con 1 g; escala con la gravedad.
     diurnal_loss_mm_at_1g: NonNegFloat
+    # Hipótesis PROVISIONALES (docs/sensor-sources.md, sin fuente cuantitativa; no son medidas):
+    # ruido de resistencia por lectura (ohm, independiente por muestra).
+    read_noise_ohm: NonNegFloat
+    # Dispersión entre lecturas repetidas: un offset de resistencia (ohm) por sesión, N(0, sd). El banco muestra
+    # lecturas de la misma longitud que difieren hasta ~150 ohm; no es ruido puro por muestra.
+    repeat_dispersion_ohm: NonNegFloat
+    # Fluencia (creep): alargamiento lento extra = creep_fraction x estiramiento sostenido, con constante creep_tau_s
+    # (sube y se recupera con ella). Sin cifra del fabricante.
+    creep_fraction: UnitInterval
+    creep_tau_s: PositiveFloat
+    # Variación entre lotes: ganancia de resistencia por astronauta ~ N(1, lot_variation_fraction), ver `lot_gain`.
+    lot_variation_fraction: UnitInterval
 
     @model_validator(mode="after")
     def _monotonic(self) -> Self:

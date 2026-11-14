@@ -206,7 +206,10 @@ def test_exercise_session_has_load_and_rep_events_with_device_clock(config, time
     _plan, _, payload = _session_payload(config, timeline, "lat_pulldown")
     protocol = config.protocol("lat_pulldown_standing_v1")
     assert payload["load_declared"] == {
-        "type": "elastic_band", "nominal_kg": 25.0, "band_stretch_cm": 40.0, "band_id": "green",
+        "type": "elastic_band",
+        "nominal_kg": 25.0,
+        "band_stretch_cm": 40.0,
+        "band_id": "green",
         "description": "Standing, band anchored overhead, pronated grip.",
     }
     assert payload["planned_reps"] == protocol.planned_reps
@@ -281,8 +284,10 @@ def test_microgravity_removes_gravity_from_accel_and_keeps_everything_else():
     _, earth = _synth(config, "background", day=4, gravity=GravityEnvironment.EARTH_1G)
     _, micro = _synth(config, "background", day=4)
     e, m = earth.stream("imu_t9").channels, micro.stream("imu_t9").channels
+
     def accel(c):
         return np.sqrt(c["accel_x"] ** 2 + c["accel_y"] ** 2 + c["accel_z"] ** 2)
+
     assert np.mean(accel(e)) == pytest.approx(1.0, abs=0.05)
     assert np.mean(accel(m)) < 0.1
     for gyro in ("gyro_x", "gyro_y", "gyro_z"):
@@ -399,3 +404,31 @@ def test_calibration_records_name_their_type_and_the_session_that_hosts_them(con
     assert {r.calibration_type for r in mvc.values()} == {"emg_mvc"}
     assert {r.session_id for r in mvc.values()} == {exercise.session_id}
     assert {r.day for r in mvc.values()} == {0}
+
+
+def test_lot_gain_is_deterministic_per_seed_and_astronaut_and_varies(config):
+    a1 = sess.member_lot_gain(config, 7, "AST-01")
+    assert a1 == sess.member_lot_gain(config, 7, "AST-01")
+    assert a1 != sess.member_lot_gain(config, 8, "AST-01")
+    assert a1 != sess.member_lot_gain(config, 7, "AST-02")
+    assert a1 == pytest.approx(1.0, abs=3 * config.signals.stretch.lot_variation_fraction)
+
+
+def test_lot_gain_scales_resistance_and_is_shared_by_calibration_and_signal():
+    def zero_noise(raw):
+        _clean(raw)
+        raw["signals"]["stretch"].update(read_noise_ohm=0.0, repeat_dispersion_ohm=0.0, adc_noise_counts=0.0, lot_variation_fraction=0.3)
+
+    cfg = make_config(zero_noise)
+    gain = sess.member_lot_gain(cfg, cfg.seed, A)
+    assert gain != 1.0
+    _, synthesis = _synth(cfg, "lat_pulldown")
+    stretch = synthesis.stream("stretch_spine")
+    # La curva publicada lleva la ganancia del lote, asi que la longitud derivada sigue la real pese a ella.
+    err = np.abs(stretch.channels["length_mm"] - stretch.truth["length_mm"])
+    assert float(np.median(err)) < 5.0
+    # Y la resistencia publicada es la del cordon escalada por el lote.
+    cfg1 = make_config(lambda raw: (zero_noise(raw), raw["signals"]["stretch"].update(lot_variation_fraction=0.0)))
+    _, base = _synth(cfg1, "lat_pulldown")
+    ratio = float(np.median(stretch.channels["resistance_ohm"] / base.stream("stretch_spine").channels["resistance_ohm"]))
+    assert ratio == pytest.approx(gain, rel=0.03)

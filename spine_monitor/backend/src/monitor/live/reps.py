@@ -70,7 +70,7 @@ class RepDetectorParams:
 
         The simulated rep is a minimum-jerk 0 -> rom_deg (30) -> 0 in rep_duration_s (3), so the rate peaks at
         1.875 * 30 / 1.5 = 37.5 dps. The thresholds below are local to this module (not read from the protocol catalog).
-        At rest there is a bias (up to 0.3 dps), gyro_noise_dps (0.05) and white tremor
+        At rest there is a bias (up to 0.3 dps), gyro noise density and white tremor
         with an observed standard deviation of up to 0.6 dps, about 0.18 dps once smoothed with the tau below.
 
         - on_dps 6: about a sixth of the peak, and 10 times the raw tremor.

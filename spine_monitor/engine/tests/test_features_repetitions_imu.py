@@ -433,13 +433,13 @@ def _mission_config(noise_level: str) -> Any:
     raw["schedule"]["background"].update(enabled=False, start_time_utc="09:56", end_time_utc="09:57")
     imu = raw["signals"]["imu"]
     if noise_level == "clean":
-        imu.update(gyro_noise_dps=0.0, tremor_dps_per_unit=0.0)
+        imu.update(gyro_noise_density_dps_rthz=0.0, tremor_dps_per_unit=0.0)
         for fault in raw["faults"]["quality"].values():
             fault["probability"] = 0.0
         raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
         raw["faults"]["device"]["reboot"]["probability_per_hour"] = 0.0
     elif noise_level == "noisy":
-        imu.update(gyro_noise_dps=2.0, tremor_dps_per_unit=10.0)
+        imu.update(gyro_noise_density_dps_rthz=0.3, tremor_dps_per_unit=10.0)
     return MissionConfig.model_validate(raw)
 
 

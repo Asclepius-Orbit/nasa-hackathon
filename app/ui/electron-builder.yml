@@ -3,10 +3,17 @@ productName: Asclepius Orbit
 asar: true
 directories:
   output: release
+  buildResources: build
 files:
   - out/**
   - package.json
+  - '!build/**'
 win:
   target: nsis
+  icon: build/icon.ico
+nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
 afterPack: scripts/after-pack.cjs
 publish: null

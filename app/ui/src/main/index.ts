@@ -26,7 +26,7 @@ import { devCsp, PROD_CSP } from './security/csp';
 import { createSessionsService } from './sessions/sessions-service';
 import { createCrewRegistry, withCrewRegistry } from './store/crew-registry';
 import { createCrewStore, crewFileSchema } from './store/crew-store';
-import { DEMO_CREW } from './store/demo-crew';
+import { DEMO_CREW, e2eRealCrew } from './store/demo-crew';
 import { createEncryptedJsonFile } from './store/encrypted-file';
 import { createSettingsStore } from './store/settings-store';
 import { AGENT_URL_ENV, resolveAgentUrl } from './chat/agent-url';
@@ -41,6 +41,7 @@ import { createRepsStreamClient } from './views/reps-stream';
 import { createViewsClient } from './views/views-client';
 import { createViewsService } from './views/views-service';
 import { createWriteClient } from './views/write-client';
+import icon from '../../build/icon.png?asset';
 import { createMainWindow, hardenSession, installWebContentsGuard } from './window';
 
 const devServerUrl = import.meta.env.DEV ? process.env['ELECTRON_RENDERER_URL'] : undefined;
@@ -59,7 +60,7 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow: BrowserWindow | null = null;
 
   const openWindow = (): void => {
-    mainWindow = createMainWindow(BrowserWindow, { preloadPath, policy, devTools: import.meta.env.DEV });
+    mainWindow = createMainWindow(BrowserWindow, { preloadPath, policy, devTools: import.meta.env.DEV, icon });
     mainWindow.on('closed', () => {
       mainWindow = null;
     });
@@ -84,7 +85,7 @@ if (!app.requestSingleInstanceLock()) {
     const crewStore = createCrewStore({
       file: createEncryptedJsonFile({ path: join(userData, 'crew.bin'), schema: crewFileSchema, safeStorage }),
       hasher,
-      seed: seedDemoCrew ? DEMO_CREW : null,
+      seed: seedDemoCrew ? (import.meta.env.MODE === 'e2e-real' ? e2eRealCrew(process.env) : DEMO_CREW) : null,
     });
     const auth = createAuthService({
       crew: crewStore,

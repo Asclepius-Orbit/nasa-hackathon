@@ -40,6 +40,7 @@ Paquet `spine_gateway` (`src/spine_gateway/`):
 | `status.py` | `DeviceStatus`, `ClockSync` i el `session_id` de fons; estat de streams i global. |
 | `app.py` | `Gateway`: bucle MQTT (aiomqtt), Last Will, temporitzadors, comandes, sessions i calibratges. |
 | `emulator.py` | Arduino fals per TCP (`spine-arduino-emulator`) per treballar sense placa. |
+| `signals.py` | Senyals de l'emulador: generadors de `spine_physiology` convertits a comptes crus del firmware. |
 | `__main__.py` | Punt d'entrada `spine-gateway`. |
 
 Flux de dades:
@@ -81,7 +82,7 @@ uv run spine-arduino-emulator --port 5000
 SPINE_GATEWAY_SERIAL_URL=socket://127.0.0.1:5000 uv run spine-gateway
 ```
 
-pyserial converteix `socket://host:port` en una connexió TCP, així que el gateway executa exactament el mateix codi que amb una placa. L'emulador genera senyals sintètics deterministes i dona a cada client un dispositiu nou (`boot_id` nou, comptadors a zero), com un Arduino reiniciat en obrir el port. Opcions: `--host` (per defecte `127.0.0.1`), `--port` (per defecte 5000), `--seed`, `--no-imu` (firmware sense MPU-6050: sense trames `I` i amb `#imu absent`), `--drop-every N` (cada N-èsim lot no surt però gasta el seu `frame_seq`, com un overrun) i `--reboot-after S` (reinici del dispositiu als S segons).
+pyserial converteix `socket://host:port` en una connexió TCP, així que el gateway executa exactament el mateix codi que amb una placa. L'emulador genera senyals sintètics deterministes, produïts amb els models de `spine_physiology` i enviats com els comptes crus del firmware (EMG de 10 bits com a envolupant, IMU int16 del MPU-6050 a ±4 g / ±500 dps, cordó pel divisor de 10 kΩ): una repetició de flexió de 3 s cada 4 s a `gyro_x` (el que compta el backend), amb la contracció de l'EMG i l'estirament del cordó lligats a la mateixa fase de l'esforç; les amplituds depenen de `--seed`. Dona a cada client un dispositiu nou (`boot_id` nou, comptadors a zero), com un Arduino reiniciat en obrir el port. Opcions: `--host` (per defecte `127.0.0.1`), `--port` (per defecte 5000), `--seed`, `--no-imu` (firmware sense MPU-6050: sense trames `I` i amb `#imu absent`), `--drop-every N` (cada N-èsim lot no surt però gasta el seu `frame_seq`, com un overrun) i `--reboot-after S` (reinici del dispositiu als S segons).
 
 La mateixa demo a Docker, perfil `gateway-demo` (emulador + gateway; Mosquitto arrenca com a dependència). La imatge `spine-gateway:dev` es construeix al primer `up` (fes servir `--build` després de canviar el codi):
 

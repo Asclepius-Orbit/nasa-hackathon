@@ -10,6 +10,7 @@ from spine_physiology.signals.stretch import (
     derive,
     diurnal_loss_mm,
     length_to_resistance,
+    lot_gain,
     measured_curve,
     resistance_to_adc,
     resistance_to_length,
@@ -18,6 +19,8 @@ from spine_physiology.signals.stretch import (
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "configs" / "example-mission.yaml"
 REST_MM = 400.0  # valor de prueba, independiente del YAML
+# Apaga las no idealidades nuevas (ruido por lectura, dispersión entre lecturas, fluencia, lote).
+QUIET = {"read_noise_ohm": 0.0, "repeat_dispersion_ohm": 0.0, "creep_fraction": 0.0, "lot_variation_fraction": 0.0}
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +36,7 @@ def params(config) -> StretchSignalConfig:
 @pytest.fixture(scope="module")
 def ideal(params) -> StretchSignalConfig:
     """Sin ruido de ADC ni histéresis."""
-    return params.model_copy(update={"adc_noise_counts": 0.0, "hysteresis_gain": 0.0})
+    return params.model_copy(update={"adc_noise_counts": 0.0, "hysteresis_gain": 0.0, **QUIET})
 
 
 def test_diurnal_loss(params):
@@ -92,7 +95,7 @@ def test_adc_roundtrip_within_quantisation(ideal):
     r_lo = adc_to_resistance(adc - 0.5, ideal)
     tol = (resistance_to_length(r_hi, curve) - resistance_to_length(r_lo, curve)) / 2 + 1e-9
     assert np.all(np.abs(recovered - lengths) <= tol)
-    assert np.abs(recovered - lengths).max() < 1.0  # mm: la cuantización del ADC de 12 bits es sub-milimétrica
+    assert np.abs(recovered - lengths).max() <= 2.0  # mm: un escalón del ADC de 10 bits abarca ~3 mm en este tramo
 
 
 def test_adc_resistance_roundtrip(ideal):
@@ -106,7 +109,7 @@ def test_adc_resistance_roundtrip(ideal):
 def test_adc_clips_and_stays_finite(ideal):
     full_scale = 2**ideal.circuit.adc_bits - 1
     huge = resistance_to_adc(np.random.default_rng(0), np.array([1e12, 1e-3]), ideal)
-    assert huge.tolist() == [full_scale, 0]
+    assert huge.tolist() == [full_scale - 1, 1]  # nunca en los topes del ADC
     r = adc_to_resistance(np.array([0, full_scale]), ideal)
     assert np.all(np.isfinite(r)) and np.all(r > 0)
 
@@ -186,7 +189,7 @@ def test_synth_stretch_chain(ideal, params):
     assert np.abs(recovered - length).max() < 1.0
     # Con histéresis, la longitud derivada queda por encima de la real (residuo >= 0).
     hyst = synth_stretch(
-        np.random.default_rng(0), params.model_copy(update={"adc_noise_counts": 0.0}), length_mm=length,
+        np.random.default_rng(0), params.model_copy(update={"adc_noise_counts": 0.0, **QUIET}), length_mm=length,
         rest_length_mm=REST_MM, rate_hz=rate, initial_residual_mm=0.0,
     )  # fmt: skip
     assert hyst.residual_mm.max() > 0
@@ -286,3 +289,115 @@ def test_measurement_error_is_clipped_to_a_quarter_of_the_step_on_both_sides(con
         seen_low |= bool(np.isclose(error.min(), -step / 4))
         seen_high |= bool(np.isclose(error.max(), step / 4))
     assert seen_low and seen_high
+
+
+def _quiet(params, **update):
+    return params.model_copy(update={"adc_noise_counts": 0.0, "hysteresis_gain": 0.0, **QUIET, **update})
+
+
+def _flat(params, resistance_ohm=6000.0, n=4000, seed=1, **update):
+    """Cordón constante en la longitud que la curva real asocia a `resistance_ohm`."""
+    p = _quiet(params, **update)
+    length = resistance_to_length(np.array([resistance_ohm]), p.curve_pairs())[0]
+    out = synth_stretch(
+        np.random.default_rng(seed), p, length_mm=np.full(n, length), rest_length_mm=length,
+        rate_hz=p.sample_rate_hz, initial_residual_mm=0.0,
+    )  # fmt: skip
+    return p, out
+
+
+def test_adc_never_touches_the_rails(params):
+    full_scale = 2**params.circuit.adc_bits - 1
+    noisy = params.model_copy(update={"adc_noise_counts": 50.0})
+    counts = resistance_to_adc(np.random.default_rng(0), np.array([1e-3] * 500 + [1e12] * 500), noisy)
+    assert counts.min() == 1 and counts.max() == full_scale - 1  # recorta, no descarta
+
+
+def test_example_circuit_is_the_firmware_divider(params):
+    assert params.circuit.adc_bits == 10 and params.circuit.series_resistor_ohm == 10000.0
+
+
+def test_read_noise_is_per_reading_in_ohms(params):
+    _, quiet = _flat(params)
+    _, noisy = _flat(params, read_noise_ohm=300.0)
+    r_quiet = adc_to_resistance(quiet.adc_counts, params)
+    r_noisy = adc_to_resistance(noisy.adc_counts, params)
+    assert np.ptp(r_quiet) < 30.0  # solo cuantización
+    assert r_noisy.std() == pytest.approx(300.0, rel=0.15)
+    assert r_noisy.mean() == pytest.approx(r_quiet.mean(), abs=30.0)
+
+
+def test_repeat_dispersion_is_one_offset_per_session_matching_the_bench_spread(params):
+    # Banco: tres lecturas de la misma longitud difieren hasta ~150 Ω. El offset es constante dentro de la lectura.
+    means = []
+    for seed in range(300):
+        p, out = _flat(params, n=50, seed=seed, repeat_dispersion_ohm=60.0)
+        r = adc_to_resistance(out.adc_counts, p)
+        assert np.ptp(r) < 30.0  # constante dentro de la sesión (solo cuantización)
+        means.append(r.mean())
+    assert np.std(means) == pytest.approx(60.0, rel=0.2)
+    assert abs(np.mean(means) - 6000.0) < 25.0
+    triplets = np.array(means).reshape(100, 3)
+    assert np.median(np.ptp(triplets, axis=1)) < 150.0
+
+
+def test_lot_gain_is_per_astronaut_positive_and_zero_spread_is_identity(params):
+    gains = np.array([lot_gain(np.random.default_rng(s), params) for s in range(2000)])
+    assert gains.mean() == pytest.approx(1.0, abs=0.01)
+    assert gains.std() == pytest.approx(params.lot_variation_fraction, rel=0.1)
+    assert gains.min() > 0.0
+    assert lot_gain(np.random.default_rng(0), params.model_copy(update={"lot_variation_fraction": 0.0})) == 1.0
+    assert lot_gain(np.random.default_rng(3), params) == lot_gain(np.random.default_rng(3), params)
+
+
+def test_lot_gain_scales_resistance_and_the_published_curve(params, config):
+    p = _quiet(params)
+    length = resistance_to_length(np.array([6000.0]), p.curve_pairs())[0]
+    scaled = synth_stretch(
+        np.random.default_rng(1), p, length_mm=np.full(100, length), rest_length_mm=length,
+        rate_hz=p.sample_rate_hz, initial_residual_mm=0.0, lot_gain=1.1,
+    )  # fmt: skip
+    assert adc_to_resistance(scaled.adc_counts, p).mean() == pytest.approx(6600.0, rel=0.01)
+    cal = config.calibration.stretch.model_copy(update={"measurement_noise_mm": 0.0})
+    plain = measured_curve(np.random.default_rng(0), p, cal, rest_length_mm=REST_MM)
+    gained = measured_curve(np.random.default_rng(0), p, cal, rest_length_mm=REST_MM, lot_gain=1.1)
+    assert [g[0] for g in gained] == pytest.approx([1.1 * b[0] for b in plain])
+    assert [g[1] for g in gained] == pytest.approx([b[1] for b in plain])
+
+
+def test_creep_grows_under_sustained_stretch_and_recovers_slowly(params):
+    p = _quiet(params, creep_fraction=0.02)
+    rate = p.sample_rate_hz
+    tau = p.creep_tau_s
+    held = int(6 * tau * rate)
+    length = np.full(int(14 * tau * rate), REST_MM)
+    length[:held] = REST_MM + 40.0
+    out = synth_stretch(
+        np.random.default_rng(0), p, length_mm=length, rest_length_mm=REST_MM, rate_hz=rate, initial_residual_mm=0.0
+    )  # fmt: skip
+    extra = out.effective_length_mm - length
+    assert extra[0] < 0.1 * 0.02 * 40.0  # arranca sin fluencia
+    assert extra[held - 1] == pytest.approx(0.02 * 40.0, rel=0.01)  # satura en creep_fraction x estiramiento
+    assert np.all(np.diff(extra[:held]) >= -1e-12)  # crece
+    k = held - 1 + int(tau * rate)
+    assert extra[k] == pytest.approx(extra[held - 1] * np.exp(-1), rel=0.01)  # recupera con creep_tau_s
+    assert not out.residual_mm.any()  # el residuo de histéresis conserva su significado
+    assert out.creep_mm == pytest.approx(extra)
+
+
+def test_new_noise_sources_use_their_own_streams(params):
+    length = np.full(200, REST_MM + 5.0)
+
+    def run(p: StretchSignalConfig):
+        return synth_stretch(np.random.default_rng(9), p, length_mm=length, rest_length_mm=REST_MM, rate_hz=20.0, initial_residual_mm=0.0)
+
+    a = run(params)
+    b = run(params)
+    assert np.array_equal(a.adc_counts, b.adc_counts)
+    off = params.model_copy(update={"read_noise_ohm": 0.0, "repeat_dispersion_ohm": 0.0})
+    base = run(off)
+    assert not np.array_equal(a.adc_counts, base.adc_counts)
+    # El ruido de ADC viene de la rama principal: con las ramas nuevas apagadas, usa el mismo flujo que
+    # resistance_to_adc directo con la misma semilla (las ramas hijas no lo desplazan).
+    resistance = length_to_resistance(base.effective_length_mm, off.curve_pairs())
+    assert np.array_equal(base.adc_counts, resistance_to_adc(np.random.default_rng(9), resistance, off))

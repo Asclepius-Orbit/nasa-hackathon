@@ -52,9 +52,7 @@ def test_effective_values_follow_gains(params):
     assert effective_pct_mvc(40.0, 0.0, params) == 40.0
     assert effective_pct_mvc(40.0, 1.0, params) == pytest.approx(40.0 * (1 + params.deconditioning_pct_mvc_gain))
     assert effective_fatigue_per_rep(0.0, params) == params.fatigue_per_rep
-    assert effective_fatigue_per_rep(0.5, params) == pytest.approx(
-        params.fatigue_per_rep * (1 + 0.5 * params.deconditioning_fatigue_gain)
-    )
+    assert effective_fatigue_per_rep(0.5, params) == pytest.approx(params.fatigue_per_rep * (1 + 0.5 * params.deconditioning_fatigue_gain))
 
 
 def test_effective_values_monotonic_in_deconditioning(params):
@@ -135,9 +133,7 @@ def test_fatigue_profile_bounded_in_unit_interval(rate):
 def test_profiles_from_protocol_schedule(config, rate):
     protocol = config.protocol("lat_pulldown_standing_v1")
     reps = rep_schedule(protocol)
-    n = n_samples(
-        reps[-1].end_s + protocol.lead_out_s, rate, config.signals.samples_per_chunk(rate)
-    )
+    n = n_samples(reps[-1].end_s + protocol.lead_out_s, rate, config.signals.samples_per_chunk(rate))
     prof = activation_profile(reps, peak_pct_mvc=protocol.pct_mvc, rest_pct_mvc=2.0, n_samples=n, rate_hz=rate)
     assert prof.max() == pytest.approx(protocol.pct_mvc, rel=1e-3)
 
@@ -147,29 +143,21 @@ def test_profiles_from_protocol_schedule(config, rate):
 
 def test_shape_dtype(clean, rate):
     n = 5000
-    x = synth_emg(
-        np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(30, n), fatigue=constant(0, n), rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(30, n), fatigue=constant(0, n), rate_hz=rate)
     assert x.shape == (n,) and x.dtype == np.float64
     assert np.all(np.isfinite(x))
 
 
 def test_empty_and_tiny_inputs(clean, rate):
-    empty = synth_emg(
-        np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=np.zeros(0), fatigue=np.zeros(0), rate_hz=rate
-    )
+    empty = synth_emg(np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=np.zeros(0), fatigue=np.zeros(0), rate_hz=rate)
     assert empty.shape == (0,)
-    tiny = synth_emg(
-        np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(30, 5), fatigue=constant(0.1, 5), rate_hz=rate
-    )
+    tiny = synth_emg(np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(30, 5), fatigue=constant(0.1, 5), rate_hz=rate)
     assert tiny.shape == (5,) and np.all(np.isfinite(tiny))
 
 
 def test_mismatched_lengths_raise(clean, rate):
     with pytest.raises(ValueError):
-        synth_emg(
-            np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(30, 10), fatigue=constant(0, 9), rate_hz=rate
-        )
+        synth_emg(np.random.default_rng(1), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(30, 10), fatigue=constant(0, 9), rate_hz=rate)
 
 
 def test_deterministic_same_seed(params, rate):
@@ -196,9 +184,7 @@ def test_does_not_use_global_random_state(clean, rate):
 @pytest.mark.parametrize("pct", [10.0, 25.0, 50.0, 100.0])
 def test_rms_equals_mvc_times_pct(clean, rate, pct):
     n = int(30 * rate)
-    x = synth_emg(
-        np.random.default_rng(11), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(pct, n), fatigue=constant(0, n), rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(11), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(pct, n), fatigue=constant(0, n), rate_hz=rate)
     assert rms(x) == pytest.approx(MVC_RMS_MV * pct / 100, rel=0.03)
 
 
@@ -206,8 +192,7 @@ def test_rms_proportional_to_pct(clean, rate):
     n = int(30 * rate)
     levels = [10.0, 20.0, 40.0, 80.0]
     values = [
-        rms(synth_emg(np.random.default_rng(5), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(p, n), fatigue=constant(0, n), rate_hz=rate))
-        for p in levels
+        rms(synth_emg(np.random.default_rng(5), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(p, n), fatigue=constant(0, n), rate_hz=rate)) for p in levels
     ]
     ratios = np.array(values) / np.array(levels)
     assert ratios.max() / ratios.min() == pytest.approx(1.0, abs=0.04)
@@ -224,9 +209,7 @@ def test_rms_scales_with_mvc(clean, rate):
 def test_rms_with_noise_floor_adds_in_quadrature(params, rate):
     n = int(30 * rate)
     pct = 30.0
-    x = synth_emg(
-        np.random.default_rng(4), params, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(pct, n), fatigue=constant(0, n), rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(4), params, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(pct, n), fatigue=constant(0, n), rate_hz=rate)
     expected = np.hypot(MVC_RMS_MV * pct / 100, params.noise_rms_mv)
     assert rms(x) == pytest.approx(expected, rel=0.03)
 
@@ -244,17 +227,13 @@ def test_rest_segments_near_noise_floor(params, rate):
     )
     assert rms(x) == pytest.approx(np.hypot(MVC_RMS_MV * params.rest_pct_mvc / 100, params.noise_rms_mv), rel=0.03)
     # Y con reposo nulo, exactamente el suelo de ruido del sensor.
-    x0 = synth_emg(
-        np.random.default_rng(6), params, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(0, n), fatigue=constant(0, n), rate_hz=rate
-    )
+    x0 = synth_emg(np.random.default_rng(6), params, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(0, n), fatigue=constant(0, n), rate_hz=rate)
     assert rms(x0) == pytest.approx(params.noise_rms_mv, rel=0.03)
 
 
 def test_rest_between_reps_much_quieter_than_effort(params, rate):
     pct = activation_profile(REPS, peak_pct_mvc=60.0, rest_pct_mvc=params.rest_pct_mvc, n_samples=int(14 * rate), rate_hz=rate)
-    x = synth_emg(
-        np.random.default_rng(9), params, mvc_rms_mv=MVC_RMS_MV, pct_mvc=pct, fatigue=constant(0, pct.size), rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(9), params, mvc_rms_mv=MVC_RMS_MV, pct_mvc=pct, fatigue=constant(0, pct.size), rate_hz=rate)
     rest_rms = rms(x[int(4.2 * rate) : int(5.8 * rate)])
     effort_rms = rms(x[int(2.8 * rate) : int(3.2 * rate)])
     assert rest_rms < 0.1 * effort_rms
@@ -262,9 +241,7 @@ def test_rest_between_reps_much_quieter_than_effort(params, rate):
 
 def test_output_inside_band(clean, params, rate):
     n = int(20 * rate)
-    x = synth_emg(
-        np.random.default_rng(13), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=constant(0, n), rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(13), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=constant(0, n), rate_hz=rate)
     freqs, psd = sp_signal.welch(x, fs=rate, nperseg=int(rate))
     power = psd.sum()
     in_band = psd[(freqs >= params.band_low_hz) & (freqs <= params.band_high_hz)].sum()
@@ -277,9 +254,7 @@ def test_output_inside_band(clean, params, rate):
 
 def test_median_frequency_inside_band(clean, params, rate):
     n = int(20 * rate)
-    x = synth_emg(
-        np.random.default_rng(14), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=constant(0, n), rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(14), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=constant(0, n), rate_hz=rate)
     assert params.band_low_hz < median_frequency(x, rate) < params.band_high_hz
 
 
@@ -313,9 +288,7 @@ def test_median_frequency_falls_over_fatigue_ramp(clean, rate):
     # Fatiga creciente dentro de una misma serie: la mediana de la ventana final es menor que la inicial.
     n = int(40 * rate)
     fatigue = np.linspace(0.0, 1.0, n)
-    x = synth_emg(
-        np.random.default_rng(23), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=fatigue, rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(23), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=fatigue, rate_hz=rate)
     early = median_frequency(x[: int(8 * rate)], rate)
     late = median_frequency(x[-int(8 * rate) :], rate)
     assert late < 0.9 * early
@@ -354,9 +327,7 @@ def test_fatigue_over_session_lowers_median_frequency(clean, rate):
 def test_no_edge_transient(clean, rate):
     # El filtro de fase cero no deja arranque ni cola: el RMS de los bordes iguala al del centro.
     n = int(20 * rate)
-    x = synth_emg(
-        np.random.default_rng(41), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=constant(0.4, n), rate_hz=rate
-    )
+    x = synth_emg(np.random.default_rng(41), clean, mvc_rms_mv=MVC_RMS_MV, pct_mvc=constant(50, n), fatigue=constant(0.4, n), rate_hz=rate)
     edge = int(0.25 * rate)
     expected = MVC_RMS_MV * 0.5
     assert rms(x[:edge]) == pytest.approx(expected, rel=0.25)
@@ -418,3 +389,132 @@ def test_fatigue_above_one_counts_as_one(clean, rate):
 
     assert np.array_equal(run(2.5), run(1.0))
     assert not np.array_equal(run(1.0), run(0.5))
+
+
+# --- #131: tipo de señal, interferencias y cuantización ADC ------------------------------------------
+# `params` viene del YAML de ejemplo (signal_kind raw, interferencias apagadas); cada test enciende lo suyo.
+
+
+def variant(base: EmgSignalConfig, **update) -> EmgSignalConfig:
+    return base.model_copy(update=update)
+
+
+def synth(cfg, seed, pct, fatigue=None, mvc=MVC_RMS_MV, rate=1000.0):
+    fat = constant(0, pct.size) if fatigue is None else fatigue
+    return synth_emg(np.random.default_rng(seed), cfg, mvc_rms_mv=mvc, pct_mvc=pct, fatigue=fat, rate_hz=rate)
+
+
+def test_new_parameters_default_to_envelope_and_interference_off():
+    fields = EmgSignalConfig.model_fields
+    assert fields["signal_kind"].default == "envelope"
+    for name in ("baseline_wander_mv", "mains_amplitude_mv", "ecg_leak_mv"):
+        assert fields[name].default == 0.0, name
+    assert fields["mains_hz"].default == 50.0
+    assert fields["quantize_adc"].default is False
+
+
+def test_example_mission_keeps_raw_stream(params):
+    assert params.signal_kind == "raw"
+
+
+def test_invalid_signal_kind_and_negative_amplitudes_are_rejected(params):
+    from pydantic import ValidationError
+
+    base = params.model_dump()
+    with pytest.raises(ValidationError):
+        EmgSignalConfig.model_validate({**base, "signal_kind": "bogus"})
+    for name in ("baseline_wander_mv", "mains_amplitude_mv", "ecg_leak_mv"):
+        with pytest.raises(ValidationError):
+            EmgSignalConfig.model_validate({**base, name: -0.1})
+
+
+def test_rectified_is_absolute_value_of_raw(clean, rate):
+    pct = constant(40, int(5 * rate))
+    raw = synth(variant(clean, signal_kind="raw"), 3, pct)
+    rect = synth(variant(clean, signal_kind="rectified"), 3, pct)
+    assert np.array_equal(rect, np.abs(raw))
+
+
+def test_envelope_is_nonnegative_smooth_and_tracks_mean_rectified_level(clean, rate):
+    pct = constant(50, int(30 * rate))
+    raw = synth(variant(clean, signal_kind="raw"), 4, pct)
+    env = synth(variant(clean, signal_kind="envelope"), 4, pct)
+    assert env.min() >= 0.0
+    assert env.mean() == pytest.approx(np.sqrt(2 / np.pi) * rms(raw), rel=0.05)
+    # Mucho más lenta que la señal cruda: casi toda su potencia fluctuante queda por debajo de ~25 Hz.
+    freqs, psd = sp_signal.welch(env - env.mean(), fs=rate, nperseg=int(rate))
+    assert psd[freqs < 25].sum() / psd.sum() > 0.95
+
+
+def test_envelope_follows_activation_profile(clean, rate):
+    pct = activation_profile(REPS, peak_pct_mvc=60.0, rest_pct_mvc=2.0, n_samples=int(14 * rate), rate_hz=rate)
+    env = synth(variant(clean, signal_kind="envelope"), 5, pct)
+    assert np.corrcoef(env, pct)[0, 1] > 0.9
+    assert env[int(3.0 * rate)] > 5 * env[int(5.0 * rate)]
+
+
+def test_mains_adds_a_50_hz_tone(clean, rate):
+    cfg = variant(clean, mains_amplitude_mv=0.2)
+    x = synth(cfg, 6, constant(0, int(10 * rate)))
+    assert rms(x) == pytest.approx(0.2 / np.sqrt(2), rel=0.01)
+    freqs, psd = sp_signal.welch(x, fs=rate, nperseg=int(rate))
+    assert freqs[np.argmax(psd)] == pytest.approx(50.0, abs=1.0)
+    moved = synth(variant(cfg, mains_hz=60.0), 6, constant(0, int(10 * rate)))
+    freqs, psd = sp_signal.welch(moved, fs=rate, nperseg=int(rate))
+    assert freqs[np.argmax(psd)] == pytest.approx(60.0, abs=1.0)
+
+
+def test_baseline_wander_is_slow_and_scaled(clean, rate):
+    cfg = variant(clean, baseline_wander_mv=0.1)
+    x = synth(cfg, 7, constant(0, int(300 * rate)))
+    assert rms(x) == pytest.approx(0.1, rel=0.4)
+    freqs, psd = sp_signal.welch(x, fs=rate, nperseg=int(20 * rate))
+    assert psd[freqs < 3].sum() / psd.sum() > 0.95
+
+
+def test_interference_does_not_disturb_the_emg_streams(clean, rate):
+    # Con la misma rng, encender las interferencias solo suma un término aditivo: la parte EMG no cambia.
+    pct = constant(40, int(10 * rate))
+    off = synth(clean, 8, pct)
+    mains = synth(variant(clean, mains_amplitude_mv=0.3), 8, pct)
+    assert rms(mains - off) == pytest.approx(0.3 / np.sqrt(2), rel=0.01)
+    wander = synth(variant(clean, baseline_wander_mv=0.3), 8, pct)
+    freqs, psd = sp_signal.welch(wander - off, fs=rate, nperseg=int(rate))
+    assert psd[freqs < 3].sum() / psd.sum() > 0.95
+
+
+def test_ecg_leak_has_one_peak_per_beat(clean, rate):
+    cfg = variant(clean, ecg_leak_mv=0.3, ecg_heart_rate_bpm=60.0)
+    x = synth(cfg, 9, constant(0, int(10 * rate)))
+    assert np.abs(x).max() == pytest.approx(0.3, rel=0.1)
+    peaks, _ = sp_signal.find_peaks(np.abs(x), height=0.15, distance=int(0.3 * rate))
+    assert 9 <= peaks.size <= 11
+
+
+def test_quantization_snaps_raw_to_adc_steps_and_clips(clean, rate):
+    acq = clean.acquisition.model_copy(update={"adc_bits": 10, "vref_v": 5.0, "gain": 1000.0})
+    cfg = variant(clean, acquisition=acq, quantize_adc=True, signal_kind="raw")
+    lsb = 5.0 * 1000.0 / 1000.0 / 2**10  # mV por cuenta referido a la entrada
+    x = synth(cfg, 10, constant(100, int(5 * rate)), mvc=4.0)  # RMS 4 mV: satura el rango (+-2.5 mV)
+    counts = x / lsb
+    assert np.allclose(counts, np.round(counts), atol=1e-6)
+    assert counts.min() >= -512 and counts.max() <= 511
+    assert counts.min() == -512 and counts.max() == 511
+
+
+def test_quantization_of_envelope_is_unipolar(clean, rate):
+    acq = clean.acquisition.model_copy(update={"adc_bits": 10, "vref_v": 5.0, "gain": 1000.0})
+    cfg = variant(clean, acquisition=acq, quantize_adc=True, signal_kind="envelope")
+    lsb = 5.0 / 1000.0 / 2**10 * 1000.0
+    x = synth(cfg, 11, constant(50, int(5 * rate)))
+    counts = x / lsb
+    assert np.allclose(counts, np.round(counts), atol=1e-6)
+    assert counts.min() >= 0 and counts.max() <= 1023
+
+
+def test_all_options_on_is_reproducible(params, rate):
+    cfg = variant(params, signal_kind="envelope", baseline_wander_mv=0.05, mains_amplitude_mv=0.05, ecg_leak_mv=0.1, quantize_adc=True)
+    pct = activation_profile(REPS, peak_pct_mvc=50.0, rest_pct_mvc=2.0, n_samples=int(14 * rate), rate_hz=rate)
+    a, b, c = synth(cfg, 12, pct), synth(cfg, 12, pct), synth(cfg, 13, pct)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, c)

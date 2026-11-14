@@ -493,6 +493,7 @@ def test_resimulate_changes_only_what_depends_on_gravity(config):
         elif a.kind is EnvelopeKind.GROUND_TRUTH and pa["type"] == "lost_chunks" or a.kind is EnvelopeKind.CALIBRATION:
             assert pa == pb
     assert accel_changed
+
     def imu(msgs):
         return np.array(
             [
@@ -501,6 +502,7 @@ def test_resimulate_changes_only_what_depends_on_gravity(config):
                 if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_kind"] == "imu"
             ]
         )
+
     assert np.linalg.norm(imu(earth), axis=1).mean() > 0.8
     assert np.linalg.norm(imu(micro), axis=1).mean() < 0.3
     assert generator.resimulate(ref, GravityEnvironment.MICROGRAVITY) == micro
@@ -610,8 +612,7 @@ def test_calibration_in_force_is_the_live_one_or_else_the_scheduled_one_of_that_
     assert generator.calibration_in_force("AST-02", "stretch_spine", 2).calibration_id != second.payload["calibration_id"]
     # Por id: también una en vivo ya sustituida, o una programada vigente ese día.
     assert (
-        generator.calibration("AST-01", first.payload["calibration_id"], 2).model
-        == generator.calibration("AST-01", first.payload["calibration_id"], 0).model
+        generator.calibration("AST-01", first.payload["calibration_id"], 2).model == generator.calibration("AST-01", first.payload["calibration_id"], 0).model
     )
     assert (
         calibration_envelope("AST-01", sparse_config.member("AST-01").device_id, generator.calibration("AST-01", first.payload["calibration_id"], 2), first.at)
@@ -924,4 +925,4 @@ def test_live_output_for_a_fixed_seed_is_pinned():
     background = list(itertools.islice(live, 60))
     calibration = generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="imu", stream_ids=["imu_t9"], at=T0)
     digests = (_live_digest(session), _live_digest(background), _live_digest(calibration))
-    assert digests == ("4e0701122335711b", "e6e0be6f01e6697c", "0dbc3fd32676669c")
+    assert digests == ("bd04a0f7115b6f2d", "b264399f9b335d35", "0dbc3fd32676669c")

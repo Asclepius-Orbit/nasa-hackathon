@@ -160,11 +160,7 @@ def lost_chunks_record(session: TruthSession, lost: Mapping[str, Sequence[ChunkO
     return {
         **_session_base("lost_chunks", session),
         "streams": {
-            stream_id: [
-                {"boot_id": o.boot_id, "seq": o.seq, "t0_device_ms": o.t0_device_ms, "received_at": iso(o.received_at)}
-                for o in outcomes
-                if o.lost
-            ]
+            stream_id: [{"boot_id": o.boot_id, "seq": o.seq, "t0_device_ms": o.t0_device_ms, "received_at": iso(o.received_at)} for o in outcomes if o.lost]
             for stream_id, outcomes in lost.items()
         },
     }
@@ -235,16 +231,22 @@ def expected_features(
             prefix = f"emg.{placement.muscle.value}.{placement.side.value}"
             params = config.signals.emg
             mvc = stream.truth["mvc_rms_mv"]
-            features.append(_feature(f"{prefix}.rest_rms_mv", float(np.hypot(mvc * params.rest_pct_mvc / 100.0, params.noise_rms_mv))))
+            # rms/mediana/simetria describen la senal cruda del modelo: con signal_kind rectified/envelope lo publicado es
+            # otra cosa (|x| o su suavizado), asi que no se afirman (solo peak_pct_mvc, que es el latente de activacion).
+            raw_signal = params.signal_kind == "raw"
+            if raw_signal:
+                features.append(_feature(f"{prefix}.rest_rms_mv", float(np.hypot(mvc * params.rest_pct_mvc / 100.0, params.noise_rms_mv))))
             if protocol is None:
                 continue
             mask = _rep_mask(spec.reps, n, stream.rate_hz)
             pct = stream.truth["pct_mvc"][mask]
             rms_pct = float(np.sqrt(np.mean(pct**2)))
+            features.append(_feature(f"{prefix}.peak_pct_mvc", float(pct.max()), len(spec.reps)))
+            if not raw_signal:
+                continue
             emg_pct[(placement.muscle.value, placement.side.value)] = rms_pct
             features.append(_feature(f"{prefix}.rms_mv", mvc * rms_pct / 100.0, len(spec.reps)))
             features.append(_feature(f"{prefix}.rms_pct_mvc", rms_pct, len(spec.reps)))
-            features.append(_feature(f"{prefix}.peak_pct_mvc", float(pct.max()), len(spec.reps)))
             fatigue = stream.truth["fatigue"]
             medians = []
             for rep in spec.reps:
@@ -276,7 +278,7 @@ def expected_features(
                 features.append(_feature(f"{prefix}.elongation_mm", elongation, int(values.size)))
                 features.append(_feature(f"{prefix}.elongation_pct", 100.0 * elongation / rest, int(values.size)))
                 resistance = stretch_signal.length_to_resistance(np.array([values.mean()]), config.signals.stretch.curve_pairs())
-                features.append(_feature(f"{prefix}.rest_resistance_ohm", float(resistance[0]), int(values.size)))
+                features.append(_feature(f"{prefix}.rest_resistance_ohm", float(stream.truth["lot_gain"] * resistance[0]), int(values.size)))
     for muscle in sorted({m for m, _ in emg_pct}):
         left, right = emg_pct.get((muscle, "left")), emg_pct.get((muscle, "right"))
         if left is not None and right is not None and left + right > 0:

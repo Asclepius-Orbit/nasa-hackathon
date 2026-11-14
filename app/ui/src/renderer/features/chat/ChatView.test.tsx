@@ -29,8 +29,8 @@ const push = (api: FakeAsclepiusApi, ...events: ChatEvent[]): void => {
 describe('ChatView: asking', () => {
   it('says the assistant does not diagnose and invites a first question', () => {
     setup();
-    expect(screen.getByRole('heading', { level: 1, name: 'Ask' })).toBeInTheDocument();
-    expect(screen.getByText(/The assistant does not diagnose/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Ask Asclepius' })).toBeInTheDocument();
+    expect(screen.getByText(/It does not diagnose/)).toBeInTheDocument();
     expect(screen.getByText(/No questions yet/)).toBeInTheDocument();
   });
 
@@ -222,9 +222,10 @@ describe('ChatView: cancel and new conversation', () => {
 
   it('New conversation forgets the old one, clears the turns and starts a new id', async () => {
     const { api } = setup();
-    expect(screen.getByRole('button', { name: 'New conversation' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'New conversation' })).not.toBeInTheDocument();
     await ask('first');
     push(api, { kind: 'end' });
+    expect(screen.getByText('Asclepius')).toBeInTheDocument();
     const first = api.chatAsks[0]?.conversationId;
     await userEvent.click(screen.getByRole('button', { name: 'New conversation' }));
     expect(api.chatForgotten).toEqual([first]);

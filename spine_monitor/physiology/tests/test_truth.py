@@ -13,6 +13,7 @@ from spine_physiology.config import MissionConfig
 from spine_physiology.device import ChunkOutcome, plan_device_day
 from spine_physiology.faults import FaultEpisode
 from spine_physiology.signals import emg as emg_signal
+from spine_physiology.signals import stretch as stretch_signal
 from spine_physiology.signals.imu import effective_rom_deg
 from spine_physiology.state import LatentModel, MissionTimeline
 
@@ -23,6 +24,9 @@ A = "AST-01"
 
 def make_config(clean: bool = False) -> MissionConfig:
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    # La dispersion entre lecturas repetidas es un offset por sesion que la verdad no puede conocer: se apaga para
+    # comparar con la verdad (el resto del realismo del cordon sigue encendido).
+    raw["signals"]["stretch"]["repeat_dispersion_ohm"] = 0.0
     if clean:
         for fault in raw["faults"]["quality"].values():
             fault["probability"] = 0.0
@@ -175,3 +179,27 @@ def test_daily_records_are_json_ready(config, model):
     device = truth.device_record(plan_device_day(config, config.seed, A, day), day)
     assert device["type"] == "device_events" and device["boots"][0]["boot_at"] == device["power_on"]
     json.dumps([latent, device])
+
+
+@pytest.mark.parametrize("kind", ["rectified", "envelope"])
+def test_signal_derived_emg_features_are_not_claimed_for_non_raw_signals(kind):
+    raw = make_config(clean=True).model_dump(mode="json")
+    raw["signals"]["emg"]["signal_kind"] = kind
+    cfg = MissionConfig.model_validate(raw)
+    timeline = MissionTimeline(cfg)
+    _plan, state, synthesis = synth(cfg, (timeline, LatentModel(cfg, timeline, cfg.seed)), "lat_pulldown")
+    ids = by_id(truth.expected_features(cfg, synthesis, state=state))
+    for feature in ("rms_mv", "rms_pct_mvc", "rest_rms_mv", "median_freq_hz", "median_freq_slope_hz_per_rep"):
+        assert f"emg.latissimus_dorsi.left.{feature}" not in ids
+    assert "emg.latissimus_dorsi.left.peak_pct_mvc" in ids
+
+
+def test_expected_rest_resistance_includes_the_cord_lot_gain(config, model):
+    _plan, state, synthesis = synth(config, model, "pre_spine_check", day=6)
+    stretch = synthesis.stream("stretch_spine")
+    expected = by_id(truth.expected_features(config, synthesis, state=state))["stretch.full_spine.rest_resistance_ohm"]["value"]
+    lot = sess.member_lot_gain(config, config.seed, A)
+    assert lot != 1.0
+    assert expected == pytest.approx(float(np.mean(stretch.channels["resistance_ohm"])), rel=0.01 * abs(lot - 1.0) + 2e-3)
+    nominal = float(stretch_signal.length_to_resistance(np.array([stretch.truth["length_mm"].mean()]), config.signals.stretch.curve_pairs())[0])
+    assert expected == pytest.approx(lot * nominal)

@@ -197,3 +197,7 @@ Els tests que necessiten un broker real porten el marcador `mosquitto` i es salt
 - El qüestionari ODI setmanal és informatiu: el simulador no el genera i mai puntua risc; només es genera l'autoinforme diari.
 - Sessions, autoinformes, context diari, perfils i veritat de terreny no tenen topic MQTT: només existeixen en JSONL (els objectes de domini mai van al bus). Els calibratges sí que van al bus.
 - Tots els números de la configuració d'exemple són placeholders, no referències clíniques.
+
+## Supòsits del model d'exercici
+
+La missió d'exemple comença l'exercici en repòs i usa el mateix calendari de repeticions amb llavor per al moviment, l'EMG, el cordó i els esdeveniments de sessió. Cada repetició té una tracció i un retorn suaus, separats de la següent per una pausa. La fatiga creix amb l'esforç relatiu i el temps, i decau exponencialment durant les pauses. Els camps YAML `effort_load`, `fatigue_resistance`, `recovery_per_s` i `individual_variability` controlen aquest model. La reducció de la capacitat de moviment, les repeticions més lentes i l'augment compensatori de l'activació de l'EMG són supòsits de modelatge, no força mesurada ni relacions clíniques validades.

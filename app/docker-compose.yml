@@ -239,12 +239,13 @@ services:
     environment:
       OLLAMA_HOST: ollama:11434
       SPINE_AGENT_LLM_MODELS: "${SPINE_AGENT_LLM_MODELS:-qwen3.5:4b}"
+      SPINE_AGENT_MODEL: "${SPINE_AGENT_MODEL:-qwen3.5:4b}"
     entrypoint:
       - /bin/sh
       - -c
       - |
         rc=0
-        for m in $$SPINE_AGENT_LLM_MODELS; do
+        for m in $$SPINE_AGENT_MODEL $$SPINE_AGENT_LLM_MODELS; do
           ollama show "$$m" >/dev/null 2>&1 || ollama pull "$$m" || rc=1
         done
         exit $$rc

@@ -26,7 +26,7 @@ pnpm start          # from the repo root: pnpm -C app/ui start
 app in development mode with hot reload.
 
 In development (and in the e2e builds only) two demo crew members exist: **Elena Ruiz** and **Marc Dubois**,
-PIN **1234**. The "Mock screens" menu and "Mock: skip login or lock" are development-only too. A production build
+PIN **1234**. The "Mock screens" menu is development-only too. A production build
 starts with no crew: add the first member with "New crew member". The demo members' harnesses are the simulator's
 (`sim-01` and `sim-02`, as in `spine_monitor/physiology/configs/example-mission.yaml`). **Sign out** (in the top strip
 and on the lock screen) ends the session and returns to the login, so another member can use the tablet; it also stops

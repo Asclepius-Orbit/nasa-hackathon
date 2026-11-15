@@ -18,8 +18,8 @@ from spine_physiology.signals.stretch import (
 )
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "configs" / "example-mission.yaml"
-REST_MM = 400.0  # valor de prueba, independiente del YAML
-# Apaga las no idealidades nuevas (ruido por lectura, dispersión entre lecturas, fluencia, lote).
+REST_MM = 400.0  # test value, independent of the YAML
+# Turns off the new non-idealities (per-reading noise, dispersion between readings, creep, lot).
 QUIET = {"read_noise_ohm": 0.0, "repeat_dispersion_ohm": 0.0, "creep_fraction": 0.0, "lot_variation_fraction": 0.0}
 
 
@@ -35,7 +35,7 @@ def params(config) -> StretchSignalConfig:
 
 @pytest.fixture(scope="module")
 def ideal(params) -> StretchSignalConfig:
-    """Sin ruido de ADC ni histéresis."""
+    """Without ADC noise or hysteresis."""
     return params.model_copy(update={"adc_noise_counts": 0.0, "hysteresis_gain": 0.0, **QUIET})
 
 
@@ -60,16 +60,16 @@ def test_cord_length(params):
 
 def test_curve_monotone_inversion(params):
     curve = params.curve_pairs()
-    lengths = np.linspace(curve[0][1] - 20.0, curve[-1][1] + 20.0, 500)  # incluye extrapolación
+    lengths = np.linspace(curve[0][1] - 20.0, curve[-1][1] + 20.0, 500)  # includes extrapolation
     resistance = length_to_resistance(lengths, curve)
     assert np.all(np.diff(resistance) > 0)
     assert resistance_to_length(resistance, curve) == pytest.approx(lengths)
-    # En los nodos reproduce la curva exacta.
+    # At the nodes it reproduces the exact curve.
     r_nodes = np.array([p[0] for p in curve])
     l_nodes = np.array([p[1] for p in curve])
     assert resistance_to_length(r_nodes, curve) == pytest.approx(l_nodes)
     assert length_to_resistance(l_nodes, curve) == pytest.approx(r_nodes)
-    # Extrapolación con la pendiente del tramo extremo.
+    # Extrapolation with the slope of the end segment.
     slope = (l_nodes[-1] - l_nodes[-2]) / (r_nodes[-1] - r_nodes[-2])
     assert resistance_to_length(np.array([r_nodes[-1] + 100.0]), curve)[0] == pytest.approx(l_nodes[-1] + 100.0 * slope)
 
@@ -90,12 +90,12 @@ def test_adc_roundtrip_within_quantisation(ideal):
     full_scale = 2**ideal.circuit.adc_bits - 1
     assert adc.min() >= 0 and adc.max() <= full_scale
     _, recovered = derive(adc, ideal, curve)
-    # El error máximo es la longitud que abarcan +-0,5 cuenta en cada punto (con margen de redondeo).
+    # The maximum error is the length spanned by +-0.5 count at each point (with rounding margin).
     r_hi = adc_to_resistance(adc + 0.5, ideal)
     r_lo = adc_to_resistance(adc - 0.5, ideal)
     tol = (resistance_to_length(r_hi, curve) - resistance_to_length(r_lo, curve)) / 2 + 1e-9
     assert np.all(np.abs(recovered - lengths) <= tol)
-    assert np.abs(recovered - lengths).max() <= 2.0  # mm: un escalón del ADC de 10 bits abarca ~3 mm en este tramo
+    assert np.abs(recovered - lengths).max() <= 2.0  # mm: one step of the 10-bit ADC spans ~3 mm in this stretch
 
 
 def test_adc_resistance_roundtrip(ideal):
@@ -109,7 +109,7 @@ def test_adc_resistance_roundtrip(ideal):
 def test_adc_clips_and_stays_finite(ideal):
     full_scale = 2**ideal.circuit.adc_bits - 1
     huge = resistance_to_adc(np.random.default_rng(0), np.array([1e12, 1e-3]), ideal)
-    assert huge.tolist() == [full_scale - 1, 1]  # nunca en los topes del ADC
+    assert huge.tolist() == [full_scale - 1, 1]  # never at the ADC rails
     r = adc_to_resistance(np.array([0, full_scale]), ideal)
     assert np.all(np.isfinite(r)) and np.all(r > 0)
 
@@ -117,7 +117,7 @@ def test_adc_clips_and_stays_finite(ideal):
 def test_adc_noise(params):
     r = np.full(20000, 6000.0)
     adc = resistance_to_adc(np.random.default_rng(0), r, params)
-    assert adc.std() == pytest.approx(params.adc_noise_counts, rel=0.1)  # la cuantización añade poco
+    assert adc.std() == pytest.approx(params.adc_noise_counts, rel=0.1)  # quantization adds little
     quiet = resistance_to_adc(np.random.default_rng(0), r, params.model_copy(update={"adc_noise_counts": 0.0}))
     assert np.ptp(quiet) == 0
 
@@ -128,7 +128,7 @@ def test_hysteresis_recovery_time_constant(params):
     n = int(8 * tau * rate)
     length = np.full(n, REST_MM)
     stretched = int(5 * rate)
-    length[:stretched] = REST_MM + 30.0  # estiramiento de 5 s y vuelta al reposo
+    length[:stretched] = REST_MM + 30.0  # 5 s stretch and return to rest
     effective, residual = apply_hysteresis(
         length, rest_length_mm=REST_MM, rate_hz=rate, params=params, initial_residual_mm=0.0
     )  # fmt: skip
@@ -139,7 +139,7 @@ def test_hysteresis_recovery_time_constant(params):
     for k in (1, 2, 3):
         idx = stretched - 1 + int(k * tau * rate)
         assert residual[idx] == pytest.approx(peak * np.exp(-k), rel=1e-6)
-    assert np.all(np.diff(residual[stretched - 1 :]) <= 1e-12)  # solo decae
+    assert np.all(np.diff(residual[stretched - 1 :]) <= 1e-12)  # it only decays
 
 
 def test_hysteresis_holds_under_sustained_stretch_and_continues_across_sessions(params):
@@ -156,7 +156,7 @@ def test_hysteresis_holds_under_sustained_stretch_and_continues_across_sessions(
 
 
 def test_hysteresis_blocks_equal_naive_recursion(params):
-    """Sesiones largas (varios bloques) coinciden con la recursión muestra a muestra."""
+    """Long sessions (several blocks) match the sample-by-sample recursion."""
     rate = params.sample_rate_hz
     n = int(40 * params.hysteresis_tau_s * rate)
     rng = np.random.default_rng(0)
@@ -183,11 +183,11 @@ def test_synth_stretch_chain(ideal, params):
     )  # fmt: skip
     assert out.adc_counts.dtype == np.int64
     assert out.length_mm == pytest.approx(length)
-    assert out.effective_length_mm == pytest.approx(length)  # sin histéresis
+    assert out.effective_length_mm == pytest.approx(length)  # without hysteresis
     assert not out.residual_mm.any()
     _, recovered = derive(out.adc_counts, ideal, curve)
     assert np.abs(recovered - length).max() < 1.0
-    # Con histéresis, la longitud derivada queda por encima de la real (residuo >= 0).
+    # With hysteresis, the derived length stays above the real one (residual >= 0).
     hyst = synth_stretch(
         np.random.default_rng(0), params.model_copy(update={"adc_noise_counts": 0.0, **QUIET}), length_mm=length,
         rest_length_mm=REST_MM, rate_hz=rate, initial_residual_mm=0.0,
@@ -198,7 +198,7 @@ def test_synth_stretch_chain(ideal, params):
 
 
 def test_derive_uses_calibration_curve(ideal):
-    """Una calibración distinta de la real desplaza la longitud derivada, no la resistencia."""
+    """A calibration different from the real one shifts the derived length, not the resistance."""
     curve = ideal.curve_pairs()
     shifted = tuple((r, length + 5.0) for r, length in curve)
     adc = resistance_to_adc(np.random.default_rng(0), np.array([6000.0]), ideal)
@@ -218,7 +218,7 @@ def test_measured_curve(config, params):
     assert all(b > a for a, b in zip(ls, ls[1:], strict=False))
     assert ls[0] == REST_MM
     assert rs[0] == pytest.approx(float(length_to_resistance(np.array([REST_MM]), params.curve_pairs())[0]))
-    # Error de medida acotado respecto a la curva real.
+    # Measurement error bounded with respect to the real curve.
     true = resistance_to_length(np.array(rs), params.curve_pairs())
     step = (params.curve_pairs()[-1][1] - REST_MM) / (cal.n_points - 1)
     assert np.abs(np.array(ls) - true).max() <= step / 4 + 1e-9
@@ -231,7 +231,7 @@ def test_measured_curve_noise_scale_and_zero_noise(config, params):
     )  # fmt: skip
     true = resistance_to_length(np.array([p[0] for p in exact]), params.curve_pairs())
     assert np.array([p[1] for p in exact]) == pytest.approx(true)
-    # Puntos del reposo por encima de la curva real siguen dando una curva válida.
+    # Rest points above the real curve still give a valid curve.
     high = measured_curve(np.random.default_rng(0), params, cal, rest_length_mm=params.curve_pairs()[-1][1] + 10.0)
     assert all(b[1] > a[1] and b[0] > a[0] for a, b in zip(high, high[1:], strict=False))
 
@@ -254,7 +254,7 @@ def test_determinism(config, params):
 
 def test_curve_validation_boundaries_and_messages():
     x = np.array([1.0])
-    # Dos puntos bastan; incrementos pequenos (< 1) pero positivos son validos.
+    # Two points are enough; small (< 1) but positive increments are valid.
     assert resistance_to_length(np.array([1.25]), [(1.0, 10.0), (1.5, 10.5)])[0] == pytest.approx(10.25)
     with pytest.raises(ValueError, match=r"^curve must have at least two \(resistance_ohm, length_mm\) points$"):
         resistance_to_length(x, [(1.0, 10.0)])
@@ -265,9 +265,9 @@ def test_curve_validation_boundaries_and_messages():
 
 
 def test_measured_curve_spreads_lengths_evenly_up_to_the_top_of_the_true_curve(config, params):
-    # Curva real del ejemplo: longitudes 585..812 mm; 4 puntos de calibracion.
-    # Reposo 650: reparto uniforme 650 -> 812 en 3 pasos de 54: 650, 704, 758, 812.
-    # Reposo 820 (por encima del alcance): alcance = 820 + (812 - 585) = 1047, pasos de 227/3: 820, 895.67, 971.33, 1047.
+    # Real curve of the example: lengths 585..812 mm; 4 calibration points.
+    # Rest 650: uniform split 650 -> 812 in 3 steps of 54: 650, 704, 758, 812.
+    # Rest 820 (above the range): range = 820 + (812 - 585) = 1047, steps of 227/3: 820, 895.67, 971.33, 1047.
     assert params.curve_pairs()[0][1] == 585.0 and params.curve_pairs()[-1][1] == 812.0 and config.calibration.stretch.n_points == 4
     cal = config.calibration.stretch.model_copy(update={"measurement_noise_mm": 0.0})
     expected = {650.0: [650.0, 704.0, 758.0, 812.0], 820.0: [820.0, 820 + 227 / 3, 820 + 454 / 3, 1047.0]}
@@ -296,7 +296,7 @@ def _quiet(params, **update):
 
 
 def _flat(params, resistance_ohm=6000.0, n=4000, seed=1, **update):
-    """Cordón constante en la longitud que la curva real asocia a `resistance_ohm`."""
+    """Constant cord at the length that the true curve associates with `resistance_ohm`."""
     p = _quiet(params, **update)
     length = resistance_to_length(np.array([resistance_ohm]), p.curve_pairs())[0]
     out = synth_stretch(
@@ -322,18 +322,18 @@ def test_read_noise_is_per_reading_in_ohms(params):
     _, noisy = _flat(params, read_noise_ohm=300.0)
     r_quiet = adc_to_resistance(quiet.adc_counts, params)
     r_noisy = adc_to_resistance(noisy.adc_counts, params)
-    assert np.ptp(r_quiet) < 30.0  # solo cuantización
+    assert np.ptp(r_quiet) < 30.0  # quantisation only
     assert r_noisy.std() == pytest.approx(300.0, rel=0.15)
     assert r_noisy.mean() == pytest.approx(r_quiet.mean(), abs=30.0)
 
 
 def test_repeat_dispersion_is_one_offset_per_session_matching_the_bench_spread(params):
-    # Banco: tres lecturas de la misma longitud difieren hasta ~150 Ω. El offset es constante dentro de la lectura.
+    # Bench: three readings of the same length differ by up to ~150 Ω. The offset is constant within the reading.
     means = []
     for seed in range(300):
         p, out = _flat(params, n=50, seed=seed, repeat_dispersion_ohm=60.0)
         r = adc_to_resistance(out.adc_counts, p)
-        assert np.ptp(r) < 30.0  # constante dentro de la sesión (solo cuantización)
+        assert np.ptp(r) < 30.0  # constant within the session (quantisation only)
         means.append(r.mean())
     assert np.std(means) == pytest.approx(60.0, rel=0.2)
     assert abs(np.mean(means) - 6000.0) < 25.0
@@ -376,12 +376,12 @@ def test_creep_grows_under_sustained_stretch_and_recovers_slowly(params):
         np.random.default_rng(0), p, length_mm=length, rest_length_mm=REST_MM, rate_hz=rate, initial_residual_mm=0.0
     )  # fmt: skip
     extra = out.effective_length_mm - length
-    assert extra[0] < 0.1 * 0.02 * 40.0  # arranca sin fluencia
+    assert extra[0] < 0.1 * 0.02 * 40.0  # starts with no creep
     assert extra[held - 1] == pytest.approx(0.02 * 40.0, rel=0.01)  # satura en creep_fraction x estiramiento
     assert np.all(np.diff(extra[:held]) >= -1e-12)  # crece
     k = held - 1 + int(tau * rate)
-    assert extra[k] == pytest.approx(extra[held - 1] * np.exp(-1), rel=0.01)  # recupera con creep_tau_s
-    assert not out.residual_mm.any()  # el residuo de histéresis conserva su significado
+    assert extra[k] == pytest.approx(extra[held - 1] * np.exp(-1), rel=0.01)  # recovers with creep_tau_s
+    assert not out.residual_mm.any()  # the hysteresis residual keeps its meaning
     assert out.creep_mm == pytest.approx(extra)
 
 
@@ -397,7 +397,7 @@ def test_new_noise_sources_use_their_own_streams(params):
     off = params.model_copy(update={"read_noise_ohm": 0.0, "repeat_dispersion_ohm": 0.0})
     base = run(off)
     assert not np.array_equal(a.adc_counts, base.adc_counts)
-    # El ruido de ADC viene de la rama principal: con las ramas nuevas apagadas, usa el mismo flujo que
-    # resistance_to_adc directo con la misma semilla (las ramas hijas no lo desplazan).
+    # The ADC noise comes from the main branch: with the new branches off, it uses the same stream as
+    # resistance_to_adc directly with the same seed (the child branches do not shift it).
     resistance = length_to_resistance(base.effective_length_mm, off.curve_pairs())
     assert np.array_equal(base.adc_counts, resistance_to_adc(np.random.default_rng(9), resistance, off))

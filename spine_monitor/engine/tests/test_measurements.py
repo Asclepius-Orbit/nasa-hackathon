@@ -40,7 +40,7 @@ def test_measured_rule_overrides_without_deviation_and_records_evidence():
     decision = DeclarativeTriagePolicy(PolicyConfig()).decide(context)
     assert decision.level == Level.RED
     evidence = decision.fired_rules[0].evidence
-    assert (evidence.value, evidence.unit, evidence.threshold, evidence.source) == (7.5, "%", 7.5, "Polfer and Aguado device report")
+    assert (evidence.value, evidence.unit, evidence.threshold, evidence.source) == (7.5, "%", 7.5, "Device report")
 
 
 def test_missing_measurements_reduce_completeness():

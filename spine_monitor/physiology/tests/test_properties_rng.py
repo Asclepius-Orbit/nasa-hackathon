@@ -17,7 +17,7 @@ def test_a_branch_is_reproducible(seed, ks):
     assert rng.generator(seed, *ks).random(5).tolist() == rng.generator(seed, *ks).random(5).tolist()
 
 
-# Un entero y su texto no deben colisionar (el tag i:/s: los separa); Hypothesis casi nunca lo genera solo.
+# An integer and its text must not collide (the i:/s: tag separates them); Hypothesis almost never generates this on its own.
 @example(seed=0, a=[1], b=["1"])
 @given(seed=seeds, a=keys, b=keys)
 def test_different_branches_give_different_streams(seed, a, b):

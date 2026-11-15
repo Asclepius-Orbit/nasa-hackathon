@@ -1,12 +1,12 @@
-"""Fuente real de líneas del Arduino: pyserial en un hilo, troceo por ``\\n`` y reconexión con backoff.
+"""Real source of Arduino lines: pyserial in a thread, splitting on ``\\n`` and reconnection with backoff.
 
-Decisión de concurrencia: cada lectura bloqueante (``to_thread``) es una llamada corta con timeout de 0,1 s, de modo que
-no hay hilo propio ni cola entre hilo y loop; el buffer lo toca solo la corrutina ``events()`` (un único escritor) y el
-hilo solo devuelve ``(bytes, instante)``. El instante se toma en el hilo, justo al volver la lectura, para que no dependa de
-cuándo el consumidor atienda el evento. Si se cancela al consumidor durante una lectura, se espera (como mucho al timeout)
-a que el hilo termine antes de cerrar el puerto, para no cerrarlo bajo sus pies ni dejar hilos colgados.
+Concurrency decision: each blocking read (``to_thread``) is a short call with a 0.1 s timeout, so that
+there is no dedicated thread nor queue between thread and loop; the buffer is touched only by the ``events()`` coroutine (a single writer) and the
+thread only returns ``(bytes, instant)``. The instant is taken in the thread, right when the read returns, so that it does not depend on
+when the consumer attends to the event. If the consumer is cancelled during a read, it waits (at most for the timeout)
+for the thread to finish before closing the port, so as not to close it under its feet nor leave threads hanging.
 
-La línea se entrega sin procesar (sin el terminador, tolerando ``\\r\\n``): el parseo y el CRC los hace ``protocol``.
+The line is delivered unprocessed (without the terminator, tolerating ``\\r\\n``): parsing and CRC are done by ``protocol``.
 """
 
 import asyncio
@@ -19,14 +19,14 @@ import serial
 
 from spine_gateway.ports import LinkDown, LinkUp, SerialEvent, SerialLine
 
-# Bytes pendientes sin ``\n`` a partir de los cuales se considera ruido sin sincronizar y se descartan.
+# Pending bytes without ``\n`` beyond which it is considered unsynchronised noise and discarded.
 MAX_PENDING_BYTES = 4096
-# Timeout (s) de cada lectura: acota lo que tarda el hilo en salir tras cancelar y cuánto se espera para cerrar.
+# Timeout (s) of each read: bounds how long the thread takes to exit after cancelling and how long to wait before closing.
 READ_TIMEOUT_S = 0.1
 
 
 class SerialPort(Protocol):
-    """Lo mínimo que se necesita de un puerto serie (``serial.Serial`` lo cumple)."""
+    """The minimum needed from a serial port (``serial.Serial`` satisfies it)."""
 
     @property
     def in_waiting(self) -> int: ...
@@ -40,7 +40,7 @@ type PortOpener = Callable[[str, int], SerialPort]
 
 
 def open_serial_port(url: str, baud: int) -> SerialPort:
-    """Abre ``COM3``, ``/dev/ttyACM0``, ``socket://host:puerto`` o ``loop://`` con timeout de lectura corto."""
+    """Opens ``COM3``, ``/dev/ttyACM0``, ``socket://host:port`` or ``loop://`` with a short read timeout."""
     return serial.serial_for_url(url, baudrate=baud, timeout=READ_TIMEOUT_S)
 
 
@@ -49,7 +49,7 @@ def _describe(error: OSError) -> str:
 
 
 class SerialLineSource:
-    """Implementa ``ports.LineSource`` sobre un puerto serie (ver ``events()``)."""
+    """Implements ``ports.LineSource`` over a serial port (see ``events()``)."""
 
     def __init__(
         self,
@@ -73,7 +73,7 @@ class SerialLineSource:
         self._max = reconnect_max_s
 
     async def events(self) -> AsyncIterator[SerialEvent]:
-        """Emite ``LinkUp`` al abrir, ``SerialLine`` por línea y ``LinkDown`` una vez por corte; no termina solo."""
+        """Emits ``LinkUp`` on open, ``SerialLine`` per line and ``LinkDown`` once per outage; does not end by itself."""
         delay = self._initial
         down_reported = False
         while True:
@@ -95,7 +95,7 @@ class SerialLineSource:
                             yield SerialLine(bytes(line), at)
                     if len(pending) > MAX_PENDING_BYTES:
                         pending.clear()
-            except OSError as error:  # SerialException es subclase de OSError
+            except OSError as error:  # SerialException is a subclass of OSError
                 reason = _describe(error)
             finally:
                 if port is not None:
@@ -112,9 +112,9 @@ class SerialLineSource:
         try:
             return await asyncio.shield(read)
         except asyncio.CancelledError:
-            # El hilo no se puede interrumpir: se espera a que termine su lectura corta antes de que `events` cierre el puerto.
+            # The thread cannot be interrupted: wait for its short read to finish before `events` closes the port.
             await asyncio.wait({read})
-            read.exception()  # el shield impide que `read` se cancele; se marca la excepción como recuperada (sin aviso al GC)
+            read.exception()  # the shield prevents `read` from being cancelled; the exception is marked as retrieved (no GC warning)
             raise
 
     def _read(self, port: SerialPort) -> tuple[bytes, datetime]:

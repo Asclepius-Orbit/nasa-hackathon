@@ -1,2 +1,2 @@
-# Los vectores dorados se comparan byte a byte: nunca deben pasar a CRLF.
+# The golden vectors are compared byte for byte: they must never be converted to CRLF.
 * text eol=lf

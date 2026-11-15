@@ -1,7 +1,7 @@
-"""Mocks de solo lectura de los puertos, servidos desde los ejemplos válidos de los contratos.
+"""Read-only mocks of the ports, served from the valid contract examples.
 
-Los ejemplos se localizan junto al paquete `spine_contracts` (`contracts/examples`), que en el workspace
-está instalado en modo editable. Nunca se escribe ningún fichero.
+The examples are located next to the `spine_contracts` package (`contracts/examples`), which in the workspace
+is installed in editable mode. No file is ever written.
 """
 
 import json
@@ -34,9 +34,9 @@ def _not_found(what: str, key: str) -> UpstreamError:
 
 
 class ExampleAppReader:
-    """`AppReader` sobre `app/status.json`, `app/history.json`, `app/session-list.json`, `app/self-report-list.json` y `app/explanation.json`.
+    """`AppReader` over `app/status.json`, `app/history.json`, `app/session-list.json`, `app/self-report-list.json` and `app/explanation.json`.
 
-    Acepta datos alternativos (p. ej. un history más largo) para ejercitar el filtrado y el límite.
+    Accepts alternative data (e.g. a longer history) to exercise filtering and the limit.
     """
 
     def __init__(
@@ -100,7 +100,7 @@ class ExampleAppReader:
 
 
 class ExampleSimulator:
-    """`Simulator` que devuelve siempre `engine/simulate-response.json`, sea cual sea la petición."""
+    """`Simulator` that always returns `engine/simulate-response.json`, whatever the request."""
 
     def __init__(self) -> None:
         self._response = SimulateResponse.model_validate(_load("engine/simulate-response.json"))
@@ -110,7 +110,7 @@ class ExampleSimulator:
 
 
 class ExampleAssessBaseSource:
-    """`AssessBaseSource` sobre el `base` de `engine/simulate-request.json`."""
+    """`AssessBaseSource` over the `base` of `engine/simulate-request.json`."""
 
     def __init__(self) -> None:
         self._base = SimulateRequest.model_validate(_load("engine/simulate-request.json")).base

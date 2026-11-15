@@ -1,20 +1,20 @@
-"""Cordón conductor (Adafruit 519): longitud -> resistencia -> cuentas de ADC, y vuelta.
+"""Conductive cord (Adafruit 519): length -> resistance -> ADC counts, and back.
 
-Dueño: B3. Cadena de una sesión:
-1. `cord_length`: longitud real = reposo + elongation_coupling × elongación latente
-   + flexion_mm_per_deg × |ángulo| − offset (pérdida diurna, `diurnal_loss_mm`).
-2. `apply_hysteresis`: el cordón "recuerda" el estiramiento: residuo >= 0 que sigue como mínimo
-   `hysteresis_gain` × (longitud − reposo)+ y, cuando el estiramiento cesa, decae con `hysteresis_tau_s`
-   (retención de pico con caída exponencial: r[k] = max(r[k−1]·e^{−dt/τ}, gain × (L[k] − reposo)+));
-   la longitud efectiva que ve la resistencia es real + residuo. `initial_residual_mm` da continuidad
-   entre sesiones.
-3. `length_to_resistance` con la curva REAL (`params.curve_pairs()`, inversa de R -> L).
-4. `resistance_to_adc`: divisor de `params.circuit` + ruido `adc_noise_counts`, redondeo y recorte a
+Owner: B3. Chain of a session:
+1. `cord_length`: true length = rest + elongation_coupling × latent elongation
+   + flexion_mm_per_deg × |angle| − offset (diurnal loss, `diurnal_loss_mm`).
+2. `apply_hysteresis`: the cord "remembers" the stretch: residual >= 0 that follows at least
+   `hysteresis_gain` × (length − rest)+ and, when the stretch ceases, decays with `hysteresis_tau_s`
+   (peak hold with exponential decay: r[k] = max(r[k−1]·e^{−dt/τ}, gain × (L[k] − rest)+));
+   the effective length seen by the resistance is true + residual. `initial_residual_mm` gives continuity
+   between sessions.
+3. `length_to_resistance` with the TRUE curve (`params.curve_pairs()`, inverse of R -> L).
+4. `resistance_to_adc`: divider of `params.circuit` + noise `adc_noise_counts`, rounding and clipping to
    [0, 2^bits − 1], int64.
-5. (fallos de calidad sobre adc_counts, en `faults`)
-6. `derive`: adc -> resistencia (divisor inverso) -> longitud con la curva de CALIBRACIÓN publicada.
-Requisitos verificables: sin ruido ni histéresis, derive(adc) recupera la longitud (error de cuantización);
-tras un estiramiento el residuo cae ~e^{-t/τ}; misma rng ⇒ mismos arrays.
+5. (quality faults on adc_counts, in `faults`)
+6. `derive`: adc -> resistance (inverse divider) -> length with the published CALIBRATION curve.
+Verifiable requirements: without noise or hysteresis, derive(adc) recovers the length (quantization error);
+after a stretch the residual decays ~e^{-t/τ}; same rng ⇒ same arrays.
 """
 
 from collections.abc import Sequence
@@ -25,28 +25,28 @@ from scipy.signal import lfilter
 
 from spine_physiology.config import StretchCalibrationConfig, StretchSignalConfig
 
-# Pares (resistance_ohm, length_mm) ordenados por resistencia, como `curve.points` del contrato.
+# (resistance_ohm, length_mm) pairs sorted by resistance, like the contract's `curve.points`.
 type CurvePairs = Sequence[tuple[float, float]]
 
-# Tope de exponente al reescalar la retención de pico por bloques (evita overflow de exp); estructural.
+# Exponent cap when rescaling the peak hold by blocks (avoids exp overflow); structural.
 _MAX_BLOCK_EXPONENT = 30.0
 
 
 @dataclass(frozen=True, slots=True)
 class CordSamples:
-    """Salida de `synth_stretch` (todas las series con la misma longitud)."""
+    """Output of `synth_stretch` (all series with the same length)."""
 
-    length_mm: np.ndarray  # longitud real del cordón (sin histéresis)
-    effective_length_mm: np.ndarray  # real + residuo de histéresis (lo que ve la resistencia)
-    residual_mm: np.ndarray  # residuo de histéresis >= 0 (band_recovering y ground truth)
-    creep_mm: np.ndarray  # fluencia lenta (>= 0), ya incluida en effective_length_mm; no es histéresis
-    adc_counts: np.ndarray  # int64, antes de fallos de calidad
+    length_mm: np.ndarray  # true cord length (without hysteresis)
+    effective_length_mm: np.ndarray  # true + hysteresis residual (what the resistance sees)
+    residual_mm: np.ndarray  # hysteresis residual >= 0 (band_recovering and ground truth)
+    creep_mm: np.ndarray  # slow creep (>= 0), already included in effective_length_mm; not hysteresis
+    adc_counts: np.ndarray  # int64, before quality faults
 
 
 def diurnal_loss_mm(params: StretchSignalConfig, *, gravity_g: float, awake_fraction: np.ndarray | float) -> np.ndarray | float:
-    """Acortamiento diurno: diurnal_loss_mm_at_1g × gravity_g × clip(awake_fraction, 0, 1).
+    """Diurnal shortening: diurnal_loss_mm_at_1g × gravity_g × clip(awake_fraction, 0, 1).
 
-    `awake_fraction` = fracción transcurrida de la ventana encendido -> apagado del dispositivo.
+    `awake_fraction` = elapsed fraction of the device's power-on -> power-off window.
     """
     return params.diurnal_loss_mm_at_1g * gravity_g * np.clip(awake_fraction, 0.0, 1.0)
 
@@ -59,7 +59,7 @@ def cord_length(
     angle_deg: np.ndarray,
     offset_mm: np.ndarray | float,
 ) -> np.ndarray:
-    """Longitud real del cordón por muestra (mm)."""
+    """True cord length per sample (mm)."""
     angle = np.abs(np.asarray(angle_deg, dtype=np.float64))
     return rest_length_mm + params.elongation_coupling * elongation_mm + params.flexion_mm_per_deg * angle - offset_mm
 
@@ -72,17 +72,17 @@ def apply_hysteresis(
     params: StretchSignalConfig,
     initial_residual_mm: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """(longitud efectiva, residuo) por muestra.
+    """(effective length, residual) per sample.
 
-    Residuo = retención de pico con caída exponencial: r[k] = max(r[k−1]·a, target[k]) con
-    a = e^{−dt/τ} y target = hysteresis_gain × max(L − reposo, 0). Se evalúa por bloques con cummax
-    reescalado (sin bucle por muestra).
+    Residual = peak hold with exponential decay: r[k] = max(r[k−1]·a, target[k]) with
+    a = e^{−dt/τ} and target = hysteresis_gain × max(L − rest, 0). Evaluated by blocks with rescaled
+    cummax (no per-sample loop).
     """
     length = np.asarray(length_mm, dtype=np.float64)
     n = length.shape[0]
     target = params.hysteresis_gain * np.maximum(length - rest_length_mm, 0.0)
     residual = np.empty(n, dtype=np.float64)
-    rate = 1.0 / (rate_hz * params.hysteresis_tau_s)  # exponente por muestra (dt / τ)
+    rate = 1.0 / (rate_hz * params.hysteresis_tau_s)  # exponent per sample (dt / τ)
     block = max(int(_MAX_BLOCK_EXPONENT / rate), 1)
     carry = max(float(initial_residual_mm), 0.0)
     for start in range(0, n, block):
@@ -106,7 +106,7 @@ def _check_curve(curve: CurvePairs) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _interp_extrapolate(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) -> np.ndarray:
-    """Interpolación lineal con extrapolación por la pendiente del tramo extremo."""
+    """Linear interpolation with extrapolation using the slope of the end segment."""
     x = np.asarray(x, dtype=np.float64)
     y = np.interp(x, xp, fp)
     lo_slope = (fp[1] - fp[0]) / (xp[1] - xp[0])
@@ -116,47 +116,47 @@ def _interp_extrapolate(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) -> np.nda
 
 
 def length_to_resistance(length_mm: np.ndarray, curve: CurvePairs) -> np.ndarray:
-    """Inversa de la curva R -> L (interpolación lineal, extrapolación con la pendiente del extremo)."""
+    """Inverse of the R -> L curve (linear interpolation, extrapolation with the end slope)."""
     r, length = _check_curve(curve)
     return _interp_extrapolate(length_mm, length, r)
 
 
 def resistance_to_length(resistance_ohm: np.ndarray, curve: CurvePairs) -> np.ndarray:
-    """Curva R -> L (interpolación lineal, extrapolación con la pendiente del extremo)."""
+    """R -> L curve (linear interpolation, extrapolation with the end slope)."""
     r, length = _check_curve(curve)
     return _interp_extrapolate(resistance_ohm, r, length)
 
 
 def resistance_to_adc(rng: np.random.Generator, resistance_ohm: np.ndarray, params: StretchSignalConfig) -> np.ndarray:
-    """Cuentas de ADC (int64) del divisor, con ruido y recorte al rango del ADC."""
+    """ADC counts (int64) of the divider, with noise and clipping to the ADC range."""
     circuit = params.circuit
     full_scale = float(2**circuit.adc_bits - 1)
     resistance = np.asarray(resistance_ohm, dtype=np.float64)
     counts = full_scale * resistance / (resistance + circuit.series_resistor_ohm)
     counts = counts + rng.normal(0.0, params.adc_noise_counts, size=counts.shape)
-    # Nunca en los topes (0 y fondo de escala): el ADC real no da esas lecturas con el divisor conectado.
+    # Never at the rails (0 and full scale): the real ADC does not give those readings with the divider connected.
     return np.clip(np.rint(counts), 1.0, full_scale - 1.0).astype(np.int64)
 
 
 def adc_to_resistance(adc_counts: np.ndarray, params: StretchSignalConfig) -> np.ndarray:
-    """Resistencia (ohm) a partir de las cuentas (divisor inverso). Cuentas en los topes dan valores finitos."""
+    """Resistance (ohm) from the counts (inverse divider). Counts at the limits give finite values."""
     circuit = params.circuit
     full_scale = float(2**circuit.adc_bits - 1)
-    # Medio escalón de margen en los topes: 0 y fondo de escala no dan 0 ni infinito.
+    # Half a step of margin at the limits: 0 and full scale give neither 0 nor infinity.
     ratio = np.clip(np.asarray(adc_counts, dtype=np.float64), 0.5, full_scale - 0.5) / full_scale
     return circuit.series_resistor_ohm * ratio / (1.0 - ratio)
 
 
 def lot_gain(rng: np.random.Generator, params: StretchSignalConfig) -> float:
-    """Ganancia de resistencia del lote de cordón de un astronauta: N(1, lot_variation_fraction) recortada a ±3 sd
-    y a >= 0,1 (hipótesis provisional). Se sortea una vez por astronauta, con su propia rama del rng."""
+    """Resistance gain of an astronaut's cord lot: N(1, lot_variation_fraction) clipped to ±3 sd
+    and to >= 0.1 (provisional hypothesis). Drawn once per astronaut, with its own rng branch."""
     z = float(np.clip(rng.normal(), -3.0, 3.0))
     return max(1.0 + params.lot_variation_fraction * z, 0.1)
 
 
 def apply_creep(length_mm: np.ndarray, *, rest_length_mm: float, rate_hz: float, params: StretchSignalConfig) -> np.ndarray:
-    """Fluencia: filtro de primer orden (constante creep_tau_s) de creep_fraction × max(L − reposo, 0).
-    Arranca en 0 al inicio de cada sesión (sin continuidad entre sesiones)."""
+    """Creep: first-order filter (constant creep_tau_s) of creep_fraction × max(L − rest, 0).
+    Starts at 0 at the beginning of each session (no continuity between sessions)."""
     target = params.creep_fraction * np.maximum(np.asarray(length_mm, dtype=np.float64) - rest_length_mm, 0.0)
     a = float(np.exp(-1.0 / (rate_hz * params.creep_tau_s)))
     return np.asarray(lfilter([1.0 - a], [1.0, -a], target), dtype=np.float64)
@@ -172,10 +172,10 @@ def synth_stretch(
     initial_residual_mm: float,
     lot_gain: float = 1.0,
 ) -> CordSamples:
-    """Pasos 2-4 de la cadena, más fluencia, ganancia de lote, dispersión entre lecturas y ruido por lectura.
+    """Steps 2-4 of the chain, plus creep, lot gain, dispersion between readings and per-reading noise.
 
-    El ruido de ADC sale de `rng`; la dispersión (un offset por sesión) y el ruido de resistencia por lectura
-    salen de ramas hijas (`rng.spawn`), así que activarlos no desplaza el ruido de ADC.
+    The ADC noise comes from `rng`; the dispersion (one offset per session) and the per-reading resistance noise
+    come from child branches (`rng.spawn`), so turning them on does not shift the ADC noise.
     """
     dispersion_rng, read_rng = rng.spawn(2)
     length = np.asarray(length_mm, dtype=np.float64)
@@ -190,7 +190,7 @@ def synth_stretch(
 
 
 def derive(adc_counts: np.ndarray, params: StretchSignalConfig, calibration: CurvePairs) -> tuple[np.ndarray, np.ndarray]:
-    """(resistance_ohm, length_mm) publicables a partir de las cuentas y la curva de calibración."""
+    """(resistance_ohm, length_mm) publishable from the counts and the calibration curve."""
     resistance = adc_to_resistance(adc_counts, params)
     return resistance, resistance_to_length(resistance, calibration)
 
@@ -203,15 +203,15 @@ def measured_curve(
     rest_length_mm: float,
     lot_gain: float = 1.0,
 ) -> tuple[tuple[float, float], ...]:
-    """Curva publicada en una StretchCalibration: `n_points` puntos (R, L) desde el reposo hacia arriba,
-    longitudes con error N(0, measurement_noise_mm), estrictamente crecientes en R y L.
-    El primer punto es el reposo (su resistencia es rest_resistance_ohm de la calibración).
+    """Curve published in a StretchCalibration: `n_points` (R, L) points from rest upward,
+    lengths with N(0, measurement_noise_mm) error, strictly increasing in R and L.
+    The first point is the rest (its resistance is the calibration's rest_resistance_ohm).
 
-    Las longitudes nominales se reparten uniformemente entre el reposo y el extremo superior de la curva
-    real (si el reposo ya lo supera, se usa como alcance el ancho de la propia curva). La resistencia de
-    cada punto es la real de la longitud nominal; el error de medida se aplica a la longitud (el primer
-    punto, el reposo, es exacto). El error se recorta a ±1/4 del paso nominal, lo que garantiza
-    longitudes estrictamente crecientes.
+    Nominal lengths are spread uniformly between the rest and the upper end of the true curve
+    (if the rest already exceeds it, the width of the curve itself is used as the reach). The resistance of
+    each point is the true one of the nominal length; the measurement error is applied to the length (the first
+    point, the rest, is exact). The error is clipped to ±1/4 of the nominal step, which guarantees
+    strictly increasing lengths.
     """
     _, l_true = _check_curve(params.curve_pairs())
     top = float(l_true[-1])

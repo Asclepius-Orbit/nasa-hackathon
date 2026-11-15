@@ -1,4 +1,4 @@
-"""Protocolo de línea Arduino -> gateway: CRC, vectores dorados, cada razón de BadLine, rangos y frame_gap."""
+"""Arduino -> gateway line protocol: CRC, golden vectors, each BadLine reason, ranges and frame_gap."""
 
 import base64
 import struct
@@ -40,7 +40,7 @@ GOLDEN: tuple[Hello | Tick | Frame, ...] = (
 
 
 def line(body: str) -> str:
-    """Añade el sufijo *XX correcto a un cuerpo arbitrario (para construir líneas con CRC válido)."""
+    """Appends the correct *XX suffix to an arbitrary body (to build lines with a valid CRC)."""
     return f"{body}*{crc8(body.encode('ascii')):02X}"
 
 
@@ -61,11 +61,11 @@ def test_crc8_of_empty_is_init_zero() -> None:
 
 
 def test_crc8_single_bytes() -> None:
-    # CRC-8/MAXIM de un byte: tabla conocida (0x01 -> 0x5E, 0x80 -> 0x8C, 0xFF -> 0x35).
+    # CRC-8/MAXIM of one byte: known table (0x01 -> 0x5E, 0x80 -> 0x8C, 0xFF -> 0x35).
     assert (crc8(b"\x01"), crc8(b"\x80"), crc8(b"\xff")) == (0x5E, 0x8C, 0x35)
 
 
-# --- vectores dorados ---
+# --- golden vectors ---
 
 
 def test_vectors_file_has_the_five_vectors() -> None:
@@ -97,7 +97,7 @@ def test_frame_kind_letters() -> None:
     assert (FrameKind.EMG.value, FrameKind.IMU.value, FrameKind.CORD.value) == ("E", "I", "S")
 
 
-# --- terminadores, mayúsculas/minúsculas, tipos de entrada ---
+# --- terminators, upper/lower case, input types ---
 
 
 @pytest.mark.parametrize("suffix", ["\n", "\r\n", ""])
@@ -113,12 +113,12 @@ def test_lowercase_crc_hex_is_accepted() -> None:
 
 
 def test_only_one_terminator_is_stripped() -> None:
-    # Un \n de más (línea vacía pegada) o un \r suelto delante no forman parte de la tolerancia.
+    # An extra \n (stuck empty line) or a stray leading \r are not part of the tolerance.
     assert reason(parse_line(VECTORS[1] + "\n\n")) is BadLineReason.NO_CRC
     assert reason(parse_line(VECTORS[1] + "\r\r\n")) is BadLineReason.NO_CRC
 
 
-# --- razones de BadLine ---
+# --- BadLine reasons ---
 
 
 @pytest.mark.parametrize("raw", ["", "\n", "\r\n", b"", b"\n", b"\r\n"])
@@ -193,12 +193,12 @@ def test_version_with_leading_zero_is_one() -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        "H,1,1,0.1.0",  # falta un campo
-        "H,1,1,0.1.0,2,3",  # sobra un campo
+        "H,1,1,0.1.0",  # missing a field
+        "H,1,1,0.1.0,2,3",  # one extra field
         "H,1,,0.1.0,2",
-        "H,1,1,,2",  # firmware vacío
-        "H,1,1,0.1 0,2",  # espacio en la versión de firmware
-        "H,1,1,0.1*0,2",  # asterisco dentro del cuerpo
+        "H,1,1,,2",  # empty firmware
+        "H,1,1,0.1 0,2",  # space in the firmware version
+        "H,1,1,0.1*0,2",  # asterisk inside the body
         "H,1,1,0.1\t0,2",
         "H,1,1,0.1\x7f0,2",
         "H,1,-1,0.1.0,2",
@@ -224,9 +224,9 @@ def test_bad_field_hello_tick(body: str) -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        "D,E,1,2,1",  # falta el payload
+        "D,E,1,2,1",  # missing payload
         "D,E,1,2,1,AAA=,x",
-        "D,X,1,2,1,AAA=",  # kind desconocido
+        "D,X,1,2,1,AAA=",  # unknown kind
         "D,,1,2,1,AAA=",
         "D,EE,1,2,1,AAA=",
         "D,e,1,2,1,AAA=",
@@ -296,7 +296,7 @@ def test_bad_line_reason_values() -> None:
     }
 
 
-# --- fronteras de rango ---
+# --- range boundaries ---
 
 
 def test_range_limits_are_inclusive() -> None:
@@ -307,7 +307,7 @@ def test_range_limits_are_inclusive() -> None:
 
 
 def test_emg_is_not_range_checked_against_adc_bits() -> None:
-    # El parser no sabe de ADC de 10 bits: solo exige 16 bits sin signo.
+    # The parser knows nothing about 10-bit ADCs: it only requires unsigned 16 bits.
     assert parse_line(line(f"D,S,0,0,1,{b64(struct.pack('<H', 4096))}")) == Frame(kind=FrameKind.CORD, frame_seq=0, t0_ms=0, samples=(4096,))
 
 
@@ -320,7 +320,7 @@ def test_emg_samples_are_unsigned_little_endian() -> None:
     assert parse_line(line(f"D,E,0,0,2,{b64(b'\x01\x02\xff\xff')}")) == Frame(kind=FrameKind.EMG, frame_seq=0, t0_ms=0, samples=(0x0201, 65535))
 
 
-# --- encoder: validación ---
+# --- encoder: validation ---
 
 
 U32_RANGE = "[0, 4294967295]"
@@ -416,7 +416,7 @@ def test_encode_frame_limits() -> None:
 
 
 def test_encode_has_no_newline_and_uppercase_crc() -> None:
-    text = encode_tick(Tick(boot_id=0, millis=10))  # CRC con letras hex
+    text = encode_tick(Tick(boot_id=0, millis=10))  # CRC with hex letters
     body, _, crc = text.partition("*")
     assert "\n" not in text
     assert crc == f"{crc8(body.encode('ascii')):02X}"
@@ -437,10 +437,10 @@ def test_encode_has_no_newline_and_uppercase_crc() -> None:
         (65535, 0, 0),
         (65534, 1, 2),
         (65535, 5, 5),
-        (0, 32768, 32767),  # mayor salto hacia delante representable
-        (0, 32769, -32768),  # a partir de aquí se interpreta como retroceso
-        (7, 7, -1),  # duplicado
-        (7, 6, -2),  # retroceso de 1
+        (0, 32768, 32767),  # largest representable forward jump
+        (0, 32769, -32768),  # from here on it is interpreted as a step back
+        (7, 7, -1),  # duplicate
+        (7, 6, -2),  # regression of 1
         (0, 65535, -2),
         (3, 65535, -5),
     ],

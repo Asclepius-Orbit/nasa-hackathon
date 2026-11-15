@@ -54,7 +54,7 @@ def validator(name: str) -> Draft202012Validator:
 
 def errors(name: str, payload: object) -> list[str]:
     """Human-readable problems, one per violation ('pointer: message'); empty when valid."""
-    # jsonschema acepta cualquier instancia; su stub (`_JsonParameter`) es más estrecho que `object` (ignores de abajo).
+    # jsonschema accepts any instance; its stub (`_JsonParameter`) is narrower than `object` (ignores below).
     found = sorted(validator(name).iter_errors(payload), key=lambda e: list(map(str, e.absolute_path)))  # pyright: ignore[reportArgumentType]
     return [f"/{'/'.join(map(str, e.absolute_path))}: {e.message}" for e in found]
 

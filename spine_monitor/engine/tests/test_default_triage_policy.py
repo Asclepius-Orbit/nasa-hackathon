@@ -1,4 +1,4 @@
-"""The default policy shipped with the engine is PROVISIONAL (pending Aguado); its content lives only in the JSON."""
+"""The default policy shipped with the engine is PROVISIONAL (pending clinical validation); its content lives only in the JSON."""
 
 import json
 import re
@@ -17,7 +17,7 @@ PACKAGE = Path(spine_engine.__file__).parent
 RAW = json.loads((PACKAGE / "triage-policy.json").read_text(encoding="utf-8"))
 RULES = RAW["rules"]
 FLAG_RULES = [rule for rule in RULES if rule["datum"] == "red_flag"]
-MARKER = "provisional, pendiente de Aguado"
+MARKER = "provisional, pending clinical validation"
 AS_OF = datetime(2026, 1, 1, tzinfo=UTC)
 SCHEMA_FLAGS = json.loads((PACKAGE.parents[2] / "contracts/schemas/v1/domain/self-report.schema.json").read_text(encoding="utf-8"))
 
@@ -132,7 +132,7 @@ def test_every_rule_is_marked_provisional_and_well_formed():
 
 def test_recommendation_ids_are_known_to_the_ui():
     codes_file = PACKAGE.parents[3] / "app/ui/src/renderer/strings/codes.ts"
-    if not codes_file.exists():  # bajo mutmut los tests se copian a un árbol sin app/ui
+    if not codes_file.exists():  # under mutmut the tests are copied to a tree without app/ui
         pytest.skip("app/ui is not next to the engine in this tree")
     codes = codes_file.read_text(encoding="utf-8")
     known = set(re.findall(r"^\s{2}(REC_[A-Z0-9_]+):", codes, flags=re.M))
@@ -141,12 +141,12 @@ def test_recommendation_ids_are_known_to_the_ui():
     assert used <= known
 
 
-# Reglas ficticias que solo existen como fixtures de test.
+# Fictitious rules that only exist as test fixtures.
 FICTIONAL_RULE_IDS = {"RULE_EXAMPLE", "RULE_TEST", "RULE_OPERATOR", "RULE_PAIN"}
 
 
 def test_the_default_policy_has_no_fictional_example_rules():
-    # No se escanea el código fuente: mutmut lo reescribe con sus mutantes y el texto deja de ser el original.
+    # The source code is not scanned: mutmut rewrites it with its mutants and the text stops being the original.
     ids = {rule.rule_id for rule in PolicyConfig.default().rules}
     assert ids == {rule["rule_id"] for rule in RULES}
     assert not ids & FICTIONAL_RULE_IDS

@@ -1,4 +1,4 @@
-"""Punto de entrada del servidor: opciones (`parse_args`), conversión de `--now` y elección de dataset/reloj en `build_server`."""
+"""Server entry point: options (`parse_args`), `--now` conversion and dataset/clock choice in `build_server`."""
 
 import argparse
 import json
@@ -11,7 +11,7 @@ import pytest
 import spine_mcp_server
 from mcp.client.client import Client
 from mcp.server.mcpserver import MCPServer
-from spine_mcp_server import _aware_iso, build_server, parse_args  # pyright: ignore[reportPrivateUsage] -- se prueba el conversor de `--now`
+from spine_mcp_server import _aware_iso, build_server, parse_args  # pyright: ignore[reportPrivateUsage] -- the `--now` converter is under test
 from spine_mcp_server.http_client import HttpAppReader, HttpAssessBaseSource, HttpSimulator
 from spine_mcp_server.mocks import EXAMPLES_DIR
 
@@ -53,7 +53,7 @@ def test_now_accepts_z_and_offsets_and_converts_to_utc():
     plus = parse_args(["--now", "2026-11-13T14:00:00+02:00"]).now
     assert plus == NOW
     assert plus.utcoffset() == timedelta(0)
-    assert plus.hour == 12  # convertido, no solo igual: la hora de pared es la UTC
+    assert plus.hour == 12  # converted, not just equal: the wall-clock hour is the UTC one
     minus = parse_args(["--now", "2026-11-13T06:30:00-05:30"]).now
     assert (minus.hour, minus.minute, minus.tzinfo) == (12, 0, UTC)
     assert parse_args(["--now=2026-11-13T12:34:56.789Z"]).now == NOW.replace(minute=34, second=56, microsecond=789000)
@@ -90,14 +90,14 @@ def test_help_documents_every_option_choice_and_text(monkeypatch: pytest.MonkeyP
     assert caught.value.code == 0
     out = " ".join(capsys.readouterr().out.split())
     assert out.startswith("usage: spine_mcp_server [-h] [--dataset {demo,examples,http}] [--now NOW]")
-    assert "Servidor MCP de Asclepius Orbit por stdio." in out
+    assert "Asclepius Orbit MCP server over stdio." in out
     assert "--dataset {demo,examples,http}" in out
     assert (
-        "http (por defecto): la API de lectura de la app en SPINE_APP_URL (por defecto http://127.0.0.1:8002) y el motor en SPINE_ENGINE_URL "
-        "(por defecto http://127.0.0.1:8001); demo: 14 días de AST-01 relativos al reloj; examples: la foto única de los ejemplos de los contratos." in out
+        "http (default): the app read API at SPINE_APP_URL (default http://127.0.0.1:8002) and the engine at SPINE_ENGINE_URL "
+        "(default http://127.0.0.1:8001); demo: 14 days of AST-01 relative to the clock; examples: the single snapshot of the contract examples." in out
     )
     assert "--now NOW" in out
-    assert "Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z)." in out
+    assert "Fix the clock of the demo dataset (ISO 8601 with a timezone, e.g. 2026-11-13T12:00:00Z)." in out
 
 
 def test_aware_iso_converts_any_offset_to_utc():
@@ -130,7 +130,7 @@ def test_malformed_timestamp_error_keeps_the_original_exception_as_cause():
 
 
 class _FrozenClock(datetime):
-    """Frontera del reloj: `datetime.now(tz)` devuelve un instante fijo y anota la zona pedida."""
+    """Clock boundary: `datetime.now(tz)` returns a fixed instant and records the requested zone."""
 
     asked: list[object] = []  # noqa: RUF012 -- registro compartido, intencional en este doble
 
@@ -160,8 +160,8 @@ async def test_demo_without_now_reads_the_wall_clock_in_utc(monkeypatch: pytest.
     monkeypatch.setattr(spine_mcp_server, "datetime", _FrozenClock)
     status = await _status(["--dataset", "demo"])
     assert _FrozenClock.asked == [UTC]
-    assert status["generated_at"] == "2026-11-13T12:00:00Z"  # 12:59:59 redondea a la hora
-    assert status["latest_assessment"]["as_of"] == "2026-11-13T12:00:00Z"  # pyright: ignore[reportIndexIssue,reportArgumentType] -- JSON anidado sin tipar
+    assert status["generated_at"] == "2026-11-13T12:00:00Z"  # 12:59:59 rounds to the hour
+    assert status["latest_assessment"]["as_of"] == "2026-11-13T12:00:00Z"  # pyright: ignore[reportIndexIssue,reportArgumentType] -- untyped nested JSON
 
 
 @pytest.mark.integration
@@ -179,7 +179,7 @@ async def test_pinned_now_wins_over_the_clock(monkeypatch: pytest.MonkeyPatch):
 async def test_examples_dataset_serves_the_contract_example_without_touching_the_clock(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(spine_mcp_server, "datetime", _ForbiddenClock)
     status = await _status(["--dataset", "examples"])
-    assert status["latest_assessment"]["assessment_id"] == "a55e55e0-0000-4000-8000-0000000000a1"  # pyright: ignore[reportIndexIssue,reportArgumentType] -- JSON anidado sin tipar
+    assert status["latest_assessment"]["assessment_id"] == "a55e55e0-0000-4000-8000-0000000000a1"  # pyright: ignore[reportIndexIssue,reportArgumentType] -- untyped nested JSON
     assert status["generated_at"] != "2026-11-13T12:00:00Z"
 
 
@@ -204,8 +204,8 @@ def test_building_the_server_does_not_import_jsonschema():
 
 
 def _reader(server: MCPServer) -> HttpAppReader:
-    """El `AppReader` con el que `create_server` ha cableado la tool `get_current_status`."""
-    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- `_tool_manager` y los cierres no son API pública
+    """The `AppReader` with which `create_server` wired the `get_current_status` tool."""
+    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- `_tool_manager` and closures are not public API
     assert closure is not None
     readers = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpAppReader)]
     assert len(readers) == 1
@@ -213,7 +213,7 @@ def _reader(server: MCPServer) -> HttpAppReader:
 
 
 def _simulator(server: MCPServer) -> HttpSimulator:
-    closure = server._tool_manager._tools["simulate_scenario"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- se comprueba el cableado
+    closure = server._tool_manager._tools["simulate_scenario"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- the wiring is checked
     assert closure is not None
     simulators = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpSimulator)]
     assert len(simulators) == 1
@@ -228,7 +228,7 @@ def test_http_dataset_wires_engine_url(monkeypatch: pytest.MonkeyPatch, configur
         monkeypatch.delenv("SPINE_ENGINE_URL", raising=False)
     else:
         monkeypatch.setenv("SPINE_ENGINE_URL", configured)
-    assert _simulator(build_server(["--dataset", "http"]))._base == expected  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL configurada
+    assert _simulator(build_server(["--dataset", "http"]))._base == expected  # pyright: ignore[reportPrivateUsage] -- the configured URL is checked
 
 
 @pytest.mark.integration
@@ -269,7 +269,7 @@ async def test_http_dataset_simulation_takes_the_base_from_the_app_and_posts_it_
 
 
 def _base_source(server: MCPServer) -> HttpAssessBaseSource:
-    closure = server._tool_manager._tools["simulate_scenario"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- se comprueba el cableado
+    closure = server._tool_manager._tools["simulate_scenario"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- the wiring is checked
     assert closure is not None
     sources = [cell.cell_contents for cell in closure if isinstance(cell.cell_contents, HttpAssessBaseSource)]
     assert len(sources) == 1
@@ -280,34 +280,34 @@ def test_default_server_is_wired_to_the_real_engine_and_app_over_http(monkeypatc
     monkeypatch.delenv("SPINE_APP_URL", raising=False)
     monkeypatch.delenv("SPINE_ENGINE_URL", raising=False)
     server = build_server([])
-    assert _reader(server)._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba el cableado por defecto
-    assert _simulator(server)._base == "http://127.0.0.1:8001"  # pyright: ignore[reportPrivateUsage] -- se comprueba el cableado por defecto
-    assert _base_source(server)._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba el cableado por defecto
+    assert _reader(server)._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- the default wiring is checked
+    assert _simulator(server)._base == "http://127.0.0.1:8001"  # pyright: ignore[reportPrivateUsage] -- the default wiring is checked
+    assert _base_source(server)._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- the default wiring is checked
 
 
 def test_explicit_demo_server_is_not_wired_over_http():
     server = build_server(["--dataset", "demo", "--now", "2026-11-13T12:00:00Z"])
-    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- se comprueba el cableado
+    closure = server._tool_manager._tools["get_current_status"].fn.__closure__  # pyright: ignore[reportPrivateUsage,reportUnknownMemberType,reportAttributeAccessIssue] -- the wiring is checked
     assert closure is not None
     assert not any(isinstance(cell.cell_contents, HttpAppReader) for cell in closure)
 
 
 def test_http_dataset_defaults_to_the_local_app_url(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("SPINE_APP_URL", raising=False)
-    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- the URL the client is wired with is checked
 
 
 @pytest.mark.parametrize("blank", ["", "   "])
 def test_http_dataset_uses_the_default_url_when_spine_app_url_is_blank(monkeypatch: pytest.MonkeyPatch, blank: str):
     monkeypatch.setenv("SPINE_APP_URL", blank)
-    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://127.0.0.1:8002"  # pyright: ignore[reportPrivateUsage] -- the URL the client is wired with is checked
 
 
 def test_http_dataset_reads_the_env_var_when_building_not_when_importing(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SPINE_APP_URL", "http://other.test:1234/")
-    assert _reader(build_server(["--dataset", "http"]))._base == "http://other.test:1234"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://other.test:1234"  # pyright: ignore[reportPrivateUsage] -- the URL the client is wired with is checked
     monkeypatch.setenv("SPINE_APP_URL", "http://second.test")
-    assert _reader(build_server(["--dataset", "http"]))._base == "http://second.test"  # pyright: ignore[reportPrivateUsage] -- se comprueba la URL con la que se cablea el cliente
+    assert _reader(build_server(["--dataset", "http"]))._base == "http://second.test"  # pyright: ignore[reportPrivateUsage] -- the URL the client is wired with is checked
 
 
 @pytest.mark.integration

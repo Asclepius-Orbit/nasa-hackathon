@@ -1,7 +1,7 @@
-"""Muestras de un segmento recortadas a una ventana UTC (#42, #44): tiempos UTC y valores por canal.
+"""Samples of a segment clipped to a UTC window (#42, #44): UTC times and values per channel.
 
-Entradas hechas a mano con el reloj real: cada muestra ``i`` de un chunk cae en ``t0_device_ms + i·1000/rate`` y su
-UTC sale del ajuste del ``boot_id`` (redondeando los milisegundos del dispositivo, como hacía ``repetitions_imu``).
+Hand-made inputs with the real clock: each sample ``i`` of a chunk falls at ``t0_device_ms + i·1000/rate`` and its
+UTC comes from the ``boot_id`` fit (rounding the device milliseconds, as ``repetitions_imu`` did).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -68,7 +68,7 @@ def _segment(*chunks: ImuChunk, boot_id: int = BOOT) -> Segment:
 
 
 def test_the_whole_segment_gives_utc_instants_sample_ends_and_values_per_channel():
-    # 10 Hz, ancla device_ms=1000 <-> T0: la muestra 0 (device 1000 ms) cae en T0 y cada muestra dura 100 ms
+    # 10 Hz, anchor device_ms=1000 <-> T0: sample 0 (device 1000 ms) falls at T0 and each sample lasts 100 ms
     segment = _segment(_chunk(1000, 0, 10.0, {"gyro_x": [1.0, 2.0, 3.0], "gyro_z": [4.0, 5.0, 6.0]}))
     got = segment_samples(CLOCK, segment, ("gyro_x", "gyro_z"))
     assert isinstance(got, SegmentSamples)
@@ -85,7 +85,7 @@ def test_the_window_is_half_open_start_included_end_excluded():
     got = segment_samples(CLOCK, segment, ("gyro_x",), (ms(100), ms(300)))
     assert got.times == (ms(100), ms(200))
     assert got.channels["gyro_x"].tolist() == [1.0, 2.0]
-    # inicio justo tras una muestra la deja fuera; fin justo tras otra la incluye
+    # a start just after a sample leaves it out; an end just after another includes it
     got = segment_samples(CLOCK, segment, ("gyro_x",), (ms(100.001), ms(300.001)))
     assert got.channels["gyro_x"].tolist() == [2.0, 3.0]
 
@@ -118,7 +118,7 @@ def test_a_segment_without_chunks_or_without_a_clock_anchor_gives_empty_samples(
 
 
 def test_each_chunk_uses_its_own_start_time_across_gaps():
-    # el segundo chunk empieza 1 s tarde: su UTC sale de su t0, no de la continuidad del índice
+    # the second chunk starts 1 s late: its UTC comes from its t0, not from index continuity
     segment = _segment(_chunk(1000, 0, 10.0, {"gyro_x": [1.0, 2.0]}), _chunk(3000, 1, 10.0, {"gyro_x": [3.0, 4.0]}))
     got = segment_samples(CLOCK, segment, ("gyro_x",))
     assert got.times == (ms(0), ms(100), ms(2000), ms(2100))
@@ -142,7 +142,7 @@ def test_different_boots_convert_with_their_own_clock_fit():
     second = segment_samples(clock, second_segment, ("gyro_x",))
     assert first.times == (ms(0), ms(100))
     assert second.times == (ms(60_000), ms(60_100))
-    # una ventana solo del segundo arranque deja vacío el primero
+    # a window of only the second boot leaves the first empty
     window = (ms(59_000), ms(61_000))
     assert segment_samples(clock, first_segment, ("gyro_x",), window).times == ()
     assert segment_samples(clock, second_segment, ("gyro_x",), window).times == second.times
@@ -187,7 +187,7 @@ def _emg_chunk(t0_device_ms: int, seq: int, values: list[float]) -> EmgChunk:
 
 
 def test_an_emg_chunk_whose_channel_is_a_plain_list_gives_its_values():
-    # el canal ``emg`` del contrato es una lista simple (los del IMU son RootModel): ambos deben funcionar
+    # the contract's ``emg`` channel is a plain list (the IMU's are RootModel): both must work
     segment = Segment("emg_lat_left", BOOT, (_emg_chunk(1000, 0, [1.0, -2.0, 3.0]),), 3, 0)
 
     got = segment_samples(CLOCK, segment, ("emg",))
@@ -205,7 +205,7 @@ def test_a_chunk_without_a_requested_channel_does_not_stop_the_chunks_after_it()
 
 
 def test_a_sample_whose_end_has_no_utc_is_dropped():
-    # ancla a 50 ms del mayor instante representable: la muestra empieza dentro y su fin (+100 ms) se sale
+    # anchor 50 ms from the largest representable instant: the sample starts inside and its end (+100 ms) falls outside
     clock = DeviceClock.from_syncs([_sync(BOOT, 1000, datetime.max.replace(tzinfo=UTC) - timedelta(milliseconds=50))])
     segment = _segment(_chunk(1000, 0, 10.0, {"gyro_x": [1.0]}))
 

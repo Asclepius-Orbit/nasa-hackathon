@@ -9,7 +9,7 @@ from monitor.db import GroundOutboxItem
 
 
 def build_houston(astronaut_id: str, summary: Mapping[str, Any] | None, ground_link: Mapping[str, Any] | None, last_contact_at: str | None) -> dict[str, Any]:
-    """The transport is simulated and the content pending validation by Aguado: both are constants of the contract today."""
+    """The transport is simulated and the content pending clinical validation: both are constants of the contract today."""
     return {
         "schema_version": SCHEMA_VERSION,
         "astronaut_id": astronaut_id,

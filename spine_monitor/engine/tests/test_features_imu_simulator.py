@@ -1,8 +1,8 @@
-"""Familia ``imu`` (#44) de extremo a extremo: sesiones del simulador por ``CompositeFeatureExtractor(default_registry())``.
+"""End-to-end ``imu`` family (#44): simulator sessions through ``CompositeFeatureExtractor(default_registry())``.
 
-La verdad es la media del simulador (``expected_features``) para el ROM y la velocidad de cada repetición,
-solo en el plano del protocolo (sagital). No hay verdad
-para ``accel_rms_g``: solo se comprueba que sale y su signo. Sin fallos de calidad simulados.
+The truth is the simulator mean (``expected_features``) for the ROM and the speed of each repetition,
+only in the protocol plane (sagittal). There is no truth
+for ``accel_rms_g``: it is only checked that it comes out and its sign. No simulated quality faults.
 """
 
 from pathlib import Path
@@ -16,7 +16,7 @@ from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
 from spine_engine.measurements import UNITS
 
-# vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
+# via the installed package, not via parents[]: under mutmut the tests are copied to another tree without physiology/
 _MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 ROM = "imu.t9.sagittal.rom_deg"
 PEAK = "imu.t9.sagittal.peak_angular_velocity_dps"
@@ -24,10 +24,10 @@ ACCEL = "imu.t9.accel_rms_g"
 PLANES = ("sagittal", "frontal", "transverse")
 ALL_IDS = (*(f"imu.t9.{p}.{n}" for p in PLANES for n in ("rom_deg", "peak_angular_velocity_dps")), ACCEL)
 
-# El sesgo residual de calibración se integra durante cada repetición; las más largas
-# por fatiga acumulan más error que el antiguo calendario de duración fija.
+# The residual calibration bias is integrated during each repetition; the longer ones
+# due to accumulated fatigue gather more error than the old fixed-duration schedule.
 ROM_REL_TOLERANCE = 0.02
-# Pico: ruido y temblor del giróscopo se suman al máximo de |ω|. Error observado 0,6 % y 1,2 %; umbral > 2x.
+# Peak: gyroscope noise and tremor add to the maximum of |ω|. Observed error 0.6 % and 1.2 %; threshold > 2x.
 PEAK_REL_TOLERANCE = 0.03
 
 SEEDS = [7, 20261113]
@@ -44,7 +44,7 @@ def _mission_config(*, background: bool) -> Any:
     raw["device"].update(power_on_time_utc="09:55", power_off_time_utc="10:40")
     raw["protocols"]["lat_pulldown_standing_v1"].update(streams=["imu_t9"], lead_out_s=10.0)
     raw["schedule"]["sessions"] = [{**s, "start_jitter_s": 60.0} for s in raw["schedule"]["sessions"] if s["name"] == "lat_pulldown"]
-    # la verdad es el modelo sin fallos de calidad (artefactos, bajo SNR...): esos los refleja la calidad común
+    # the truth is the model without quality faults (artifacts, low SNR...): those are reflected by the common quality
     for fault in raw["faults"]["quality"].values():
         fault["probability"] = 0.0
     raw["schedule"]["background"].update(enabled=background, start_time_utc="09:56", end_time_utc="09:58")
@@ -52,7 +52,7 @@ def _mission_config(*, background: bool) -> Any:
 
 
 def _simulate(seed: int, gravity: str, *, slot: str = "lat_pulldown") -> tuple[FeaturesRequest, dict[str, float]]:
-    """Petición de features de una sesión simulada (con sus calibraciones) y las features verdaderas."""
+    """Features request of a simulated session (with its calibrations) and the true features."""
     from spine_contracts.models.common_schema import GravityEnvironment
     from spine_physiology import MissionGenerator
     from spine_physiology.envelope import EnvelopeKind
@@ -68,7 +68,7 @@ def _simulate(seed: int, gravity: str, *, slot: str = "lat_pulldown") -> tuple[F
             "schema_version": "1.0.0",
             "session": next(m.payload for m in messages if m.kind is EnvelopeKind.SESSION),
             "chunks": [m.payload for m in messages if m.kind is EnvelopeKind.STREAM_CHUNK],
-            # el ayudante de #41 no las recoge: sin ellas todo saldría no_calibration
+            # the #41 helper does not collect them: without them everything would come out no_calibration
             "calibrations": [m.payload for m in messages if m.kind is EnvelopeKind.CALIBRATION],
             "clock_syncs": syncs,
         }

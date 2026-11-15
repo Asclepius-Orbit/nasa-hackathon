@@ -1,13 +1,13 @@
-"""Asigna a cada test exactamente un marker de tipo (unit, integration, contract, property, golden)."""
+"""Assigns each test exactly one kind marker (unit, integration, contract, property, golden)."""
 
 from pathlib import PurePath
 
 import pytest
 from hypothesis import settings
 
-pytest_plugins = ["pytester"]  # lo necesita tests/test_markers.py; debe declararse en el conftest raíz
+pytest_plugins = ["pytester"]  # needed by tests/test_markers.py; must be declared in the root conftest
 
-# Sin deadline: en runners lentos un ejemplo lento no debe ser un fallo intermitente. No se deriva la semilla.
+# No deadline: on slow runners a slow example must not be a flaky failure. The seed is not derived.
 settings.register_profile("spine", deadline=None)
 settings.load_profile("spine")
 

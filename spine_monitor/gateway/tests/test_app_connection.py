@@ -1,4 +1,4 @@
-"""Conexión MQTT del gateway real: reconexión con backoff, re-anuncio, calibraciones tras reconectar y parada."""
+"""Real gateway MQTT connection: reconnection with backoff, re-announcement, calibrations after reconnecting and shutdown."""
 
 import asyncio
 from typing import Any
@@ -61,13 +61,13 @@ def test_a_dropped_connection_reconnects_reannounces_and_the_session_goes_on(har
             first = h.client
             calibration_id = first.payloads("calibration")[0]["calibration_id"]
             await h.disconnect()
-            await h.run_device(0.9)  # sin conexión: los chunks de este rato se pierden (nadie los recibe)
+            await h.run_device(0.9)  # no connection: the chunks of this period are lost (nobody receives them)
             assert len(h.connections.attempts) == 1
-            await h.run_device(0.2)  # pasa el backoff inicial (1 s) y reconecta
+            await h.run_device(0.2)  # the initial backoff (1 s) passes and it reconnects
             second = h.client
             assert second is not first and len(h.connections.attempts) == 2
             assert second.subscriptions == [(topics.cmd(AST, DEV), 1)]
-            # Ancla y estado antes que nada (el Last Will dejó offline), y la calibración antes del primer chunk que la cita.
+            # Anchor and status first (the Last Will left it offline), and the calibration before the first chunk that cites it.
             assert [p.channel for p in second.published[:2]] == ["clock", "status"]
             assert second.payloads("status")[0]["status"] == "ok"
             channels = [p.channel for p in second.published]
@@ -76,10 +76,10 @@ def test_a_dropped_connection_reconnects_reannounces_and_the_session_goes_on(har
             assert second.payloads("calibration")[0]["calibration_id"] == calibration_id
             cord = [c for c in second.payloads("stream") if c["stream_kind"] == "stretch"]
             assert cord and all(c["calibration_id"] == calibration_id and c["session_id"] == SESSION for c in cord)
-            # Se republica una sola vez por conexión.
+            # Republished only once per connection.
             await h.run_device(1.0)
             assert len(second.on("calibration")) == 1
-            # last_seq solo cuenta lo publicado: el hueco de la desconexión no aparece como publicado.
+            # last_seq only counts what was published: the gap from the disconnection does not appear as published.
             published = max(c["seq"] for c in first.payloads("stream") + second.payloads("stream") if c["stream_id"] == "imu_t9")
             status = second.payloads("status")[0]
             assert {s["stream_id"]: s.get("last_seq") for s in status["streams"]}["imu_t9"] < published
@@ -93,14 +93,14 @@ def test_reconnect_backoff_grows_caps_and_resets_after_connecting(harness, fakes
 
         def plan(n: int) -> Any:
             if n <= 5 or n == 7:
-                return None  # el broker rechaza la conexión
+                return None  # the broker rejects the connection
             clients[n] = fakes.FakeClient()
             return clients[n]
 
         async with harness(fakes.Connections(plan), mqtt_reconnect_initial_s=1.5, mqtt_reconnect_factor=2.0, mqtt_reconnect_max_s=5.0) as h:
             await h.time.advance(20.0)
             assert len(h.connections.attempts) == 6
-            await h.disconnect()  # a los 20 s; tras conectar, la espera vuelve a la inicial
+            await h.disconnect()  # at 20 s; after connecting, the wait goes back to the initial one
             await h.time.advance(10.0)
             offsets = [(a["at"] - h.connections.attempts[0]["at"]).total_seconds() for a in h.connections.attempts]
             assert offsets == [0.0, 1.5, 4.5, 9.5, 14.5, 19.5, 21.5, 24.5]
@@ -117,12 +117,12 @@ def test_a_failed_publish_drops_the_connection_and_reconnects(harness, fakes) ->
             await h.run_device(3.0)
             first = h.client
             first.fail_publish = True
-            await h.run_device(1.0)  # el chunk de fondo de este segundo (seq 3) falla al publicarse
+            await h.run_device(1.0)  # the background chunk of this second (seq 3) fails to publish
             assert len(h.connections.attempts) == 1
-            await h.run_device(1.0)  # backoff de 1 s y conexión nueva
+            await h.run_device(1.0)  # 1 s backoff and new connection
             assert len(h.connections.attempts) == 2 and h.client is not first
             imu = [c["seq"] for c in first.payloads("stream") + h.client.payloads("stream") if c["stream_id"] == "imu_t9"]
-            assert imu == [0, 1, 2, 4]  # el 3 se perdió
+            assert imu == [0, 1, 2, 4]  # 3 was lost
             status = h.client.payloads("status")[0]
             assert {s["stream_id"]: s.get("last_seq") for s in status["streams"]}["imu_t9"] == 2
 
@@ -134,7 +134,7 @@ def test_cancelling_while_waiting_to_reconnect_stops_cleanly(harness, fakes) -> 
         h = harness(fakes.Connections(lambda n: None))
         async with h:
             await h.time.advance(3.0)
-            assert len(h.connections.attempts) == 3  # a los 0, 1 y 3 s
+            assert len(h.connections.attempts) == 3  # at 0, 1 and 3 s
         assert h.source.closed and h.time.pending() == 0
 
     go(scenario())
@@ -159,17 +159,17 @@ def test_stopping_in_the_middle_of_an_event_still_closes_the_line_source(harness
         class SlowBroker(fakes.FakeClient):
             async def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> None:
                 if "/stream/" in topic:
-                    await asyncio.Event().wait()  # el broker no confirma nunca: el consumidor queda a medio evento
+                    await asyncio.Event().wait()  # the broker never confirms: the consumer is left mid-event
                 await super().publish(topic, payload, qos, retain)
 
         h = harness(fakes.Connections(lambda n: SlowBroker()))
         async with h:
             await h.boot()
-            for _ in range(10):  # el décimo cierra la ventana de fondo y su publish no vuelve
+            for _ in range(10):  # the tenth closes the background window and its publish never returns
                 h.source.feed.queue.put_nowait(h.frame_line(FrameKind.IMU))
             await h.time.advance(0.0)
             assert h.source.feed.queue.empty() and not h.source.closed
-        assert h.source.closed  # cerrado al parar, no cuando el recolector se acuerde
+        assert h.source.closed  # closed on stop, not whenever the garbage collector gets to it
 
     go(scenario())
 
@@ -181,7 +181,7 @@ def test_shutdown_survives_a_broker_that_is_already_gone(harness, fakes, error: 
         async with h:
             await h.boot()
             h.client.fault = lambda topic: error if topic.endswith("/status") else None
-        assert h.client.statuses()[-1] == "ok"  # el offline no salió, pero la parada fue limpia
+        assert h.client.statuses()[-1] == "ok"  # the offline did not go out, but the shutdown was clean
 
     go(scenario())
 
@@ -194,11 +194,11 @@ def test_frames_while_disconnected_are_not_published_nor_counted(harness, fakes)
             await h.run_device(1.0, kinds=(FrameKind.IMU,))
             await h.disconnect()
             await h.run_device(2.5, kinds=(FrameKind.IMU,))
-            assert len(h.connections.attempts) == 2  # rechazada a los 2 s; la siguiente, a los 4 s
+            assert len(h.connections.attempts) == 2  # rejected at 2 s; the next one at 4 s
             await h.run_device(1.0, kinds=(FrameKind.IMU,))
             assert h.client is clients[2]
             assert [c["seq"] for c in clients[0].payloads("stream")] == [0]
-            assert [c["seq"] for c in h.client.payloads("stream")] == [3]  # los de 2 s y 3 s no salieron
+            assert [c["seq"] for c in h.client.payloads("stream")] == [3]  # those of 2 s and 3 s did not go out
 
     go(scenario())
 
@@ -207,7 +207,7 @@ def test_a_message_stream_that_ends_is_a_lost_connection(harness) -> None:
     async def scenario() -> None:
         async with harness() as h:
             first = h.client
-            first.inbox.queue.put_nowait("end")  # sin esperar: nadie vuelve a pedir mensajes de esta conexión
+            first.inbox.queue.put_nowait("end")  # without waiting: nobody asks for messages from this connection again
             await h.time.advance(1.0)
             assert h.client is not first and len(h.connections.attempts) == 2
 

@@ -1,16 +1,16 @@
-"""Familia ``stretch`` (#45) de extremo a extremo: sesiones del simulador por ``CompositeFeatureExtractor(default_registry())``.
+"""End-to-end ``stretch`` family (#45): simulator sessions through ``CompositeFeatureExtractor(default_registry())``.
 
-La verdad es ``expected_features`` del simulador: ``stretch.{region}.peak_elongation_mm`` y ``range_mm`` (longitud real del
-cordón durante las repeticiones, sin ruido ni histéresis) y ``elongation_mm`` / ``elongation_pct`` / ``rest_resistance_ohm``
-(media de la longitud real en un ``spine_check`` o en el fondo). La extracción parte de las cuentas ADC con ruido y de la
-calibración medida (curva con ``measurement_noise_mm``), así que se compara con tolerancia.
+The truth is the simulator's ``expected_features``: ``stretch.{region}.peak_elongation_mm`` and ``range_mm`` (real length of the
+cord during the repetitions, without noise or hysteresis) and ``elongation_mm`` / ``elongation_pct`` / ``rest_resistance_ohm``
+(mean of the real length in a ``spine_check`` or in the background). The extraction starts from the noisy ADC counts and the
+measured calibration (curve with ``measurement_noise_mm``), so it is compared with tolerance.
 
-La verdad NO trae ``recovery_time_s`` (el simulador no modela la recuperación como feature): ``recovery_time_s`` no se
-compara con ninguna verdad y solo se comprueba que es finito y no negativo cuando sale.
+The truth does NOT carry ``recovery_time_s`` (the simulator does not model recovery as a feature): ``recovery_time_s`` is not
+compared with any truth and it is only checked that it is finite and non-negative when it comes out.
 
-Este fichero define además los ayudantes de sesión completos (todos los streams, fallos, pérdida de chunks...) que cargan
-por ruta ``test_features_failures_simulator.py`` y ``test_baseline_simulator.py``: con ``--import-mode=importlib`` los
-tests no se importan entre sí por nombre.
+This file also defines the full session helpers (all streams, faults, chunk loss...) that
+``test_features_failures_simulator.py`` and ``test_baseline_simulator.py`` load by path: with ``--import-mode=importlib``
+tests do not import each other by name.
 """
 
 import copy
@@ -27,7 +27,7 @@ from spine_contracts.catalog import unit_for
 from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
 
-# vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
+# via the installed package, not via parents[]: under mutmut the tests are copied to another tree without physiology/
 _MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 REGION = "full_spine"
 PREFIX = f"stretch.{REGION}"
@@ -45,41 +45,41 @@ def _rest_length_mm() -> float:
     return next(a for a in raw["crew"] if a["astronaut_id"] == "AST-01")["baseline"]["cord_rest_length_mm"]
 
 
-REST_LENGTH_MM = _rest_length_mm()  # baseline.cord_rest_length_mm del astronauta AST-01 en example-mission.yaml
+REST_LENGTH_MM = _rest_length_mm()  # baseline.cord_rest_length_mm of astronaut AST-01 in example-mission.yaml
 
-# Tolerancias frente a la verdad; observado en las 4 combinaciones semilla x gravedad.
-# Pico y rango por repetición: la verdad es la longitud real sin ruido ni histéresis, la extracción ve el ruido ADC (el
-# máximo de ~60 muestras con ruido sesga el pico hacia arriba y el rango en ambos extremos) y la histéresis (solo el pico):
-# observado +21..22 % el pico y +18..22 % el rango con el ADC de 12 bits; el del firmware real es de 10 bits (cuentas
-# 1..1022, ~2,6 mm por cuenta con 1 cuenta de ruido), asi que el maximo y el minimo de ~60 muestras se desvian mas:
-# observado hasta +61 % el rango (suma ~8 mm de extremos de ruido a unos 15 mm reales), siempre por encima de la
-# verdad; umbral 70 %.
+# Tolerances against the truth; observed across the 4 seed x gravity combinations.
+# Peak and range per repetition: the truth is the real length without noise or hysteresis, the extraction sees the ADC noise (the
+# maximum of ~60 noisy samples biases the peak upwards and the range at both ends) and the hysteresis (only the peak):
+# observed +21..22 % the peak and +18..22 % the range with the 12-bit ADC; the real firmware one is 10 bits (counts
+# 1..1022, ~2.6 mm per count with 1 count of noise), so the maximum and minimum of ~60 samples deviate more:
+# observed up to +61 % the range (adds ~8 mm of noise extremes to some 15 real mm), always above the
+# truth; threshold 70 %.
 PER_REP_REL = 0.70
-# Elongación pasiva de un spine_check: solo ruido ADC y de la curva medida sobre ~2400 muestras: observado hasta 0,03 mm;
-# umbral 0,1 mm con el ADC de 12 bits. Con el de 10 bits del firmware (~2,6 mm por cuenta) la cuantizacion deja un sesgo
-# de ~0,15 cuentas en la media: observado hasta 0,45 mm (y -0,2 mm sin ruido, la verdad es continua); umbral 0,6 mm.
-# En el fondo la extracción detecta las flexiones como repeticiones y excluye cada una más la espera de
-# recuperación de las muestras pasivas (la verdad promedia todo lo emitido): con la semilla 20261113 quedan 305 de 1010
-# muestras y el error sube a 0,22 mm; umbral 0,5 mm. Los % equivalen a esos mm sobre la longitud de reposo.
+# Passive elongation of a spine_check: only ADC and measured-curve noise over ~2400 samples: observed up to 0.03 mm;
+# threshold 0.1 mm with the 12-bit ADC. With the firmware 10-bit one (~2.6 mm per count) quantization leaves a bias
+# of ~0.15 counts in the mean: observed up to 0.45 mm (and -0.2 mm without noise, the truth is continuous); threshold 0.6 mm.
+# In the background the extraction detects flexions as repetitions and excludes each one plus the recovery
+# wait from the passive samples (the truth averages everything emitted): with seed 20261113, 305 of 1010
+# samples remain and the error rises to 0.22 mm; threshold 0.5 mm. The % are equivalent to those mm over the rest length.
 ELONGATION_MM_ABS = {SPINE_CHECK: 0.6, BACKGROUND: 0.5}
 ELONGATION_PCT_ABS = {slot: 100.0 * mm / REST_LENGTH_MM for slot, mm in ELONGATION_MM_ABS.items()}
-# Resistencia de reposo: se invierte el ADC con la resistencia serie exacta: observado < 0,04 % incluso en el fondo; umbral 0,1 %.
+# Rest resistance: the ADC is inverted with the exact series resistance: observed < 0.04 % even in the background; threshold 0.1 %.
 REST_RESISTANCE_REL = 1e-3
-# n de las pasivas: la verdad cuenta las muestras emitidas y la extracción descarta las ADC saturadas o en 0, los chunks
-# perdidos y (fondo) las flexiones; nunca puede superar a la verdad. Fracción mínima observada: spine_check 99,7 %, fondo 30 %.
+# n of the passive ones: the truth counts the emitted samples and the extraction discards saturated or zero ADC, lost
+# chunks and (background) flexions; it can never exceed the truth. Minimum fraction observed: spine_check 99.7 %, background 30 %.
 PASSIVE_N_MIN_FRACTION = {SPINE_CHECK: 0.95, BACKGROUND: 0.25}
 
 
 @dataclass(frozen=True, slots=True)
 class Scenario:
-    """Variaciones sobre la misión de ejemplo; hashable para cachear la simulación."""
+    """Variations on the example mission; hashable so the simulation can be cached."""
 
     streams: tuple[str, ...] = (STRETCH,)
     faults: bool = False
-    # probabilidad de perder un chunk: None deja la de la misión de ejemplo
+    # probability of losing a chunk: None keeps the example mission's
     packet_loss: float | None = None
     imu_rate_hz: float | None = None
-    # None deja los 100 ms de la misión; chunks más largos abaratan mucho la extracción (que recorre los chunks por repetición)
+    # None keeps the mission's 100 ms; longer chunks make extraction much cheaper (it walks the chunks per repetition)
     chunk_ms: int | None = None
     days: int = 1
     phase: str = "inflight"
@@ -87,7 +87,7 @@ class Scenario:
 
 
 class Simulated(NamedTuple):
-    """Petición de features de una sesión simulada y su verdad."""
+    """Features request of a simulated session and its truth."""
 
     payload: dict[str, Any]
     truth: dict[str, float]
@@ -104,11 +104,11 @@ def _mission_config(scenario: Scenario) -> Any:
     raw["segments"] = [{"days": scenario.days, "phase": scenario.phase, "gravity_environment": scenario.gravity}]
     raw["device"].update(power_on_time_utc="09:55", power_off_time_utc="10:40")
     raw["protocols"]["lat_pulldown_standing_v1"].update(streams=list(scenario.streams), lead_out_s=10.0)
-    # La dispersion entre lecturas repetidas es un offset de resistencia por sesion que la verdad no puede conocer (y que
-    # la curva de calibracion no corrige): se apaga para comparar con la verdad; el resto del realismo sigue encendido.
+    # The dispersion between repeated readings is a per-session resistance offset that the truth cannot know (and that
+    # the calibration curve does not correct): it is switched off to compare with the truth; the rest of the realism stays on.
     raw["signals"]["stretch"]["repeat_dispersion_ohm"] = 0.0
     if not scenario.faults:
-        # los artefactos inyectados (clipping, saturación...) alteran la señal sin tocar la verdad: se comparan sin ellos
+        # injected artifacts (clipping, saturation...) alter the signal without touching the truth: they are compared without them
         for fault in raw["faults"]["quality"].values():
             fault["probability"] = 0.0
     if scenario.packet_loss is not None:
@@ -117,7 +117,7 @@ def _mission_config(scenario: Scenario) -> Any:
         raw["signals"]["imu"]["sample_rate_hz"] = scenario.imu_rate_hz
     if scenario.chunk_ms is not None:
         raw["signals"]["chunk_ms"] = scenario.chunk_ms
-    # las sesiones con `bracket` (spine_check) no admiten jitter propio
+    # sessions with `bracket` (spine_check) do not accept their own jitter
     raw["schedule"]["sessions"] = [s if "bracket" in s else {**s, "start_jitter_s": 60.0} for s in raw["schedule"]["sessions"]]
     raw["schedule"]["background"].update(start_time_utc="09:56", end_time_utc="09:58")
     return MissionConfig.model_validate(raw)
@@ -134,7 +134,7 @@ def _simulated(scenario: Scenario, seed: int, slot: str, day: int) -> Simulated:
     generator = MissionGenerator(config, seed)
     ref = SessionRef(config.crew[0].astronaut_id, day, slot)
     messages = list(generator.session_messages(ref, gravity_environment=GravityEnvironment(scenario.gravity)))
-    # el helper de sesión no trae las calibraciones del día ni los clock_sync: los emite el generador del día
+    # the session helper does not bring the day's calibrations or the clock_sync: the day's generator emits them
     day_messages = list(generator.day_messages(day, ref.astronaut_id))
     payload = {
         "schema_version": "1.0.0",
@@ -149,7 +149,7 @@ def _simulated(scenario: Scenario, seed: int, slot: str, day: int) -> Simulated:
 
 
 def _simulate(scenario: Scenario, seed: int, slot: str, day: int = 0) -> Simulated:
-    """Copia propia (los tests la modifican) de :func:`_simulated`."""
+    """Own copy (the tests modify it) of :func:`_simulated`."""
     return copy.deepcopy(_simulated(scenario, seed, slot, day))
 
 
@@ -199,7 +199,7 @@ def test_the_per_repetition_features_match_the_simulator_truth(seed: int, gravit
 @pytest.mark.parametrize("gravity", GRAVITIES)
 @pytest.mark.parametrize("seed", SEEDS)
 def test_the_recovery_time_has_no_truth_and_is_only_checked_for_being_plausible(seed: int, gravity: str):
-    # El simulador no emite recovery_time_s en expected_features: no hay valor con el que compararlo.
+    # The simulator does not emit recovery_time_s in expected_features: there is no value to compare it with.
     sim = _simulate(Scenario(gravity=gravity), seed, EXERCISE)
     assert _stretch("recovery_time_s") not in sim.truth
 
@@ -222,7 +222,7 @@ def test_the_passive_features_match_the_simulator_truth(seed: int, gravity: str,
 
     features = _by_id(result)
     assert {_stretch(n) for n in PASSIVE} <= set(features)
-    # sin repeticiones no hay verdad ni valor por repetición: se omiten con motivo y no se inventan
+    # without repetitions there is no truth or per-repetition value: they are omitted with a reason and not invented
     assert {i: r for i, r in _skipped(result).items() if i.endswith(PER_REP)} == dict.fromkeys((_stretch(n) for n in PER_REP), "too_few_repetitions")
     assert features[_stretch("elongation_mm")]["value"] == pytest.approx(sim.truth[_stretch("elongation_mm")], abs=ELONGATION_MM_ABS[slot])
     assert features[_stretch("elongation_pct")]["value"] == pytest.approx(sim.truth[_stretch("elongation_pct")], abs=ELONGATION_PCT_ABS[slot])
@@ -237,7 +237,7 @@ def test_the_passive_features_match_the_simulator_truth(seed: int, gravity: str,
 
 @pytest.mark.integration
 def test_the_exercise_session_publishes_no_passive_truth_and_the_spine_check_no_per_repetition_truth():
-    # la verdad de cada tipo de sesión es disjunta: así se sabe que cada test compara con lo que corresponde
+    # the truth of each session type is disjoint: this way each test compares with what corresponds
     exercise = _simulate(Scenario(), 7, EXERCISE).truth
     check = _simulate(Scenario(), 7, SPINE_CHECK).truth
 

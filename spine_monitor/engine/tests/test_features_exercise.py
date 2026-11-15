@@ -1,4 +1,4 @@
-"""Familia ``exercise`` (#41): nº de repeticiones, duración media y variabilidad (CV) de la duración."""
+"""``exercise`` family (#41): repetition count, mean duration and variability (CV) of the duration."""
 
 import json
 import math
@@ -37,7 +37,7 @@ def ev(kind: str, seconds: float, rep: int | None = None) -> Event:
 
 
 def events_for(durations: list[float]) -> list[Event]:
-    """Eventos rep_start/rep_end consecutivos con 1 s de reposo entre repeticiones."""
+    """Consecutive rep_start/rep_end events with 1 s of rest between repetitions."""
     events: list[Event] = []
     cursor = 0.0
     for i, duration in enumerate(durations, start=1):
@@ -61,7 +61,7 @@ def window(index: int, duration: float) -> RepWindow:
 
 
 class FakeService(RepetitionService):
-    """Frontera: devuelve unas ventanas fijas, sin mirar el contexto."""
+    """Boundary: returns fixed windows, ignoring the context."""
 
     def __init__(self, result: RepWindows) -> None:
         super().__init__()
@@ -88,7 +88,7 @@ def test_the_family_declares_its_three_catalog_ids():
 
 
 def test_known_durations_give_count_mean_and_sample_cv():
-    # 3, 4, 5 s -> media 4, desviación muestral 1 -> CV 25 %
+    # 3, 4, 5 s -> mean 4, sample deviation 1 -> CV 25 %
     result = computed(family_for([3.0, 4.0, 5.0]), make_context([]))
 
     assert result == {COUNT: 3.0, MEAN: 4.0, CV: 25.0}
@@ -192,7 +192,7 @@ def test_composite_with_enough_reps_returns_values_with_catalog_units():
 
 
 def test_composite_with_the_example_two_rep_events_computes_over_those_two_reps():
-    # el ejemplo abreviado trae solo los eventos de las repeticiones 1 y 15 (set 1): dos ventanas
+    # the abbreviated example only brings the events of repetitions 1 and 15 (set 1): two windows
     request = FeaturesRequest.model_validate(json.loads(_EXAMPLE.read_text(encoding="utf-8")))
 
     result = extract_json(request)

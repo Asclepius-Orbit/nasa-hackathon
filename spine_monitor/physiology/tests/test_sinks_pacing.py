@@ -41,7 +41,7 @@ def env(seconds: float) -> Envelope:
 
 
 class FakeTime:
-    """Reloj y sleep falsos: dormir avanza el reloj."""
+    """Fake clock and sleep: sleeping advances the clock."""
 
     def __init__(self) -> None:
         self.now = 100.0
@@ -78,9 +78,9 @@ def test_slow_consumer_gets_shorter_sleep_and_never_negative():
 
     async def run() -> None:
         await pacer.wait_for(T0)
-        ft.now += 3.0  # el consumidor tardó 3 s
+        ft.now += 3.0  # the consumer took 3 s
         await pacer.wait_for(T0 + timedelta(seconds=5))
-        ft.now += 50.0  # muy por detrás: ni espera ni valores negativos
+        ft.now += 50.0  # far behind: neither waits nor negative values
         await pacer.wait_for(T0 + timedelta(seconds=6))
 
     asyncio.run(run())
@@ -109,10 +109,10 @@ def test_payloads_identical_across_jsonl_mqtt_and_paced(tmp_path):
     stream = paced(MissionGenerator(config).iter_messages(), Pacer(3600.0, clock=ft.clock, sleep=ft.sleep))
     asyncio.run(publish_all(stream, MqttSink(paced_client)))
     assert paced_client.published == direct.published
-    assert ft.sleeps  # realmente esperó
+    assert ft.sleeps  # it really waited
     assert len(direct.published) == len([m for m in messages if m.kind in MQTT_KINDS])
     write_jsonl(messages, tmp_path, config=config, seed=config.seed)
-    # Los payloads de chunk del JSONL coinciden byte a byte con los encode() que van a MQTT.
+    # The chunk payloads in the JSONL match byte for byte the encode() output that goes to MQTT.
     records = []
     for path in sorted(tmp_path.rglob("chunks.jsonl")):
         records += [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

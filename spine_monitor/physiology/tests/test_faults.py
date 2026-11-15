@@ -31,7 +31,7 @@ SPC = 100
 
 
 def make_config(**flag_probabilities: float) -> MissionConfig:
-    """Config de ejemplo con todos los flags a probabilidad 0 salvo los indicados; kinds = los tres."""
+    """Example config with all flags at probability 0 except those given; kinds = all three."""
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     for name in FLAGS:
         quality = raw["faults"]["quality"][name]
@@ -75,7 +75,7 @@ def test_probability_one_flags_and_alters_signal(flag, kind):
     for q in flagged:
         for state in q.values():
             assert state.score < 1.0 and QualityFlag(flag) in state.flags
-    # Nunca in place.
+    # Never in place.
     for k in channels:
         np.testing.assert_array_equal(channels[k], originals[k])
 
@@ -96,7 +96,7 @@ def test_quality_has_all_keys_and_chunk_count():
     config = make_config(low_snr=1.0)
     for kind in StreamKind:
         _, _, quality = run(config, kind, signal(kind, n=1050))
-        assert len(quality) == 11  # el último chunk es parcial
+        assert len(quality) == 11  # the last chunk is partial
         assert all(set(q) == set(QUALITY_KEYS[kind]) for q in quality)
 
 
@@ -171,7 +171,7 @@ def test_quality_state_merge_and_contract():
 def test_mask_quality_marks_chunks_touched_by_the_mask():
     mask = np.zeros(450, dtype=bool)
     mask[150:160] = True
-    mask[440] = True  # chunk parcial final
+    mask[440] = True  # final partial chunk
     quality = mask_quality(mask, kind=StreamKind.STRETCH, key="length_mm", flag=QualityFlag.BAND_RECOVERING, score=0.7, samples_per_chunk=100)
     assert len(quality) == 5
     assert [q["length_mm"] != CLEAN for q in quality] == [False, True, False, False, True]
@@ -181,7 +181,7 @@ def test_mask_quality_marks_chunks_touched_by_the_mask():
         mask_quality(mask, kind=StreamKind.EMG, key="accel", flag=QualityFlag.LOW_SNR, score=0.5, samples_per_chunk=100)
 
 
-# --- fallos de dispositivo ----------------------------------------------------------------------
+# --- device faults ----------------------------------------------------------------------
 
 
 def test_packet_loss_probability_extremes_and_bursts():
@@ -194,7 +194,7 @@ def test_packet_loss_probability_extremes_and_bursts():
     edges = np.flatnonzero(np.diff(np.concatenate(([0], lost.astype(int), [0]))))
     runs = edges[1::2] - edges[::2]
     assert runs.min() >= cfg.burst_chunks.min
-    # Las ráfagas pueden encadenarse (suman), pero ninguna empieza ya dentro de otra: el tamaño es múltiplo acotado.
+    # Bursts can chain (they add up), but none starts already inside another: the size is a bounded multiple.
     assert (runs <= cfg.burst_chunks.max * 50).all()
 
 
@@ -229,7 +229,7 @@ def test_imu_is_reclipped_to_sensor_range_after_faults():
     for name, arr in altered.items():
         limit = imu.accel_range_g if name.startswith("accel") else imu.gyro_range_dps
         assert np.abs(arr).max() <= limit
-        assert np.abs(arr).max() == limit  # el fallo sí llegó a saturar
+        assert np.abs(arr).max() == limit  # the fault did reach saturation
 
 
 def test_motion_artifact_band_and_warmup_decay_come_from_config():
@@ -256,7 +256,7 @@ def test_quality_key_maps_each_channel_to_its_quality_entry():
 def test_merge_quality_combines_chunk_by_chunk_and_demands_equal_lengths():
     low, high = QualityState(0.4, frozenset({QualityFlag.LOW_SNR})), QualityState(0.7, frozenset({QualityFlag.CLIPPING}))
     merged = merge_quality([{"accel": low}, {"accel": CLEAN}], [{"accel": high, "gyro": high}, {"gyro": low}])
-    assert merged[0]["accel"] == low.merge(high) and merged[0]["gyro"] == high  # clave en ambos: se funden; solo en uno: se toma tal cual
+    assert merged[0]["accel"] == low.merge(high) and merged[0]["gyro"] == high  # key in both: they are merged; in only one: taken as is
     assert merged[1] == {"accel": CLEAN, "gyro": low}
     with pytest.raises(ValueError, match=r"^quality sequences differ in length: 2 != 1$"):
         merge_quality([{}, {}], [{}])
@@ -285,7 +285,7 @@ def test_apply_quality_faults_edge_cases_inputs_and_dtypes():
         apply(StreamKind.IMU, {"accel_x": np.zeros(5), "gyro_x": np.zeros(3)}, [episode])
     out, quality = apply(StreamKind.EMG, {"emg": np.zeros(0)}, [episode])
     assert out["emg"].size == 0 and quality == []
-    out, quality = apply(StreamKind.EMG, {"emg": np.array([0.5])}, [episode])  # una sola muestra: el episodio se aplica
+    out, quality = apply(StreamKind.EMG, {"emg": np.array([0.5])}, [episode])  # a single sample: the episode is applied
     assert len(quality) == 1 and QualityFlag.LOW_SNR in quality[0]["emg"].flags and out["emg"][0] != 0.5
     out, _ = apply(StreamKind.EMG, {"emg": np.arange(300, dtype=np.int16)}, [FaultEpisode(QualityFlag.LOW_SNR, "s_01", 0, 300, 0.3, 5.0)])
     assert out["emg"].dtype == np.int16 and np.array_equal(out["emg"], np.rint(out["emg"]))

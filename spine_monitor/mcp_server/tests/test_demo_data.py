@@ -1,4 +1,4 @@
-"""Tests del dataset de demo: datos de AST-01 generados relativos a un reloj inyectable, servidos por el servidor MCP real."""
+"""Tests of the demo dataset: AST-01 data generated relative to an injectable clock, served by the real MCP server."""
 
 import os
 import sys
@@ -20,7 +20,7 @@ from spine_mcp_server.server import create_server
 
 AST = "AST-01"
 WEEK = timedelta(days=7)
-# Los tres días del hackathon (13-15 nov 2026) y hoy, con una hora no redonda para ejercitar el redondeo.
+# The three hackathon days (13-15 Nov 2026) and today, with a non-round hour to exercise rounding.
 NOWS = [
     datetime(2026, 11, 13, 12, 0, tzinfo=UTC),
     datetime(2026, 11, 14, 12, 0, tzinfo=UTC),

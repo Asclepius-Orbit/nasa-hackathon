@@ -1,4 +1,4 @@
-"""Errores en formato problem details (RFC 9457), según `schemas/v1/engine/error.schema.json`."""
+"""Errors in problem details format (RFC 9457), per `schemas/v1/engine/error.schema.json`."""
 
 from fastapi.responses import JSONResponse
 from spine_contracts import ErrorResponse, dump
@@ -8,7 +8,7 @@ PROBLEM_JSON = "application/problem+json"
 
 
 def problem(type_: Type, title: str, status: int, detail: str | None = None, errors: list[Error] | None = None) -> JSONResponse:
-    # Falso positivo de pyright: el modelo generado declara el default de `errors` como Field posicional.
+    # Pyright false positive: the generated model declares the default of `errors` as a positional Field.
     body = ErrorResponse(type=type_, title=title, status=status)  # pyright: ignore[reportCallIssue]
     if detail is not None:
         body.detail = detail
@@ -18,7 +18,7 @@ def problem(type_: Type, title: str, status: int, detail: str | None = None, err
 
 
 def to_errors(messages: list[str]) -> list[Error]:
-    """`validation.errors` devuelve 'pointer: mensaje'; el pointer de la raíz es la cadena vacía."""
+    """`validation.errors` returns 'pointer: message'; the root pointer is the empty string."""
     result = []
     for line in messages:
         pointer, _, message = line.partition(": ")

@@ -1,4 +1,4 @@
-"""Protocolo estandarizado de #12: 4 series x 15 reps, colocación de sensores y spine_check pre/post."""
+"""Standardized protocol from #12: 4 sets x 15 reps, sensor placement and pre/post spine_check."""
 
 import json
 from datetime import timedelta

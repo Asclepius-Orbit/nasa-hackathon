@@ -30,7 +30,7 @@ ALL_IDS = {
 }
 
 inside_offsets = st.integers(min_value=0, max_value=int(WINDOW.total_seconds() * 1_000_000)).map(lambda us: AS_OF - timedelta(microseconds=us))
-# fuera de la ventana: estrictamente antes de start o después de end
+# outside the window: strictly before start or after end
 outside_offsets = st.one_of(
     st.integers(min_value=1, max_value=10**12).map(lambda us: AS_OF - WINDOW - timedelta(microseconds=us)),
     st.integers(min_value=1, max_value=10**12).map(lambda us: AS_OF + timedelta(microseconds=us)),

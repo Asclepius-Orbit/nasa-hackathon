@@ -1,4 +1,4 @@
-"""Tests de reports.py: perfil, contexto diario y autoinforme diario contra sus schemas y propiedades."""
+"""Tests of reports.py: profile, daily context and daily self-report against their schemas and properties."""
 
 from datetime import UTC, datetime, time
 from pathlib import Path
@@ -24,14 +24,14 @@ def config() -> MissionConfig:
 
 
 def variant(config: MissionConfig, edit) -> MissionConfig:
-    """Config derivada del ejemplo con una edición sobre el YAML crudo (el modelo es inmutable)."""
+    """Config derived from the example with an edit on the raw YAML (the model is immutable)."""
     data = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     edit(data)
     return MissionConfig.model_validate(data)
 
 
 def days_of(config: MissionConfig) -> list[DayInfo]:
-    """Días de la misión construidos a mano (no depende de MissionTimeline)."""
+    """Mission days built by hand (does not depend on MissionTimeline)."""
     from datetime import timedelta
 
     out: list[DayInfo] = []
@@ -54,7 +54,7 @@ def days_of(config: MissionConfig) -> list[DayInfo]:
 
 
 def activity_for(config: MissionConfig, day: DayInfo, adherence: float = 1.0) -> DailyActivity:
-    """Actividad 'tal cual el plan' (sin azar): cada bloque planificado se hace con la adherencia dada."""
+    """Activity 'exactly as planned' (no randomness): each planned block is done with the given adherence."""
     plan = config.daily_context.exercise.get(day.phase, [])
     cm_plan = config.daily_context.countermeasures.get(day.phase, [])
     exercise = tuple(
@@ -98,7 +98,7 @@ def assert_valid(name: str, payload: dict) -> None:
     assert problems == [], problems
 
 
-# --- Perfil -----------------------------------------------------------------------------------------
+# --- Profile -----------------------------------------------------------------------------------------
 
 
 def test_profile_validates_for_both_astronauts(config):
@@ -112,7 +112,7 @@ def test_profile_validates_for_both_astronauts(config):
 
 
 def test_profile_omits_absent_optional_fields(config):
-    # AST-02 no tiene spine_history ni gender_identity: no deben aparecer como null.
+    # AST-02 has no spine_history or gender_identity: they must not appear as null.
     member = config.member("AST-02")
     payload = dump(build_profile(member, updated_at=UPDATED_AT))
     assert "spine_history" not in payload
@@ -120,7 +120,7 @@ def test_profile_omits_absent_optional_fields(config):
     assert payload["anthropometry"] == {"height_standing_cm": 181, "body_mass_kg": 82}
 
 
-# --- Contexto diario --------------------------------------------------------------------------------
+# --- Daily context --------------------------------------------------------------------------------
 
 
 def test_daily_context_validates_across_all_days_and_astronauts(config):
@@ -140,7 +140,7 @@ def test_daily_context_validates_across_all_days_and_astronauts(config):
 
 def test_daily_context_phase_and_gravity_follow_the_day(config):
     member = config.crew[0]
-    day = days_of(config)[config.segments[0].days]  # primer día inflight
+    day = days_of(config)[config.segments[0].days]  # first inflight day
     rng = generator(config.seed, member.astronaut_id, day.index, "daily_context")
     ctx = build_daily_context(rng, config, member, day, activity=activity_for(config, day), state=state_for(member, day, 0.0))
     assert ctx.phase is MissionPhase.INFLIGHT
@@ -197,7 +197,7 @@ def _medication_payload(config: MissionConfig, pain: float, seed: int = 7) -> li
 
 
 def test_medication_only_above_pain_threshold(config):
-    # Umbral 0.35 y probabilidad 0.6 en el ejemplo: por debajo nunca se toma.
+    # Threshold 0.35 and probability 0.6 in the example: below it, it is never taken.
     sample = [_medication_payload(config, pain=0.2, seed=s) for s in range(50)]
     assert all(m == [] for m in sample)
 
@@ -220,16 +220,16 @@ def test_medication_probability_zero_never_taken(config):
 
 def test_medication_frequency_matches_probability(config):
     taken = sum(bool(_medication_payload(config, pain=0.9, seed=s)) for s in range(400))
-    assert 0.5 < taken / 400 < 0.7  # probabilidad 0.6
+    assert 0.5 < taken / 400 < 0.7  # probability 0.6
 
 
-# --- Autoinforme diario -----------------------------------------------------------------------------
+# --- Daily self-report -----------------------------------------------------------------------------
 
 
 def test_self_report_validates_for_every_day_and_astronaut(config):
     for member in config.crew:
         for day in days_of(config):
-            # Latente que recorre 0..1 a lo largo de la misión, para cubrir todas las ramas.
+            # Latent that sweeps 0..1 over the mission, to cover all branches.
             pain = day.index / max(1, config.total_days - 1)
             rng = generator(config.seed, member.astronaut_id, day.index, "self_report")
             report = build_daily_self_report(
@@ -245,7 +245,7 @@ def test_self_report_validates_for_every_day_and_astronaut(config):
             assert payload["source"] == "simulator"
             assert payload["kind"] == "daily"
             assert payload["mission_day"] == day.mission_day
-            assert isinstance(payload["red_flags"], list)  # preguntado siempre
+            assert isinstance(payload["red_flags"], list)  # always asked
 
 
 def test_self_report_is_deterministic(config):
@@ -287,7 +287,7 @@ def test_pain_rises_with_latent(config):
 
     low, mid, high = mean_pain(0.0), mean_pain(0.5), mean_pain(1.0)
     assert low < mid < high
-    assert high - low > 3  # pain_nrs_per_unit = 10 en el ejemplo
+    assert high - low > 3  # pain_nrs_per_unit = 10 in the example
 
 
 def test_stiffness_rises_with_latent(config):
@@ -352,7 +352,7 @@ def test_sleep_shorter_with_more_pain(config):
 
 
 def test_all_example_outputs_validate_together(config):
-    """Recorrido completo: perfil, contexto y autoinforme de todos los días y astronautas."""
+    """Full walk: profile, context and self-report for all days and astronauts."""
     for member in config.crew:
         assert_valid("domain/astronaut-profile", dump(build_profile(member, updated_at=UPDATED_AT)))
         for day in days_of(config):

@@ -1,4 +1,4 @@
-"""El dataset de demo con reloj fijo reproduce un snapshot versionado (estado completo legible + recuentos y hash del resto)."""
+"""The demo dataset with a fixed clock reproduces a versioned snapshot (full readable state + counts and hash of the rest)."""
 
 import hashlib
 import json
@@ -15,7 +15,7 @@ pytestmark = pytest.mark.golden
 
 GOLDEN = Path(__file__).parent / "golden" / "demo-dataset.json"
 AST = "AST-01"
-# 12:34:56 debe dar lo mismo que 12:00:00 (redondeo a la hora); el segundo reloj fija la aritmética de fechas relativas.
+# 12:34:56 must give the same as 12:00:00 (rounding to the hour); the second clock pins the relative date arithmetic.
 NOWS = {
     "2026-11-13T12:00:00Z": datetime(2026, 11, 13, 12, 34, 56, tzinfo=UTC),
     "2026-11-06T09:00:00Z": datetime(2026, 11, 6, 9, 30, tzinfo=UTC),

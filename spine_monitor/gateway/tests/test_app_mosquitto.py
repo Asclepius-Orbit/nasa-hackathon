@@ -1,7 +1,7 @@
-"""Integración del gateway real con un broker MQTT real en 127.0.0.1:1883 (aiomqtt de verdad, Arduino de mentira).
+"""Integration of the real gateway with a real MQTT broker at 127.0.0.1:1883 (real aiomqtt, fake Arduino).
 
-Se salta si no hay broker, salvo con SPINE_REQUIRE_BROKER=1 (el gate de Docker), donde falla. Usa un dispositivo propio
-(``itest-gw-*``) y borra al final los retained que deja.
+Skipped if there is no broker, except with SPINE_REQUIRE_BROKER=1 (the Docker gate), where it fails. Uses its own device
+(``itest-gw-*``) and deletes the retained messages it leaves at the end.
 """
 
 import asyncio
@@ -44,7 +44,7 @@ def _broker_up() -> bool:
 
 
 def _require_broker() -> None:
-    """Sin broker: salta, salvo con SPINE_REQUIRE_BROKER=1 (el gate de Docker), donde falla."""
+    """No broker: skip, except with SPINE_REQUIRE_BROKER=1 (the Docker gate), where it fails."""
     if _broker_up():
         return
     reason = f"no MQTT broker on {HOST}:{PORT}"
@@ -105,7 +105,7 @@ async def _scenario(settings: GatewaySettings, source: Any) -> None:
             return [p for t, p, _ in received if "/stream/" in t and p.get("session_id") == SESSION]
 
         try:
-            await until(lambda: "offline" in statuses())  # anuncio: aún sin dispositivo
+            await until(lambda: "offline" in statuses())  # announcement: no device yet
             await source.feed.put(LinkUp(datetime.now(UTC)), _line(encode_hello(Hello(1, 41, "fw-itest", 0))), _line(encode_tick(Tick(41, 0))))
             await until(lambda: "ok" in statuses() and any(t == clock_topic for t, _, _ in received))
             start = command("start_session", 1, session_id=SESSION, session_type="exercise", protocol_id="lat_pulldown_v1")
@@ -126,10 +126,10 @@ async def _scenario(settings: GatewaySettings, source: Any) -> None:
         assert {p["stream_id"] for p in session_chunks()} == {settings.emg_stream_id, settings.imu_stream_id, settings.stretch_stream_id}
         assert all(p["source"] == "device" and p["boot_id"] == 41 for p in session_chunks())
         for topic, payload, _ in received:
-            if payload:  # un retained vacío de una ejecución anterior que no limpió
+            if payload:  # an empty retained from a previous run that did not clean up
                 assert validation.errors(_schema(topic), payload) == [], topic
 
-        # Limpia los retained que deja el gateway.
+        # Cleans up the retained messages the gateway leaves.
         for topic in (status_topic, clock_topic):
             await observer.publish(topic, payload=b"", qos=1, retain=True)
 
@@ -147,17 +147,17 @@ def test_gateway_against_a_real_broker(settings: GatewaySettings, fakes) -> None
             "mqtt_password": SecretStr(DEVICE_PASSWORD) if DEVICE_PASSWORD else None,
         }
     )
-    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho necesita add_reader
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho needs add_reader
     asyncio.run(_scenario(custom, fakes.FakeLineSource()), loop_factory=loop_factory)
 
 
 class FakeArduino(threading.Thread):
-    """Arduino de mentira tras un ``socket://``: socket bloqueante en un hilo, sin asyncio (nada de medios cierres).
+    """Fake Arduino behind a ``socket://``: blocking socket in a thread, no asyncio (no half-closes).
 
-    Como el firmware, repite sus líneas periódicamente (el real manda un tick por segundo; aquí cada ``FIRMWARE_PERIOD_S``):
-    lo que llega antes de que pyserial acabe de abrir el puerto se pierde, porque ``socket://`` vacía el buffer de entrada
-    al abrir, igual que un Uno, que se reinicia al abrirse el puerto. El ritmo lo marca el timeout del ``recv``, que es
-    también donde se ve el EOF del gateway al cerrar su puerto serie (``port_closed``).
+    Like the firmware, it repeats its lines periodically (the real one sends a tick per second; here every ``FIRMWARE_PERIOD_S``):
+    what arrives before pyserial finishes opening the port is lost, because ``socket://`` flushes the input buffer
+    on open, just like an Uno, which resets when the port is opened. The pace is set by the ``recv`` timeout, which is
+    also where the gateway's EOF is seen when it closes its serial port (``port_closed``).
     """
 
     def __init__(self, lines: bytes) -> None:
@@ -185,7 +185,7 @@ class FakeArduino(threading.Thread):
 
 
 async def _main_scenario(settings: GatewaySettings) -> None:
-    """``app.main`` tal cual: el puerto serie es ``socket://`` hacia un ``FakeArduino``."""
+    """``app.main`` as is: the serial port is ``socket://`` to a ``FakeArduino``."""
     arduino = FakeArduino(f"{encode_hello(Hello(1, 77, 'fw-e2e', 0))}\r\n{encode_tick(Tick(77, 1000))}\n".encode("ascii"))
     arduino.start()
     custom = settings.model_copy(update={"serial_url": f"socket://127.0.0.1:{arduino.port}"})
@@ -216,7 +216,7 @@ async def _main_scenario(settings: GatewaySettings) -> None:
             with pytest.raises(asyncio.CancelledError):
                 await gateway
         await until(lambda: [p.get("status") for t, p in received if t == status_topic][-1:] == ["offline"])
-        assert await asyncio.to_thread(arduino.port_closed.wait, TIMEOUT_S)  # el gateway cierra su puerto al pararse
+        assert await asyncio.to_thread(arduino.port_closed.wait, TIMEOUT_S)  # the gateway closes its port when stopping
         clocks = [p for t, p in received if t == clock_topic and p]
         assert clocks and all((c["boot_id"], c["device_ms"], c["method"]) == (77, 1000, "gateway_receive_time") for c in clocks)
         ok = next(p for t, p in received if t == status_topic and p.get("status") == "ok")

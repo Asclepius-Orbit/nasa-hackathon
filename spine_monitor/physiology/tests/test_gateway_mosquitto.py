@@ -1,11 +1,11 @@
-"""Integración del gateway falso con un broker MQTT real en 127.0.0.1:1883, con usuarios y ACL (#96).
+"""Integration of the fake gateway with a real MQTT broker at 127.0.0.1:1883, with users and ACL (#96).
 
-Se salta solo si no hay nada escuchando ahí; con SPINE_REQUIRE_BROKER=1 (el gate) falla en vez de saltar. El broker es
-el de `app/docker-compose.yml` (antes `sh app/mosquitto/setup.sh`). Credenciales por entorno, como en el servicio
-`quality`: SPINE_TEST_MQTT_USERNAME (por defecto `spine-itest`, con los permisos del backend) y SPINE_TEST_MQTT_PASSWORD
-para el observador, y SPINE_TEST_MQTT_DEVICE_PASSWORD para los dispositivos `itest-01` (AST-01) e `itest-02` (AST-02),
-cada uno usuario con su ACL. Sin contraseñas, el test del gateway entra anónimo (broker sin auth) y los de autenticación
-se saltan (o fallan con SPINE_REQUIRE_BROKER=1). Usa dispositivos propios y borra al final los retained que deja.
+It is skipped only if nothing is listening there; with SPINE_REQUIRE_BROKER=1 (the gate) it fails instead of skipping. The broker is
+the one from `app/docker-compose.yml` (formerly `sh app/mosquitto/setup.sh`). Credentials via environment, as in the service
+`quality`: SPINE_TEST_MQTT_USERNAME (default `spine-itest`, with the backend permissions) and SPINE_TEST_MQTT_PASSWORD
+for the observer, and SPINE_TEST_MQTT_DEVICE_PASSWORD for the devices `itest-01` (AST-01) and `itest-02` (AST-02),
+each a user with its own ACL. Without passwords, the gateway test connects anonymously (broker without auth) and the authentication ones
+are skipped (or fail with SPINE_REQUIRE_BROKER=1). It uses its own devices and deletes the retained messages it leaves at the end.
 """
 
 import asyncio
@@ -47,7 +47,7 @@ pytestmark = pytest.mark.mosquitto
 
 
 def _skip_or_fail(reason: str) -> None:
-    """Salta, salvo con SPINE_REQUIRE_BROKER=1 (el gate de Docker), donde falla."""
+    """Skips, except with SPINE_REQUIRE_BROKER=1 (the Docker gate), where it fails."""
     if os.environ.get("SPINE_REQUIRE_BROKER") == "1":
         pytest.fail(f"SPINE_REQUIRE_BROKER=1 but {reason}: the mosquitto test must not be skipped in the gate")
     pytest.skip(reason)
@@ -65,7 +65,7 @@ def _require_auth() -> None:
 
 
 def _observer_auth() -> dict[str, str | None]:
-    """Usuario con los permisos del backend (lee los canales de todo dispositivo, publica comandos)."""
+    """User with the backend permissions (reads the channels of every device, publishes commands)."""
     password = os.environ.get("SPINE_TEST_MQTT_PASSWORD") or None
     return {"username": os.environ.get("SPINE_TEST_MQTT_USERNAME", "spine-itest") if password else None, "password": password}
 
@@ -80,7 +80,7 @@ def _client(name: str, *, username: str | None = None, password: str | None = No
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
-    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho necesita add_reader
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho needs add_reader
     return asyncio.run(coro, loop_factory=loop_factory)
 
 
@@ -165,15 +165,15 @@ async def _scenario() -> None:
         assert streams == set(config.protocol("lat_pulldown_standing_v1").streams)
         assert all(p["source"] == "simulator" for p in session_chunks())
         for topic, payload, _ in received:
-            if payload:  # un retained vacío de una ejecución anterior que no limpió
+            if payload:  # an empty retained from a previous run that did not clean up
                 assert validation.errors(_schema(topic), payload) == [], topic
-        # Todo chunk que cita una calibración llega después de esa calibración (retained) en su topic.
+        # Every chunk that cites a calibration arrives after that calibration (retained) on its topic.
         calibrations = {p["calibration_id"] for t, p, _ in received if "/calibration/" in t and p}
         cited = {p["calibration_id"] for t, p, _ in received if "/stream/" in t and "calibration_id" in p}
         assert cited and cited <= calibrations
 
-    # Limpia los retained que deja el gateway (estado, anclaje y calibraciones de los dispositivos de prueba); solo
-    # cada dispositivo puede escribir en sus topics.
+    # Cleans the retained messages the gateway leaves (status, anchor and calibrations of the test devices); only
+    # each device can write to its own topics.
     for member in config.crew:
         a, d = member.astronaut_id, member.device_id
         async with _client("cleanup", **_device_auth(d)) as device:
@@ -187,7 +187,7 @@ def test_gateway_against_a_real_broker():
     _run(_scenario())
 
 
-# --- autenticación y ACL ------------------------------------------------------------------------------------------
+# --- authentication and ACL ------------------------------------------------------------------------------------------
 
 
 async def _connect(*, username: str | None = None, password: str | None = None) -> None:
@@ -214,7 +214,7 @@ def test_the_test_credentials_are_accepted():
 
 
 async def _until_topic(client: aiomqtt.Client, last: str) -> list[str]:
-    """Topics que llegan hasta `last`. Un mismo publicador entrega en orden: lo publicado antes y no recibido, se denegó."""
+    """Topics that arrive up to `last`. A single publisher delivers in order: whatever was published before and not received was denied."""
     received: list[str] = []
 
     async def wait() -> None:
@@ -229,12 +229,12 @@ async def _until_topic(client: aiomqtt.Client, last: str) -> list[str]:
 
 async def _publish_scenario() -> list[str]:
     own = topics.ack("AST-01", "itest-01")
-    foreign = [topics.ack("AST-02", "itest-02"), topics.ack("AST-02", "itest-01")]  # otro dispositivo; otro astronauta
+    foreign = [topics.ack("AST-02", "itest-02"), topics.ack("AST-02", "itest-01")]  # another device; another astronaut
     async with _client("observer", **_observer_auth()) as observer:
         for topic in (own, *foreign):
             await observer.subscribe(topic, qos=1)
         async with _client("device", **_device_auth("itest-01")) as device:
-            for topic in (*foreign, own):  # lo denegado primero: el broker lo descarta en silencio
+            for topic in (*foreign, own):  # the denied ones first: the broker silently drops them
                 await device.publish(topic, payload=b"{}", qos=1)
         return await _until_topic(observer, own)
 
@@ -248,7 +248,7 @@ async def _command_scenario() -> list[str]:
     own = topics.cmd("AST-01", "itest-01")
     foreign = topics.cmd("AST-02", "itest-02")
     async with _client("device", **_device_auth("itest-01")) as device:
-        await device.subscribe(foreign, qos=1)  # denegada: no le llega nada
+        await device.subscribe(foreign, qos=1)  # denied: nothing reaches it
         await device.subscribe(own, qos=1)
         async with _client("observer", **_observer_auth()) as observer:
             await observer.publish(foreign, payload=b"{}", qos=1)

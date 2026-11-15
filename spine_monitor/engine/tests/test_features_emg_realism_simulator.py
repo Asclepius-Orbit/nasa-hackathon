@@ -1,9 +1,9 @@
-"""Familia ``emg`` con el realismo del módulo encendido (#131): cuantización del ADC, red a 50 Hz, deriva de línea base y fuga de ECG.
+"""``emg`` family with the module realism switched on (#131): ADC quantization, 50 Hz mains, baseline drift and ECG leakage.
 
-Mismas sesiones y helpers que ``test_features_emg_simulator`` (cargados por ruta: con ``--import-mode=importlib`` los tests no
-se importan entre sí por nombre), pero con ``signals.emg`` modificado. Los valores de interferencia son **hipótesis** sin cifra
-verificada (``docs/sensor-sources.md``): el módulo comprado es defectuoso y no hay EMG medido, así que esto comprueba que el
-motor no se rompe con esos artefactos y cuánto se desvía de la verdad del simulador, no que reproduzca el hardware.
+Same sessions and helpers as ``test_features_emg_simulator`` (loaded by path: with ``--import-mode=importlib`` the tests do not
+import each other by name), but with ``signals.emg`` modified. The interference values are **hypotheses** with no
+verified figure (``docs/sensor-sources.md``): the purchased module is defective and there is no measured EMG, so this checks that the
+engine does not break with those artifacts and how far it deviates from the simulator truth, not that it reproduces the hardware.
 """
 
 import importlib.util
@@ -32,17 +32,17 @@ MAINS_MV, WANDER_MV, ECG_MV = 0.05, 0.05, 0.1
 _ECG_RMS_MV = ECG_MV * math.sqrt(0.01 * math.sqrt(math.pi) * 70.0 / 60.0)
 INTERFERENCE_RMS_MV = math.sqrt(MAINS_MV**2 / 2 + WANDER_MV**2 + _ECG_RMS_MV**2)
 
-# RMS activo: la verdad no incluye saturación. Con el ADC bipolar de ±1,65 mV y la MVC de la misión,
-# las colas de la señal se recortan: observado 6,3 % y 5,6 % por debajo de la verdad (semilla 7).
-# El umbral del 8 % incluye ese sesgo, además de la interferencia aditiva (~0,07 mV rms).
+# Active RMS: the truth does not include saturation. With the ±1.65 mV bipolar ADC and the mission MVC,
+# the signal tails are clipped: observed 6.3 % and 5.6 % below the truth (seed 7).
+# The 8 % threshold includes that bias, plus the additive interference (~0.07 mV rms).
 RMS_MV_REL = 0.08
-# RMS en reposo: sin artefactos es ~0,04 mV; con ellos domina la interferencia. Teórico sqrt(verdad^2 + interferencia^2);
-# observado 2-3 % de desvío de eso; umbral 10 % (ventanas de reposo cortas: ~1 s entre reps).
+# Rest RMS: without artifacts it is ~0.04 mV; with them the interference dominates. Theoretical sqrt(truth^2 + interference^2);
+# observed 2-3 % deviation from that; threshold 10 % (short rest windows: ~1 s between reps).
 REST_REL = 0.10
-# %MVC: añade el error de la MVC medida (sigma 5 %) como sin artefactos: umbral 12 %.
+# %MVC: adds the error of the measured MVC (sigma 5 %) as without artifacts: threshold 12 %.
 PCT_MVC_REL = 0.12
-# Mediana espectral: la red a 50 Hz está dentro de la banda y tira de la mediana (~220 Hz) hacia abajo una fracción mínima;
-# observado 1,3 %; umbral 4 % (sin artefactos es 3 %).
+# Spectral median: the 50 Hz mains is inside the band and pulls the median (~220 Hz) down by a minimal fraction;
+# observed 1.3 %; threshold 4 % (without artifacts it is 3 %).
 MEDIAN_REL = 0.04
 
 
@@ -91,9 +91,9 @@ def test_the_amplitude_and_spectral_features_stay_close_to_the_truth_with_quanti
         assert features[f"{prefix}.rms_pct_mvc"]["value"] == pytest.approx(truth[f"{prefix}.rms_pct_mvc"], rel=PCT_MVC_REL)
         rest_expected = math.hypot(truth[f"{prefix}.rest_rms_mv"], INTERFERENCE_RMS_MV)
         assert features[f"{prefix}.rest_rms_mv"]["value"] == pytest.approx(rest_expected, rel=REST_REL)
-        assert features[f"{prefix}.rest_rms_mv"]["value"] > truth[f"{prefix}.rest_rms_mv"]  # los artefactos solo suman
+        assert features[f"{prefix}.rest_rms_mv"]["value"] > truth[f"{prefix}.rest_rms_mv"]  # the artifacts only add
         assert features[f"{prefix}.median_freq_hz"]["value"] == pytest.approx(truth[f"{prefix}.median_freq_hz"], rel=MEDIAN_REL)
-        assert features[f"{prefix}.median_freq_slope_hz_per_rep"]["value"] < 0.0  # la fatiga sigue viéndose
+        assert features[f"{prefix}.median_freq_slope_hz_per_rep"]["value"] < 0.0  # fatigue is still visible
         assert features[f"{prefix}.rms_mv"]["n"] == truth["exercise.rep_count"]
 
 
@@ -104,9 +104,9 @@ def test_the_quantized_session_is_made_of_whole_adc_steps_and_inside_the_adc_ran
     lsb = acq["vref_v"] * 1000.0 / acq["gain"] / 2 ** acq["adc_bits"]
     values = [v for c in payload["chunks"] if c["stream_kind"] == "emg" for v in c["data"]["emg"]]
     assert values
-    assert max(abs(v / lsb - round(v / lsb)) for v in values) < 1e-3  # el JSON redondea; los pasos siguen siendo enteros
+    assert max(abs(v / lsb - round(v / lsb)) for v in values) < 1e-3  # the JSON rounds; the steps are still whole numbers
     assert min(values) >= -(2 ** (acq["adc_bits"] - 1)) * lsb - 1e-9 and max(values) <= (2 ** (acq["adc_bits"] - 1) - 1) * lsb + 1e-9
-    # La comparación con la verdad sin recorte requiere que esta sesión realmente alcance ambos topes del ADC.
+    # Comparing against the unclipped truth requires this session to actually reach both ADC limits.
     for stream_id in SIDES:
         stream_values = [v for c in payload["chunks"] if c["stream_id"] == stream_id for v in c["data"]["emg"]]
         assert min(stream_values) == pytest.approx(-(2 ** (acq["adc_bits"] - 1)) * lsb, abs=1e-6)

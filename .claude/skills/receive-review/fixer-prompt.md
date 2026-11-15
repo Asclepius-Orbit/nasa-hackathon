@@ -1,45 +1,45 @@
-# Plantilla: subagente de arreglos (receive-review, Fase 4)
+# Template: fixes subagent (receive-review, Phase 4)
 
-Rellena los marcadores `<...>` y pásala como prompt de un subagente (`general-purpose`, modelo y esfuerzo según el plan aprobado). Un subagente por grupo de cambios independiente.
+Fill in the `<...>` markers and pass it as the prompt of a subagent (`general-purpose`, model and effort according to the approved plan). One subagent per independent group of changes.
 
 ```
-Aplicas un grupo de cambios pedidos en la review de la PR #<n> (repo Asclepius-Orbit/nasa-hackathon), rama <rama>. Trabajas en el árbol actual: no crees ramas, no hagas git commit, git push ni git rebase; el orquestador lo hace.
+You apply a group of changes requested in the review of PR #<n> (repo Asclepius-Orbit/nasa-hackathon), branch <branch>. You work in the current tree: do not create branches, do not run git commit, git push or git rebase; the orchestrator does that.
 
-## Grupo de cambios
+## Group of changes
 
-<Para cada comentario del grupo: autor, fichero:línea, texto literal del comentario, acción acordada con Uri, y evidencia de la verificación si el comentario era dudoso.>
+<For each comment in the group: author, file:line, literal text of the comment, action agreed with the maintainer, and evidence from the verification if the comment was doubtful.>
 
-## Ficheros del grupo
+## Files of the group
 
-<Lista. Solo tocas estos; si necesitas otro, para y dilo.>
+<List. You only touch these; if you need another, stop and say so.>
 
-## Contexto
+## Context
 
-<Convenciones relevantes, tests existentes (rutas), umbrales, decisiones ya tomadas con Uri.>
+<Relevant conventions, existing tests (paths), thresholds, decisions already taken with the maintainer.>
 
-## Método obligatorio (tdd-workflow)
+## Mandatory method (tdd-workflow)
 
-Todo cambio de código de producción sigue este ciclo:
-1. Rojo: escribe el test que describe el comportamiento pedido (un único marker: unit, integration, contract, property o golden). Ejecútalo y COMPRUEBA que falla por la razón correcta (assertion o import esperado, no sintaxis ni fixture). Guarda la salida.
-2. Verde: cambio mínimo. Ejecuta y guarda la salida.
-3. Refactor solo con la suite en verde.
-4. Bugfix: primero test de regresión visto en rojo.
-Bucle rápido: `cd spine_monitor && uv run pytest <ruta> -q -p no:randomly`.
+Every production code change follows this cycle:
+1. Red: write the test that describes the requested behaviour (a single marker: unit, integration, contract, property or golden). Run it and CHECK that it fails for the right reason (an expected assertion or import, not syntax or fixture). Save the output.
+2. Green: minimal change. Run and save the output.
+3. Refactor only with the suite green.
+4. Bugfix: first a regression test seen red.
+Fast loop: `cd spine_monitor && uv run pytest <path> -q -p no:randomly`.
 
-Exentos (solo docs/README y config/infra sin lógica): verifícalos ejecutándolos y dilo.
-Dobles de test solo en fronteras (HTTP, MQTT, reloj, aleatoriedad); fakes a mano antes que mock; nunca mockees lógica propia.
-Prohibido: bajar umbrales, `# pragma: no mutate`, `# type: ignore` (solo `# pyright: ignore[regla]` con motivo, y si lo necesitas, para y pregunta). READMEs: si tocas uno, sincroniza README.md, README.es.md y README.ca.md.
+Exempt (only docs/README and config/infra without logic): verify them by running them and say so.
+Test doubles only at boundaries (HTTP, MQTT, clock, randomness); hand-written fakes before mocks; never mock your own logic.
+Forbidden: lowering thresholds, `# pragma: no mutate`, `# type: ignore` (only `# pyright: ignore[rule]` with a reason, and if you need it, stop and ask). READMEs: if you touch one, sync README.md, README.es.md and README.ca.md.
 
-## Cuándo parar y preguntar
+## When to stop and ask
 
-Si un comentario resulta ambiguo, contradice el código o los tests, o el arreglo exige salir de los ficheros del grupo: NO improvises. Devuelve estado BLOQUEADO con la pregunta y la evidencia.
+If a comment turns out to be ambiguous, contradicts the code or the tests, or the fix requires going outside the group's files: do NOT improvise. Return status BLOCKED with the question and the evidence.
 
-## Qué devolver (todo, no solo el resumen)
+## What to return (everything, not just the summary)
 
-1. Estado: HECHO / BLOQUEADO (con la pregunta).
-2. Por cada comentario: qué cambiaste y en qué `fichero:línea`.
-3. Salida literal del test en ROJO (antes del cambio) y en VERDE (después). Sin rojo visible, el orquestador rechaza el grupo.
-4. Lista de ficheros tocados y `git diff --stat`.
-5. Dudas o riesgos que veas.
-No escribas mensajes de commit con Co-Authored-By ni "generated with Claude". Si nombras a Uri, es "Uri", nunca "Oriol".
+1. Status: DONE / BLOCKED (with the question).
+2. For each comment: what you changed and in which `file:line`.
+3. Literal test output in RED (before the change) and in GREEN (after). Without a visible red, the orchestrator rejects the group.
+4. List of files touched and `git diff --stat`.
+5. Doubts or risks you see.
+Do not write commit messages with Co-Authored-By or "generated with Claude". If you refer to the maintainer, use the role ("the maintainer"), not a personal name.
 ```

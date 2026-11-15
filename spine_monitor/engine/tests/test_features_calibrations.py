@@ -1,4 +1,4 @@
-"""Resolución de calibraciones por stream: chunk > sesión, match por stream_id, caducidad (#40)."""
+"""Per-stream calibration resolution: chunk > session, match by stream_id, expiry (#40)."""
 
 import json
 from datetime import UTC, datetime, timedelta
@@ -88,7 +88,7 @@ def test_calibration_from_another_person_or_device_does_not_apply(field, value):
 
 
 def test_calibration_of_another_kind_does_not_apply():
-    # imu_t9 es un stream IMU: una calibración emg_mvc con su stream_id no le sirve.
+    # imu_t9 is an IMU stream: an emg_mvc calibration with its stream_id does not apply to it.
     imu_id = "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f13"
     resolution = resolve_calibration(request(calibration(imu_id, "imu_t9")), "imu_t9", at=AT)
 

@@ -1,7 +1,7 @@
-"""Emulador del Arduino: núcleo puro (líneas por tiempo de dispositivo), servidor TCP y CLI.
+"""Arduino emulator: pure core (lines per device time), TCP server and CLI.
 
-El núcleo no usa sockets ni reloj de pared: el test le da los milisegundos de dispositivo. El servidor se prueba con TCP real
-en localhost (puerto efímero) y un ``sleep`` que solo cede el control; el reloj y el ``sleep`` los controla ``DeviceClock``.
+The core uses no sockets or wall clock: the test gives it the device milliseconds. The server is tested with real TCP
+on localhost (ephemeral port) and a ``sleep`` that only yields control; the clock and ``sleep`` are controlled by ``DeviceClock``.
 """
 
 import asyncio
@@ -23,7 +23,7 @@ SAMPLES = {FrameKind.EMG: 100, FrameKind.IMU: 10, FrameKind.CORD: 2}
 
 
 def parsed(lines: list[str]) -> list[Message | BadLine | str]:
-    """Cada línea ya interpretada; los comentarios ``#`` se dejan como texto (los parsers del gateway los descartan)."""
+    """Each line already parsed; ``#`` comments are kept as text (the gateway parsers discard them)."""
     return [line if line.startswith("#") else parse_line(line) for line in lines]
 
 
@@ -36,7 +36,7 @@ def run(lines_seconds: float, **options: Any) -> tuple[EmulatedArduino, list[str
     return arduino, arduino.lines_until(round(lines_seconds * 1000))
 
 
-# --- núcleo: hello, ticks y lotes ---
+# --- core: hello, ticks and batches ---
 
 
 def test_the_first_call_emits_the_hello_of_the_boot() -> None:
@@ -118,7 +118,7 @@ def test_the_default_first_frame_seq_is_zero_and_an_explicit_one_is_honoured() -
     assert frames(run(0.1, start_seq=40)[1])[0].frame_seq == 40
 
 
-# --- núcleo: fallos ---
+# --- core: faults ---
 
 
 def test_drop_every_skips_each_nth_batch_of_every_kind_but_consumes_its_frame_seq() -> None:
@@ -145,7 +145,7 @@ def test_without_an_imu_no_imu_frames_are_emitted_and_imu_absent_is_said_once() 
     assert not frames(lines, FrameKind.IMU)
     assert len(frames(lines, FrameKind.EMG)) == len(frames(lines, FrameKind.CORD)) == 30
     assert lines.count("#imu absent") == 1
-    assert parsed(lines)[1] == "#imu absent"  # justo tras el hello
+    assert parsed(lines)[1] == "#imu absent"  # right after the hello
     assert "#imu absent" not in run(3)[1]
 
 
@@ -163,7 +163,7 @@ def test_reboot_changes_the_boot_id_and_restarts_seq_and_millis() -> None:
     start = messages.index(reboot)
     before = [m for m in messages[:start] if isinstance(m, Frame)]
     after = [m for m in messages[start:] if isinstance(m, Frame)]
-    assert before[-3].frame_seq == 13 and before[-1].t0_ms == 1300  # el último lote completo antes de los 1500 ms
+    assert before[-3].frame_seq == 13 and before[-1].t0_ms == 1300  # the last complete batch before 1500 ms
     for kind in FrameKind:
         assert [(f.frame_seq, f.t0_ms) for f in after if f.kind is kind] == [(i, 100 * i) for i in range(10)]
     ticks_after = [m for m in messages[start:] if isinstance(m, Tick)]
@@ -174,7 +174,7 @@ def test_after_the_reboot_the_clock_counts_from_zero_and_it_reboots_only_once() 
     arduino = EmulatedArduino(boot_id=9, reboot_after_s=1.0)
     messages = parsed(arduino.lines_until(6000))
     assert {m.boot_id for m in messages if isinstance(m, Hello)} == {9, emulator.next_boot_id(9)}
-    assert arduino.millis == 5000  # 6000 ms de encendido menos el reinicio a los 1000
+    assert arduino.millis == 5000  # 6000 ms of power-on minus the reboot at 1000
 
 
 def test_a_reboot_before_the_first_batch_is_honoured() -> None:
@@ -194,10 +194,10 @@ def test_a_reboot_restarts_the_drop_counter_too() -> None:
     messages = parsed(lines)
     boot2 = next(i for i, m in enumerate(messages) if isinstance(m, Hello) and m.millis == 0 and m != messages[0])
     emg_after = [m.frame_seq for m in messages[boot2:] if isinstance(m, Frame) and m.kind is FrameKind.EMG]
-    assert emg_after[:4] == [0, 1, 3, 4]  # el contador de lotes también vuelve a cero
+    assert emg_after[:4] == [0, 1, 3, 4]  # the batch counter also goes back to zero
 
 
-# --- núcleo: determinismo, arranque y validación ---
+# --- core: determinism, boot and validation ---
 
 
 def test_the_same_seed_gives_the_same_lines_and_another_seed_different_ones() -> None:
@@ -241,7 +241,7 @@ def test_the_extreme_valid_options_are_accepted() -> None:
     EmulatedArduino(boot_id=0xFFFFFFFF, start_seq=0xFFFF, drop_every=1, reboot_after_s=0.001)
 
 
-# --- núcleo: señales sintéticas ---
+# --- core: synthetic signals ---
 
 
 def samples_of(kind: FrameKind, seconds: float, **options: Any) -> list[Any]:
@@ -273,7 +273,7 @@ def test_the_signals_are_coupled_the_emg_contracts_while_gyro_x_flexes() -> None
     lines = run(8, seed=2)[1]
     emg = [v for f in frames(lines, FrameKind.EMG) for v in f.samples]
     gx = [s[3] for f in frames(lines, FrameKind.IMU) for s in f.samples if isinstance(s, tuple)]
-    assert statistics.mean(emg[1500:2500]) > 8 * statistics.mean(emg[3600:4400])  # a media repetición frente al reposo entre repeticiones
+    assert statistics.mean(emg[1500:2500]) > 8 * statistics.mean(emg[3600:4400])  # mid-repetition versus rest between repetitions
     assert max(gx[100:150]) > 1500 and min(gx[250:300]) < -1500 and all(abs(v) < 100 for v in gx[360:440])
 
 
@@ -288,7 +288,7 @@ def test_a_reboot_restarts_the_signals_from_the_beginning() -> None:
 
 @pytest.mark.golden
 def test_golden_signal_digest_for_seed_0() -> None:
-    """Huella de 10 s de líneas con ``seed=0``: cualquier cambio de señal (o de formato) debe ser deliberado."""
+    """Fingerprint of 10 s of lines with ``seed=0``: any signal (or format) change must be deliberate."""
     lines = EmulatedArduino(seed=0).lines_until(10_000)
     digest = hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
     assert (len(lines), digest) == (EXPECTED_LINES, EXPECTED_DIGEST)
@@ -298,11 +298,11 @@ EXPECTED_LINES = 321
 EXPECTED_DIGEST = "6e7c2e59ac7c25b7c1d8ec9fc7e4d6c23f7f779817683f1947da658f6266ab84"
 
 
-# --- servidor TCP ---
+# --- TCP server ---
 
 
 class DeviceClock:
-    """Reloj monótono y ``sleep`` de mentira: cada espera adelanta el reloj lo pedido (más ``lag``) y solo cede el control."""
+    """Monotonic clock and fake ``sleep``: each wait advances the clock by the requested amount (plus ``lag``) and only yields control."""
 
     def __init__(self, lag: float = 0.0) -> None:
         self.now = 1000.0
@@ -368,7 +368,7 @@ def test_the_server_paces_the_device_at_100_ms_per_step_with_the_injected_sleep(
 
 
 def test_a_late_server_discounts_the_delay_of_each_sleep_instead_of_drifting() -> None:
-    clock = DeviceClock(lag=0.05)  # cada espera dura 50 ms más de lo pedido
+    clock = DeviceClock(lag=0.05)  # each wait lasts 50 ms longer than requested
 
     async def scenario(port: int) -> None:
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
@@ -377,7 +377,7 @@ def test_a_late_server_discounts_the_delay_of_each_sleep_instead_of_drifting() -
 
     go(scenario, sleep=clock.sleep, clock=clock)
     assert clock.sleeps[0] == pytest.approx(0.1)
-    assert clock.sleeps[1:10] == pytest.approx([0.05] * 9)  # pide solo lo que falta para el paso, no 100 ms más
+    assert clock.sleeps[1:10] == pytest.approx([0.05] * 9)  # requests only what is missing for the step, not 100 ms more
 
 
 def test_a_very_late_server_does_not_wait_until_it_catches_up() -> None:
@@ -387,7 +387,7 @@ def test_a_very_late_server_does_not_wait_until_it_catches_up() -> None:
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         lines = await read_lines(reader, 120)
         writer.close()
-        assert [f.frame_seq for f in frames(lines, FrameKind.EMG)] == list(range(len(frames(lines, FrameKind.EMG))))  # ninguno se salta
+        assert [f.frame_seq for f in frames(lines, FrameKind.EMG)] == list(range(len(frames(lines, FrameKind.EMG))))  # none is skipped
 
     go(scenario, sleep=clock.sleep, clock=clock)
     assert clock.sleeps[0] == pytest.approx(0.1) and set(clock.sleeps[1:10]) == {0.0}
@@ -437,7 +437,7 @@ def test_a_client_that_reconnects_finds_a_device_reset_by_dtr() -> None:
         assert h1.boot_id != h2.boot_id and h2.boot_id == emulator.next_boot_id(h1.boot_id) and h2.millis == 0
         assert [f.frame_seq for f in frames(second, FrameKind.EMG)][:3] == [0, 1, 2]
         assert [f.t0_ms for f in frames(second, FrameKind.EMG)][:3] == [0, 100, 200]
-        assert [f.samples for f in frames(second, FrameKind.EMG)][:3] == [f.samples for f in frames(first, FrameKind.EMG)][:3]  # misma señal
+        assert [f.samples for f in frames(second, FrameKind.EMG)][:3] == [f.samples for f in frames(first, FrameKind.EMG)][:3]  # same signal
 
     go(scenario)
 
@@ -452,7 +452,7 @@ def test_the_boot_id_after_a_reconnect_follows_the_internal_reboot() -> None:
         second = parsed(await read_lines(reader, 3))
         writer.close()
         boots = [m.boot_id for m in first if isinstance(m, Hello)]
-        assert len(set(boots)) == 2  # se reinició a los 0,5 s
+        assert len(set(boots)) == 2  # rebooted at 0.5 s
         assert [m.boot_id for m in second if isinstance(m, Hello)][0] == emulator.next_boot_id(boots[-1])
 
     go(scenario, reboot_after_s=0.5)
@@ -464,7 +464,7 @@ def test_clients_are_served_one_at_a_time() -> None:
         await read_lines(reader_a, 5)
         reader_b, writer_b = await asyncio.open_connection("127.0.0.1", port)
         with pytest.raises(TimeoutError):
-            await asyncio.wait_for(reader_b.readline(), 0.3)  # B espera a que A suelte el puerto
+            await asyncio.wait_for(reader_b.readline(), 0.3)  # B waits for A to release the port
         writer_a.close()
         await writer_a.wait_closed()
         first = await asyncio.wait_for(reader_b.readline(), 5)
@@ -482,8 +482,8 @@ def test_cancelling_the_server_closes_the_client_connection_cleanly() -> None:
         await read_lines(reader, 3)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 5)  # no se queda esperando a que el cliente cierre
-        assert await asyncio.wait_for(reader.read(), 5) is not None  # hasta EOF: el servidor cerró su extremo
+            await asyncio.wait_for(task, 5)  # does not keep waiting for the client to close
+        assert await asyncio.wait_for(reader.read(), 5) is not None  # up to EOF: the server closed its end
         assert reader.at_eof()
         writer.close()
 
@@ -491,7 +491,7 @@ def test_cancelling_the_server_closes_the_client_connection_cleanly() -> None:
 
 
 def test_cancelling_the_server_ends_a_handler_that_is_parked_waiting_for_the_next_step() -> None:
-    """``Server.close`` no cierra las conexiones en todas las plataformas: el servidor cancela él mismo a sus manejadores."""
+    """``Server.close`` does not close connections on all platforms: the server cancels its handlers itself."""
 
     async def parked(seconds: float) -> None:
         await asyncio.Event().wait()
@@ -500,11 +500,11 @@ def test_cancelling_the_server_ends_a_handler_that_is_parked_waiting_for_the_nex
         ready: asyncio.Future[int] = asyncio.get_running_loop().create_future()
         task = asyncio.create_task(emulator.serve("127.0.0.1", 0, sleep=parked, on_listening=ready.set_result))
         reader, writer = await asyncio.open_connection("127.0.0.1", await asyncio.wait_for(ready, 5))
-        await read_lines(reader, 1)  # el manejador ya está esperando su siguiente paso
+        await read_lines(reader, 1)  # the handler is already waiting for its next step
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(task, 5)
-        assert await asyncio.wait_for(reader.read(), 5) == b""  # y su extremo quedó cerrado
+        assert await asyncio.wait_for(reader.read(), 5) == b""  # and its end was closed
         writer.close()
 
     asyncio.run(scenario())
@@ -638,11 +638,11 @@ def test_main_exits_quietly_on_ctrl_c() -> None:
     async def run_(**kwargs: Any) -> None:
         raise KeyboardInterrupt
 
-    emulator.main([], run=run_)  # no lanza
+    emulator.main([], run=run_)  # does not raise
 
 
 def test_a_stop_request_ends_main_without_error() -> None:
-    """SIGTERM (``docker stop``) cancela la tarea del servidor: ``main`` termina como una parada pedida."""
+    """SIGTERM (``docker stop``) cancels the server task: ``main`` ends as a requested stop."""
 
     async def run_(**kwargs: Any) -> None:
         raise asyncio.CancelledError
@@ -651,7 +651,7 @@ def test_a_stop_request_ends_main_without_error() -> None:
 
 
 def test_cancelling_the_outer_task_still_propagates_the_cancellation() -> None:
-    """Solo la cancelación que no pidió el propio servidor (SIGTERM) sigue su camino: Ctrl+C no se traga."""
+    """Only a cancellation not requested by the server itself (SIGTERM) propagates: Ctrl+C is not swallowed."""
 
     async def forever(**kwargs: Any) -> None:
         await asyncio.Event().wait()
@@ -666,7 +666,7 @@ def test_cancelling_the_outer_task_still_propagates_the_cancellation() -> None:
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="el bucle de Windows no admite manejadores de señales")
+@pytest.mark.skipif(sys.platform == "win32", reason="the Windows loop does not support signal handlers")
 def test_sigterm_stops_the_emulator_cleanly() -> None:
     import signal
 
@@ -677,14 +677,14 @@ def test_sigterm_stops_the_emulator_cleanly() -> None:
         outer = asyncio.create_task(emulator.run_until_stopped(forever))
         await asyncio.sleep(0.05)
         signal.raise_signal(signal.SIGTERM)
-        await asyncio.wait_for(outer, 5)  # vuelve sin excepción: la parada fue pedida
-        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL  # el manejador se quita al salir
+        await asyncio.wait_for(outer, 5)  # returns without exception: the stop was requested
+        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL  # the handler is removed on exit
 
     asyncio.run(scenario())
 
 
 def test_running_the_module_calls_main(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(sys, "argv", ["emulator", "--port", "0"])  # inválido: argparse sale antes de abrir nada
+    monkeypatch.setattr(sys, "argv", ["emulator", "--port", "0"])  # invalid: argparse exits before opening anything
     monkeypatch.delitem(sys.modules, "spine_gateway.emulator", raising=False)
     with pytest.raises(SystemExit) as exit_:
         runpy.run_module("spine_gateway.emulator", run_name="__main__")

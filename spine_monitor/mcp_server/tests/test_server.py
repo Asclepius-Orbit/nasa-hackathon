@@ -1,4 +1,4 @@
-"""Tests del servidor MCP: las 8 herramientas, en proceso (`Client` sobre `MCPServer`), contra puertos falsos y los mocks de ejemplo."""
+"""Tests of the MCP server: the 8 tools, in process (`Client` over `MCPServer`), against fake ports and the example mocks."""
 
 import json
 from datetime import UTC, datetime
@@ -31,9 +31,9 @@ def anyio_backend() -> str:
 
 
 class RecordingApp:
-    """`AppReader` falso que delega en los ejemplos y apunta cada llamada (método y argumentos).
+    """Fake `AppReader` that delegates to the examples and records each call (method and arguments).
 
-    Si se da `second_history`, la segunda llamada a `get_history` devuelve ese historial en lugar del de los ejemplos.
+    If `second_history` is given, the second call to `get_history` returns that history instead of the examples one.
     """
 
     def __init__(self, second_history: History | None = None) -> None:
@@ -138,7 +138,7 @@ def _data(result: CallToolResult) -> dict[str, Any]:
     return result.structured_content
 
 
-# Argumentos válidos de cada herramienta para AST-01 y el esquema de su salida.
+# Valid arguments of each tool for AST-01 and the schema of its output.
 CALLS: list[tuple[str, dict[str, Any], str]] = [
     ("get_current_status", {"astronaut_id": AST}, "app/status"),
     ("get_history", {"astronaut_id": AST} | WIDE, "app/history"),
@@ -150,7 +150,7 @@ CALLS: list[tuple[str, dict[str, Any], str]] = [
 ]
 
 
-# --- catálogo de herramientas ---
+# --- tool catalogue ---
 
 
 @pytest.mark.anyio
@@ -226,7 +226,7 @@ async def test_every_tool_declares_an_output_schema():
         assert tool.output_schema is not None, tool.name
 
 
-# --- respuestas con los mocks, validadas contra el esquema ---
+# --- responses with the mocks, validated against the schema ---
 
 
 @pytest.mark.contract
@@ -415,7 +415,7 @@ async def test_compare_periods_is_a_tool_error_when_histories_belong_to_differen
     assert "different astronauts" in _text(result)
 
 
-# --- errores ---
+# --- errors ---
 
 
 @pytest.mark.anyio
@@ -445,7 +445,7 @@ async def test_end_before_start_is_an_invalid_range_tool_error():
 @pytest.mark.parametrize(("name", "arguments", "_schema"), CALLS, ids=[c[0] for c in CALLS])
 async def test_upstream_errors_become_title_and_detail(name: str, arguments: dict[str, Any], _schema: str):
     server = _server(app=FailingApp(), simulator=FailingSimulator(), base=FailingBase())
-    # El SDK antepone «Error executing tool <name>: » al mensaje del ToolError.
+    # The SDK prepends "Error executing tool <name>: " to the ToolError message.
     assert _text(await _call(server, name, arguments)).endswith(": Boom: it broke")
 
 
@@ -488,7 +488,7 @@ async def test_simulate_scenario_rejects_invalid_arguments_without_calling_the_s
 
 @pytest.mark.anyio
 async def test_simulate_scenario_validates_the_request_against_the_schema_and_reports_each_violation():
-    # Una base con una regla que solo expresa el esquema (feature_sets no vacío): `model_copy` no valida.
+    # A base with a rule that only the schema expresses (non-empty feature_sets): `model_copy` does not validate.
     invalid_base = ExampleAssessBaseSource().get_base(AST).model_copy(update={"feature_sets": []})
     simulator = RecordingSimulator()
     result = await _call(_server(simulator=simulator, base=RecordingBase(invalid_base)), "simulate_scenario", {"astronaut_id": AST, "overrides": [OVERRIDE]})
@@ -497,7 +497,7 @@ async def test_simulate_scenario_validates_the_request_against_the_schema_and_re
     assert simulator.requests == []
 
 
-# --- solo lectura ---
+# --- read-only ---
 
 
 @pytest.mark.anyio
@@ -527,10 +527,10 @@ async def test_simulate_scenario_does_not_touch_the_app_port():
 
 @pytest.mark.anyio
 async def test_main_serves_the_eight_tools_over_stdio(monkeypatch: pytest.MonkeyPatch):
-    # La frontera es el transporte: se sustituye `run` (que bloquearía leyendo stdin) y se comprueba qué servidor y transporte se arrancan.
+    # The boundary is the transport: `run` (which would block reading stdin) is replaced and which server and transport are started is checked.
     started: list[tuple[MCPServer, str]] = []
     monkeypatch.setattr(MCPServer, "run", lambda self, transport="stdio": started.append((self, transport)))
-    main([])  # argv explícito: sin él argparse leería los argumentos de pytest
+    main([])  # explicit argv: without it argparse would read the pytest arguments
     ((server, transport),) = started
     assert transport == "stdio"
     assert set(await _tools(server)) == TOOLS

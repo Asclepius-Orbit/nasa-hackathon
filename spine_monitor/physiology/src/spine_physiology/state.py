@@ -1,15 +1,15 @@
-"""Línea de tiempo de la misión y estado latente diario por astronauta.
+"""Mission timeline and daily latent state per astronaut.
 
-Dueño: B1. Implementa:
-- `MissionTimeline`: expande los tramos del config en días (`DayInfo`) con fecha, `mission_day`, fase,
-  gravedad y posición en el tramo.
-- `plan_daily_activity`: ejercicio general y contramedidas reales del día (lo que luego publica el
-  DailyContext), a partir del plan por fase, la adherencia del astronauta, `sd_min` y `skip_probability`.
-- `LatentModel`: latentes diarios = multiplicador × curva(mission_day) + deriva por dosis + N(0, daily_sd).
-  Los latentes índice (`muscle_deconditioning`, `rom_motor_control`, `pain_stiffness`) se recortan a
-  [0, 1]. RNG por rama: `(astronaut_id, day, "activity")` y `(astronaut_id, day, "latent")`, de modo que
-  `state(a, d)` sale igual se pida solo o dentro de la trayectoria completa (la deriva por dosis es
-  acumulativa: recorre la actividad de los días 0..d, que es barata y también regenerable por día).
+Owner: B1. Implements:
+- `MissionTimeline`: expands the config segments into days (`DayInfo`) with date, `mission_day`, phase,
+  gravity and position in the segment.
+- `plan_daily_activity`: general exercise and actual countermeasures of the day (what the
+  DailyContext later publishes), from the per-phase plan, the astronaut's adherence, `sd_min` and `skip_probability`.
+- `LatentModel`: daily latents = multiplier × curve(mission_day) + dose drift + N(0, daily_sd).
+  The index latents (`muscle_deconditioning`, `rom_motor_control`, `pain_stiffness`) are clipped to
+  [0, 1]. RNG per branch: `(astronaut_id, day, "activity")` and `(astronaut_id, day, "latent")`, so that
+  `state(a, d)` comes out the same whether requested alone or within the full trajectory (the dose drift is
+  cumulative: it walks the activity of days 0..d, which is cheap and also regenerable per day).
 """
 
 from collections.abc import Iterator
@@ -24,7 +24,7 @@ from spine_physiology.config import LATENTS, CrewMember, MissionConfig
 from spine_physiology.curves import PiecewiseLinear
 from spine_physiology.rng import RngTree
 
-# Gravedad de cada entorno en g. Definición física del enum del contrato, no un parámetro.
+# Gravity of each environment in g. Physical definition of the contract enum, not a parameter.
 GRAVITY_G: dict[GravityEnvironment, float] = {
     GravityEnvironment.EARTH_1G: 1.0,
     GravityEnvironment.MICROGRAVITY: 0.0,
@@ -35,23 +35,23 @@ GRAVITY_G: dict[GravityEnvironment, float] = {
 
 @dataclass(frozen=True, slots=True)
 class DayInfo:
-    """Un día de misión."""
+    """A mission day."""
 
-    index: int  # 0 = primer día simulado; clave de RNG y de carpetas de salida
+    index: int  # 0 = first simulated day; RNG key and output folder key
     date: date
     mission_day: int  # start_mission_day + index
     phase: MissionPhase
     gravity_environment: GravityEnvironment
     segment_index: int
-    day_in_segment: int  # 0 = primer día del tramo
+    day_in_segment: int  # 0 = first day of the segment
 
     @property
     def start(self) -> datetime:
-        """00:00 UTC del día."""
+        """00:00 UTC of the day."""
         return datetime.combine(self.date, time(0, 0), tzinfo=UTC)
 
     def at(self, time_of_day: time) -> datetime:
-        """Instante UTC de una hora del día."""
+        """UTC instant of a time of day."""
         return datetime.combine(self.date, time_of_day, tzinfo=UTC)
 
     @property
@@ -60,7 +60,7 @@ class DayInfo:
 
 
 class MissionTimeline:
-    """Días de la misión en orden, a partir de `start_date`, `start_mission_day` y `segments`."""
+    """Mission days in order, from `start_date`, `start_mission_day` and `segments`."""
 
     def __init__(self, config: MissionConfig) -> None:
         days: list[DayInfo] = []
@@ -87,7 +87,7 @@ class MissionTimeline:
         return iter(self._days)
 
     def day(self, index: int) -> DayInfo:
-        """Lanza IndexError fuera de [0, len)."""
+        """Raises IndexError outside [0, len)."""
         if not 0 <= index < len(self._days):
             raise IndexError(f"day index {index} out of range [0, {len(self._days)})")
         return self._days[index]
@@ -99,7 +99,7 @@ class MissionTimeline:
 
 @dataclass(frozen=True, slots=True)
 class ExerciseBout:
-    """Un bloque de ejercicio general hecho (DailyContext.exercise)."""
+    """A general exercise block done (DailyContext.exercise)."""
 
     modality: Literal["ared", "cevis", "t2", "other"]
     duration_min: float
@@ -115,11 +115,11 @@ class CountermeasureBout:
 
 @dataclass(frozen=True, slots=True)
 class DailyActivity:
-    """Lo que el astronauta hizo de verdad ese día (los saltados no aparecen)."""
+    """What the astronaut actually did that day (skipped ones do not appear)."""
 
     exercise: tuple[ExerciseBout, ...]
     countermeasures: tuple[CountermeasureBout, ...]
-    planned_exercise_min: float  # suma del plan de la fase (antes de adherencia y saltos)
+    planned_exercise_min: float  # sum of the phase plan (before adherence and skips)
 
     @property
     def exercise_min(self) -> float:
@@ -127,17 +127,17 @@ class DailyActivity:
 
     @property
     def dose_ratio(self) -> float:
-        """Minutos reales / planificados; 1 si no había nada planificado."""
+        """Actual / planned minutes; 1 if nothing was planned."""
         return self.exercise_min / self.planned_exercise_min if self.planned_exercise_min > 0 else 1.0
 
 
 def plan_daily_activity(rng: np.random.Generator, config: MissionConfig, member: CrewMember, day: DayInfo) -> DailyActivity:
-    """Ejercicio y contramedidas reales del día según el plan de su fase, adherencia, sd y saltos."""
+    """Actual exercise and countermeasures of the day according to its phase plan, adherence, sd and skips."""
     exercise: list[ExerciseBout] = []
     planned = 0.0
     for item in config.daily_context.exercise[day.phase]:
         planned += item.planned_min
-        # Se consumen siempre los dos números para que el flujo no dependa de si se salta o no.
+        # Both numbers are always consumed so the flow does not depend on whether it is skipped.
         skipped = rng.random() < item.skip_probability
         minutes = max(0.0, float(rng.normal(item.planned_min * member.exercise_adherence, item.sd_min)))
         if not skipped and minutes > 0:
@@ -154,7 +154,7 @@ def plan_daily_activity(rng: np.random.Generator, config: MissionConfig, member:
 
 @dataclass(frozen=True, slots=True)
 class LatentState:
-    """Latentes de un astronauta un día (ver convenciones de unidades en `config`)."""
+    """Latents of one astronaut on one day (see unit conventions in `config`)."""
 
     astronaut_id: str
     day: int
@@ -162,11 +162,11 @@ class LatentState:
     muscle_deconditioning: float
     rom_motor_control: float
     pain_stiffness: float
-    dose_ratio: float  # del propio día (DailyActivity.dose_ratio)
+    dose_ratio: float  # of the day itself (DailyActivity.dose_ratio)
 
 
 class LatentModel:
-    """Latentes y actividad diarios de toda la tripulación, regenerables por (astronauta, día)."""
+    """Daily latents and activity of the whole crew, regenerable per (astronaut, day)."""
 
     def __init__(self, config: MissionConfig, timeline: MissionTimeline, seed: int) -> None:
         self._config = config
@@ -186,14 +186,14 @@ class LatentModel:
         return cached
 
     def _dose_deficit(self, astronaut_id: str, day: int) -> float:
-        """Σ_{k<=day} (1 − dose_ratio_k) a partir de las actividades deterministas de cada día."""
+        """Σ_{k<=day} (1 − dose_ratio_k) from the deterministic activities of each day."""
         return sum(1.0 - self.activity(astronaut_id, k).dose_ratio for k in range(day + 1))
 
     def state(self, astronaut_id: str, day: int) -> LatentState:
         member = self._config.member(astronaut_id)
         info = self._timeline.day(day)
         deficit = self._dose_deficit(astronaut_id, day)
-        noise = self._tree.rng(astronaut_id, day, "latent").standard_normal(len(LATENTS))  # orden de LATENTS
+        noise = self._tree.rng(astronaut_id, day, "latent").standard_normal(len(LATENTS))  # order of LATENTS
         values: dict[str, float] = {}
         for i, name in enumerate(LATENTS):
             curve_cfg = self._config.curves.curve(name)
@@ -212,5 +212,5 @@ class LatentModel:
         )
 
     def trajectory(self, astronaut_id: str) -> tuple[LatentState, ...]:
-        """Un LatentState por día de la misión, en orden."""
+        """One LatentState per mission day, in order."""
         return tuple(self.state(astronaut_id, d) for d in range(len(self._timeline)))

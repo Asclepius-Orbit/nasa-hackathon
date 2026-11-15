@@ -1,4 +1,4 @@
-"""Calidad común: cobertura, saturación, score y flags (#40)."""
+"""Common quality: coverage, saturation, score and flags (#40)."""
 
 import pytest
 from hypothesis import given
@@ -93,7 +93,7 @@ def test_stretch_without_adc_bits_cannot_be_judged():
 
 
 def test_imu_samples_at_the_configured_range_are_clipped():
-    # Una muestra cuenta una vez aunque sature en varios canales.
+    # A sample counts once even if it saturates on several channels.
     chunk = imu([0.5, 2.0, -2.0, 1.99], gyro_z=[250.0, 250.0, 0.0, 0.0], accel_range=2, gyro_range=250)
 
     assert saturation_counts(chunk) == (3, 4)
@@ -132,7 +132,7 @@ def test_complete_clean_stream_scores_one():
 
 
 def test_gap_lowers_coverage_and_flags_packet_gap():
-    # seq 1 perdido: 2 muestras estimadas; 1 muestra dropped en el último chunk. Presentes 4 de 7.
+    # seq 1 lost: 2 estimated samples; 1 sample dropped in the last chunk. 4 of 7 present.
     result = assess_quality(segments(stretch([100, 200]), stretch([300, 400], seq=2, dropped=1)))
 
     assert result.coverage == pytest.approx(4 / 7)
@@ -163,7 +163,7 @@ def test_unjudgeable_saturation_is_omitted_not_zero():
 
 
 def test_saturation_fraction_only_over_judged_chunks():
-    # Un chunk juzgable (2 de 2 saturadas) y otro sin adc_bits: la fracción es 2/2, no 2/4.
+    # One judgeable chunk (2 of 2 saturated) and another without adc_bits: the fraction is 2/2, not 2/4.
     result = assess_quality(segments(stretch([0, 4095]), stretch([10, 20], seq=1, adc_bits=None)))
 
     assert result.saturated_fraction == 1.0
@@ -211,7 +211,7 @@ def test_score_and_coverage_stay_in_the_unit_interval(specs, expired, uncertain)
     assert 0.0 <= result.coverage <= 1.0
     assert 0.0 <= result.score <= result.coverage
     assert result.saturated_fraction is None or 0.0 <= result.saturated_fraction <= 1.0
-    result.to_quality()  # el modelo del contrato valida score en [0, 1]
+    result.to_quality()  # the contract model validates score in [0, 1]
 
 
 @pytest.mark.property

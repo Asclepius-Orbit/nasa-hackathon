@@ -1,46 +1,46 @@
 ---
 name: mqtt-dev
-description: Use when se toca MQTT en este repo (broker Mosquitto, topics, publicar o consumir telemetría con aiomqtt, tests del gateway o del ingest del backend), antes de levantar el broker o escribir código o tests MQTT.
+description: Use when touching MQTT in this repo (Mosquitto broker, topics, publishing or consuming telemetry with aiomqtt, gateway or backend ingest tests), before starting the broker or writing MQTT code or tests.
 ---
 
 # mqtt-dev
 
-Todo cambio de código sigue `tdd-workflow`. Si cambia un topic, un payload, QoS o retain, aplica antes la skill `contract-first`: manda `spine_monitor/contracts/asyncapi.yaml` y los JSON Schemas de `schemas/v1/`, no el código.
+Every code change follows `tdd-workflow`. If a topic, payload, QoS or retain changes, first apply the `contract-first` skill: `spine_monitor/contracts/asyncapi.yaml` and the JSON Schemas in `schemas/v1/` rule, not the code.
 
-## Broker local
+## Local broker
 
-Mosquitto 2.0.22 en `app/docker-compose.yml`, publicado solo en `127.0.0.1:1883`, con usuarios y ACL (#96): `allow_anonymous false`, `password_file` y `acl_file` en `app/mosquitto/config/mosquitto.conf`. Las credenciales no están en el repo: `sh app/mosquitto/setup.sh` (Git Bash o Linux, solo necesita docker) escribe contraseñas aleatorias en `app/.env` y genera `app/mosquitto/auth/{passwd,acl}` desde `app/mosquitto/acl.template` y `acl-device.template` (todo gitignored). Sin él, todo `docker compose` falla con `run sh app/mosquitto/setup.sh`. Repetirlo conserva las contraseñas; `--force` las rota; `--device AST-03:wb-01` da de alta un dispositivo real. Tras cambiarlas: `up -d --force-recreate mosquitto`.
+Mosquitto 2.0.22 in `app/docker-compose.yml`, published only on `127.0.0.1:1883`, with users and ACL (#96): `allow_anonymous false`, `password_file` and `acl_file` in `app/mosquitto/config/mosquitto.conf`. The credentials are not in the repo: `sh app/mosquitto/setup.sh` (Git Bash or Linux, only needs docker) writes random passwords to `app/.env` and generates `app/mosquitto/auth/{passwd,acl}` from `app/mosquitto/acl.template` and `acl-device.template` (all gitignored). Without it, every `docker compose` fails with `run sh app/mosquitto/setup.sh`. Repeating it keeps the passwords; `--force` rotates them; `--device AST-03:wb-01` registers a real device. After changing them: `up -d --force-recreate mosquitto`.
 
-| Usuario | Quién | Puede |
+| User | Who | Can |
 |---|---|---|
-| `spine-app` | backend | leer `stream/+`, `status`, `ack`, `clock`, `calibration/+` de todos; escribir todo `cmd` |
-| `spine-itest` | tests `mosquitto` | lo mismo que `spine-app` |
-| `spine-health` | healthcheck | leer `$SYS/broker/uptime` |
-| `<device_id>` (`sim-01`, `itest-01`...) | un dispositivo | escribir solo sus canales y leer solo su `cmd`, bajo su `crew/<astronaut_id>/device/<device_id>` |
+| `spine-app` | backend | read `stream/+`, `status`, `ack`, `clock`, `calibration/+` of all; write all `cmd` |
+| `spine-itest` | `mosquitto` tests | the same as `spine-app` |
+| `spine-health` | healthcheck | read `$SYS/broker/uptime` |
+| `<device_id>` (`sim-01`, `itest-01`...) | a device | write only its own channels and read only its `cmd`, under its `crew/<astronaut_id>/device/<device_id>` |
 
-Un publish denegado se descarta en silencio y una suscripción denegada no recibe nada: un test de ACL lo comprueba con un mensaje permitido detrás (mismo publicador, entrega en orden), no con un sleep. Acceso por LAN: listener TLS 8883 con `-f app/docker-compose.lan.yml` y certificados en `SPINE_MQTT_TLS_DIR` (fuera del repo); ver el README del backend.
+A denied publish is silently dropped and a denied subscription receives nothing: an ACL test checks it with an allowed message behind it (same publisher, in-order delivery), not with a sleep. LAN access: TLS listener 8883 with `-f app/docker-compose.lan.yml` and certificates in `SPINE_MQTT_TLS_DIR` (outside the repo); see the backend README.
 
 ```bash
-sh app/mosquitto/setup.sh                                           # una vez (y con --device al dar de alta uno)
-docker compose -f app/docker-compose.yml up -d mosquitto          # solo el broker
-docker compose -f app/docker-compose.yml --profile sim up -d simulator   # + simulador de telemetría
+sh app/mosquitto/setup.sh                                           # once (and with --device when registering one)
+docker compose -f app/docker-compose.yml up -d mosquitto          # broker only
+docker compose -f app/docker-compose.yml --profile sim up -d simulator   # + telemetry simulator
 docker compose -f app/docker-compose.yml logs -f mosquitto
 docker compose -f app/docker-compose.yml down
 ```
 
-El healthcheck es `mosquitto_sub` (usuario `spine-health`) sobre `$SYS/broker/uptime`; `backend` y `simulator` esperan a `service_healthy`.
+The healthcheck is `mosquitto_sub` (user `spine-health`) on `$SYS/broker/uptime`; `backend` and `simulator` wait for `service_healthy`.
 
-## Inspeccionar topics
+## Inspecting topics
 
-Con el usuario `spine-itest` (permisos del backend); su contraseña está en `app/.env` (`SPINE_MQTT_ITEST_PASSWORD`): cárgala desde el fichero, no la copies en comandos ni en logs. Con clientes mosquitto instalados (o `docker compose -f app/docker-compose.yml exec mosquitto ...`, que ya los trae):
+With the `spine-itest` user (backend permissions); its password is in `app/.env` (`SPINE_MQTT_ITEST_PASSWORD`): load it from the file, do not copy it into commands or logs. With mosquitto clients installed (or `docker compose -f app/docker-compose.yml exec mosquitto ...`, which already has them):
 
 ```bash
 set -a; . app/.env; set +a
-mosquitto_sub -h 127.0.0.1 -u spine-itest -P "$SPINE_MQTT_ITEST_PASSWORD" -t 'asclepius/v1/crew/+/device/+/status' -v   # retained: llega al suscribirse
+mosquitto_sub -h 127.0.0.1 -u spine-itest -P "$SPINE_MQTT_ITEST_PASSWORD" -t 'asclepius/v1/crew/+/device/+/status' -v   # retained: arrives on subscribing
 mosquitto_pub -h 127.0.0.1 -u spine-itest -P "$SPINE_MQTT_ITEST_PASSWORD" -t 'asclepius/v1/crew/AST-01/device/sim-01/cmd' -q 1 -f cmd.json
 ```
 
-`asclepius/v1/#` no recibe nada: la ACL solo concede canales concretos. Sin clientes (p. ej. Windows), usa aiomqtt, que ya es dependencia de `physiology` y `backend`. Script temporal, fuera del repo, ejecutado con `cd spine_monitor && uv run python <ruta>` (con `app/.env` cargado como arriba):
+`asclepius/v1/#` receives nothing: the ACL only grants specific channels. Without clients (e.g. Windows), use aiomqtt, which is already a dependency of `physiology` and `backend`. Temporary script, outside the repo, run with `cd spine_monitor && uv run python <path>` (with `app/.env` loaded as above):
 
 ```python
 import asyncio, os, aiomqtt
@@ -54,52 +54,52 @@ async def main():
 asyncio.run(main())
 ```
 
-## Convención (de `asyncapi.yaml`)
+## Convention (from `asyncapi.yaml`)
 
-Raíz `asclepius/v1/crew/{astronaut_id}/device/{device_id}/...`. Construye y parsea topics solo con `spine_contracts.topics` (`stream`, `status`, `cmd`, `ack`, `clock`, `calibration`, `parse_stream`, `SUBSCRIBE_ALL_*`); valida los ids y así no entra un `/`, `+` o `#`. Nunca concatenes strings a mano.
+Root `asclepius/v1/crew/{astronaut_id}/device/{device_id}/...`. Build and parse topics only with `spine_contracts.topics` (`stream`, `status`, `cmd`, `ack`, `clock`, `calibration`, `parse_stream`, `SUBSCRIBE_ALL_*`); it validates the ids so no `/`, `+` or `#` gets in. Never concatenate strings by hand.
 
-| Canal | QoS | Retain |
+| Channel | QoS | Retain |
 |---|---|---|
 | `.../stream/{stream_id}` | 1 | no |
-| `.../status` (con Last Will `offline`) | 1 | sí |
-| `.../cmd` (app a gateway) | 1 | no |
+| `.../status` (with Last Will `offline`) | 1 | yes |
+| `.../cmd` (app to gateway) | 1 | no |
 | `.../ack` | 1 | no |
-| `.../clock` | 1 | sí |
-| `.../calibration/{stream_id}` | 1 | sí |
+| `.../clock` | 1 | yes |
+| `.../calibration/{stream_id}` | 1 | yes |
 
-Los payloads se validan contra `schemas/v1/` con `spine_contracts.validation`. Los ids son seudónimos (`AST-01`): ningún dato personal viaja por el bus.
+Payloads are validated against `schemas/v1/` with `spine_contracts.validation`. Ids are pseudonyms (`AST-01`): no personal data travels on the bus.
 
 ## Tests
 
-- **Unit**: inyecta un `FakeClient` escrito a mano con `publish(topic, payload, qos, retain)`, `subscribe` y `messages`, como el de `physiology/tests/test_gateway.py` (con su `Harness` y `Clock`). Los puertos son los Protocols `MqttClient` de `backend/src/monitor/ingest.py` y el de `physiology/src/spine_physiology/sinks/mqtt.py`.
-- **Integración con broker real**: marker `mosquitto` (`pytestmark = pytest.mark.mosquitto`), modelo `physiology/tests/test_gateway_mosquitto.py`. `conftest.py` le añade `integration`, que es el marker de la tabla de `tdd-workflow`; no pongas dos markers de tipo. Se salta si no hay nada en `127.0.0.1:1883`; con `SPINE_REQUIRE_BROKER=1` (lo fija el servicio `quality`) falla en vez de saltar. Credenciales por entorno (el servicio `quality` las pasa desde `app/.env`): `SPINE_TEST_MQTT_USERNAME` (`spine-itest`) y `SPINE_TEST_MQTT_PASSWORD` para el observador, `SPINE_TEST_MQTT_DEVICE_PASSWORD` para los dispositivos `itest-01` (AST-01) e `itest-02` (AST-02), que entran con su device id como usuario. Usa esos device ids (otros no tienen usuario) y borra los retained que dejes conectado como el propio dispositivo (el observador no puede escribir en sus topics).
-- **Gateway real** (`spine_monitor/gateway`, Arduino por USB serie): sus tests unitarios usan el `FakeClient` y el `Harness` de `gateway/tests/conftest.py`; sin placa se prueba con el emulador (`spine-arduino-emulator`, `spine_gateway/emulator.py`, `SPINE_GATEWAY_SERIAL_URL=socket://host:puerto`) y `gateway/tests/test_e2e_emulator_mosquitto.py` es el modelo de E2E sin hardware contra Mosquitto real (observador aiomqtt, schema completo, ids del topic y retained con un suscriptor tardío).
-- Reloj inyectado (`Clock` avanzable), nunca `datetime.now()` ni `time.sleep()`. Espera con eventos o `asyncio.wait_for` con tope, no con sleeps fijos.
-- No mockees lógica propia: solo la frontera (cliente MQTT, reloj, rng). El test debe verificar QoS, retain y topic, no solo que se llamó a `publish`.
-- Bucle rápido, con el broker de compose arriba y desde la raíz: `set -a; . app/.env; set +a; export SPINE_TEST_MQTT_PASSWORD="$SPINE_MQTT_ITEST_PASSWORD" SPINE_TEST_MQTT_DEVICE_PASSWORD="$SPINE_MQTT_ITEST_DEVICE_PASSWORD" SPINE_REQUIRE_BROKER=1`, y luego `cd spine_monitor && uv run pytest physiology/tests -q -p no:randomly -m mosquitto`. Gate completo: el comando de `tdd-workflow`.
+- **Unit**: inject a hand-written `FakeClient` with `publish(topic, payload, qos, retain)`, `subscribe` and `messages`, like the one in `physiology/tests/test_gateway.py` (with its `Harness` and `Clock`). The ports are the `MqttClient` Protocols in `backend/src/monitor/ingest.py` and in `physiology/src/spine_physiology/sinks/mqtt.py`.
+- **Integration with a real broker**: marker `mosquitto` (`pytestmark = pytest.mark.mosquitto`), model `physiology/tests/test_gateway_mosquitto.py`. `conftest.py` adds `integration` to it, which is the marker from the `tdd-workflow` table; do not put two kind markers. It is skipped if there is nothing on `127.0.0.1:1883`; with `SPINE_REQUIRE_BROKER=1` (set by the `quality` service) it fails instead of skipping. Credentials via environment (the `quality` service passes them from `app/.env`): `SPINE_TEST_MQTT_USERNAME` (`spine-itest`) and `SPINE_TEST_MQTT_PASSWORD` for the observer, `SPINE_TEST_MQTT_DEVICE_PASSWORD` for the devices `itest-01` (AST-01) and `itest-02` (AST-02), which connect with their device id as the user. Use those device ids (others have no user) and delete the retained messages you leave, connected as the device itself (the observer cannot write to its topics).
+- **Real gateway** (`spine_monitor/gateway`, Arduino over USB serial): its unit tests use the `FakeClient` and the `Harness` from `gateway/tests/conftest.py`; without a board, test with the emulator (`spine-arduino-emulator`, `spine_gateway/emulator.py`, `SPINE_GATEWAY_SERIAL_URL=socket://host:port`) and `gateway/tests/test_e2e_emulator_mosquitto.py` is the model for E2E without hardware against a real Mosquitto (aiomqtt observer, full schema, topic ids and retained with a late subscriber).
+- Injected clock (advanceable `Clock`), never `datetime.now()` or `time.sleep()`. Wait with events or `asyncio.wait_for` with a cap, not with fixed sleeps.
+- Do not mock your own logic: only the boundary (MQTT client, clock, rng). The test must verify QoS, retain and topic, not just that `publish` was called.
+- Fast loop, with the compose broker up and from the root: `set -a; . app/.env; set +a; export SPINE_TEST_MQTT_PASSWORD="$SPINE_MQTT_ITEST_PASSWORD" SPINE_TEST_MQTT_DEVICE_PASSWORD="$SPINE_MQTT_ITEST_DEVICE_PASSWORD" SPINE_REQUIRE_BROKER=1`, then `cd spine_monitor && uv run pytest physiology/tests -q -p no:randomly -m mosquitto`. Full gate: the `tdd-workflow` command.
 
-## Seguridad
+## Security
 
-- Credenciales, hosts y puertos solo por entorno (`SPINE_{APP,SIM}_MQTT_{HOST,PORT,USERNAME,PASSWORD,TLS,TLS_CA_FILE}`, pydantic-settings; la contraseña es `SecretStr`); nunca en el repo, compose ni logs. Compose solo interpola `${SPINE_MQTT_*:?...}` de `app/.env`, que genera `setup.sh`. `.env.example` lista las variables sin valores: si añades una, documéntala ahí sin valores reales.
-- Nunca `allow_anonymous true` ni un usuario sin ACL. Un cliente nuevo es un usuario nuevo en `acl.template` (o un dispositivo con `--device`), con los topics mínimos.
-- El puerto 1883 (sin TLS) solo escucha en `127.0.0.1`; no lo publiques en `0.0.0.0`. La red solo ve el listener TLS 8883 de `docker-compose.lan.yml`, en la dirección de `SPINE_MQTT_LAN_ADDRESS`. No se commitean certificados ni claves (`*.crt`, `*.key`, `*.pem` están en `.gitignore`).
-- No uses un MCP de MQTT de terceros: ejecutaría código ajeno con acceso al bus. Usa los comandos de arriba.
+- Credentials, hosts and ports only via environment (`SPINE_{APP,SIM}_MQTT_{HOST,PORT,USERNAME,PASSWORD,TLS,TLS_CA_FILE}`, pydantic-settings; the password is `SecretStr`); never in the repo, compose or logs. Compose only interpolates `${SPINE_MQTT_*:?...}` from `app/.env`, which `setup.sh` generates. `.env.example` lists the variables without values: if you add one, document it there without real values.
+- Never `allow_anonymous true` or a user without an ACL. A new client is a new user in `acl.template` (or a device with `--device`), with the minimum topics.
+- Port 1883 (no TLS) only listens on `127.0.0.1`; do not publish it on `0.0.0.0`. The network only sees the TLS 8883 listener from `docker-compose.lan.yml`, on the `SPINE_MQTT_LAN_ADDRESS` address. Certificates and keys are not committed (`*.crt`, `*.key`, `*.pem` are in `.gitignore`).
+- Do not use a third-party MQTT MCP: it would run foreign code with access to the bus. Use the commands above.
 
-## Notas
+## Notes
 
-aiomqtt 2.5.1 no declara soporte de Python 3.14 en PyPI, pero ya se usa en `physiology` y `backend` (`pythonVersion = "3.14"`) y los tests pasan. No cambies de cliente por eso; para su API consulta el MCP `context7`.
+aiomqtt 2.5.1 does not declare Python 3.14 support on PyPI, but it is already used in `physiology` and `backend` (`pythonVersion = "3.14"`) and the tests pass. Do not switch clients because of that; for its API consult the `context7` MCP.
 
-## Señales de alarma — PARA
+## Warning signs — STOP
 
-| Pensamiento | Realidad |
+| Thought | Reality |
 |---|---|
-| «Armo el topic con un f-string» | Usa `spine_contracts.topics`; valida ids. |
-| «Publico QoS 0 / retain para ir rápido» | Lo fija `asyncapi.yaml`; cambiarlo es cambio de contrato (`contract-first`). |
-| «Mockeo `publish` con MagicMock» | Escribe un `FakeClient` y comprueba el efecto observable. |
-| «Meto un `sleep(1)` hasta que llegue» | Reloj inyectado y espera con evento y timeout. |
-| «El test de broker se salta, da igual» | Salta solo sin broker; en el gate debe correr (`SPINE_REQUIRE_BROKER=1`). |
-| «Pongo usuario y clave en el compose o el código» | Solo por entorno; compose las lee de `app/.env` (`setup.sh`). |
-| «Abro el puerto 1883 a toda la red» | Solo `127.0.0.1`; la LAN va por TLS 8883 (`docker-compose.lan.yml`). |
-| «Para depurar pongo `allow_anonymous true` o `topic readwrite #`» | No: usa `spine-itest` y los canales concretos. |
-| «El test de ACL espera 2 s a ver si llega» | Publica lo denegado y luego algo permitido del mismo cliente; espera a lo permitido. |
-| «Instalo un MCP de MQTT» | No: usa `mosquitto_*` o el script aiomqtt. |
+| "I'll build the topic with an f-string" | Use `spine_contracts.topics`; it validates ids. |
+| "I'll publish QoS 0 / retain to go faster" | `asyncapi.yaml` fixes it; changing it is a contract change (`contract-first`). |
+| "I'll mock `publish` with MagicMock" | Write a `FakeClient` and check the observable effect. |
+| "I'll put in a `sleep(1)` until it arrives" | Injected clock and wait with an event and timeout. |
+| "The broker test is skipped, no matter" | It skips only without a broker; in the gate it must run (`SPINE_REQUIRE_BROKER=1`). |
+| "I'll put the user and password in compose or the code" | Only via environment; compose reads them from `app/.env` (`setup.sh`). |
+| "I'll open port 1883 to the whole network" | Only `127.0.0.1`; the LAN goes through TLS 8883 (`docker-compose.lan.yml`). |
+| "To debug I'll set `allow_anonymous true` or `topic readwrite #`" | No: use `spine-itest` and the specific channels. |
+| "The ACL test waits 2 s to see if it arrives" | Publish the denied one and then an allowed one from the same client; wait for the allowed one. |
+| "I'll install an MQTT MCP" | No: use `mosquitto_*` or the aiomqtt script. |

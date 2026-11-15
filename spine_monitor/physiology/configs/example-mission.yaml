@@ -1,4 +1,4 @@
-# PLACEHOLDER — invented values, pending Aguado's clinical parameters.
+# PLACEHOLDER — invented values, pending clinical parameters.
 # Every physiological and technical number below is made up so the simulator runs end to end; none of
 # them is a clinical reference. Every numeric field is mandatory (the code has no defaults).
 # Write exponents as 1.0e-3 (PyYAML reads 1e-3 as text) and quote times of day ("07:00").
@@ -18,8 +18,8 @@ crew:
     latent_multipliers: { spine_elongation: 1.0, muscle_deconditioning: 1.0, rom_motor_control: 1.0, pain_stiffness: 1.0 }
     exercise_adherence: 1.0
     baseline:
-      cord_rest_length_mm: 650.0     # PENDIENTE medición Aguado: cordón C3-C4 a L5-S1, ~650 mm en reposo
-      emg_mvc_rms_mv: { emg_lat_left: 1.85, emg_lat_right: 1.80 }   # pending Aguado
+      cord_rest_length_mm: 650.0     # PENDING measurement: cord C3-C4 to L5-S1, ~650 mm at rest
+      emg_mvc_rms_mv: { emg_lat_left: 1.85, emg_lat_right: 1.80 }   # pending clinical validation
     profile:
       date_of_birth: 1988-04-12
       sex_at_birth: female
@@ -35,8 +35,8 @@ crew:
     latent_multipliers: { spine_elongation: 1.2, muscle_deconditioning: 1.3, rom_motor_control: 0.9, pain_stiffness: 1.5 }
     exercise_adherence: 0.8
     baseline:
-      cord_rest_length_mm: 666.0     # PENDIENTE medición Aguado
-      emg_mvc_rms_mv: { emg_lat_left: 2.10, emg_lat_right: 2.25 }   # pending Aguado
+      cord_rest_length_mm: 666.0     # PENDING measurement
+      emg_mvc_rms_mv: { emg_lat_left: 2.10, emg_lat_right: 2.25 }   # pending clinical validation
     profile:
       date_of_birth: 1981-09-30
       sex_at_birth: male
@@ -58,8 +58,8 @@ device:
   temperature_c: { mean: 31.0, sd: 0.8 }
   status_interval_s: 30.0
   clock_sync_interval_s: 60.0
-  # Colocación estándar (#12, Aguado): EMG en cada dorsal ancho (electrodos separados ~10 cm, T11 a L2, tierra en
-  # la cresta ilíaca), IMU en T9 y cordón de C3-C4 a L5-S1 (~65 cm).
+  # Standard placement (#12): EMG on each latissimus dorsi (electrodes ~10 cm apart, T11 to L2, ground on
+  # the iliac crest), IMU at T9 and cord from C3-C4 to L5-S1 (~65 cm).
   streams:
     - stream_id: emg_lat_left
       stream_kind: emg
@@ -78,13 +78,13 @@ protocols:
   lat_pulldown_standing_v1:
     session_type: exercise
     streams: [emg_lat_left, emg_lat_right, imu_t9, stretch_spine]
-    # Polea de pie con banda verde (25 kg nominal), 4 series x 15 reps (60 en total), tempo moderado, agarre
-    # prono, ~5 min. rest_between_sets_s es un valor provisional: el protocolo solo dice "recuperaciones muy cortas".
+    # Standing pulldown with green band (25 kg nominal), 4 sets x 15 reps (60 in total), moderate tempo, grip
+    # pronated, ~5 min. rest_between_sets_s is a provisional value: the protocol only says "very short recoveries".
     lead_in_s: 10.0
     planned_sets: 4
     reps_per_set: 15
     rep_duration_s: 3.0
-    # Hipótesis de simulación, no valores fisiológicos medidos.
+    # Simulation hypotheses, not measured physiological values.
     effort_load: 1.0
     fatigue_resistance: 120.0
     recovery_per_s: 0.01
@@ -108,7 +108,7 @@ protocols:
 
 schedule:
   sessions:
-    # El spine_check de pie va justo antes (pre) y justo después (post) del ejercicio, a `gap_s` de él.
+    # The standing spine_check goes right before (pre) and right after (post) the exercise, `gap_s` away from it.
     - { name: pre_spine_check, protocol_id: spine_length_rest_v1, bracket: { phase: pre, of: lat_pulldown, gap_s: 30.0 }, phases: [preflight, inflight, postflight], every_n_days: 1 }
     - { name: lat_pulldown, protocol_id: lat_pulldown_standing_v1, time_utc: "10:00", start_jitter_s: 600.0, phases: [preflight, inflight, postflight], every_n_days: 1 }
     - { name: post_spine_check, protocol_id: spine_length_rest_v1, bracket: { phase: post, of: lat_pulldown, gap_s: 30.0 }, phases: [preflight, inflight, postflight], every_n_days: 1 }
@@ -173,31 +173,31 @@ signals:
     filter_order: 4
     noise_rms_mv: 0.01
     rest_pct_mvc: 2.0
-    fatigue_per_rep: 0.008         # 60 reps por sesion (antes 10): sin saturar la fatiga
+    fatigue_per_rep: 0.008         # 60 reps per session (was 10): without saturating fatigue
     fatigue_band_shift: 0.3
     deconditioning_pct_mvc_gain: 0.5
     deconditioning_fatigue_gain: 1.0
     acquisition: { adc_bits: 12, vref_v: 3.3, gain: 1000.0, input_pin: GPIO34 }
     filter: { highpass_hz: 20.0, lowpass_hz: 450.0, notch_hz: 50 }
-    # Realismo (#131). Los valores marcados hip. son hipotesis sin cifra verificada (docs/sensor-sources.md).
-    signal_kind: raw               # el modelo usa envelope por defecto; aqui raw para que las features (RMS, mediana) sean de la senal cruda
-    envelope_lowpass_hz: 5.0       # hip.
-    baseline_wander_mv: 0.0        # hip.: apagado
-    baseline_wander_hz: 0.5        # hip.
-    mains_amplitude_mv: 0.0        # hip.: apagado
+    # Realism (#131). Values marked hyp. are hypotheses without a verified figure (docs/sensor-sources.md).
+    signal_kind: raw               # the model uses envelope by default; raw here so that the features (RMS, median) come from the raw signal
+    envelope_lowpass_hz: 5.0       # hyp.
+    baseline_wander_mv: 0.0        # hyp.: off
+    baseline_wander_hz: 0.5        # hyp.
+    mains_amplitude_mv: 0.0        # hyp.: off
     mains_hz: 50.0
-    ecg_leak_mv: 0.0               # hip.: apagado
-    ecg_heart_rate_bpm: 70.0       # hip.
+    ecg_leak_mv: 0.0               # hyp.: off
+    ecg_heart_rate_bpm: 70.0       # hyp.
     quantize_adc: false
   imu:
     sample_rate_hz: 100.0
     accel_noise_density_ug_rthz: 400.0   # spec MPU-6050
-    gyro_noise_density_dps_rthz: 0.005   # spec (*), contrastar con la hoja
+    gyro_noise_density_dps_rthz: 0.005   # spec (*), check against the datasheet
     accel_bias_g: { x: 0.01, y: -0.005, z: 0.002 }
     gyro_bias_dps: { x: 0.3, y: -0.2, z: 0.1 }
-    accel_bias_max_g: { x: 0.05, y: 0.05, z: 0.08 }   # spec (maximo, (*) contrastar)
-    gyro_bias_max_dps: 20.0                           # spec (maximo, no tipico)
-    # Deriva del sesgo: HIPOTESIS sin cifra de la hoja.
+    accel_bias_max_g: { x: 0.05, y: 0.05, z: 0.08 }   # spec (maximum, (*) to be checked)
+    gyro_bias_max_dps: 20.0                           # spec (maximum, not typical)
+    # Bias drift: HYPOTHESIS, no datasheet figure.
     bias_drift_tau_s: 1800.0
     accel_bias_drift_sigma_g: 0.002
     gyro_bias_drift_sigma_dps: 0.05
@@ -212,18 +212,18 @@ signals:
     tremor_dps_per_unit: 4.0
   stretch:
     sample_rate_hz: 20.0
-    # PENDIENTE medición Aguado: mismas resistencias y forma que antes, longitudes escaladas (x1.625) al cordón
-    # de ~650 mm; la curva real se medirá con polímetro.
+    # PENDING measurement: same resistances and shape as before, lengths scaled (x1.625) to the ~650 mm
+    # cord; the real curve will be measured with a multimeter.
     curve:
       - { resistance_ohm: 5400.0, length_mm: 585.0 }
       - { resistance_ohm: 6012.0, length_mm: 650.0 }
       - { resistance_ohm: 6790.0, length_mm: 731.0 }
       - { resistance_ohm: 7560.0, length_mm: 812.0 }
-    # Divisor del firmware: 10 kohm en serie, ADC de 10 bits (cuentas 1..1022 en el simulador, nunca los topes).
+    # Firmware divider: 10 kohm in series, 10-bit ADC (counts 1..1022 in the simulator, never the rails).
     circuit: { adc_bits: 10, vref_v: 5.0, series_resistor_ohm: 10000.0, input_pin: A1 }
     adc_noise_counts: 1.0
-    # Hipotesis PROVISIONALES (docs/sensor-sources.md): sin fuente cuantitativa, no son medidas.
-    # Los 150 ohm de diferencia entre lecturas repetidas del banco motivan repeat_dispersion_ohm (sd por sesion).
+    # PROVISIONAL hypotheses (docs/sensor-sources.md): no quantitative source, not measurements.
+    # The 150 ohm difference between repeated bench readings motivates repeat_dispersion_ohm (sd per session).
     read_noise_ohm: 5.0
     repeat_dispersion_ohm: 60.0
     creep_fraction: 0.02

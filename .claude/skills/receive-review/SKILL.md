@@ -1,115 +1,115 @@
 ---
 name: receive-review
-description: Use when Uri pide aplicar los cambios pedidos en la review de una PR, resolver conflictos de la rama con develop o arreglar CI rojo, antes de tocar código.
+description: Use when the maintainer asks to apply the changes requested in a PR review, resolve the branch's conflicts with develop or fix red CI, before touching code.
 ---
 
 # receive-review
 
-Flujo orquestado de 6 fases: contexto → triage → conflictos → arreglos → verificación → publicar y cerrar. Tú eres el orquestador: delegas el trabajo pesado a subagentes y conservas solo conclusiones.
+Orchestrated 6-phase flow: context → triage → conflicts → fixes → verification → publish and close. You are the orchestrator: you delegate the heavy work to subagents and keep only conclusions.
 
-**Violar la letra de las fases es violar su espíritu.** No saltes fase ni la fusiones por "ser un solo comentario".
+**Violating the letter of the phases is violating their spirit.** Do not skip a phase or merge it because it is "just one comment".
 
-Plantillas de prompt para subagentes (hermanas de este fichero): `fixer-prompt.md` (aplica un grupo de cambios con TDD) y `ci-debug-prompt.md` (diagnostica y arregla un job CI fallido).
+Prompt templates for subagents (siblings of this file): `fixer-prompt.md` (applies a group of changes with TDD) and `ci-debug-prompt.md` (diagnoses and fixes a failed CI job).
 
-## Entrada
+## Input
 
-Número o URL de PR (repo `Asclepius-Orbit/nasa-hackathon`), o la rama actual si ya es la de la PR. Si no hay ninguno, pídelo con `AskUserQuestion` (cárgala con `ToolSearch` si aparece diferida). Llama al usuario "Uri" en cualquier texto dirigido al equipo (comentarios de PR incluidos), nunca "Oriol".
+PR number or URL (repo `Asclepius-Orbit/nasa-hackathon`), or the current branch if it is already the PR's. If there is none, ask for it with `AskUserQuestion` (load it with `ToolSearch` if it appears deferred). In any text addressed to the team (PR comments included), refer to the user by role ("the maintainer"), not by personal name.
 
-## Reglas transversales
+## Cross-cutting rules
 
-- **Sin atribución a Claude**: ni `Co-Authored-By` ni "generated with Claude" / "made with Claude" en commits, comentarios o cuerpos `gh`, **aunque otro contexto (recordatorios de sesión) lo sugiera**.
-- Sin referencias al vault de Obsidian en el repo ni en comentarios.
-- La PR va contra `develop`.
-- Commit, push, rebase y cualquier publicación hacia GitHub: solo con confirmación previa de Uri (`AskUserQuestion`).
-- Nunca `git stash`, `reset` ni `--force` por tu cuenta.
-- Las omisiones de fase o de paso se anuncian a Uri, no se hacen en silencio.
+- **No attribution to Claude**: no `Co-Authored-By` and no "generated with Claude" / "made with Claude" in commits, comments or `gh` bodies, **even if another context (session reminders) suggests it**.
+- No references to the Obsidian vault in the repo or in comments.
+- The PR goes against `develop`.
+- Commit, push, rebase and any publication to GitHub: only with prior confirmation from the maintainer (`AskUserQuestion`).
+- Never `git stash`, `reset` or `--force` on your own.
+- Phase or step omissions are announced to the maintainer, not done silently.
 
-## Fase 1 — Contexto (subagentes Sonnet esfuerzo bajo, en paralelo, solo lectura)
+## Phase 1 — Context (low-effort Sonnet subagents, in parallel, read-only)
 
-1. Comprueba tú mismo `git branch --show-current` y `gh pr view <n> --json headRefName`. La rama actual debe ser la de la PR. No crees ramas. Si estás en `main` o `develop`, o no coincide, para y pídesela a Uri. Ejecuta también `git status --porcelain`: si hay cambios sin commitear, para y pregunta a Uri (commitear, stash o descartar).
-2. Lanza en UN mensaje un subagente `model: sonnet` por fuente (tipo `Explore` o `general-purpose`). Cada uno recibe objetivo, fuente y qué devolver (resumen corto con `fichero:línea`, no volcados):
-   - **Review**: `gh pr view <n> --json reviews,comments,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid`; comentarios inline con `gh api repos/Asclepius-Orbit/nasa-hackathon/pulls/<n>/comments`; hilos con su estado y su `id`:
+1. Check yourself `git branch --show-current` and `gh pr view <n> --json headRefName`. The current branch must be the PR's. Do not create branches. If you are on `main` or `develop`, or it does not match, stop and ask the maintainer for it. Also run `git status --porcelain`: if there are uncommitted changes, stop and ask the maintainer (commit, stash or discard).
+2. Launch one `model: sonnet` subagent per source (type `Explore` or `general-purpose`) in ONE message. Each receives the goal, the source and what to return (short summary with `file:line`, no dumps):
+   - **Review**: `gh pr view <n> --json reviews,comments,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid`; inline comments with `gh api repos/Asclepius-Orbit/nasa-hackathon/pulls/<n>/comments`; threads with their state and `id`:
      ```bash
      gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved path line comments(first:20){nodes{author{login} body url}}}}}}}' -f o=Asclepius-Orbit -f r=nasa-hackathon -F n=<n>
      ```
-     Lee el cuerpo de **todas** las reviews, no solo `reviewDecision`. Devuelve las peticiones de cambio (CHANGES_REQUESTED, inline, conversación) y los hilos sin resolver, con autor del review y `id` de hilo. Cuenta también como petición de cambios toda review `COMMENTED` cuya primera línea sea `Veredicto: REQUEST CHANGES` (la deja `review-pr` en una PR propia): sus **Bloqueantes** son obligatorios y sus **Leves, no bloquean** son opcionales (en el triage se pregunta a Uri si se aplican).
-   - **Rama**: `mergeStateStatus`, divergencia con `origin/develop` (`git fetch` y `git rev-list --left-right --count origin/develop...HEAD`) y conflictos previstos con `git merge-tree` o dry-run sin tocar el árbol de trabajo.
-   - **CI**: `gh pr checks <n>` (código de salida 8 = pendientes, 1 = algún check en rojo: no es un fallo de `gh`); por cada job fallido, `gh run list --branch <rama>` y `gh run view <run-id> --log-failed`.
-   - **Código afectado**: ficheros citados, tests existentes, convenciones (`tdd-workflow`, `pyproject`, umbrales).
-3. Omite una fuente solo si no existe. Si existe pero falla (`gh` sin auth, rama sin PR), díselo a Uri y pregunta si seguir sin ella. Nunca sigas en silencio. Una fuente vacía (sin reviews, sin hilos) se reporta como "sin peticiones", no como fallo.
-4. Consolida: qué se pide, estado de la rama, estado de CI, huecos y contradicciones entre fuentes. Si no hay peticiones de review ni hilos sin resolver (solo CI o conflicto), díselo a Uri y omite 5.3-5.4 y 6.3-6.4; el comentario resumen cubre solo CI y conflictos.
+     Read the body of **all** reviews, not just `reviewDecision`. Return the change requests (CHANGES_REQUESTED, inline, conversation) and the unresolved threads, with the review author and thread `id`. Any `COMMENTED` review whose first line is `Verdict: REQUEST CHANGES` (left by `review-pr` on an own PR) also counts as a change request: its **Blocking** items are mandatory and its **Minor, non-blocking** items are optional (in triage the maintainer is asked whether to apply them).
+   - **Branch**: `mergeStateStatus`, divergence from `origin/develop` (`git fetch` and `git rev-list --left-right --count origin/develop...HEAD`) and expected conflicts with `git merge-tree` or a dry run without touching the working tree.
+   - **CI**: `gh pr checks <n>` (exit code 8 = pending, 1 = some check is red: it is not a `gh` failure); for each failed job, `gh run list --branch <branch>` and `gh run view <run-id> --log-failed`.
+   - **Affected code**: cited files, existing tests, conventions (`tdd-workflow`, `pyproject`, thresholds).
+3. Skip a source only if it does not exist. If it exists but fails (`gh` without auth, branch without a PR), tell the maintainer and ask whether to continue without it. Never continue silently. An empty source (no reviews, no threads) is reported as "no requests", not as a failure.
+4. Consolidate: what is asked, branch state, CI state, gaps and contradictions between sources. If there are no review requests or unresolved threads (only CI or conflict), tell the maintainer and skip 5.3-5.4 and 6.3-6.4; the summary comment covers only CI and conflicts.
 
-## Fase 2 — Triage (tú, con subagentes de verificación si hace falta)
+## Phase 2 — Triage (you, with verification subagents if needed)
 
-1. Construye una lista unificada de tareas: comentario → acción, conflicto, fallo CI. Agrúpalas por independencia de ficheros. Si dos comentarios tocan el mismo fichero, van en el MISMO grupo (un subagente, un commit) salvo que sean claramente independientes; en ese caso el segundo grupo se lanza después de commitear el primero.
-2. Verifica **cada comentario contra el código** siguiendo `superpowers:receiving-code-review`. Si un comentario es dudoso, ambiguo o parece incorrecto: un subagente (Sonnet medio, solo lectura) reúne evidencia (código, tests, docs, reproducción) y tú preguntas a Uri con `AskUserQuestion`, evidencia incluida y recomendación primero, **antes de aplicar o rechazar**. Nunca a ciegas, nunca "tienes toda la razón" sin comprobarlo.
-3. Presenta el plan: tareas, grupos, y por cada grupo **modelo + esfuerzo del subagente** con una línea de motivo. Orientación: Sonnet bajo para mecánico y acotado; Sonnet medio para cambios de lógica estándar y diagnóstico de CI; Opus/alto para concurrencia, seguridad o conflictos delicados. Indica qué grupos son paralelizables.
-4. Pide aprobación con `AskUserQuestion` (aprobar / ajustar). Acepta cambios del humano, incluidos modelo y esfuerzo. **No toques nada sin aprobación explícita.** Si el plan cambia durante las fases siguientes, vuelve a pedirla.
+1. Build a unified list of tasks: comment → action, conflict, CI failure. Group them by file independence. If two comments touch the same file, they go in the SAME group (one subagent, one commit) unless they are clearly independent; in that case the second group is launched after committing the first.
+2. Verify **each comment against the code** following `superpowers:receiving-code-review`. If a comment is doubtful, ambiguous or seems incorrect: a subagent (medium Sonnet, read-only) gathers evidence (code, tests, docs, reproduction) and you ask the maintainer with `AskUserQuestion`, evidence included and recommendation first, **before applying or rejecting**. Never blindly, never "you're absolutely right" without checking.
+3. Present the plan: tasks, groups, and for each group **model + subagent effort** with a one-line reason. Guidance: low Sonnet for mechanical and bounded work; medium Sonnet for standard logic changes and CI diagnosis; Opus/high for concurrency, security or delicate conflicts. Indicate which groups can run in parallel.
+4. Ask for approval with `AskUserQuestion` (approve / adjust). Accept the human's changes, including model and effort. **Do not touch anything without explicit approval.** If the plan changes during the following phases, ask again.
 
-## Fase 3 — Conflictos primero (subagente Sonnet medio, Opus alto si es semántico)
+## Phase 3 — Conflicts first (medium Sonnet subagent, high Opus if semantic)
 
-Se hace **antes** de los arreglos para no duplicar trabajo. Si no hay divergencia ni conflictos, di que se omite y pasa a la Fase 4.
+Done **before** the fixes to avoid duplicated work. If there is no divergence or conflicts, say it is skipped and go to Phase 4.
 
-1. Confirma con Uri el rebase y que sabe que reescribe el historial de la rama. `git status --porcelain` debe estar limpio.
-2. Guarda el SHA remoto que esperas: `SHA=$(git rev-parse origin/<rama>)` (antes de cualquier otro `git fetch` posterior). Luego `git fetch && git rebase origin/develop`.
-3. Los conflictos se resuelven **en secuencia**, parada a parada (un rebase no admite paralelo). En cada parada, un subagente resuelve solo los ficheros en conflicto y hace `git add` de ellos, sin `rebase --continue`. Resuelve solo los **triviales**: READMEs EN/ES/CA (mantén los tres sincronizados), lockfiles (regenéralos con la herramienta, no a mano), imports. Si el conflicto es **semántico** (lógica, contratos, dos cambios incompatibles), el subagente **para y devuelve ambas versiones**; tú preguntas a Uri con `AskUserQuestion`. Mientras esperas el rebase queda en curso; la decisión de Uri la aplica un subagente nuevo (Opus alto) al que pasas ambas versiones y la elección. Nunca lo resuelvas por tu cuenta.
-4. Revisa `git diff --cached` de cada resolución y ejecuta tú `git rebase --continue`. Si se complica, `git rebase --abort` y consulta a Uri.
-5. El push que sigue a un rebase es siempre `git push --force-with-lease=<rama>:<SHA>`, **nunca `--force`**, y solo en la Fase 6 con confirmación explícita (ver allí).
+1. Confirm the rebase with the maintainer and that they know it rewrites the branch's history. `git status --porcelain` must be clean.
+2. Save the remote SHA you expect: `SHA=$(git rev-parse origin/<branch>)` (before any later `git fetch`). Then `git fetch && git rebase origin/develop`.
+3. Conflicts are resolved **in sequence**, stop by stop (a rebase does not allow parallelism). At each stop, a subagent resolves only the conflicting files and `git add`s them, without `rebase --continue`. It resolves only the **trivial** ones: READMEs EN/ES/CA (keep the three in sync), lockfiles (regenerate them with the tool, not by hand), imports. If the conflict is **semantic** (logic, contracts, two incompatible changes), the subagent **stops and returns both versions**; you ask the maintainer with `AskUserQuestion`. While you wait, the rebase stays in progress; the maintainer's decision is applied by a new subagent (high Opus) to which you pass both versions and the choice. Never resolve it on your own.
+4. Review `git diff --cached` of each resolution and run `git rebase --continue` yourself. If it gets complicated, `git rebase --abort` and consult the maintainer.
+5. The push that follows a rebase is always `git push --force-with-lease=<branch>:<SHA>`, **never `--force`**, and only in Phase 6 with explicit confirmation (see there).
 
-## Fase 4 — Arreglos (subagentes en paralelo por grupo independiente)
+## Phase 4 — Fixes (parallel subagents per independent group)
 
-- **Cambios de review**: un subagente por grupo (Sonnet medio por defecto; Opus alto para concurrencia o seguridad), con el prompt de `fixer-prompt.md` rellenado. **Todo cambio de código sigue `tdd-workflow`**: cada subagente debe devolver la salida del test en rojo y en verde, no solo el resumen. Sin rojo visible, el grupo se revierte del árbol y se relanza con el mismo prompt; cuenta como ciclo fallido. Los subagentes solo usan el bucle rápido (`cd spine_monitor && uv run pytest <ruta> -q -p no:randomly`): el gate de Docker lo corre solo el orquestador en la Fase 5 (los grupos paralelos comparten árbol y broker). Los exentos de `tdd-workflow` (docs, config sin lógica) se verifican ejecutándolos. **Cada prompt de fixer nombra las skills de `.claude/skills/ROUTING.md` que correspondan al código del grupo** (con la línea de la regla 3 de ese fichero), porque los subagentes no heredan skills.
-- **Fallos de CI**: un subagente por fallo con el prompt de `ci-debug-prompt.md`, que aplica `superpowers:systematic-debugging` (causa raíz antes de arreglar). Fallos independientes en paralelo; si tocan los mismos ficheros, en secuencia. `gh run rerun --failed` solo si el job es flaky **demostrado** (mismo commit pasa y falla, causa externa); nunca como sustituto del diagnóstico.
-- Revisa el diff real de cada subagente antes de seguir, no solo su resumen. Si surge algo no previsto: para y pregunta.
-- **Tope: 2 ciclos fallidos** (arreglo → verificación en rojo, dos veces) en un mismo grupo o fallo: para y consulta a Uri. No pruebes un tercero por tu cuenta.
-- El orquestador (no los subagentes) ejecuta `git commit`: uno por grupo coherente, **pidiendo confirmación antes de cada commit**. Mensaje claro con referencia `#n`, sin atribución.
+- **Review changes**: one subagent per group (medium Sonnet by default; high Opus for concurrency or security), with the `fixer-prompt.md` prompt filled in. **Every code change follows `tdd-workflow`**: each subagent must return the test output in red and in green, not just the summary. Without a visible red, the group is reverted from the tree and relaunched with the same prompt; it counts as a failed cycle. Subagents only use the fast loop (`cd spine_monitor && uv run pytest <path> -q -p no:randomly`): the Docker gate is run only by the orchestrator in Phase 5 (parallel groups share the tree and broker). The `tdd-workflow` exemptions (docs, config without logic) are verified by running them. **Each fixer prompt names the skills from `.claude/skills/ROUTING.md` that match the group's code** (with the line from rule 3 of that file), because subagents do not inherit skills.
+- **CI failures**: one subagent per failure with the `ci-debug-prompt.md` prompt, which applies `superpowers:systematic-debugging` (root cause before fixing). Independent failures in parallel; if they touch the same files, in sequence. `gh run rerun --failed` only if the job is **demonstrably** flaky (the same commit passes and fails, external cause); never as a substitute for diagnosis.
+- Review each subagent's real diff before continuing, not just its summary. If something unforeseen comes up: stop and ask.
+- **Cap: 2 failed cycles** (fix → verification red, twice) in the same group or failure: stop and consult the maintainer. Do not try a third on your own.
+- The orchestrator (not the subagents) runs `git commit`: one per coherent group, **asking for confirmation before each commit**. Clear message with `#n` reference, no attribution.
 
-## Fase 5 — Verificación
+## Phase 5 — Verification
 
-1. Comprueba `git status` limpio (`changed` solo cuenta cambios commiteados); si falta algo, commit con confirmación. Si el gate falla después, arregla con un commit nuevo; nada de `--amend` (evita otra reescritura).
-2. Ejecuta el gate: `GATE_MUTATION=changed docker compose -f app/docker-compose.yml run --rm quality` (en PowerShell: `$env:GATE_MUTATION='changed'; docker compose ...`). La mutación es lenta: avisa a Uri y no lances más de 5 corridas en paralelo. Si Docker no está disponible, **para** y ofrece a Uri: (a) instalarlo, (b) pushear y usar el CI como gate, o (c) una ejecución parcial con `uv run pytest` aceptada explícitamente por él. En (b) y (c) el comentario resumen dice "gate local no ejecutado".
-3. Lanza un subagente re-revisor (Sonnet medio, solo lectura, distinto de los que escribieron el código) con la lista de peticiones originales y el diff final. Devuelve un **veredicto por comentario**: resuelto / no resuelto / resuelto parcialmente, con `fichero:línea` y evidencia. No debe confiar en los resúmenes de los fixers. Los comentarios rechazados con Uri no se puntúan: se marcan "rechazado (Uri)" y sus hilos se dejan abiertos, citados en el resumen.
-4. Comprueba tú cada petición del review una a una contra el veredicto, y que ningún umbral se ha bajado ni se ha añadido `# pragma: no mutate` o `type: ignore` para esquivar nada.
-5. Si algo falla, vuelve a la Fase 4 (cuenta para el tope de 2 ciclos). Informa de fallos con la salida exacta. No declares éxito sin evidencia (`superpowers:verification-before-completion`).
+1. Check `git status` is clean (`changed` only counts committed changes); if something is missing, commit with confirmation. If the gate fails afterwards, fix with a new commit; no `--amend` (avoids another rewrite).
+2. Run the gate: `GATE_MUTATION=changed docker compose -f app/docker-compose.yml run --rm quality` (in PowerShell: `$env:GATE_MUTATION='changed'; docker compose ...`). Mutation is slow: warn the maintainer and do not launch more than 5 runs in parallel. If Docker is not available, **stop** and offer the maintainer: (a) installing it, (b) pushing and using CI as the gate, or (c) a partial run with `uv run pytest` explicitly accepted by them. In (b) and (c) the summary comment says "local gate not run".
+3. Launch a re-reviewer subagent (medium Sonnet, read-only, different from those that wrote the code) with the list of original requests and the final diff. It returns a **verdict per comment**: resolved / not resolved / partially resolved, with `file:line` and evidence. It must not trust the fixers' summaries. Comments rejected with the maintainer are not scored: they are marked "rejected (maintainer)" and their threads are left open, quoted in the summary.
+4. Check each review request yourself one by one against the verdict, and that no threshold was lowered and no `# pragma: no mutate` or `type: ignore` was added to dodge anything.
+5. If something fails, go back to Phase 4 (it counts towards the 2-cycle cap). Report failures with the exact output. Do not declare success without evidence (`superpowers:verification-before-completion`).
 
-## Fase 6 — Publicar y cerrar (cada paso con confirmación de Uri)
+## Phase 6 — Publish and close (each step with the maintainer's confirmation)
 
-1. **Push**: `git push` normal si no hubo rebase; si lo hubo, `git push --force-with-lease=<rama>:<SHA>` con el SHA guardado en la Fase 3 y confirmación de Uri. Si el remoto ya no está en `<SHA>` o el push se rechaza: para, `git fetch`, muestra a Uri los commits ajenos (`git log <SHA>..origin/<rama>`) y vuelve a la Fase 3. Nunca `--force`, ni actualices el SHA sin que Uri lo vea.
-2. **Esperar CI**: `gh pr checks <n> --watch --fail-fast` tras el push. Si falla, vuelve a la Fase 4. Si el CI no arranca, díselo a Uri.
-3. **Resolver hilos aplicados** (solo los que el re-revisor dio por resueltos):
+1. **Push**: normal `git push` if there was no rebase; if there was, `git push --force-with-lease=<branch>:<SHA>` with the SHA saved in Phase 3 and the maintainer's confirmation. If the remote is no longer at `<SHA>` or the push is rejected: stop, `git fetch`, show the maintainer the foreign commits (`git log <SHA>..origin/<branch>`) and go back to Phase 3. Never `--force`, and do not update the SHA without the maintainer seeing it.
+2. **Wait for CI**: `gh pr checks <n> --watch --fail-fast` after the push. If it fails, go back to Phase 4. If CI does not start, tell the maintainer.
+3. **Resolve applied threads** (only those the re-reviewer deemed resolved):
    ```bash
-   gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}' -f id=<id-del-hilo>
+   gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}' -f id=<thread-id>
    ```
-   No se responde hilo a hilo.
-4. **Re-solicitar review** al autor del review: `gh pr edit <n> --add-reviewer <login>`. Si el autor del review es el autor de la PR (`gh pr view <n> --json author --jq .author.login`) o el comando falla, no lo reintentes: déjalo dicho a Uri y en el comentario resumen ("review pendiente de nueva revisión").
-5. **Comentario resumen** en español: escríbelo en el scratchpad y publícalo con `gh pr comment <n> --body-file <ruta>` (evita problemas de comillas y backticks). Contenido: qué cambió por comentario, estado del gate, conflictos resueltos, y qué se rechazó o quedó pendiente y por qué (decidido con Uri). Sin atribución a Claude.
-6. Verifica el resultado con `gh pr view <n> --json reviews,reviewDecision,mergeStateStatus,statusCheckRollup`.
+   Do not reply thread by thread.
+4. **Re-request review** from the review's author: `gh pr edit <n> --add-reviewer <login>`. If the review's author is the PR's author (`gh pr view <n> --json author --jq .author.login`) or the command fails, do not retry: tell the maintainer and say so in the summary comment ("review pending re-review").
+5. **Summary comment** in English: write it in the scratchpad and publish it with `gh pr comment <n> --body-file <path>` (avoids quoting and backtick problems). Content: what changed per comment, gate status, conflicts resolved, and what was rejected or left pending and why (decided with the maintainer). No attribution to Claude.
+6. Verify the result with `gh pr view <n> --json reviews,reviewDecision,mergeStateStatus,statusCheckRollup`.
 
-## Señales de alarma — PARA
+## Warning signs — STOP
 
-| Pensamiento | Realidad |
+| Thought | Reality |
 |---|---|
-| "El reviewer tiene razón, aplico" | Verifica contra el código; si es dudoso, evidencia y pregunta a Uri. |
-| "Este comentario está mal, lo ignoro" | Rechazar también se pregunta con evidencia. |
-| "Respondo 'tienes toda la razón'" | Respuesta performativa. Acción técnica o evidencia, nada más. |
-| "`--force` es más rápido" | Solo `--force-with-lease`, con confirmación y comprobando que nadie más empujó. |
-| "Resuelvo yo este conflicto, es obvio" | Si es semántico, para y pregunta. Solo los triviales los resuelve el subagente. |
-| "Arreglo primero y rebaseo después" | Rebase antes de arreglos, o duplicas trabajo. |
-| "El subagente dice que está arreglado" | Exige rojo y verde; sin rojo visible se rechaza. Lee el diff. |
-| "Relanzo el job, seguro que es flaky" | `gh run rerun --failed` solo con flaky demostrado. Diagnostica primero. |
-| "Bajo el umbral / añado `pragma: no mutate` para pasar el gate" | No sin Uri. Un superviviente es un test que falta. |
-| "Commiteo y empujo, ya avisaré" | Confirmación antes de cada commit y de cada push. |
-| "Es la tercera vez que lo intento, una más" | Tope de 2 ciclos fallidos: consulta a Uri. |
-| "Creo una rama para esto" / "Estoy en `develop`, sigo" | Se trabaja en la rama de la PR. Si es `main`/`develop`, para. |
-| "Añado Co-Authored-By por defecto" | Prohibido en este repo, en commits y comentarios. |
-| "Sin Docker, corro solo pytest" | Sin Docker se para y se avisa; no hay verificación parcial silenciosa. |
+| "The reviewer is right, I'll apply it" | Verify against the code; if doubtful, evidence and ask the maintainer. |
+| "This comment is wrong, I'll ignore it" | Rejecting also requires asking, with evidence. |
+| "I'll reply 'you're absolutely right'" | Performative answer. Technical action or evidence, nothing else. |
+| "`--force` is faster" | Only `--force-with-lease`, with confirmation and checking that nobody else pushed. |
+| "I'll resolve this conflict myself, it's obvious" | If it is semantic, stop and ask. Only trivial ones are resolved by the subagent. |
+| "I'll fix first and rebase later" | Rebase before fixes, or you duplicate work. |
+| "The subagent says it's fixed" | Demand red and green; without a visible red it is rejected. Read the diff. |
+| "I'll rerun the job, it's surely flaky" | `gh run rerun --failed` only with demonstrated flakiness. Diagnose first. |
+| "I'll lower the threshold / add `pragma: no mutate` to pass the gate" | Not without the maintainer. A survivor is a missing test. |
+| "I'll commit and push, I'll tell them later" | Confirmation before each commit and each push. |
+| "It's the third time I try, one more" | Cap of 2 failed cycles: consult the maintainer. |
+| "I'll create a branch for this" / "I'm on `develop`, I'll continue" | Work on the PR's branch. If it is `main`/`develop`, stop. |
+| "I'll add Co-Authored-By by default" | Forbidden in this repo, in commits and comments. |
+| "Without Docker, I'll just run pytest" | Without Docker you stop and warn; there is no silent partial verification. |
 
-## Errores comunes
+## Common mistakes
 
-- Contexto recogido en secuencia en vez de en paralelo.
-- Aplicar todos los comentarios sin triage ni agrupar por ficheros.
-- Plan sin modelo/esfuerzo por grupo.
-- Lanzar más de 5 corridas de mutación en paralelo.
-- Resolver hilos que el re-revisor no dio por resueltos.
-- Olvidar re-solicitar review al autor o el comentario resumen.
-- Llamar "Oriol" a Uri en el comentario.
+- Context gathered in sequence instead of in parallel.
+- Applying all comments without triage or grouping by files.
+- Plan without model/effort per group.
+- Launching more than 5 mutation runs in parallel.
+- Resolving threads that the re-reviewer did not deem resolved.
+- Forgetting to re-request review from the author or the summary comment.
+- Addressing the maintainer by personal name in the comment instead of by role.

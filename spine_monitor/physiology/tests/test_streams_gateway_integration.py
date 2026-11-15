@@ -1,9 +1,9 @@
-"""Las tres señales juntas por el camino del gateway simulado (FakeGateway) con tiempo virtual y MQTT falso (#131).
+"""The three signals together through the simulated gateway path (FakeGateway) with virtual time and fake MQTT (#131).
 
-Comprueba lo que solo se ve con los tres streams a la vez: frecuencias y tamaño de chunk (1000/100/20 Hz en 100 ms; 10 Hz
-en 1 s para el fondo, sin EMG), continuidad de ``seq`` y de ``t0_device_ms``, validez de cada chunk contra su schema, procedencia
-``simulator``, metadatos de calibración y de adquisición, reproducibilidad por semilla, y que EMG, giróscopo y cordón comparten
-la fase del ejercicio. Los umbrales de fase son del modelo (hip.): no hay EMG real con el que compararlos.
+Checks what is only seen with the three streams at once: frequencies and chunk size (1000/100/20 Hz in 100 ms; 10 Hz
+in 1 s for the background, without EMG), continuity of ``seq`` and ``t0_device_ms``, validity of each chunk against its schema, provenance
+``simulator``, calibration and acquisition metadata, reproducibility by seed, and that EMG, gyroscope and cord share
+the exercise phase. The phase thresholds belong to the model (hyp.): there is no real EMG to compare them with.
 """
 
 import asyncio
@@ -26,7 +26,7 @@ from spine_physiology.gateway.app import FakeGateway
 from spine_physiology.gateway.settings import GatewaySettings
 from spine_physiology.signals import rep_schedule
 
-# vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin carpetas hermanas
+# via the installed package, not via parents[]: under mutmut the tests are copied to another tree without sibling folders
 EXAMPLE = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 T0 = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)
 AST, DEV = "AST-01", "sim-01"
@@ -34,7 +34,7 @@ SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"
 PROTOCOL = "lat_pulldown_standing_v1"
 RATES = {"emg": 1000.0, "imu": 100.0, "stretch": 20.0}
 PER_CHUNK = {"emg": 100, "imu": 10, "stretch": 2}  # firmware: lotes de 100 ms
-SESSION_SECONDS = 40.0  # lead-in de 10 s + 8 reps completas (3,6 s de periodo): suficiente para la fase, y rápido
+SESSION_SECONDS = 40.0  # 10 s lead-in + 8 full reps (3.6 s period): enough for the phase, and fast
 
 
 class Clock:
@@ -75,7 +75,7 @@ class Client:
 
 
 def config(*, quality_faults: bool = False, seed: int | None = None) -> MissionConfig:
-    """Ejemplo con chunks de 100 ms, sin pérdidas ni reinicios (y sin fallos de calidad salvo que se pidan)."""
+    """Example with 100 ms chunks, no losses or reboots (and no quality faults unless requested)."""
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
     raw["faults"]["device"]["reboot"]["probability_per_hour"] = 0.0
@@ -95,7 +95,7 @@ def run_gateway(
     streams: list[str] | None = None,
     generator: MissionGenerator | None = None,
 ) -> Client:
-    """Arranca el gateway, deja `warmup_s` de fondo, abre una sesión de ejercicio y la deja correr `session_s`."""
+    """Starts the gateway, leaves `warmup_s` of background, opens an exercise session and lets it run `session_s`."""
 
     async def scenario() -> Client:
         clock, client = Clock(), Client()
@@ -134,12 +134,12 @@ def by_stream(chunks: list[dict]) -> dict[str, list[dict]]:
     return out
 
 
-# --- frecuencias, tamaños y continuidad ------------------------------------------------------------
+# --- frequencies, sizes and continuity ------------------------------------------------------------
 
 
 @pytest.mark.integration
 def test_session_chunks_carry_the_firmware_rates_and_batch_sizes_in_100_ms(session_client):
-    # config: firmware 1000/100/20 Hz y lotes de 100 ms = 100/10/2 muestras; cada array de datos coincide con n_samples.
+    # config: firmware 1000/100/20 Hz and 100 ms batches = 100/10/2 samples; each data array matches n_samples.
     streams = by_stream(session_client.chunks(SESSION))
     assert set(streams) == {"emg_lat_left", "emg_lat_right", "imu_t9", "stretch_spine"}
     for stream_id, chunks in streams.items():
@@ -153,8 +153,8 @@ def test_session_chunks_carry_the_firmware_rates_and_batch_sizes_in_100_ms(sessi
 
 @pytest.mark.integration
 def test_seq_and_device_time_are_continuous_per_stream_across_100_ms_chunks(session_client):
-    # Sin pérdidas ni reinicios: seq +1 por chunk y t0_device_ms avanza 100 ms (+-1 ms de redondeo del reloj de
-    # dispositivo con deriva de ppm, hip. del modelo de reloj). received_at no retrocede.
+    # No losses or reboots: seq +1 per chunk and t0_device_ms advances 100 ms (+-1 ms of rounding of the
+    # device clock with ppm drift, hyp. of the clock model). received_at does not go backwards.
     for stream_id, chunks in by_stream(session_client.chunks(SESSION)).items():
         seqs = [c["seq"] for c in chunks]
         assert seqs == list(range(seqs[0], seqs[0] + len(seqs))), stream_id
@@ -167,7 +167,7 @@ def test_seq_and_device_time_are_continuous_per_stream_across_100_ms_chunks(sess
 
 @pytest.mark.integration
 def test_background_runs_at_10_hz_in_one_second_chunks_without_emg_and_session_seq_continues_it(session_client):
-    # config: fondo = IMU y cordón a 10 Hz en chunks de 1 s (10 muestras); el EMG no se emite fuera de sesión.
+    # config: background = IMU and cord at 10 Hz in 1 s chunks (10 samples); the EMG is not emitted outside a session.
     background = [c for c in session_client.chunks() if c["session_id"] != SESSION]
     assert background and {c["stream_id"] for c in background} == {"imu_t9", "stretch_spine"}
     for c in background:
@@ -175,7 +175,7 @@ def test_background_runs_at_10_hz_in_one_second_chunks_without_emg_and_session_s
         assert all(len(v) == 10 for v in c["data"].values())
     for stream_id, chunks in by_stream(background).items():
         assert [c["seq"] for c in chunks] == list(range(len(chunks))), stream_id
-    # el seq de la sesión continúa el del fondo del mismo stream (mismo arranque, sin huecos).
+    # the session seq continues that of the background of the same stream (same boot, no gaps).
     first_session = {s: c[0]["seq"] for s, c in by_stream(session_client.chunks(SESSION)).items()}
     for stream_id in ("imu_t9", "stretch_spine"):
         assert first_session[stream_id] == len(by_stream(background)[stream_id])
@@ -200,7 +200,7 @@ def test_every_published_chunk_is_valid_from_the_simulator_with_its_acquisition_
         else:
             assert c["circuit"]["adc_bits"] == 10 and c["circuit"]["series_resistor_ohm"] == 10000.0
             counts = np.array(c["data"]["adc_counts"])
-            assert counts.min() >= 1 and counts.max() <= 1022  # el simulador no toca los topes del ADC
+            assert counts.min() >= 1 and counts.max() <= 1022  # the simulator does not touch the ADC rails
 
 
 @pytest.mark.contract
@@ -234,7 +234,7 @@ def test_the_same_seed_gives_the_same_bytes_and_another_seed_a_different_signal(
     assert _bytes(a) != _bytes(c)
     emg_a = np.concatenate([x["data"]["emg"] for x in a.chunks(SESSION) if x["stream_id"] == "emg_lat_left"])
     emg_c = np.concatenate([x["data"]["emg"] for x in c.chunks(SESSION) if x["stream_id"] == "emg_lat_left"])
-    common = min(emg_a.size, emg_c.size)  # otra semilla cambia también la latencia y, con ella, cuántos chunks caben
+    common = min(emg_a.size, emg_c.size)  # another seed also changes the latency and, with it, how many chunks fit
     assert common > 5000 and not np.allclose(emg_a[:common], emg_c[:common])
 
 
@@ -242,7 +242,7 @@ def test_the_same_seed_gives_the_same_bytes_and_another_seed_a_different_signal(
 
 
 def _per_chunk_activity(client: Client) -> dict[str, np.ndarray]:
-    """Actividad por chunk de 100 ms alineada por seq: RMS del EMG izquierdo, |gyro_y| medio y longitud media del cordón."""
+    """Activity per 100 ms chunk aligned by seq: left EMG RMS, mean |gyro_y| and mean cord length."""
     streams = by_stream(client.chunks(SESSION))
     n = min(len(v) for v in streams.values())
     emg = np.array([np.sqrt(np.mean(np.square(c["data"]["emg"]))) for c in streams["emg_lat_left"][:n]])
@@ -253,11 +253,11 @@ def _per_chunk_activity(client: Client) -> dict[str, np.ndarray]:
 
 @pytest.mark.integration
 def test_emg_gyro_and_cord_share_the_exercise_phase(session_client):
-    # Los tres se mueven con las mismas reps (hip. del modelo). EMG y cordón son campanas de la rep (pico a mitad), así
-    # que su correlación por chunk es alta; el giróscopo es la derivada (nula a mitad de rep, máxima a 1/4 y 3/4), por
-    # eso se compara con una media móvil de 1 s (la rep dura 3 s): la actividad de movimiento envuelve a la del EMG.
-    # Umbrales con margen sobre lo observado con esta semilla: emg-cord 0,93 (umbral 0,7), emg-gyro suavizado 0,67 (umbral 0,5);
-    # EMG activo/reposo 10x (umbral 5x), gyro 65x (umbral 20x), cordón +22 mm (umbral 5 mm).
+    # All three move with the same reps (model hyp.). EMG and cord are rep bells (peak mid-rep), so
+    # their per-chunk correlation is high; the gyroscope is the derivative (zero mid-rep, maximum at 1/4 and 3/4), so
+    # it is compared with a 1 s moving average (the rep lasts 3 s): the movement activity envelops that of the EMG.
+    # Thresholds with margin over what is observed with this seed: emg-cord 0.93 (threshold 0.7), emg-gyro smoothed 0.67 (threshold 0.5);
+    # EMG active/rest 10x (threshold 5x), gyro 65x (threshold 20x), cord +22 mm (threshold 5 mm).
     act = _per_chunk_activity(session_client)
     smooth = np.ones(10) / 10.0
     gyro = np.convolve(act["gyro"], smooth, mode="same")
@@ -265,18 +265,18 @@ def test_emg_gyro_and_cord_share_the_exercise_phase(session_client):
     edge = slice(10, -10)
     assert np.corrcoef(act["emg"], act["cord"])[0, 1] > 0.7
     assert np.corrcoef(emg[edge], gyro[edge])[0, 1] > 0.5
-    # En reposo (lead-in, antes de la primera rep) los tres están quietos frente al esfuerzo.
+    # At rest (lead-in, before the first rep) all three are still, compared with the effort.
     rest, active = slice(5, 90), slice(110, 330)
     assert act["emg"][active].mean() > 5.0 * act["emg"][rest].mean()
     assert act["gyro"][active].mean() > 20.0 * act["gyro"][rest].mean()
-    assert act["cord"][active].max() - act["cord"][rest].mean() > 5.0  # mm: 0,6 mm/grado x hasta 30 grados
+    assert act["cord"][active].max() - act["cord"][rest].mean() > 5.0  # mm: 0.6 mm/degree x up to 30 degrees
 
 
 @pytest.mark.integration
 def test_gyro_rep_count_from_the_chunks_matches_the_protocol_schedule(session_client):
-    # Rep contada desde los chunks (picos positivos de gyro_y, > 15 dps: el pico del modelo es 1,875 x 30 / 1,5 = 37 dps)
-    # frente al calendario del protocolo: las reps cuyo pico de velocidad (a 1/4 de la rep: mitad de la subida minimum-jerk)
-    # cae dentro de lo emitido.
+    # Rep counted from the chunks (positive gyro_y peaks, > 15 dps: the model peak is 1.875 x 30 / 1.5 = 37 dps)
+    # against the protocol schedule: the reps whose speed peak (at 1/4 of the rep: middle of the minimum-jerk rise)
+    # falls within what was emitted.
     chunks = by_stream(session_client.chunks(SESSION))["imu_t9"]
     gyro = np.concatenate([c["data"]["gyro_y"] for c in chunks])
     peaks, _ = find_peaks(gyro, height=15.0, distance=100)

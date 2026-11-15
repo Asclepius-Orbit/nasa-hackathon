@@ -1,9 +1,9 @@
-"""Los cinco endpoints del contrato sobre backends inyectados.
+"""The five contract endpoints over injected backends.
 
-Cada cuerpo se valida primero contra el JSON Schema (`spine_contracts.validation`, que recoge las
-reglas condicionales que Pydantic no expresa) y después se convierte al modelo generado. Los
-handlers leen el cuerpo a mano, y no con FastAPI, para que todos los errores salgan como problem
-details del contrato en lugar del 422 propio de FastAPI.
+Each body is first validated against the JSON Schema (`spine_contracts.validation`, which picks up the
+conditional rules that Pydantic cannot express) and then converted to the generated model. The
+handlers read the body by hand, not through FastAPI, so that every error comes out as the contract's
+problem details instead of FastAPI's own 422.
 """
 
 import json
@@ -133,7 +133,7 @@ def create_app(
 
     @app.post("/stretch-estimate", operation_id="estimateStretch")
     async def stretch_estimate(request: Request) -> JSONResponse:
-        """Estimación experimental aislada de la evaluación clínica."""
+        """Experimental estimate, isolated from the clinical assessment."""
         body = await _parse(request, "engine/stretch-estimate-request", StretchEstimateRequest)
         spacing, trials = measured_trials()
         try:
@@ -191,7 +191,7 @@ def create_app(
 
     @app.post("/simulate", operation_id="simulate")
     async def simulate(request: Request) -> JSONResponse:
-        """Aplica overrides y, si se solicita, proyecta la tendencia antes de reevaluar."""
+        """Apply overrides and, if requested, project the trend before re-assessing."""
         body = await _parse(request, "engine/simulate-request", SimulateRequest)
         reference = pipeline.evaluate(body.base)
         if body.project_days is not None:
@@ -200,7 +200,7 @@ def create_app(
             response = SimulateResponse(schema_version=SCHEMA_VERSION, reference=reference, scenario=scenario, hypothetical=True,
                                         projection=Projection(project_days=body.project_days, unprojected_features=unprojected))
         else:
-            # Cada evaluación lleva un assessment_id nuevo; sin cambios conservamos la referencia.
+            # Each assessment carries a new assessment_id; without changes we keep the reference.
             scenario = pipeline.evaluate(apply_overrides(body.base, body.overrides)) if body.overrides else reference.model_copy(deep=True)
             response = SimulateResponse(  # pyright: ignore[reportCallIssue]  # optional generated Field must remain unset
                 schema_version=SCHEMA_VERSION, reference=reference, scenario=scenario, hypothetical=True

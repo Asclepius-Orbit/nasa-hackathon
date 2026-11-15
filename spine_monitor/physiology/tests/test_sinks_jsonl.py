@@ -160,7 +160,7 @@ def test_error_messages_name_the_problem(tmp_path, mission):
         sink.write(env(EnvelopeKind.SESSION))
 
 
-# `sink._open` se consulta porque el tope de manejadores abiertos y el orden LRU no se ven en los bytes escritos.
+# `sink._open` is queried because the cap on open handles and the LRU order are not visible in the written bytes.
 def test_a_single_open_file_is_allowed_and_the_default_cap_is_64(tmp_path, mission):
     config, _ = mission
     with JsonlSink(tmp_path / "one", config=config, seed=1, max_open_files=1) as sink:
@@ -173,19 +173,19 @@ def test_a_single_open_file_is_allowed_and_the_default_cap_is_64(tmp_path, missi
         assert len(sink._open) == 64
 
 
-# `sink._open`: el orden LRU de manejadores no es observable en la salida.
+# `sink._open`: the LRU order of handles is not observable in the output.
 def test_the_least_recently_used_file_is_the_one_closed(tmp_path, mission):
     config, _ = mission
     paths = {day: day_dir(tmp_path, "AST-01", day) / FILES[EnvelopeKind.SESSION] for day in (1, 2, 3)}
     with JsonlSink(tmp_path, config=config, seed=1, max_open_files=2) as sink:
         sink.write(env(EnvelopeKind.SESSION, day=1))
         sink.write(env(EnvelopeKind.SESSION, day=2))
-        sink.write(env(EnvelopeKind.SESSION, day=1))  # 1 es ahora la más reciente
+        sink.write(env(EnvelopeKind.SESSION, day=1))  # 1 is now the most recent
         sink.write(env(EnvelopeKind.SESSION, day=3))
         assert set(sink._open) == {paths[1], paths[3]}
 
 
-# `sink._open`: que se reutilice el manejador (no reabrir) no es observable en la salida.
+# `sink._open`: that the handle is reused (not reopened) is not observable in the output.
 def test_an_open_file_is_reused_not_reopened(tmp_path, mission):
     config, _ = mission
     path = day_dir(tmp_path, "AST-01", 12) / FILES[EnvelopeKind.SESSION]

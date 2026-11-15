@@ -1,7 +1,7 @@
-"""Servidor MCP de Asclepius Orbit: 8 herramientas de solo lectura sobre la salud lumbar de un astronauta.
+"""Asclepius Orbit MCP server: 8 read-only tools on the lumbar health of an astronaut.
 
-Las descripciones y los nombres de herramientas y parámetros están en inglés a propósito: los lee un LLM pequeño
-local, así que dicen con precisión qué devuelven, que los datos pueden faltar (null) y que nunca diagnostican.
+Descriptions and names of tools and parameters are in English on purpose: a small local LLM reads them,
+so they state precisely what they return, that data may be missing (null) and that they never diagnose.
 """
 
 import json
@@ -33,7 +33,7 @@ from spine_mcp_server.errors import UpstreamError
 from spine_mcp_server.evidence import EvidenceIndex, EvidenceResult, EvidenceUnavailable
 from spine_mcp_server.ports import AppReader, AssessBaseSource, Simulator
 
-# Tope de `limit` de la API de la app; `compare_periods` lo usa siempre para leer cada periodo entero.
+# Cap of `limit` of the app API; `compare_periods` always uses it to read each whole period.
 MAX_HISTORY_LIMIT = 500
 
 INSTRUCTIONS = (
@@ -53,9 +53,9 @@ def _window(what: str) -> str:
 
 
 def _result(model: BaseModel) -> CallToolResult:
-    """Salida estructurada con la forma exacta del contrato (`dump`: sin defaults no fijados, con alias como `from`) y su copia en texto.
+    """Structured output with the exact shape of the contract (`dump`: no unset defaults, with aliases such as `from`) and its text copy.
 
-    El SDK serializaría el modelo con todos los campos por defecto (`urgency: null`...) y el esquema no los admite.
+    The SDK would serialize the model with all default fields (`urgency: null`...) and the schema does not admit them.
     """
     payload = dump(model)
     return CallToolResult(content=[TextContent(text=json.dumps(payload))], structured_content=payload)
@@ -63,7 +63,7 @@ def _result(model: BaseModel) -> CallToolResult:
 
 @contextmanager
 def _upstream_as_tool_errors() -> Iterator[None]:
-    """Un fallo de la app o del motor llega al cliente como `isError: true` con «título: detalle»."""
+    """A failure of the app or the engine reaches the client as `isError: true` with "title: detail"."""
     try:
         yield
     except UpstreamError as error:
@@ -71,7 +71,7 @@ def _upstream_as_tool_errors() -> Iterator[None]:
 
 
 def create_server(app: AppReader, simulator: Simulator, base: AssessBaseSource) -> MCPServer:
-    """Servidor MCP con sus 8 herramientas, que solo hablan con el resto del sistema a través de los puertos dados."""
+    """MCP server with its 8 tools, which only talk to the rest of the system through the given ports."""
     server = MCPServer("spine-mcp-server", instructions=INSTRUCTIONS)
 
     @server.tool(
@@ -121,7 +121,7 @@ def create_server(app: AppReader, simulator: Simulator, base: AssessBaseSource) 
         end: Annotated[AwareDatetime, Field(description=_window("End of the window (inclusive); must not be before `start`"))],
         limit: Annotated[int, Field(ge=1, le=MAX_HISTORY_LIMIT, description="Maximum feature sets and assessments to return, from 1 to 500.")] = 100,
     ) -> Annotated[CallToolResult, History]:
-        # `start`/`end` en vez de `from`/`to`: `from` es palabra reservada en Python. La salida conserva `from`/`to` (ver `dump`).
+        # `start`/`end` instead of `from`/`to`: `from` is a reserved word in Python. The output keeps `from`/`to` (see `dump`).
         with _upstream_as_tool_errors():
             return _result(app.get_history(astronaut_id, start, end, limit))
 
@@ -226,10 +226,10 @@ def create_server(app: AppReader, simulator: Simulator, base: AssessBaseSource) 
         project_days: Annotated[int | None, Field(ge=1, le=365, description="Optional horizon in days (1 to 365) for the trend of the scenario.")] = None,
     ) -> Annotated[CallToolResult, SimulateResponse]:
         with _upstream_as_tool_errors():
-            # Sin `project_days` el campo no se fija: `dump` no emite lo no fijado, y el esquema no admite null.
+            # Without `project_days` the field is not set: `dump` does not emit unset fields, and the schema does not admit null.
             optional = {} if project_days is None else {"project_days": project_days}
             request = SimulateRequest(schema_version=SCHEMA_VERSION, base=base.get_base(astronaut_id), overrides=overrides, **optional)
-            # Las reglas condicionales del contrato solo las expresa el esquema, no los modelos: se validan aquí antes de llamar al motor.
+            # The conditional rules of the contract are expressed only by the schema, not the models: they are validated here before calling the engine.
             problems = errors("engine/simulate-request", dump(request))
             if problems:
                 raise ToolError("invalid simulate request: " + "; ".join(problems))

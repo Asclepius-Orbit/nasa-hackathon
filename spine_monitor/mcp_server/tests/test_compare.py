@@ -1,4 +1,4 @@
-"""Tests de `compare_periods`: la comparación de dos ventanas de historial que devuelve la herramienta MCP."""
+"""Tests of `compare_periods`: the comparison of two history windows returned by the MCP tool."""
 
 import copy
 import json
@@ -30,7 +30,7 @@ def _ts(hours: float) -> str:
 
 
 def _feature_set(features: list[tuple[str, float, str]], protocol: str | None = PROTO, gravity: str | None = MICRO, hours: float = 1.0) -> dict[str, Any]:
-    """Feature set mínimo; protocol/gravity a None los omite (features de ventana móvil)."""
+    """Minimal feature set; protocol/gravity set to None omit them (rolling-window features)."""
     fs: dict[str, Any] = {
         "schema_version": "1.0.0",
         "astronaut_id": "AST-01",
@@ -131,7 +131,7 @@ def test_identical_periods_give_zero_deltas():
 
 
 def test_shift_aggregates_values_across_feature_sets_with_odd_and_even_medians():
-    # A: [1, 2, 6] -> n 3, media 3, mediana 2 (impar). B: [8, 2, 6, 4] -> n 4, media 5, mediana 5 (par, media de 4 y 6).
+    # A: [1, 2, 6] -> n 3, mean 3, median 2 (odd). B: [8, 2, 6, 4] -> n 4, mean 5, median 5 (even, mean of 4 and 6).
     a = _history([_feature_set([(RMS, 1.0, "%")]), _feature_set([(RMS, 2.0, "%"), (RMS, 6.0, "%")])])
     b = _history([_feature_set([(RMS, 8.0, "%"), (RMS, 2.0, "%")]), _feature_set([(RMS, 6.0, "%")]), _feature_set([(RMS, 4.0, "%")])])
     (feature,) = _out(a, b)["features"]
@@ -217,7 +217,7 @@ def test_unit_mismatch_is_reported_once_for_several_keys():
 
 
 def test_ordering_is_by_feature_then_protocol_then_gravity_regardless_of_input_order():
-    # El orden por feature_id contradice el de protocol_id, y el de protocol_id el de gravity: una clave mal ordenada se nota.
+    # The order by feature_id contradicts that of protocol_id, and that of protocol_id that of gravity: a badly ordered key shows.
     keys = [
         ("emg.a.x", "zz_proto_v1", "mars_0_38g"),
         ("emg.b.x", "aa_proto_v1", "earth_1g"),
@@ -254,7 +254,7 @@ def test_latest_level_is_by_as_of_not_by_list_order():
 
 
 def test_latest_level_compares_instants_not_offsets():
-    # 10:00+02:00 (08:00Z) es anterior a 09:00Z aunque su texto sea mayor.
+    # 10:00+02:00 (08:00Z) is earlier than 09:00Z even though its text is greater.
     early = _assessment("red")
     early["as_of"] = "2027-02-02T10:00:00+02:00"
     late = _assessment("green")
@@ -289,7 +289,7 @@ def test_scores_are_means_per_period_and_delta_is_b_minus_a():
     }
 
 
-# --- vacíos y avisos ---------------------------------------------------------------------------------------
+# --- empty cases and warnings ---------------------------------------------------------------------------------------
 
 
 def test_both_periods_empty():

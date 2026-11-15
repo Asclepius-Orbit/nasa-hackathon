@@ -1,4 +1,4 @@
-"""Composición del gateway real: ``serve`` (SIGTERM), ``build_source`` (puerto serie) y ``python -m spine_gateway``."""
+"""Real gateway composition: ``serve`` (SIGTERM), ``build_source`` (serial port) and ``python -m spine_gateway``."""
 
 import asyncio
 import os
@@ -37,22 +37,22 @@ def test_serve_runs_the_gateway_and_a_cancellation_propagates_after_the_offline_
     go(scenario())
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="el bucle de Windows no admite manejadores de señales")
+@pytest.mark.skipif(sys.platform == "win32", reason="the Windows loop does not support signal handlers")
 def test_sigterm_stops_serve_cleanly(harness, fakes) -> None:
     async def scenario() -> None:
         h, task = _serve_task(harness, fakes)
         await h.time.advance(0.0)
         signal.raise_signal(signal.SIGTERM)
-        await asyncio.wait_for(task, 5)  # vuelve sin excepción: la parada fue pedida
+        await asyncio.wait_for(task, 5)  # returns without exception: the stop was requested
         assert h.client.statuses()[-1] == "offline"
-        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL  # el manejador se quita al salir
+        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL  # the handler is removed on exit
 
     go(scenario())
 
 
 def test_build_source_opens_the_configured_serial_port(settings: GatewaySettings) -> None:
     async def scenario() -> None:
-        # loop:// es un puerto de pyserial en memoria: abre sin hardware.
+        # loop:// is an in-memory pyserial port: opens without hardware.
         source = app.build_source(settings.model_copy(update={"serial_url": "loop://", "serial_baud": 9600}))
         events = source.events()
         first = await asyncio.wait_for(anext(events), 5)
@@ -100,14 +100,14 @@ def test_main_reads_the_settings_from_the_environment_and_runs(monkeypatch: pyte
     ((settings, loop),) = seen
     assert settings.device_id == "wb-07"
     if sys.platform == "win32":
-        assert issubclass(loop, asyncio.SelectorEventLoop)  # aiomqtt (paho) necesita add_reader
+        assert issubclass(loop, asyncio.SelectorEventLoop)  # aiomqtt (paho) needs add_reader
 
 
 def test_main_exits_quietly_on_ctrl_c(clean_env: None) -> None:
     async def run(settings: GatewaySettings) -> None:
         raise KeyboardInterrupt
 
-    entry.main(run)  # no lanza
+    entry.main(run)  # does not raise
 
 
 def test_new_uuid_is_a_random_uuid() -> None:
@@ -130,7 +130,7 @@ def test_python_m_spine_gateway_runs_main(monkeypatch: pytest.MonkeyPatch, clean
 
     from pydantic import ValidationError
 
-    monkeypatch.setenv("SPINE_GATEWAY_MQTT_PORT", "0")  # falla al leer los ajustes: no llega a abrir nada
+    monkeypatch.setenv("SPINE_GATEWAY_MQTT_PORT", "0")  # fails reading the settings: it never gets to open anything
     monkeypatch.delitem(sys.modules, "spine_gateway.__main__", raising=False)
     with pytest.raises(ValidationError):
         runpy.run_module("spine_gateway", run_name="__main__")

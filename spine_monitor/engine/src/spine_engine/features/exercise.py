@@ -1,13 +1,13 @@
-"""Familia ``exercise`` (#41): número de repeticiones y regularidad de su duración.
+"""``exercise`` family (#41): number of repetitions and regularity of their duration.
 
-Features: ``exercise.rep_count``, ``exercise.rep_duration_s_mean`` y ``exercise.rep_duration_cv_pct``
-(coeficiente de variación con desviación muestral, n-1). Hacen falta al menos ``MIN_REPETITIONS`` (2)
-repeticiones válidas; con menos, las tres salen ``skipped`` con ``too_few_repetitions``. Nunca lanza.
+Features: ``exercise.rep_count``, ``exercise.rep_duration_s_mean`` and ``exercise.rep_duration_cv_pct``
+(coefficient of variation with sample deviation, n-1). At least ``MIN_REPETITIONS`` (2) valid
+repetitions are needed; with fewer, all three come out ``skipped`` with ``too_few_repetitions``. Never raises.
 
-``streams`` (calidad común del extractor compuesto): las ventanas por IMU salen de los streams IMU
-declarados, así que la calidad se evalúa sobre ellos. Las ventanas por eventos no son un stream y
-``()`` daría cobertura 0 (``no_data``); se usan todos los streams declarados de la sesión, que es el
-registro de datos sobre el que se hizo el ejercicio.
+``streams`` (common quality of the composite extractor): the IMU-based windows come from the declared IMU
+streams, so quality is evaluated over them. Event-based windows are not a stream and
+``()`` would give coverage 0 (``no_data``); all the declared streams of the session are used, which is the
+data record on which the exercise was done.
 """
 
 import statistics
@@ -28,7 +28,7 @@ REP_DURATION_CV = "exercise.rep_duration_cv_pct"
 
 
 class ExerciseFamily:
-    """Features del ejercicio a partir de las ventanas de repetición del servicio inyectado."""
+    """Exercise features from the repetition windows of the injected service."""
 
     family = "exercise"
     feature_ids: Sequence[str] = (REP_COUNT, REP_DURATION_MEAN, REP_DURATION_CV)
@@ -42,7 +42,7 @@ class ExerciseFamily:
         if len(durations) < MIN_REPETITIONS:
             return FamilyResult(skipped=tuple(SkippedFeature(feature_id, Reason.TOO_FEW_REPETITIONS) for feature_id in self.feature_ids))
         mean = statistics.fmean(durations)
-        # duración > 0 hace imposible una media 0; se protege igualmente
+        # duration > 0 makes a 0 mean impossible; it is guarded anyway
         cv = 100.0 * statistics.stdev(durations) / mean if mean > 0 else 0.0
         streams = self._streams(context, found.source)
         n = len(durations)

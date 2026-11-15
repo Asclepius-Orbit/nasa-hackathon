@@ -1,4 +1,4 @@
-"""Features de síntomas (#47): medias de 7 días sobre autoinformes, sin rellenar nunca con ceros."""
+"""Symptom features (#47): 7-day means over self-reports, never filling in with zeros."""
 
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
@@ -13,7 +13,7 @@ from spine_engine.features.symptoms import WINDOW, symptom_feature_set
 AS_OF = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 AST = "AST-01"
 PAIN_MEAN = "symptoms.pain_nrs_7d_mean"
-RETIRED_PAIN_MAX = "symptoms.pain_nrs_7d_max"  # retirada del catálogo: el engine ya no la produce
+RETIRED_PAIN_MAX = "symptoms.pain_nrs_7d_max"  # removed from the catalogue: the engine no longer produces it
 STIFF = "symptoms.stiffness_nrs_7d_mean"
 SLEEP = "symptoms.sleep_hours_7d_mean"
 FLAGS = "symptoms.red_flag_count_7d"
@@ -281,6 +281,6 @@ def test_context_of_another_astronaut_is_ignored() -> None:
 
 
 def test_context_date_uses_utc_date_of_as_of() -> None:
-    as_of = datetime(2026, 11, 13, 23, 30, tzinfo=timezone(timedelta(hours=-3)))  # 02:30 UTC del 14
+    as_of = datetime(2026, 11, 13, 23, 30, tzinfo=timezone(timedelta(hours=-3)))  # 02:30 UTC on the 14th
     fs = symptom_feature_set([], [context(date(2026, 11, 14), "earth_1g")], as_of, AST)
     assert fs.gravity_environment == GravityEnvironment.EARTH_1G

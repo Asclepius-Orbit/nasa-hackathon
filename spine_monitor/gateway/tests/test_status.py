@@ -1,4 +1,4 @@
-"""Lógica pura del estado del dispositivo, del ancla de reloj y del session_id de fondo."""
+"""Pure logic of the device status, the clock anchor and the background session_id."""
 
 import time
 import uuid
@@ -17,7 +17,7 @@ def at(seconds: float) -> datetime:
     return T0 + timedelta(seconds=seconds)
 
 
-# --- estado de un stream ---
+# --- stream status ---
 
 
 def test_a_stream_that_does_not_take_part_is_disabled() -> None:
@@ -26,7 +26,7 @@ def test_a_stream_that_does_not_take_part_is_disabled() -> None:
 
 @pytest.mark.parametrize(("last", "expected"), [(1.0, StreamState.ACTIVE), (0.0, StreamState.STALLED), (-5.0, StreamState.STALLED), (1.9, StreamState.ACTIVE)])
 def test_an_expected_stream_is_active_while_frames_arrive_within_the_stall_timeout(last: float, expected: StreamState) -> None:
-    # now = 2 s, timeout 2 s: el lote de hace exactamente 2 s ya no basta.
+    # now = 2 s, timeout 2 s: the batch from exactly 2 s ago is no longer enough.
     assert status.stream_state(expected=True, last_frame_at=at(last), since=at(-10), now=at(2.0), stall_timeout_s=2.0) is expected
 
 
@@ -39,13 +39,13 @@ def test_stall_deadline_is_when_the_state_would_change_without_new_frames() -> N
     kw = {"now": at(1.0), "stall_timeout_s": 2.0}
     assert status.stall_deadline(expected=True, last_frame_at=at(0.5), since=at(-9), **kw) == at(2.5)
     assert status.stall_deadline(expected=True, last_frame_at=None, since=at(0.2), **kw) == at(2.2)
-    # Ya parado, o no participa: nada que vigilar hasta que llegue un lote.
+    # Already stopped, or not participating: nothing to watch until a batch arrives.
     assert status.stall_deadline(expected=True, last_frame_at=at(-1.0), since=at(-9), **kw) is None
     assert status.stall_deadline(expected=True, last_frame_at=None, since=at(-1.0), **kw) is None
     assert status.stall_deadline(expected=False, last_frame_at=at(0.5), since=at(0), **kw) is None
 
 
-# --- estado global ---
+# --- global status ---
 
 
 @pytest.mark.parametrize(
@@ -63,7 +63,7 @@ def test_health(device_known: bool, states: list[StreamState], expected: Health)
     assert status.health(device_known=device_known, states=states) is expected
 
 
-# --- mensajes ---
+# --- messages ---
 
 
 def test_device_status_reports_the_streams_of_the_usb_serial_link(settings: GatewaySettings) -> None:
@@ -130,7 +130,7 @@ def test_clock_sync_anchors_the_tick_at_its_arrival_time(settings: GatewaySettin
     assert validation.errors("telemetry/clock-sync", payload) == []
 
 
-# --- session_id de fondo ---
+# --- background session_id ---
 
 
 def test_background_session_id_is_a_uuid5_of_the_device_and_the_utc_day(settings: GatewaySettings) -> None:
@@ -138,7 +138,7 @@ def test_background_session_id_is_a_uuid5_of_the_device_and_the_utc_day(settings
     assert morning == str(uuid.uuid5(status.BACKGROUND_NAMESPACE, "AST-01/wb-01/background/2026-11-02"))
     assert status.background_session_id(settings, at(14 * 3600 + 59 * 60)) == morning
     assert status.background_session_id(settings, at(15 * 3600)) != morning  # 2026-11-03 00:00 UTC
-    # La fecha es la UTC aunque el instante venga en otra zona.
+    # The date is the UTC one even if the instant comes in another zone.
     madrid = (T0 + timedelta(hours=14, minutes=30)).astimezone(timezone(timedelta(hours=1)))
     assert madrid.date().isoformat() == "2026-11-03"
     assert status.background_session_id(settings, madrid) == morning
@@ -146,9 +146,9 @@ def test_background_session_id_is_a_uuid5_of_the_device_and_the_utc_day(settings
     assert status.background_session_id(other, at(0)) != morning
 
 
-@pytest.mark.skipif(not hasattr(time, "tzset"), reason="cambiar la zona del proceso necesita time.tzset (Unix)")
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="changing the process time zone needs time.tzset (Unix)")
 def test_background_session_id_ignores_the_local_time_zone(settings: GatewaySettings, monkeypatch: pytest.MonkeyPatch) -> None:
-    noon = at(3 * 3600)  # 12:00 UTC del 2 de noviembre: ya es 3 de noviembre en UTC+14
+    noon = at(3 * 3600)  # 12:00 UTC on 2 November: it is already 3 November in UTC+14
     expected = str(uuid.uuid5(status.BACKGROUND_NAMESPACE, "AST-01/wb-01/background/2026-11-02"))
     monkeypatch.setenv("TZ", "Etc/GMT-14")
     time.tzset()
@@ -160,11 +160,11 @@ def test_background_session_id_ignores_the_local_time_zone(settings: GatewaySett
 
 
 def test_background_namespace_is_fixed() -> None:
-    # Cambiarlo cambiaría el session_id de fondo de todos los días ya publicados.
+    # Changing it would change the background session_id of every day already published.
     assert status.BACKGROUND_NAMESPACE == uuid.UUID("5b0d7a0e-3c1f-5e8e-9a4c-2f6d1b7e8a90")
 
 
-# --- calendario ---
+# --- schedule ---
 
 
 def test_next_after_is_the_first_step_after_now() -> None:

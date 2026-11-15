@@ -1,4 +1,4 @@
-"""La misión mini con semilla fija reproduce un snapshot versionado (recuentos por tipo + hash de los mensajes)."""
+"""The mini mission with a fixed seed reproduces a versioned snapshot (counts per type + hash of the messages)."""
 
 import hashlib
 import json

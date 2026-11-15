@@ -1,4 +1,4 @@
-"""Ajustes del gateway real: defaults, override por entorno y validación."""
+"""Real gateway settings: defaults, environment override and validation."""
 
 import os
 from pathlib import Path
@@ -12,7 +12,7 @@ from spine_gateway.settings import GatewaySettings
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # Sin .env del directorio actual ni variables heredadas.
+    # No .env from the current directory nor inherited variables.
     monkeypatch.chdir(tmp_path)
     for name in [n for n in os.environ if n.startswith("SPINE_GATEWAY_")]:
         monkeypatch.delenv(name)

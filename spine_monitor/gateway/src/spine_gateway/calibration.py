@@ -1,20 +1,20 @@
-"""Grabación de las calibraciones ``stretch`` y ``emg_mvc`` que pide el comando ``calibrate``.
+"""Recording of the ``stretch`` and ``emg_mvc`` calibrations requested by the ``calibrate`` command.
 
-Lógica pura y determinista: el id (``new_id``) y el instante (``finish(now)``) los inyecta quien llama. La duración se
-mide con el reloj del dispositivo (``t0_ms`` de cada lote y la frecuencia de su kind), no con el reloj de pared: la
-grabación empieza en el primer lote del stream y termina cuando un lote cubre ``duration_s``. Solo cuentan las muestras
-anteriores a ese instante. Se ignoran los lotes de otros kinds, los duplicados o retrocesos (``frame_gap < 0``), los de
-``n`` inesperado y los anteriores al inicio (vuelta de ``millis()``); un lote perdido acorta la muestra, no la duración.
+Pure and deterministic logic: the id (``new_id``) and the instant (``finish(now)``) are injected by the caller. The duration is
+measured with the device clock (``t0_ms`` of each batch and the frequency of its kind), not the wall clock: the
+recording starts at the first batch of the stream and ends when a batch covers ``duration_s``. Only samples
+before that instant count. Batches of other kinds, duplicates or regressions (``frame_gap < 0``), those with an
+unexpected ``n`` and those before the start (``millis()`` wrap) are ignored; a lost batch shortens the sample, not the duration.
 
-- ``stretch``: media de las cuentas -> ``R0`` con el divisor del ensamblador -> ``rest_resistance_ohm``, con
-  ``rest_length_mm`` de los ajustes y la curva ``stretch_curve`` de los ajustes (por defecto ``DEFAULT_STRETCH_CURVE``, la de la
-  misión de ejemplo), escalada al reposo medido: R0 · R / ``stretch_curve_rest_resistance_ohm`` y L0 · L / ``stretch_curve_rest_length_mm``.
-- ``emg_mvc``: RMS en ventanas deslizantes de ``emg_mvc_window_ms`` (paso de una muestra) y ``mvc_rms_mv`` = la máxima.
-  La conversión a mV es lineal, así que el RMS se calcula en cuentas y se convierte al final; para una señal ``raw`` se
-  resta antes el offset de media escala del ensamblador (``emg_offset_counts``, suposición no verificada con hardware),
-  nunca el RMS de cuentas absolutas. ``signal_kind`` sale de ``emg_signal_kind``.
+- ``stretch``: mean of the counts -> ``R0`` with the assembler's divider -> ``rest_resistance_ohm``, with
+  ``rest_length_mm`` from the settings and the ``stretch_curve`` curve from the settings (by default ``DEFAULT_STRETCH_CURVE``, the one from the
+  example mission), scaled to the measured rest: R0 · R / ``stretch_curve_rest_resistance_ohm`` and L0 · L / ``stretch_curve_rest_length_mm``.
+- ``emg_mvc``: RMS over sliding windows of ``emg_mvc_window_ms`` (one-sample step) and ``mvc_rms_mv`` = the maximum.
+  The conversion to mV is linear, so the RMS is computed in counts and converted at the end; for a ``raw`` signal the
+  assembler's mid-scale offset is subtracted first (``emg_offset_counts``, assumption not verified with hardware),
+  never the RMS of absolute counts. ``signal_kind`` comes from ``emg_signal_kind``.
 
-``imu`` no se graba aquí (el gateway lo rechaza en el comando).
+``imu`` is not recorded here (the gateway rejects it in the command).
 """
 
 import math
@@ -41,13 +41,13 @@ class CalibrationStatus(StrEnum):
 
 class FailureReason(StrEnum):
     INCOMPLETE = "incomplete"
-    """``finish`` antes de cubrir ``duration_s`` de tiempo de dispositivo."""
+    """``finish`` before covering ``duration_s`` of device time."""
     REST_RESISTANCE_NOT_COMPUTABLE = "rest_resistance_not_computable"
-    """Media de cuentas en 0 o en el máximo: cordón en corto o circuito abierto."""
+    """Mean of counts at 0 or at the maximum: cord shorted or open circuit."""
     TOO_FEW_SAMPLES = "too_few_samples"
-    """Menos muestras EMG que una ventana de RMS."""
+    """Fewer EMG samples than one RMS window."""
     FLAT_SIGNAL = "flat_signal"
-    """RMS máximo 0: el contrato exige ``mvc_rms_mv > 0``."""
+    """Maximum RMS 0: the contract requires ``mvc_rms_mv > 0``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,7 @@ class CalibrationFailure:
 
 
 class CalibrationRecorder:
-    """Una grabación de calibración de un stream. ``feed`` cada lote recibido y ``finish`` al acabar (una vez)."""
+    """A calibration recording of a stream. ``feed`` each received batch and ``finish`` at the end (once)."""
 
     def __init__(
         self,
@@ -114,7 +114,7 @@ class CalibrationRecorder:
         return self._status
 
     def finish(self, now: datetime) -> StretchCalibration | EmgMvcCalibration | CalibrationFailure:
-        """La calibración (``created_at = now``, con zona) o el motivo por el que no se pudo calcular."""
+        """The calibration (``created_at = now``, with timezone) or the reason it could not be computed."""
         if self._status is CalibrationStatus.COLLECTING:
             return CalibrationFailure(FailureReason.INCOMPLETE, f"collected {self._covered_ms / 1000} of {self._duration_s} s")
         if self._type is CalibrationType.STRETCH:

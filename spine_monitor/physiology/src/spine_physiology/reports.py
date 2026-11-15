@@ -1,15 +1,15 @@
-"""Objetos de dominio diarios y de perfil: DailySelfReport, DailyContext, AstronautProfile.
+"""Daily and profile domain objects: DailySelfReport, DailyContext, AstronautProfile.
 
-Dueño: B5. Debe implementar, con los modelos de spine_contracts (`source: simulator` donde exista,
-`schema_version` = SCHEMA_VERSION, sin pasar None a campos opcionales):
-- `build_profile`: AstronautProfile desde `member.profile` (nunca viaja por MQTT).
-- `build_daily_context`: fecha, mission_day, fase y gravedad del día; ejercicio y contramedidas de la
-  `DailyActivity` (la misma que usó el modelo latente, así la dosis cuadra); medicación según
-  `daily_context.medication` (umbral sobre pain_stiffness del día + probabilidad, `taken_at` a su hora).
-- `build_daily_self_report`: uno cada día, a `self_report.time_utc` + jitter; NRS de dolor y rigidez
-  desde el latente pain_stiffness, peor 24 h, localizaciones si NRS >= umbral, sueño con penalización por
-  dolor, red_flags siempre presente (lista vacía = preguntado y ninguna). ODI semanal: informativo (el simulador no lo genera y nunca puntúa riesgo).
-Todo lo que pasa por `errors(...)` de `spine_contracts.validation` debe salir sin errores.
+Owner: B5. Must implement, with the spine_contracts models (`source: simulator` where it exists,
+`schema_version` = SCHEMA_VERSION, without passing None to optional fields):
+- `build_profile`: AstronautProfile from `member.profile` (never travels over MQTT).
+- `build_daily_context`: date, mission_day, phase and gravity of the day; exercise and countermeasures from the
+  `DailyActivity` (the same one the latent model used, so the dose matches); medication according to
+  `daily_context.medication` (threshold on the day's pain_stiffness + probability, `taken_at` at its time).
+- `build_daily_self_report`: one per day, at `self_report.time_utc` + jitter; pain and stiffness NRS
+  from the pain_stiffness latent, worst 24 h, locations if NRS >= threshold, sleep with a penalty for
+  pain, red_flags always present (empty list = asked and none). Weekly ODI: informational (the simulator does not generate it and it never scores risk).
+Everything that goes through `errors(...)` of `spine_contracts.validation` must come out without errors.
 """
 
 from datetime import datetime, timedelta
@@ -25,14 +25,14 @@ from spine_contracts.models.domain.self_report_schema import PainLocation, Side,
 from spine_physiology.config import CrewMember, MissionConfig
 from spine_physiology.state import DailyActivity, DayInfo, LatentState
 
-# Fuente de todos los registros generados: el simulador nunca se presenta como dato real.
+# Source of all generated records: the simulator never presents itself as real data.
 SOURCE = "simulator"
 
 
 def build_profile(member: CrewMember, *, updated_at: datetime) -> AstronautProfile:
     profile = member.profile
-    # Solo se pasan los campos opcionales que existen: un None explícito se emitiría como null y el
-    # contrato no lo admite en campos que no son nullable.
+    # Only the optional fields that exist are passed: an explicit None would be emitted as null and the
+    # contract does not allow it in fields that are not nullable.
     optional = {}
     if profile.gender_identity is not None:
         optional["gender_identity"] = profile.gender_identity
@@ -62,10 +62,10 @@ def build_daily_context(
     activity: DailyActivity,
     state: LatentState,
 ) -> DailyContext:
-    """RNG: `(astronaut_id, day.index, "daily_context")` (solo para la medicación)."""
+    """RNG: `(astronaut_id, day.index, "daily_context")` (only for the medication)."""
     exercise = []
     for bout in activity.exercise:
-        # Un bloque de duración no positiva no existe para el contrato (duration_min > 0): se omite.
+        # A non-positive-duration block does not exist for the contract (duration_min > 0): it is omitted.
         if bout.duration_min <= 0:
             continue
         item = {"modality": bout.modality, "duration_min": bout.duration_min}
@@ -83,7 +83,7 @@ def build_daily_context(
 
     medication = []
     for rule in config.daily_context.medication:
-        # Solo los días con dolor por encima del umbral; luego se decide con la probabilidad de la regla.
+        # Only days with pain above the threshold; then decided with the rule's probability.
         if state.pain_stiffness < rule.pain_threshold:
             continue
         if rng.random() >= rule.probability:
@@ -122,7 +122,7 @@ def build_daily_self_report(
     """RNG: `(astronaut_id, day.index, "self_report")`; report_id = derive_uuid(seed, astronaut_id, day.index, "self_report")."""
     cfg = config.self_report
 
-    # Instante: hora de referencia del día + jitter uniforme simétrico, en milisegundos.
+    # Instant: reference time of the day + symmetric uniform jitter, in milliseconds.
     jitter_s = round(float(rng.uniform(-cfg.time_jitter_s, cfg.time_jitter_s)), 3)
     timestamp = day.at(cfg.time_utc) + timedelta(seconds=jitter_s)
 
@@ -134,7 +134,7 @@ def build_daily_self_report(
     if pain >= cfg.pain_location_min_nrs:
         pain_locations = [PainLocation(region=loc.region, side=Side(loc.side)) for loc in cfg.pain_locations]
 
-    # Horas perdidas por dolor: el sueño baja con pain_nrs (penalización lineal, sin piso más allá de 0).
+    # Hours lost to pain: sleep drops with pain_nrs (linear penalty, no floor beyond 0).
     hours = float(rng.normal(cfg.sleep_hours.mean, cfg.sleep_hours.sd)) - cfg.sleep_pain_penalty_h_per_nrs * pain
     hours = round(float(np.clip(hours, 0.0, 24.0)), 2)
     quality = _nrs(rng, cfg.sleep_quality_nrs.mean, cfg.sleep_quality_nrs.sd)
@@ -161,6 +161,6 @@ def build_daily_self_report(
 
 
 def _nrs(rng: np.random.Generator, mean: float, noise_sd: float) -> int:
-    """Entero NRS 0..10: redondeo de mean + N(0, noise_sd), recortado al rango."""
+    """NRS integer 0..10: rounding of mean + N(0, noise_sd), clipped to the range."""
     value = mean + float(rng.normal(0.0, noise_sd)) if noise_sd > 0 else mean
     return int(np.clip(np.round(value), 0, 10))

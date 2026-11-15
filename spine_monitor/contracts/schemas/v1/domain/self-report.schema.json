@@ -135,7 +135,7 @@
               "uniqueItems": true
             },
             "other_symptoms": {
-              "description": "Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model (Aguado): they are reported, not triaged here.",
+              "description": "Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model: they are reported, not triaged here.",
               "type": "array",
               "items": { "$ref": "#/$defs/other_symptom" },
               "uniqueItems": true

@@ -1,38 +1,38 @@
-"""Ensamblado de los lotes ``D`` del Arduino en chunks MQTT v1 (``EmgChunk``/``ImuChunk``/``StretchChunk``).
+"""Assembly of the Arduino ``D`` batches into MQTT v1 chunks (``EmgChunk``/``ImuChunk``/``StretchChunk``).
 
-Lógica pura y síncrona: sin I/O, sin reloj (``received_at`` y ``session_id`` los pone quien llama) y sin aleatoriedad.
+Pure synchronous logic: no I/O, no clock (``received_at`` and ``session_id`` are supplied by the caller) and no randomness.
 
-Unidades (contrato ``telemetry/stream-chunk``):
+Units (contract ``telemetry/stream-chunk``):
 
-- EMG: el tipo de señal es configurable (``emg_signal_kind``): el módulo (clon del Muscle Sensor V3) probablemente
-  entrega la envolvente (default), pero no está confirmado con la placa (issue #13). Sin bloque ``filter``. mV en la
-  entrada del ADC: ``(counts - offset) / (2^bits - 1) · vref · 1000 / gain``, con ``offset = 0`` para ``rectified`` y
-  ``envelope`` y ``offset = (2^bits - 1) / 2`` para ``raw`` (señal bipolar). SUPOSICIÓN NO VERIFICADA con hardware:
-  que la señal cruda llega polarizada a Vref/2 (``emg_offset_counts``).
-- IMU: sensibilidades nominales de la hoja de datos del MPU-6050 (``ACCEL_LSB_PER_G``, ``GYRO_LSB_PER_DPS``).
-- Cordón: ``adc_counts`` siempre. ``resistance_ohm`` por el divisor (Rs entre 5 V y A1, cordón entre A1 y GND):
-  ``Rc = Rs · counts / (max - counts)``. En 0 (corto) o en el máximo (circuito abierto) no es calculable y, como
-  ``number_array`` no admite ``null`` y todas las columnas llevan ``n_samples`` entradas, ese chunk no publica
-  ``resistance_ohm`` (ni ``length_mm``, que sale de ella). ``length_mm`` solo con una calibración ``stretch``: curva
-  lineal por tramos con recorte a sus extremos fuera de rango (flag ``out_of_calibration``); ``calibration_id`` va
-  solo cuando hay ``length_mm``.
+- EMG: the signal type is configurable (``emg_signal_kind``): the module (Muscle Sensor V3 clone) probably
+  delivers the envelope (default), but it is not confirmed with the board (issue #13). No ``filter`` block. mV at the
+  ADC input: ``(counts - offset) / (2^bits - 1) · vref · 1000 / gain``, with ``offset = 0`` for ``rectified`` and
+  ``envelope`` and ``offset = (2^bits - 1) / 2`` for ``raw`` (bipolar signal). ASSUMPTION NOT VERIFIED with hardware:
+  that the raw signal arrives biased at Vref/2 (``emg_offset_counts``).
+- IMU: nominal sensitivities from the MPU-6050 datasheet (``ACCEL_LSB_PER_G``, ``GYRO_LSB_PER_DPS``).
+- Cord: ``adc_counts`` always. ``resistance_ohm`` via the divider (Rs between 5 V and A1, cord between A1 and GND):
+  ``Rc = Rs · counts / (max - counts)``. At 0 (short) or at the maximum (open circuit) it is not computable and, since
+  ``number_array`` does not allow ``null`` and all columns carry ``n_samples`` entries, that chunk does not publish
+  ``resistance_ohm`` (nor ``length_mm``, which comes from it). ``length_mm`` only with a ``stretch`` calibration: piecewise
+  linear curve clamped to its ends when out of range (flag ``out_of_calibration``); ``calibration_id`` goes
+  only when there is ``length_mm``.
 
-Calidad (``assessed_by: gateway``): ``score = muestras sin problema / muestras``; ``clipping`` si una muestra satura:
-EMG en el máximo del ADC (``raw``, centrada: también en 0, los dos extremos son saturación; ``rectified`` y
-``envelope``: 0 es el músculo en reposo, un valor sano), cordón en 0 (corto) o en el
-máximo (además ``lead_off``: circuito abierto) e IMU en -32768 o 32767 en algún eje del sensor.
-Tras lotes perdidos, ``packet_gap`` y el score queda como mucho en ``PACKET_GAP_SCORE``.
+Quality (``assessed_by: gateway``): ``score = samples without problems / samples``; ``clipping`` if a sample saturates:
+EMG at the ADC maximum (``raw``, centred: also at 0, both extremes are saturation; ``rectified`` and
+``envelope``: 0 is the resting muscle, a healthy value), cord at 0 (short) or at the
+maximum (also ``lead_off``: open circuit) and IMU at -32768 or 32767 on any sensor axis.
+After lost batches, ``packet_gap`` and the score stays at most at ``PACKET_GAP_SCORE``.
 
-``seq`` va por (boot_id, stream) desde 0 y lo comparten sesión y fondo. Un lote perdido consume seq (``1 + hueco``) y
-se declara en ``dropped_samples``; un duplicado o retroceso se descarta sin tocar nada (``Discarded``).
+``seq`` runs per (boot_id, stream) from 0 and is shared by session and background. A lost batch consumes seq (``1 + gap``) and
+is declared in ``dropped_samples``; a duplicate or regression is discarded without touching anything (``Discarded``).
 
-Fondo (fuera de sesión, solo IMU y cordón): ``BackgroundAccumulator`` junta 10 lotes contiguos y publica un chunk de
-1 s a 10 Hz con la media de cada lote. Un hueco tira la ventana parcial (el tiempo no sería uniforme), consume un seq
-por cada ventana de 1 s que tocan la parte tirada y lo perdido (``ceil((parcial + hueco) / 10)``) y la ventana nueva
-empieza en el siguiente lote recibido. ``reset`` (inicio o fin de sesión) tira la ventana parcial sin consumir seq.
+Background (outside a session, IMU and cord only): ``BackgroundAccumulator`` gathers 10 contiguous batches and publishes a
+1 s chunk at 10 Hz with the mean of each batch. A gap drops the partial window (time would not be uniform), consumes one seq
+for each 1 s window touched by the dropped part and by what was lost (``ceil((partial + gap) / 10)``) and the new window
+starts at the next received batch. ``reset`` (session start or end) drops the partial window without consuming seq.
 
-Límite conocido: ``t0_ms`` son los ``millis()`` u32 del Arduino y dan la vuelta a los ~49,7 días de funcionamiento
-continuo; ``t0_device_ms`` volvería a empezar sin cambiar ``boot_id``. Se acepta para la misión de demostración.
+Known limit: ``t0_ms`` is the Arduino u32 ``millis()`` and wraps after ~49.7 days of continuous
+operation; ``t0_device_ms`` would start over without changing ``boot_id``. Accepted for the demo mission.
 """
 
 from bisect import bisect_right
@@ -52,18 +52,18 @@ from spine_gateway.protocol import I16_MAX, I16_MIN, Frame, FrameKind, ImuSample
 from spine_gateway.settings import GatewaySettings
 
 BATCH_MS = 100
-"""Duración de un lote del firmware."""
+"""Duration of a firmware batch."""
 SAMPLES_PER_BATCH: Mapping[FrameKind, int] = MappingProxyType({FrameKind.EMG: 100, FrameKind.IMU: 10, FrameKind.CORD: 2})
 SAMPLE_RATE_HZ: Mapping[FrameKind, float] = MappingProxyType({kind: n * 1000 / BATCH_MS for kind, n in SAMPLES_PER_BATCH.items()})
-"""EMG 1000 Hz, IMU 100 Hz, cordón 20 Hz."""
+"""EMG 1000 Hz, IMU 100 Hz, cord 20 Hz."""
 BACKGROUND_FRAMES = 10
-"""Lotes contiguos por chunk de fondo (1 s)."""
+"""Contiguous batches per background chunk (1 s)."""
 BACKGROUND_SAMPLE_RATE_HZ = 1000 / BATCH_MS
-"""Una muestra (la media) por lote: 10 Hz."""
+"""One sample (the mean) per batch: 10 Hz."""
 PACKET_GAP_SCORE = 0.7
-"""Score máximo del chunk que sigue a lotes perdidos (mismo valor que el ejemplo de misión del simulador)."""
+"""Maximum score of the chunk that follows lost batches (same value as the simulator mission example)."""
 
-# Sensibilidad nominal del MPU-6050 por rango configurado (hoja de datos, tablas 6.1 y 6.2).
+# Nominal MPU-6050 sensitivity per configured range (datasheet, tables 6.1 and 6.2).
 ACCEL_LSB_PER_G: Mapping[int, float] = MappingProxyType({2: 16384.0, 4: 8192.0, 8: 4096.0, 16: 2048.0})
 GYRO_LSB_PER_DPS: Mapping[int, float] = MappingProxyType({250: 131.0, 500: 65.5, 1000: 32.8, 2000: 16.4})
 
@@ -75,24 +75,24 @@ type Chunk = EmgChunk | ImuChunk | StretchChunk
 type Samples = tuple[int, ...] | tuple[ImuSample, ...]
 
 
-# --- conversiones ---
+# --- conversions ---
 
 
 def max_counts(adc_bits: int) -> int:
-    """Lectura máxima del ADC: ``2^bits - 1``."""
+    """Maximum ADC reading: ``2^bits - 1``."""
     return (1 << adc_bits) - 1
 
 
 def counts_to_mv(counts: float, *, adc_bits: int, vref_v: float, gain: float) -> float:
-    """mV en la entrada del ADC divididos por la ganancia del módulo. Admite medias (float)."""
+    """mV at the ADC input divided by the module gain. Accepts means (float)."""
     return counts / max_counts(adc_bits) * vref_v * 1000.0 / gain
 
 
 def emg_offset_counts(settings: GatewaySettings) -> float:
-    """Cuentas que se restan al EMG antes de convertir a mV: media escala si es ``raw``, 0 si no.
+    """Counts subtracted from the EMG before converting to mV: mid-scale if ``raw``, 0 otherwise.
 
-    SUPOSICIÓN NO VERIFICADA con hardware: la señal cruda llega polarizada a Vref/2, así que tras restar la media
-    escala queda bipolar. Una envolvente o una señal rectificada es unipolar y no lleva offset.
+    ASSUMPTION NOT VERIFIED with hardware: the raw signal arrives biased at Vref/2, so after subtracting the mid
+    scale it is bipolar. An envelope or a rectified signal is unipolar and carries no offset.
     """
     return max_counts(settings.adc_bits) / 2 if settings.emg_signal_kind is SignalKind.RAW else 0.0
 
@@ -105,17 +105,17 @@ def _lsb(table: Mapping[int, float], sensor: str, value: int) -> float:
 
 
 def accel_to_g(raw: int, range_g: int) -> float:
-    """Cuenta cruda del acelerómetro a g con la sensibilidad nominal del rango; ``ValueError`` si no es 2/4/8/16."""
+    """Raw accelerometer count to g with the nominal sensitivity of the range; ``ValueError`` if it is not 2/4/8/16."""
     return raw / _lsb(ACCEL_LSB_PER_G, "accel", range_g)
 
 
 def gyro_to_dps(raw: int, range_dps: int) -> float:
-    """Cuenta cruda del giróscopo a °/s; ``ValueError`` si el rango no es 250/500/1000/2000."""
+    """Raw gyroscope count to °/s; ``ValueError`` if the range is not 250/500/1000/2000."""
     return raw / _lsb(GYRO_LSB_PER_DPS, "gyro", range_dps)
 
 
 def counts_to_resistance(counts: float, *, adc_bits: int, series_resistor_ohm: float) -> float | None:
-    """Resistencia del cordón por el divisor; ``None`` en 0 o desde el máximo (corto o circuito abierto)."""
+    """Cord resistance via the divider; ``None`` at 0 or from the maximum (short or open circuit)."""
     full = max_counts(adc_bits)
     if not 0 < counts < full:
         return None
@@ -123,11 +123,11 @@ def counts_to_resistance(counts: float, *, adc_bits: int, series_resistor_ohm: f
 
 
 def resistance_to_length(resistance: float, points: Sequence[tuple[float, float]]) -> tuple[float, bool]:
-    """Longitud por interpolación lineal por tramos sobre puntos (resistance_ohm, length_mm) y si cae dentro.
+    """Length by piecewise linear interpolation over points (resistance_ohm, length_mm) and whether it falls inside.
 
-    Los puntos se ordenan por resistencia. Fuera del rango de la curva se recorta a la longitud del extremo más
-    cercano y se devuelve ``False`` (el llamador lo marca ``out_of_calibration``); no se extrapola porque la respuesta
-    del cordón no es lineal. El resultado de cada tramo se acota a sus extremos para que sea monótono en float.
+    The points are sorted by resistance. Outside the curve range it is clamped to the length of the nearest
+    end and ``False`` is returned (the caller flags it ``out_of_calibration``); it is not extrapolated because the response
+    of the cord is not linear. The result of each segment is bounded to its ends so that it is monotonic in float.
     """
     curve = sorted(points)
     if resistance < curve[0][0]:
@@ -142,7 +142,7 @@ def resistance_to_length(resistance: float, points: Sequence[tuple[float, float]
     return min(max(value, min(l0, l1)), max(l0, l1)), True
 
 
-# --- calidad ---
+# --- quality ---
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +154,7 @@ class _Quality:
         return _Quality(min(self.score, other.score), self.flags | other.flags)
 
     def contract(self) -> dict[str, Any]:
-        # Orden de los flags: el del enum del contrato, para que la salida sea determinista.
+        # Order of the flags: that of the contract enum, so the output is deterministic.
         return {"score": self.score, "flags": [f.value for f in QualityFlag if f in self.flags], "assessed_by": "gateway"}
 
 
@@ -162,7 +162,7 @@ _GAP = _Quality(PACKET_GAP_SCORE, frozenset({QualityFlag.PACKET_GAP}))
 
 
 def _fraction(bad: Iterable[frozenset[QualityFlag]], total: int) -> _Quality:
-    """Calidad de un canal a partir de los flags de cada muestra problemática (las limpias no se pasan)."""
+    """Quality of a channel from the flags of each problematic sample (clean ones are not passed)."""
     problems = list(bad)
     if not problems:
         return _Quality()
@@ -175,8 +175,8 @@ _OUT = frozenset({QualityFlag.OUT_OF_CALIBRATION})
 
 
 def _emg_quality(counts: tuple[int, ...], full: int, kind: SignalKind) -> dict[str, _Quality]:
-    # Cruda (centrada): 0 y el máximo son saturación. Rectificada o envolvente: cerca de 0 es el músculo en reposo y
-    # no es un problema de la señal; solo satura en el máximo.
+    # Raw (centred): 0 and the maximum are saturation. Rectified or envelope: near 0 is the resting muscle and
+    # is not a signal problem; it only saturates at the maximum.
     low = 0 if kind is SignalKind.RAW else -1
     return {"emg": _fraction((_CLIPPING for c in counts if c <= low or c >= full), len(counts))}
 
@@ -192,11 +192,11 @@ def _imu_quality(samples: tuple[ImuSample, ...]) -> dict[str, _Quality]:
     return {"accel": clipped(_ACCEL_AXES), "gyro": clipped(_GYRO_AXES)}
 
 
-# --- forma de las muestras ---
+# --- shape of the samples ---
 
 
 def scalar_samples(kind: FrameKind, samples: Samples) -> tuple[int, ...]:
-    """Muestras de un lote EMG o de cordón como enteros; ``TypeError`` si son tuplas IMU (error de programación)."""
+    """Samples of an EMG or cord batch as integers; ``TypeError`` if they are IMU tuples (programming error)."""
     values = tuple(s for s in samples if isinstance(s, int))
     if len(values) != len(samples):
         raise TypeError(f"{kind.name} frame with samples of the wrong shape")
@@ -211,25 +211,25 @@ def _imu_samples(samples: Samples) -> tuple[ImuSample, ...]:
 
 
 def _mean(values: Iterable[int]) -> int:
-    """Media entera de enteros, redondeo exacto al par en los empates (``round`` de ``Fraction``): 2.5 -> 2, 3.5 -> 4."""
+    """Integer mean of integers, exact round-half-to-even on ties (``round`` of ``Fraction``): 2.5 -> 2, 3.5 -> 4."""
     items = list(values)
     return round(Fraction(sum(items), len(items)))
 
 
-# --- resultados ---
+# --- results ---
 
 
 class DiscardReason(StrEnum):
-    """Por qué un lote no produce chunk."""
+    """Why a batch does not produce a chunk."""
 
     NO_BOOT = "no_boot"
-    """Llegó antes de ningún hello: no hay ``boot_id`` con el que publicarlo."""
+    """Arrived before any hello: there is no ``boot_id`` to publish it with."""
     UNEXPECTED_SAMPLE_COUNT = "unexpected_sample_count"
-    """``n`` no es el del lote de 100 ms del kind: la frecuencia de muestreo no sería la declarada. Cuenta como perdido."""
+    """``n`` is not that of the 100 ms batch of the kind: the sampling rate would not be the declared one. Counts as lost."""
     DUPLICATE = "duplicate"
     OUT_OF_ORDER = "out_of_order"
     NOT_BACKGROUND_STREAM = "not_background_stream"
-    """EMG fuera de sesión: no se publica en fondo (su ``frame_seq`` sí se sigue)."""
+    """EMG outside a session: not published in the background (its ``frame_seq`` is still tracked)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,35 +241,35 @@ class Discarded:
 
 @dataclass(frozen=True, slots=True)
 class Pending:
-    """Lote absorbido por la ventana de fondo; el chunk sale al completar 10 lotes."""
+    """Batch absorbed by the background window; the chunk goes out when 10 batches complete."""
 
     kind: FrameKind
     frame_seq: int
 
 
-# --- fondo ---
+# --- background ---
 
 
 @dataclass(frozen=True, slots=True)
 class BackgroundWindow:
-    """10 lotes contiguos reducidos a su media: ``samples`` tiene una muestra entera por lote."""
+    """10 contiguous batches reduced to their mean: ``samples`` has one integer sample per batch."""
 
     t0_ms: int
     samples: Samples
     frames: tuple[Frame, ...]
     after_gap: bool
-    """Hubo lotes perdidos entre la ventana anterior (o el último ``reset``) y esta."""
+    """There were lost batches between the previous window (or the last ``reset``) and this one."""
 
 
 @dataclass(frozen=True, slots=True)
 class BackgroundStep:
     lost_windows: int
-    """Seq que el hueco de este lote consume (ventanas de 1 s perdidas); 0 si no hubo hueco."""
+    """Seq that the gap of this batch consumes (lost 1 s windows); 0 if there was no gap."""
     window: BackgroundWindow | None
 
 
 class BackgroundAccumulator:
-    """Ventanas de fondo de un stream IMU o de cordón. ``add`` recibe el hueco ya calculado con ``frame_gap``."""
+    """Background windows of an IMU or cord stream. ``add`` receives the gap already computed with ``frame_gap``."""
 
     def __init__(self, kind: FrameKind) -> None:
         if kind is FrameKind.EMG:
@@ -279,7 +279,7 @@ class BackgroundAccumulator:
         self._after_gap = False
 
     def reset(self) -> None:
-        """Tira la ventana parcial y el aviso de hueco pendiente (inicio o fin de sesión, nuevo arranque)."""
+        """Drops the partial window and the pending gap notice (session start or end, new boot)."""
         self._frames.clear()
         self._after_gap = False
 
@@ -308,7 +308,7 @@ class BackgroundAccumulator:
         return tuple(_mean(scalar_samples(self._kind, f.samples)) for f in frames)
 
 
-# --- ensamblador ---
+# --- assembler ---
 
 
 @dataclass(slots=True)
@@ -323,10 +323,10 @@ class _Streams:
 
 
 class ChunkAssembler:
-    """Estado por stream del gateway: ``seq``, último ``frame_seq`` y ventanas de fondo, por arranque del dispositivo."""
+    """Per-stream state of the gateway: ``seq``, last ``frame_seq`` and background windows, per device boot."""
 
     def __init__(self, settings: GatewaySettings) -> None:
-        # Valida los rangos del IMU al construir: un error de configuración no debe esperar al primer lote.
+        # Validates the IMU ranges on construction: a configuration error must not wait for the first batch.
         _lsb(ACCEL_LSB_PER_G, "accel", settings.imu_accel_range_g)
         _lsb(GYRO_LSB_PER_DPS, "gyro", settings.imu_gyro_range_dps)
         self._settings = settings
@@ -340,7 +340,7 @@ class ChunkAssembler:
         return self._boot_id
 
     def on_new_boot(self, boot_id: int) -> bool:
-        """Hello del firmware. Con un ``boot_id`` nuevo reinicia seq, ``frame_seq`` y fondo y devuelve ``True``."""
+        """Firmware hello. With a new ``boot_id`` it resets seq, ``frame_seq`` and background and returns ``True``."""
         if boot_id == self._boot_id:
             return False
         self._boot_id = boot_id
@@ -349,18 +349,18 @@ class ChunkAssembler:
         return True
 
     def reset_background(self) -> None:
-        """Inicio o fin de sesión: tira las ventanas de fondo parciales (no consume seq)."""
+        """Session start or end: drops the partial background windows (does not consume seq)."""
         for accumulator in self._background.values():
             accumulator.reset()
 
     def next_seq(self, kind: FrameKind) -> int:
-        """Seq que llevará el próximo chunk del stream de ``kind``."""
+        """Seq that the next chunk of the ``kind`` stream will carry."""
         return self._streams.by_kind[kind].next_seq
 
     def session_chunk(
         self, frame: Frame, *, session_id: str, received_at: datetime, stretch_calibration: StretchCalibration | None = None
     ) -> Chunk | Discarded:
-        """Un chunk por lote, con la frecuencia del lote. ``stretch_calibration``: la vigente del cordón, si hay."""
+        """One chunk per batch, with the batch frequency. ``stretch_calibration``: the current one for the cord, if any."""
         gap = self._admit(frame)
         if isinstance(gap, Discarded):
             return gap
@@ -388,7 +388,7 @@ class ChunkAssembler:
     def background_chunk(
         self, frame: Frame, *, session_id: str, received_at: datetime, stretch_calibration: StretchCalibration | None = None
     ) -> Chunk | Pending | Discarded:
-        """Fondo: un chunk de 1 s a 10 Hz cada 10 lotes contiguos; mientras tanto ``Pending``. EMG: descartado."""
+        """Background: a 1 s chunk at 10 Hz every 10 contiguous batches; meanwhile ``Pending``. EMG: discarded."""
         gap = self._admit(frame)
         if isinstance(gap, Discarded):
             return gap
@@ -400,7 +400,7 @@ class ChunkAssembler:
         window = step.window
         if window is None:
             return Pending(frame.kind, frame.frame_seq)
-        # La calidad de la ventana es la peor de sus lotes, canal a canal (los lotes crudos, no las medias).
+        # The quality of the window is the worst of its batches, channel by channel (the raw batches, not the means).
         per_frame = [self._frame_quality(f.kind, f.samples) for f in window.frames]
         quality = {name: reduce(_Quality.worst, (q[name] for q in per_frame)) for name in per_frame[0]}
         if window.after_gap:
@@ -421,10 +421,10 @@ class ChunkAssembler:
             calibration=stretch_calibration,
         )
 
-    # --- internos ---
+    # --- internals ---
 
     def _admit(self, frame: Frame) -> int | Discarded:
-        """Hueco respecto al lote anterior del kind, o el descarte. Solo un lote admitido mueve el último ``frame_seq``."""
+        """Gap relative to the previous batch of the kind, or the discard. Only an admitted batch moves the last ``frame_seq``."""
         if self._boot_id is None:
             return Discarded(frame.kind, frame.frame_seq, DiscardReason.NO_BOOT)
         if len(frame.samples) != SAMPLES_PER_BATCH[frame.kind]:

@@ -1,22 +1,22 @@
-"""Bucle MQTT del gateway real: Arduino del wearable por USB serie -> topics MQTT v1.
+"""MQTT loop of the real gateway: wearable Arduino over USB serial -> MQTT v1 topics.
 
-Un dispositivo por proceso (``astronaut_id``/``device_id`` de los ajustes) y una conexión MQTT (aiomqtt) con Last Will
-``offline`` retained en ``topics.status``. Tres tareas en un ``TaskGroup`` (``Gateway.run``):
+One device per process (``astronaut_id``/``device_id`` from the settings) and one MQTT connection (aiomqtt) with a Last Will
+``offline`` retained on ``topics.status``. Three tasks in a ``TaskGroup`` (``Gateway.run``):
 
-- Consumidor serie (``LineSource.events``): ``LinkUp``/``LinkDown`` marcan el enlace; cada ``SerialLine`` se interpreta con
-  ``protocol.parse_line``. Una ``BadLine`` se cuenta por razón y se descarta. ``Hello``/``Tick`` dan el arranque
-  (``boot_id``): uno nuevo reinicia seq y ``last_seq`` y pide un ancla de reloj; el ``Tick`` es el ancla
-  (``gateway_receive_time``). Cada ``Frame`` va al ensamblador: chunk de sesión si hay sesión y su stream participa; si
-  no, fondo (IMU y cordón; el EMG sin sesión se descarta). Hasta el primer hello/tick tras abrir el puerto no se publica
-  nada del dispositivo (el Uno se reinicia al abrirlo).
-- Temporizador: DeviceStatus cada ``status_interval_s``, ClockSync cada ``clock_sync_interval_s`` y la detección de
-  streams parados (``stall_timeout_s``). El estado sale además en cuanto cambia (ver ``status``).
-- Conexión MQTT con reconexión y backoff exponencial (``mqtt_reconnect_*``). Tras cada conexión se anuncian ancla y
-  estado antes que nada y las calibraciones se vuelven a publicar antes del siguiente chunk que las cite.
+- Serial consumer (``LineSource.events``): ``LinkUp``/``LinkDown`` mark the link; each ``SerialLine`` is interpreted with
+  ``protocol.parse_line``. A ``BadLine`` is counted by reason and discarded. ``Hello``/``Tick`` give the boot
+  (``boot_id``): a new one resets seq and ``last_seq`` and requests a clock anchor; the ``Tick`` is the anchor
+  (``gateway_receive_time``). Each ``Frame`` goes to the assembler: session chunk if there is a session and its stream participates;
+  otherwise background (IMU and cord; EMG without a session is discarded). Nothing from the device is published until the first
+  hello/tick after opening the port (the Uno resets when opened).
+- Timer: DeviceStatus every ``status_interval_s``, ClockSync every ``clock_sync_interval_s`` and detection of
+  stalled streams (``stall_timeout_s``). The status also goes out as soon as it changes (see ``status``).
+- MQTT connection with reconnection and exponential backoff (``mqtt_reconnect_*``). After each connection the anchor and
+  status are announced first of all and the calibrations are republished before the next chunk that cites them.
 
-Todo el estado lo tocan las tareas de una en una (``_lock``). Un error al procesar una línea o un comando se registra y
-el bucle sigue. Cancelar ``run`` (SIGTERM) publica el ``offline`` retained y cierra la fuente y la conexión. Reloj y
-esperas son inyectables (``clock``, ``sleep``): ninguna lógica lee el reloj de pared.
+All state is touched by the tasks one at a time (``_lock``). An error while processing a line or a command is logged and
+the loop continues. Cancelling ``run`` (SIGTERM) publishes the retained ``offline`` and closes the source and the connection. Clock and
+waits are injectable (``clock``, ``sleep``): no logic reads the wall clock.
 """
 
 import asyncio
@@ -58,27 +58,27 @@ from spine_gateway.status import Health, StreamReport, StreamState
 
 _log = logging.getLogger(__name__)
 
-# Prefijo de las líneas de depuración del firmware y su codec, como constantes de módulo (mutmut no muta el módulo).
+# Prefix of the firmware debug lines and their codec, as module constants (mutmut does not mutate the module).
 _DEBUG_PREFIX = b"#"
 _ASCII = "ascii"
 
 QOS = 1
-"""QoS de todos los mensajes (contrato AsyncAPI)."""
+"""QoS of all messages (AsyncAPI contract)."""
 
 _STREAM_KIND = {FrameKind.EMG: "emg", FrameKind.IMU: "imu", FrameKind.CORD: "stretch"}
 _HANDLED_MAX = 256
-"""Comandos ya tratados que se recuerdan (LRU): una reentrega QoS 1 (DUP) recibe los mismos acks sin volver a ejecutarse."""
+"""Already handled commands that are remembered (LRU): a QoS 1 redelivery (DUP) receives the same acks without running again."""
 
 
 CALIBRATION_GRACE_S = 5.0
-"""Margen sobre ``duration_s`` tras el que una calibración sin datos suficientes falla (``calibration_timeout``)."""
+"""Margin over ``duration_s`` after which a calibration without enough data fails (``calibration_timeout``)."""
 _CALIBRATED_KIND = {CalibrationType.STRETCH: FrameKind.CORD, CalibrationType.EMG_MVC: FrameKind.EMG}
 
 
 @dataclass(slots=True)
 class _Session:
     session_id: str
-    command_id: str  # el del start_session, para su `completed`
+    command_id: str  # that of the start_session, for its `completed`
     kinds: frozenset[FrameKind]
     timer: asyncio.Task[None] | None = None
 
@@ -86,27 +86,27 @@ class _Session:
 @dataclass(slots=True)
 class _Calibration:
     command_id: str
-    recorders: list[tuple[str, CalibrationRecorder]]  # (stream_id, grabación), en el orden del comando
+    recorders: list[tuple[str, CalibrationRecorder]]  # (stream_id, recording), in the order of the command
     timer: asyncio.Task[None] | None = None
 
 
 class MqttPublisher(Protocol):
-    # `def` + Awaitable (no `async def`): aiomqtt devuelve Coroutine, que un `async def` de Protocol no admite.
+    # `def` + Awaitable (not `async def`): aiomqtt returns a Coroutine, which a Protocol `async def` does not accept.
     def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> Awaitable[None]: ...
 
 
 class IncomingMessage(Protocol):
-    """Lo que usa el gateway de ``aiomqtt.Message``."""
+    """What the gateway uses from ``aiomqtt.Message``."""
 
     @property
-    def topic(self) -> object: ...  # aiomqtt.Topic; str(topic) da el topic
+    def topic(self) -> object: ...  # aiomqtt.Topic; str(topic) gives the topic
 
     @property
     def payload(self) -> bytes | bytearray | str | int | float | None: ...
 
 
 class MqttClient(MqttPublisher, Protocol):
-    """Lo que usa el gateway de ``aiomqtt.Client``."""
+    """What the gateway uses from ``aiomqtt.Client``."""
 
     def subscribe(self, topic: str, qos: int) -> Awaitable[object]: ...
 
@@ -120,7 +120,7 @@ type Sleep = Callable[[float], Awaitable[object]]
 
 
 def _relevant(signature: tuple[Any, ...] | None) -> tuple[Any, ...] | None:
-    """La parte de la firma de un estado que se publica en cuanto cambia: todo salvo activo/sin datos aún."""
+    """The part of a status signature that is published as soon as it changes: everything except active/no data yet."""
     if signature is None or len(signature) == 1:
         return signature
     health, boot_id, streams = signature
@@ -147,15 +147,15 @@ def new_uuid() -> str:
 
 
 def encode(payload: dict[str, Any]) -> bytes:
-    """JSON compacto en UTF-8; NaN/inf no son JSON y fallan aquí en vez de llegar al bus."""
+    """Compact UTF-8 JSON; NaN/inf are not JSON and fail here instead of reaching the bus."""
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
 class Gateway:
-    """Estado de un dispositivo y las tareas que lo publican. Sobrevive a las reconexiones MQTT y a los cortes del enlace."""
+    """State of a device and the tasks that publish it. Survives MQTT reconnections and link outages."""
 
     def __init__(self, settings: GatewaySettings, *, clock: Clock, sleep: Sleep = asyncio.sleep, new_id: Callable[[], str] = new_uuid) -> None:
-        """``clock`` da el instante UTC (aware); ``sleep`` espera esos segundos; ``new_id`` da el id de cada calibración."""
+        """``clock`` gives the UTC instant (aware); ``sleep`` waits those seconds; ``new_id`` gives the id of each calibration."""
         self._settings = settings
         self._clock = clock
         self._sleep = sleep
@@ -167,25 +167,25 @@ class Gateway:
         self._wake = asyncio.Event()
         self._lost = asyncio.Event()
         self._client: MqttPublisher | None = None
-        # Arranque en curso. `_device_known`: el enlace está arriba y el dispositivo ha hablado (hello o tick) desde que se abrió.
+        # Current boot. `_device_known`: the link is up and the device has spoken (hello or tick) since it was opened.
         self._device_known = False
         self._boot_since: datetime | None = None
         self._firmware: str | None = None
         self._uptime_ms = 0
-        self._last_tick: tuple[int, datetime] | None = None  # (millis, llegada) del último tick del arranque en curso
+        self._last_tick: tuple[int, datetime] | None = None  # (millis, arrival) of the last tick of the current boot
         self._clock_pending = False
         self._last_frame_at: dict[FrameKind, datetime] = {}
         self._published_seq: dict[FrameKind, int] = {}
-        # Sesión y comandos.
+        # Session and commands.
         self._session: _Session | None = None
         self._calibration: _Calibration | None = None
-        # Calibraciones vigentes por stream y la que está retained en el broker por esta conexión (se vacía al reconectar).
+        # Current calibrations per stream and the one retained on the broker by this connection (cleared on reconnect).
         self._calibrations: dict[str, StretchCalibration | EmgMvcCalibration] = {}
         self._stretch_calibration: StretchCalibration | None = None
         self._retained_calibrations: dict[str, str] = {}
-        self._handled: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()  # command_id -> acks ya enviados
+        self._handled: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()  # command_id -> acks already sent
         self._group: asyncio.TaskGroup | None = None
-        # Calendario del temporizador.
+        # Timer schedule.
         now = self._now()
         self._next_status = now
         self._next_clock = now
@@ -193,7 +193,7 @@ class Gateway:
         self.bad_lines: Counter[BadLineReason] = Counter()
         self.discarded: Counter[DiscardReason] = Counter()
 
-    # --- tiempo ---
+    # --- time ---
 
     def _now(self) -> datetime:
         now = self._clock()
@@ -201,10 +201,10 @@ class Gateway:
             raise ValueError(f"clock must return an aware UTC datetime, got {now!r}")
         return now
 
-    # --- publicación ---
+    # --- publishing ---
 
     def last_will(self) -> aiomqtt.Will:
-        """DeviceStatus ``offline`` retained, QoS 1 (con la hora de la conexión)."""
+        """``offline`` DeviceStatus retained, QoS 1 (with the connection time)."""
         payload = status.offline_status(self._settings, at=self._now())
         return aiomqtt.Will(topic=self._topic_status(), payload=encode(payload), qos=QOS, retain=True)
 
@@ -212,7 +212,7 @@ class Gateway:
         return topics.status(self._settings.astronaut_id, self._settings.device_id)
 
     async def _publish(self, topic: str, payload: dict[str, Any], *, retain: bool) -> bool:
-        """Publica por la conexión en curso; ``False`` si no hay o se ha perdido (la conexión se rehace aparte)."""
+        """Publishes over the current connection; ``False`` if there is none or it was lost (the connection is rebuilt separately)."""
         client = self._client
         if client is None:
             return False
@@ -226,7 +226,7 @@ class Gateway:
         return True
 
     async def _publish_clock(self) -> None:
-        """Ancla del último tick del arranque en curso; si aún no hay ninguno, queda pendiente para el primero."""
+        """Anchor of the last tick of the current boot; if there is none yet, it stays pending for the first one."""
         boot_id = self._assembler.boot_id
         if self._last_tick is None or boot_id is None:
             self._clock_pending = True
@@ -236,19 +236,19 @@ class Gateway:
         s = self._settings
         await self._publish(topics.clock(s.astronaut_id, s.device_id), status.clock_sync(s, boot_id=boot_id, device_ms=millis, utc=at), retain=True)
 
-    # --- estado ---
+    # --- state ---
 
     def _in_session(self, kind: FrameKind) -> bool:
         return self._session is not None and kind in self._session.kinds
 
     def _rate(self, kind: FrameKind) -> float | None:
-        """Frecuencia a la que se publica el stream: la nativa en sesión, 10 Hz de fondo y nada (EMG) fuera de sesión."""
+        """Frequency at which the stream is published: native in session, 10 Hz in background and nothing (EMG) outside a session."""
         if self._in_session(kind):
             return SAMPLE_RATE_HZ[kind]
         return None if kind is FrameKind.EMG else BACKGROUND_SAMPLE_RATE_HZ
 
     def _timing(self, kind: FrameKind, now: datetime) -> dict[str, Any]:
-        """Argumentos de ``status.stream_state``/``stall_deadline`` para un stream en ``now``."""
+        """Arguments of ``status.stream_state``/``stall_deadline`` for a stream at ``now``."""
         return {
             "expected": self._rate(kind) is not None,
             "last_frame_at": self._last_frame_at.get(kind),
@@ -264,7 +264,7 @@ class Gateway:
         ]
 
     def _status(self, now: datetime) -> tuple[dict[str, Any], tuple[Any, ...]]:
-        """El DeviceStatus de ``now`` y su firma (lo que, si cambia, merece publicarse ya)."""
+        """The DeviceStatus at ``now`` and its signature (what, if it changes, deserves publishing right away)."""
         reports = self._reports(now)
         health = status.health(device_known=self._device_known, states=[r.state for r in reports])
         boot_id = self._assembler.boot_id
@@ -280,14 +280,14 @@ class Gateway:
         await self._publish(self._topic_status(), payload, retain=True)
 
     async def _status_if_changed(self, now: datetime, *, any_change: bool) -> None:
-        """Publica el estado si cambió. Con ``any_change=False`` (cada línea serie) solo cuentan los cambios relevantes:
-        estado global, arranque, streams que se paran o vuelven y frecuencias; el resto (p. ej. el primer lote de un stream
-        tras arrancar) lo publica el temporizador, que despierta como mucho ``stall_timeout_s`` después."""
+        """Publishes the status if it changed. With ``any_change=False`` (each serial line) only relevant changes count:
+        global status, boot, streams that stall or come back and frequencies; the rest (e.g. the first batch of a stream
+        after booting) is published by the timer, which wakes at most ``stall_timeout_s`` later."""
         payload, signature = self._status(now)
         changed = signature != self._signature if any_change else _relevant(signature) != _relevant(self._signature)
         if changed:
             self._signature = signature
-            self._wake.set()  # el temporizador recalcula cuándo puede pararse un stream
+            self._wake.set()  # the timer recomputes when a stream may stall
             await self._publish(self._topic_status(), payload, retain=True)
 
     def _stall_deadlines(self, now: datetime) -> list[datetime]:
@@ -296,7 +296,7 @@ class Gateway:
         deadlines = (status.stall_deadline(**self._timing(kind, now)) for kind in self._stream_ids)
         return [d for d in deadlines if d is not None]
 
-    # --- enlace serie ---
+    # --- serial link ---
 
     async def _on_event(self, event: SerialEvent) -> None:
         match event:
@@ -310,14 +310,14 @@ class Gateway:
                 await self._on_line(data, at)
 
     def _forget_boot(self) -> None:
-        """Hasta el siguiente hello/tick no se sabe qué arranque habla (abrir el puerto reinicia el Uno)."""
+        """Until the next hello/tick it is not known which boot is speaking (opening the port resets the Uno)."""
         self._device_known = False
         self._last_tick = None
         self._last_frame_at.clear()
 
     async def _on_line(self, data: bytes, at: datetime) -> None:
         if data.startswith(_DEBUG_PREFIX):
-            # Texto de depuración del firmware (``#imu ok``, ``#overrun``...): no es protocolo, no lleva CRC y no cuenta como línea mala.
+            # Firmware debug text (``#imu ok``, ``#overrun``...): not protocol, carries no CRC and does not count as a bad line.
             _log.info("arduino: %s", data.decode(_ASCII, errors="replace"))
             return
         message = parse_line(data)
@@ -337,7 +337,7 @@ class Gateway:
     def _count_bad_line(self, reason: BadLineReason, raw: str) -> None:
         self.bad_lines[reason] += 1
         count = self.bad_lines[reason]
-        # Aviso en 1, 2, 4, 8...: un puerto con ruido no inunda el log.
+        # Warning at 1, 2, 4, 8...: a noisy port does not flood the log.
         if count & (count - 1) == 0:
             _log.warning("bad serial line (%s, %d so far): %.80s", reason.value, count, raw)
         else:
@@ -359,7 +359,7 @@ class Gateway:
         if firmware is not None:
             self._firmware = firmware
         self._uptime_ms = millis
-        # El estado (offline -> ok, o boot_id nuevo) lo publica `_status_if_changed` al acabar la línea.
+        # The status (offline -> ok, or new boot_id) is published by `_status_if_changed` at the end of the line.
 
     async def _on_frame(self, frame: Frame, at: datetime) -> None:
         if not self._device_known:
@@ -393,12 +393,12 @@ class Gateway:
         calibration = self._calibration
         if calibration is None:
             return
-        progress = [recorder.feed(frame) for _, recorder in calibration.recorders]  # todas, sin cortocircuito
+        progress = [recorder.feed(frame) for _, recorder in calibration.recorders]  # all of them, no short-circuit
         if all(p is CalibrationStatus.DONE for p in progress):
             await self._finish_calibration(calibration, at)
 
     async def _finish_calibration(self, calibration: _Calibration, now: datetime) -> None:
-        """Calibraciones retained (quien lea el ack ya puede resolver su id) y luego el ``completed``; o el ``failed``."""
+        """Retained calibrations (whoever reads the ack can already resolve its id) and then the ``completed``; or the ``failed``."""
         self._calibration = None
         if calibration.timer is not None:
             calibration.timer.cancel()
@@ -414,11 +414,11 @@ class Gateway:
             if isinstance(result, StretchCalibration):
                 self._stretch_calibration = result
             await self._ensure_calibration(stream_id)
-        # El contrato admite un calibration_id por ack: el del primer stream (todas quedan vigentes igualmente).
+        # The contract admits one calibration_id per ack: that of the first stream (all remain current anyway).
         await self._reply(calibration.command_id, AckStatus.COMPLETED, now, calibration_id=done[0][1].calibration_id)
 
     async def _ensure_calibration(self, stream_id: str) -> None:
-        """Deja retained la calibración vigente de ``stream_id`` si esta conexión aún no la ha publicado."""
+        """Leaves the current calibration of ``stream_id`` retained if this connection has not published it yet."""
         calibration = self._calibrations[stream_id]
         if self._retained_calibrations.get(stream_id) == calibration.calibration_id:
             return
@@ -434,17 +434,17 @@ class Gateway:
                     async with self._lock:
                         await self._on_event(event)
                         await self._status_if_changed(self._now(), any_change=False)
-                except Exception:  # noqa: BLE001  (una línea nunca tumba el gateway)
+                except Exception:  # noqa: BLE001  (one line never takes down the gateway)
                     _log.exception("serial event %r failed", event)
         finally:
             close = getattr(events, "aclose", None)
             if close is not None:
                 await close()
 
-    # --- temporizador ---
+    # --- timer ---
 
     async def _tick(self) -> float:
-        """Publica lo que toca (ancla, estado periódico o por cambio) y devuelve los segundos hasta lo siguiente."""
+        """Publishes what is due (anchor, periodic or on-change status) and returns the seconds until the next one."""
         now = self._now()
         s = self._settings
         if now >= self._next_clock:
@@ -470,7 +470,7 @@ class Gateway:
             await self._wait(delay)
 
     async def _wait(self, seconds: float) -> None:
-        """Espera ``seconds`` con ``sleep`` (inyectable) o hasta que algo despierte al temporizador (``_wake``)."""
+        """Waits ``seconds`` with ``sleep`` (injectable) or until something wakes the timer (``_wake``)."""
         if self._wake.is_set():
             return
         sleeper = asyncio.ensure_future(self._sleep(seconds))
@@ -482,10 +482,10 @@ class Gateway:
                 task.cancel()
             await asyncio.gather(sleeper, waker, return_exceptions=True)
 
-    # --- comandos ---
+    # --- commands ---
 
     async def handle(self, payload: bytes) -> None:
-        """Procesa un comando recibido en ``topics.cmd``. Nunca lanza por un comando malo."""
+        """Processes a command received on ``topics.cmd``. Never raises because of a bad command."""
         async with self._lock:
             incoming = commands.read_command(payload, astronaut_id=self._settings.astronaut_id, device_id=self._settings.device_id)
             if incoming is None:
@@ -494,7 +494,7 @@ class Gateway:
             command_id = incoming.command_id
             now = self._now()
             previous = self._handled.get(command_id)
-            # Reentrega (DUP): mismos acks, sin volver a ejecutar. Si no llegó a salir ninguno (lista vacía), se ejecuta de nuevo.
+            # Redelivery (DUP): same acks, without running again. If none had gone out (empty list), it runs again.
             if previous:
                 self._handled.move_to_end(command_id)
                 _log.info("command %s redelivered, resending its %d acks", command_id, len(previous))
@@ -512,7 +512,7 @@ class Gateway:
                 else:
                     await self._dispatch(incoming.command, now)
                 await self._status_if_changed(now, any_change=False)
-            except Exception:  # noqa: BLE001  (un comando nunca tumba el gateway)
+            except Exception:  # noqa: BLE001  (one command never takes down the gateway)
                 _log.exception("command %s failed", command_id)
                 with contextlib.suppress(Exception):
                     await self._reply(command_id, AckStatus.FAILED, now, code=AckCode.INTERNAL, message="internal gateway error")
@@ -523,7 +523,7 @@ class Gateway:
     async def _reply(
         self, command_id: str, status_: AckStatus, at: datetime, *, code: AckCode | None = None, message: str | None = None, calibration_id: str | None = None
     ) -> bool:
-        """Publica un ack y lo anota (si su comando sigue en la LRU) para reenviarlo ante una reentrega."""
+        """Publishes an ack and records it (if its command is still in the LRU) to resend it on a redelivery."""
         ack = commands.ack(self._settings, command_id, status_, at, code=code, message=message, calibration_id=calibration_id)
         sent = await self._publish(self._topic_ack(), ack, retain=False)
         handled = self._handled.get(command_id)
@@ -560,7 +560,7 @@ class Gateway:
         if not self._device_known:
             await self._reject(cid, now, AckCode.DEVICE_OFFLINE, "the device is not connected")
             return
-        # `accepted` primero: si no sale, no se ha tocado nada y una reentrega lo vuelve a intentar.
+        # `accepted` first: if it does not go out, nothing has been touched and a redelivery tries again.
         if not await self._reply(cid, AckStatus.ACCEPTED, now):
             return
         kinds = frozenset(self._kinds[s] for s in command.stream_ids) if command.stream_ids else frozenset(FrameKind)
@@ -572,7 +572,7 @@ class Gateway:
         await self._publish_clock()
 
     async def _session_deadline(self, seconds: float) -> None:
-        # Si la sesión acaba antes, `_end_session` cancela esta tarea (también si espera el lock): aquí sigue siendo la suya.
+        # If the session ends earlier, `_end_session` cancels this task (also if it waits for the lock): here it is still its own.
         await self._sleep(seconds)
         async with self._lock:
             now = self._now()
@@ -580,7 +580,7 @@ class Gateway:
             await self._status_if_changed(now, any_change=False)
 
     async def _end_session(self, now: datetime) -> None:
-        """Acaba la sesión en curso: el fondo empieza de cero y sale el ``completed`` de su start_session."""
+        """Ends the current session: the background starts from zero and the ``completed`` of its start_session goes out."""
         session = self._session
         assert session is not None
         self._session = None
@@ -596,7 +596,7 @@ class Gateway:
             return
         if not await self._reply(cid, AckStatus.ACCEPTED, now):
             return
-        # Cada lote de sesión ya salió al llegar: no hay nada que vaciar.
+        # Each session batch already went out on arrival: there is nothing to flush.
         await self._end_session(now)
         await self._reply(cid, AckStatus.COMPLETED, now)
 
@@ -605,17 +605,17 @@ class Gateway:
         if self._session is None or self._session.session_id != command.session_id:
             await self._reject(cid, now, AckCode.NO_SESSION, f"session {command.session_id} is not running")
             return
-        # Sin efecto en el dispositivo; si el `accepted` no sale, el `completed` tampoco (la conexión ya no está).
+        # No effect on the device; if the `accepted` does not go out, neither does the `completed` (the connection is gone).
         await self._reply(cid, AckStatus.ACCEPTED, now)
         await self._reply(cid, AckStatus.COMPLETED, now)
 
     async def _calibrate(self, command: CalibrateCommand, now: datetime) -> None:
-        """Como el gateway falso, no exige que ``session_id`` sea la sesión en curso: la calibración la lleva tal cual."""
+        """Like the fake gateway, it does not require ``session_id`` to be the current session: the calibration carries it as is."""
         cid = command.command_id
         calibration_type = command.calibration_type
         kind = _CALIBRATED_KIND.get(calibration_type)
         if kind is None:
-            # El enum de error.code no tiene "no soportado"; invalid_command, como el falso con una calibración que no sabe hacer.
+            # The error.code enum has no "unsupported"; invalid_command, like the fake with a calibration it cannot do.
             await self._reject(cid, now, AckCode.INVALID_COMMAND, f"{calibration_type.value} calibration is not supported by this gateway")
             return
         unknown = self._unknown_streams(command.stream_ids)
@@ -647,7 +647,7 @@ class Gateway:
         calibration.timer = self._spawn(self._calibration_deadline(calibration, duration + CALIBRATION_GRACE_S))
 
     async def _calibration_deadline(self, calibration: _Calibration, seconds: float) -> None:
-        # Si la calibración acaba antes, `_finish_calibration` cancela esta tarea (también si espera el lock).
+        # If the calibration ends earlier, `_finish_calibration` cancels this task (also if it waits for the lock).
         await self._sleep(seconds)
         async with self._lock:
             self._calibration = None
@@ -655,20 +655,20 @@ class Gateway:
             await self._reply(calibration.command_id, AckStatus.FAILED, self._now(), code=AckCode.CALIBRATION_FAILED, message=message)
 
     def _spawn(self, coro: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
-        """Temporizador de sesión o de calibración dentro del TaskGroup de ``run``; un error suyo no tumba el gateway."""
+        """Session or calibration timer inside the ``run`` TaskGroup; an error of its own does not take down the gateway."""
         assert self._group is not None, "Gateway.run is not running"
         return self._group.create_task(_guarded(coro))
 
-    # --- conexión MQTT ---
+    # --- MQTT connection ---
 
     async def _announce(self, client: MqttPublisher) -> None:
-        """Conexión nueva: ancla y estado antes que nada (el Last Will pudo dejar ``offline``)."""
+        """New connection: anchor and status first of all (the Last Will may have left ``offline``)."""
         async with self._lock:
             s = self._settings
             now = self._now()
             self._client = client
             self._lost.clear()
-            # El broker pudo perder los retained: cada calibración se republica antes del siguiente chunk que la cite.
+            # The broker may have lost the retained: each calibration is republished before the next chunk that cites it.
             self._retained_calibrations.clear()
             if self._last_tick is not None:
                 await self._publish_clock()
@@ -703,7 +703,7 @@ class Gateway:
                 raise aiomqtt.MqttError("the message stream ended")
             raise aiomqtt.MqttError("a publish failed")
         except aiomqtt.MqttError:
-            raise  # conexión perdida: el Last Will ya avisa y no hay por dónde publicar
+            raise  # connection lost: the Last Will already warns and there is nowhere to publish
         except BaseException:
             await self._shutdown(client)
             raise
@@ -712,15 +712,15 @@ class Gateway:
                 self._client = None
 
     async def _shutdown(self, client: MqttPublisher) -> None:
-        """Parada limpia: ``offline`` retained (el Last Will solo salta si la conexión se pierde)."""
+        """Clean stop: retained ``offline`` (the Last Will only fires if the connection is lost)."""
         self._client = None
         try:
             await client.publish(self._topic_status(), encode(status.offline_status(self._settings, at=self._now())), qos=QOS, retain=True)
-        except Exception:  # noqa: BLE001  (el broker puede haberse ido ya)
+        except Exception:  # noqa: BLE001  (the broker may already be gone)
             _log.warning("could not publish the offline status on shutdown", exc_info=True)
 
     async def _connect(self, client_factory: ClientFactory) -> None:
-        """Conecta con su Last Will y atiende la conexión; si el broker la rechaza o la corta, backoff y otra vez."""
+        """Connects with its Last Will and serves the connection; if the broker rejects or drops it, backoff and again."""
         s = self._settings
         identifier = f"{s.mqtt_client_id}-{s.device_id}"
         options: dict[str, Any] = {}
@@ -743,7 +743,7 @@ class Gateway:
             delay = min(delay * s.mqtt_reconnect_factor, s.mqtt_reconnect_max_s)
 
     async def run(self, source: LineSource, client_factory: ClientFactory) -> None:
-        """Atiende el enlace serie, el temporizador y la conexión MQTT hasta que se cancela."""
+        """Serves the serial link, the timer and the MQTT connection until cancelled."""
         async with asyncio.TaskGroup() as group:
             self._group = group
             group.create_task(self._consume(source))
@@ -751,16 +751,16 @@ class Gateway:
             group.create_task(self._connect(client_factory))
 
 
-# --- composición ---
+# --- composition ---
 
 
 def utc_now() -> datetime:
-    """Reloj real; la lógica lo recibe inyectado (``clock``)."""
+    """Real clock; the logic receives it injected (``clock``)."""
     return datetime.now(UTC)
 
 
 def build_source(settings: GatewaySettings, clock: Clock = utc_now) -> LineSource:
-    """El puerto serie real. Se importa aquí para que ``app`` y sus tests no dependan de pyserial."""
+    """The real serial port. Imported here so that ``app`` and its tests do not depend on pyserial."""
     from spine_gateway.serial_source import SerialLineSource
 
     return SerialLineSource(
@@ -782,11 +782,11 @@ async def serve(
     sleep: Sleep = asyncio.sleep,
     new_id: Callable[[], str] = new_uuid,
 ) -> None:
-    """``Gateway.run`` hasta que se cancela. SIGTERM (Docker) para igual de limpio que Ctrl+C (``offline`` retained)."""
+    """``Gateway.run`` until cancelled. SIGTERM (Docker) stops as cleanly as Ctrl+C (retained ``offline``)."""
     gateway = Gateway(settings, clock=clock, sleep=sleep, new_id=new_id)
     task = asyncio.create_task(gateway.run(source, client_factory))
     loop = asyncio.get_running_loop()
-    with contextlib.suppress(NotImplementedError, RuntimeError, AttributeError):  # Windows no tiene SIGTERM en el bucle
+    with contextlib.suppress(NotImplementedError, RuntimeError, AttributeError):  # Windows has no SIGTERM in the loop
         loop.add_signal_handler(signal.SIGTERM, task.cancel)
     try:
         await task
@@ -801,5 +801,5 @@ async def serve(
 
 
 async def main(settings: GatewaySettings) -> None:
-    """Arduino real por ``serial_url`` y broker real con aiomqtt."""
+    """Real Arduino via ``serial_url`` and real broker with aiomqtt."""
     await serve(settings, source=build_source(settings), client_factory=aiomqtt.Client, clock=utc_now)

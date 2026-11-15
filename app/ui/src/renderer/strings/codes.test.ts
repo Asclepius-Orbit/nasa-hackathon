@@ -87,7 +87,7 @@ describe('reasonText', () => {
   });
 
   it('no longer labels the features retired from the catalog', () => {
-    // Aguado retiró estas features: ya no tienen etiqueta propia y se muestran por su id
+    // These features were retired: they no longer have their own label and are shown by their id
     expect(featureLabel('symptoms.pain_nrs_7d_max')).toBe('symptoms.pain_nrs_7d_max');
     expect(featureLabel('symptoms.unknown_feature')).toBe('symptoms.unknown_feature');
   });

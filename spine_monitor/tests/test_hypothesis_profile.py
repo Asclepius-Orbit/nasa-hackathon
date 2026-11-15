@@ -1,4 +1,4 @@
-"""El perfil de Hypothesis del conftest raíz desactiva el deadline (runners lentos de CI)."""
+"""The Hypothesis profile of the root conftest disables the deadline (slow CI runners)."""
 
 from hypothesis import settings
 

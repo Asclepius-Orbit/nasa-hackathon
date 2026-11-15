@@ -1,4 +1,4 @@
-"""Bordes de ``repetitions`` y ``exercise`` (#41): desempates del orden de eventos y reposo estrictamente posterior."""
+"""Edges of ``repetitions`` and ``exercise`` (#41): event-order tie-breaks and strictly later rest."""
 
 import json
 import statistics
@@ -12,7 +12,7 @@ from spine_engine.features.context import ExtractionContext, build_context
 from spine_engine.features.exercise import ExerciseFamily
 from spine_engine.features.repetitions import RepetitionService, RepWindow, RepWindows, _sort_key, detect_from_events
 
-# vía el paquete instalado, no vía parents[] desde los tests: bajo mutmut los tests se copian a otro árbol
+# via the installed package, not via parents[] from the tests: under mutmut the tests are copied to another tree
 _EXAMPLE = Path(spine_contracts.__file__).resolve().parents[2] / "examples" / "valid" / "engine" / "features-request.json"
 T0 = datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC)
 
@@ -28,7 +28,7 @@ def ev(kind: str, seconds: float, rep: int | None = None) -> Event:
 def test_sort_key_is_time_then_rep_index_then_start_before_end():
     assert _sort_key(ev("rep_start", 3, 2)) == (at(3), 2, False)
     assert _sort_key(ev("rep_end", 3, 2)) == (at(3), 2, True)
-    # sin rep_index cuenta como 0, no como 1 ni como otro valor
+    # without rep_index counts as 0, not as 1 or any other value
     assert _sort_key(ev("rep_start", 3)) == (at(3), 0, False)
     assert _sort_key(ev("rep_end", 3)) == (at(3), 0, True)
 
@@ -39,8 +39,8 @@ def test_a_missing_rep_index_sorts_before_any_real_one_at_the_same_instant():
 
 
 def test_on_a_full_tie_the_start_goes_before_the_end_whatever_the_arrival_order():
-    # inicio y fin en el instante 5 con el mismo rep_index: el inicio va primero y, con la rep abierta desde 1, es un
-    # duplicado; el fin cierra (1, 5) y el fin de 8 queda huérfano. Con el fin primero saldrían dos ventanas.
+    # start and end at instant 5 with the same rep_index: the start goes first and, with the rep open since 1, it is a
+    # duplicate; the end closes (1, 5) and the end at 8 is orphaned. With the end first two windows would result.
     for events in (
         [ev("rep_start", 1, 1), ev("rep_end", 5, 1), ev("rep_start", 5, 1), ev("rep_end", 8, 1)],
         [ev("rep_end", 8, 1), ev("rep_start", 5, 1), ev("rep_end", 5, 1), ev("rep_start", 1, 1)],
@@ -49,7 +49,7 @@ def test_on_a_full_tie_the_start_goes_before_the_end_whatever_the_arrival_order(
 
 
 def test_rep_index_breaks_ties_before_the_start_end_rule():
-    # mismo instante: el fin de la rep 1 (índice menor) va antes que el inicio de la rep 2
+    # same instant: the end of rep 1 (lower index) goes before the start of rep 2
     windows = detect_from_events([ev("rep_start", 1, 1), ev("rep_start", 5, 2), ev("rep_end", 5, 1), ev("rep_end", 9, 2)])
     assert [w.active for w in windows] == [(at(1), at(5)), (at(5), at(9))]
 
@@ -68,7 +68,7 @@ def test_the_rest_end_of_the_last_rep_is_the_first_one_after_it():
 
 
 class _FixedService(RepetitionService):
-    """Frontera: ventanas fijas, sin mirar el contexto."""
+    """Boundary: fixed windows, ignoring the context."""
 
     def __init__(self, result: RepWindows) -> None:
         super().__init__()

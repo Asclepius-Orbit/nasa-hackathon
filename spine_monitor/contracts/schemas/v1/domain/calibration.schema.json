@@ -26,7 +26,7 @@
         "source": { "$ref": "../common.schema.json#/$defs/source" },
         "quality": { "$ref": "../common.schema.json#/$defs/quality" },
         "notes": {
-          "description": "Free text for maintainers, e.g. PENDIENTE medición Aguado while a placeholder stands in for a value still to be measured.",
+          "description": "Free text for maintainers, e.g. PENDING measurement while a placeholder stands in for a value still to be measured.",
           "type": "string",
           "maxLength": 200
         }
@@ -35,7 +35,7 @@
     },
     "stretch_calibration": {
       "title": "StretchCalibration",
-      "description": "Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. A resistance of 350 ohm is the resistance of one inch of cord at rest, not a 2.54 cm deformation: elongation is derived from the change against rest_resistance_ohm through the measured curve. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDIENTE medición Aguado: until the cord is measured with an ohmmeter, curve and rest values are placeholders.",
+      "description": "Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. A resistance of 350 ohm is the resistance of one inch of cord at rest, not a 2.54 cm deformation: elongation is derived from the change against rest_resistance_ohm through the measured curve. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDING measurement: until the cord is measured with an ohmmeter, curve and rest values are placeholders.",
       "allOf": [
         { "$ref": "#/$defs/calibration_base" },
         {
@@ -45,7 +45,7 @@
             "reference_posture": { "const": "straight_back", "description": "Explicitly attested posture during the reference measurement; omitted when unknown." },
             "rest_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
             "rest_length_mm": {
-              "description": "Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.",
+              "description": "Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDING measurement.",
               "type": "number",
               "exclusiveMinimum": 0
             },
@@ -82,7 +82,7 @@
     },
     "emg_mvc_calibration": {
       "title": "EmgMvcCalibration",
-      "description": "Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed. The MVC procedure is pending Aguado: until it is defined, mvc_rms_mv values are placeholders.",
+      "description": "Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed. The MVC procedure is pending clinical validation: until it is defined, mvc_rms_mv values are placeholders.",
       "allOf": [
         { "$ref": "#/$defs/calibration_base" },
         {

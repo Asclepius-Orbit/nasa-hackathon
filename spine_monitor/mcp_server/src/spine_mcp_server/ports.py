@@ -1,6 +1,6 @@
-"""Puertos del servidor MCP hacia el resto del sistema. Son Protocols: las implementaciones no necesitan importar nada de aquí.
+"""Ports of the MCP server towards the rest of the system. They are Protocols: implementations need not import anything from here.
 
-Solo hay operaciones de lectura y de simulación: el servidor MCP nunca escribe en el sistema.
+There are only read and simulation operations: the MCP server never writes to the system.
 """
 
 from datetime import datetime
@@ -19,40 +19,40 @@ from spine_contracts import (
 
 
 class AppReader(Protocol):
-    """Lectura de la API de la app (`app/*`). Los fallos se señalan con `UpstreamError`."""
+    """Read access to the app API (`app/*`). Failures are signalled with `UpstreamError`."""
 
     def get_status(self, astronaut_id: str) -> Status:
-        """Estado actual del astronauta: última valoración, sesión, autoinforme, dispositivos y frescura."""
+        """Current state of the astronaut: latest assessment, session, self-report, devices and freshness."""
         ...
 
     def get_history(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> History:
-        """Feature sets y valoraciones en [from_, to], de más antiguo a más reciente, con como mucho `limit` elementos."""
+        """Feature sets and assessments in [from_, to], from oldest to most recent, with at most `limit` items."""
         ...
 
     def get_sessions(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SessionList:
-        """Sesiones iniciadas en [from_, to], de más antigua a más reciente, con como mucho `limit` elementos."""
+        """Sessions started in [from_, to], from oldest to most recent, with at most `limit` items."""
         ...
 
     def get_self_reports(self, astronaut_id: str, from_: datetime, to: datetime, limit: int = 100) -> SelfReportList:
-        """Autoinformes con marca de tiempo en [from_, to], de más antiguo a más reciente, con como mucho `limit` elementos."""
+        """Self-reports timestamped in [from_, to], from oldest to most recent, with at most `limit` items."""
         ...
 
     def get_explanation(self, assessment_id: str) -> Explanation:
-        """Explicación completa de una valoración: baseline, features, autoinformes y datos sin resolver."""
+        """Full explanation of an assessment: baseline, features, self-reports and unresolved data."""
         ...
 
 
 class Simulator(Protocol):
-    """Simulación hipotética («qué pasaría si») del motor. Nunca modifica datos reales."""
+    """Hypothetical ("what if") simulation of the engine. It never modifies real data."""
 
     def simulate(self, request: SimulateRequest) -> SimulateResponse:
-        """Valoración de referencia frente a la del escenario con los overrides aplicados."""
+        """Reference assessment versus that of the scenario with the overrides applied."""
         ...
 
 
 class AssessBaseSource(Protocol):
-    """Origen de la petición de valoración sobre la que se aplican los overrides de una simulación."""
+    """Source of the assessment request the overrides of a simulation are applied to."""
 
     def get_base(self, astronaut_id: str) -> AssessRequest:
-        """Petición de valoración base vigente del astronauta."""
+        """Current base assessment request of the astronaut."""
         ...

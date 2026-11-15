@@ -1,4 +1,4 @@
-"""Tests de los puertos, los errores y los mocks basados en los ejemplos de los contratos."""
+"""Tests of the ports, the errors and the mocks based on the contract examples."""
 
 import inspect
 import json
@@ -19,7 +19,7 @@ WIDE_TO = datetime(2027, 3, 1, tzinfo=UTC)
 
 
 def _history_with(n: int) -> History:
-    """History del ejemplo ampliado a `n` feature sets y `n` assessments, un minuto de separación, en orden inverso."""
+    """History of the example extended to `n` feature sets and `n` assessments, one minute apart, in reverse order."""
     base = ExampleAppReader().get_history(AST, WIDE_FROM, WIDE_TO)
     t0 = datetime(2027, 2, 9, 8, 0, tzinfo=UTC)
     feature_sets = [base.feature_sets[0].model_copy(update={"computed_at": t0 + timedelta(minutes=i)}) for i in range(n)]
@@ -33,14 +33,14 @@ SESSION_AT = datetime(2026, 11, 13, 10, 2, 31, tzinfo=UTC)
 
 
 def _sessions_with(n: int) -> SessionList:
-    """SessionList del ejemplo ampliado a `n` sesiones, un minuto de separación, en orden inverso."""
+    """SessionList of the example extended to `n` sessions, one minute apart, in reverse order."""
     base = ExampleAppReader().get_sessions(AST, SESSION_FROM, SESSION_TO)
     items = [base.items[0].model_copy(update={"started_at": SESSION_AT + timedelta(minutes=i)}) for i in range(n)]
     return base.model_copy(update={"items": items[::-1]})
 
 
 def _self_reports_with(n: int) -> SelfReportList:
-    """SelfReportList del ejemplo ampliado a `n` autoinformes, un minuto de separación, en orden inverso."""
+    """SelfReportList of the example extended to `n` self-reports, one minute apart, in reverse order."""
     base = ExampleAppReader().get_self_reports(AST, WIDE_FROM, WIDE_TO)
     t0 = datetime(2027, 2, 9, 8, 30, tzinfo=UTC)
     items = [base.items[0].model_copy(update={"timestamp": t0 + timedelta(minutes=i)}) for i in range(n)]
@@ -51,7 +51,7 @@ def _simulate_request() -> SimulateRequest:
     return SimulateRequest.model_validate(json.loads((EXAMPLES / "engine" / "simulate-request.json").read_text(encoding="utf-8")))
 
 
-# --- errores ---
+# --- errors ---
 
 
 def test_upstream_error_str_with_detail():
@@ -366,7 +366,7 @@ def test_ports_expose_only_read_or_simulate_methods():
         AssessBaseSource: {"get_base"},
     }
     for port, names in expected.items():
-        # mutmut añade a la clase copias renombradas de cada método (`x…__mutmut_orig`, `__mutmut_1`...): no son parte del puerto.
+        # mutmut adds to the class renamed copies of each method (`x…__mutmut_orig`, `__mutmut_1`...): they are not part of the port.
         public = {n for n, _ in inspect.getmembers(port, inspect.isfunction) if not n.startswith("_") and "__mutmut" not in n}
         assert public == names
         assert not [n for n in public if n.startswith(forbidden)]

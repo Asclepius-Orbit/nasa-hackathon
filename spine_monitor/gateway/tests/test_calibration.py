@@ -1,4 +1,4 @@
-"""Grabación de calibraciones stretch y emg_mvc a partir de los lotes del Arduino."""
+"""Recording of stretch and emg_mvc calibrations from the Arduino batches."""
 
 import math
 from collections.abc import Iterator
@@ -51,7 +51,7 @@ def calibration_payload(result: object) -> dict[str, object]:
     return data
 
 
-# --- construcción ---
+# --- construction ---
 
 
 MISSION_CURVE = ((5400.0, 585.0), (6012.0, 650.0), (6790.0, 731.0), (7560.0, 812.0))
@@ -87,7 +87,7 @@ def test_duration_must_be_positive(settings: GatewaySettings, duration: float) -
 def test_stretch_calibration(settings: GatewaySettings) -> None:
     rec = recorder(settings, STRETCH, 1.0, session_id=SESSION)
     assert rec.status is CalibrationStatus.COLLECTING
-    statuses = [rec.feed(cord(s, (300, 382))) for s in range(10)]  # media 341 -> R0 = 5000 Ω
+    statuses = [rec.feed(cord(s, (300, 382))) for s in range(10)]  # mean 341 -> R0 = 5000 Ω
     assert statuses == [CalibrationStatus.COLLECTING] * 9 + [CalibrationStatus.DONE]
     assert rec.status is CalibrationStatus.DONE
     assert calibration_payload(rec.finish(NOW)) == {
@@ -132,7 +132,7 @@ def test_rest_length_comes_from_settings(settings: GatewaySettings) -> None:
 
 
 def test_duration_is_measured_on_the_device_clock(settings: GatewaySettings) -> None:
-    # 125 ms a 20 Hz: muestras en 0, 50 y 100 ms; la de 150 ms (1000 cuentas) queda fuera.
+    # 125 ms at 20 Hz: samples at 0, 50 and 100 ms; the 150 ms one (1000 counts) is left out.
     rec = recorder(settings, STRETCH, 0.125)
     assert rec.feed(cord(0, (341, 341), t0=5000)) is CalibrationStatus.COLLECTING
     assert rec.feed(cord(1, (341, 1000), t0=5100)) is CalibrationStatus.DONE
@@ -143,7 +143,7 @@ def test_lost_frames_shorten_the_sample_but_not_the_duration(settings: GatewaySe
     rec = recorder(settings, STRETCH, 1.0)
     assert rec.feed(cord(0, (300, 300))) is CalibrationStatus.COLLECTING
     assert rec.feed(cord(1, (382, 382))) is CalibrationStatus.COLLECTING
-    assert rec.feed(cord(9, (341, 341))) is CalibrationStatus.DONE  # t0 = 900 ms: cubre hasta 1000 ms
+    assert rec.feed(cord(9, (341, 341))) is CalibrationStatus.DONE  # t0 = 900 ms: covers up to 1000 ms
     assert calibration_payload(rec.finish(NOW))["rest_resistance_ohm"] == 5000.0
 
 
@@ -152,9 +152,9 @@ def test_other_kinds_duplicates_and_late_frames_are_ignored(settings: GatewaySet
     assert rec.feed(emg(0, (0,) * 100)) is CalibrationStatus.COLLECTING
     assert rec.feed(Frame(FrameKind.IMU, 0, 0, ((0, 0, 0, 0, 0, 0),) * 10)) is CalibrationStatus.COLLECTING
     rec.feed(cord(0, (341, 341)))
-    assert rec.feed(cord(0, (1, 1))) is CalibrationStatus.COLLECTING  # duplicado
+    assert rec.feed(cord(0, (1, 1))) is CalibrationStatus.COLLECTING  # duplicate
     assert rec.feed(cord(1, (341, 341))) is CalibrationStatus.DONE
-    assert rec.feed(cord(2, (1, 1))) is CalibrationStatus.DONE  # ya terminada
+    assert rec.feed(cord(2, (1, 1))) is CalibrationStatus.DONE  # already finished
     assert calibration_payload(rec.finish(NOW))["rest_resistance_ohm"] == 5000.0
 
 
@@ -166,7 +166,7 @@ def test_frames_with_an_unexpected_sample_count_are_ignored(settings: GatewaySet
 
 
 def test_frames_before_the_start_are_ignored(settings: GatewaySettings) -> None:
-    # frame_seq avanza pero t0 retrocede (vuelta de millis()): no puede contar como tiempo de calibración.
+    # frame_seq advances but t0 goes back (millis() wraparound): it cannot count as calibration time.
     rec = recorder(settings, STRETCH, 0.2)
     rec.feed(cord(0, (341, 341), t0=1000))
     assert rec.feed(cord(1, (1, 1), t0=900)) is CalibrationStatus.COLLECTING
@@ -196,7 +196,7 @@ def test_naive_created_at_is_rejected(settings: GatewaySettings) -> None:
     rec = recorder(settings, STRETCH, 0.1)
     rec.feed(cord(0))
     with pytest.raises(ValueError, match="timezone"):
-        rec.finish(datetime(2026, 11, 13, 7, 5))  # noqa: DTZ001 -- es lo que se prueba
+        rec.finish(datetime(2026, 11, 13, 7, 5))  # noqa: DTZ001 -- this is what is being tested
 
 
 # --- emg_mvc ---
@@ -230,7 +230,7 @@ def test_emg_mvc_calibration(settings: GatewaySettings, kind: SignalKind) -> Non
         "calibration_type": "emg_mvc",
         "muscle": "latissimus_dorsi",
         "side": "left",
-        # Cruda: el offset de media escala se resta antes del RMS, así que 0 y 1023 valen lo mismo (±2500 mV).
+        # Raw: the mid-scale offset is subtracted before the RMS, so 0 and 1023 are equivalent (±2500 mV).
         "mvc_rms_mv": 2500.0 if kind is SignalKind.RAW else 5000.0,
         "window_ms": 250,
         "signal_kind": kind.value,
@@ -241,9 +241,9 @@ def test_emg_mvc_calibration(settings: GatewaySettings, kind: SignalKind) -> Non
     ("values", "expected_counts"),
     [
         ([512] * 1000, 512.0),
-        ([0] * 500 + [1023] * 100 + [0] * 400, 1023 * math.sqrt(100 / 250)),  # ráfaga más corta que la ventana
-        ([0] * 750 + [10] * 250, 10.0),  # la ventana de máximo es la última
-        ([20] * 250 + [0] * 750, 20.0),  # y la primera
+        ([0] * 500 + [1023] * 100 + [0] * 400, 1023 * math.sqrt(100 / 250)),  # burst shorter than the window
+        ([0] * 750 + [10] * 250, 10.0),  # the maximum window is the last one
+        ([20] * 250 + [0] * 750, 20.0),  # and the first one
         ([3, 4] * 500, math.sqrt((9 + 16) / 2)),
     ],
 )
@@ -284,7 +284,7 @@ def test_emg_mvc_matches_a_brute_force_rms_of_the_converted_signal(settings: Gat
 
 
 def test_emg_mvc_raw_around_half_scale_is_near_zero(settings: GatewaySettings) -> None:
-    # Cruda en reposo, en torno a la media escala (511.5): 511 y 512 quedan a ±0,5 cuentas y no a ~512 cuentas.
+    # Raw at rest, around mid-scale (511.5): 511 and 512 are ±0.5 counts away and not ~512 counts.
     rec = recorder(with_kind(settings, SignalKind.RAW), EMG_MVC, 1.0)
     for f in emg_frames([511, 512] * 500):
         rec.feed(f)

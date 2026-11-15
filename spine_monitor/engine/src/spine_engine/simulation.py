@@ -1,7 +1,7 @@
-"""Paso puro de `/simulate`: aplica los overrides a la base antes de reevaluarla.
+"""Pure step of `/simulate`: applies the overrides to the base before re-assessing it.
 
-Solo cambia el último valor de cada feature (el conjunto más reciente por `computed_at` que la contiene);
-el histórico queda igual. Los overrides se aplican en orden, así que varios sobre la misma feature se componen.
+It only changes the last value of each feature (the most recent set by `computed_at` that contains it);
+the history stays the same. Overrides are applied in order, so several on the same feature compose.
 """
 
 import math
@@ -16,7 +16,7 @@ from spine_engine.errors import InvalidOverrideError, UnknownFeatureError
 
 
 def _latest_feature(base: AssessRequest, feature_id: str) -> Feature:
-    """Último valor de `feature_id`: el del conjunto más reciente que lo contiene (ante empate, el posterior en la lista)."""
+    """Last value of `feature_id`: that of the most recent set that contains it (on a tie, the later one in the list)."""
     found = None
     for feature_set in sorted(base.feature_sets, key=lambda s: s.computed_at):
         for feature in feature_set.features:
@@ -38,7 +38,7 @@ def _apply(value: float, override: Override) -> float:
 
 
 def apply_overrides(base: AssessRequest, overrides: Sequence[Override]) -> AssessRequest:
-    """Copia profunda de `base` con los overrides aplicados; la entrada no se muta."""
+    """Deep copy of `base` with the overrides applied; the input is not mutated."""
     result = base.model_copy(deep=True)
     for override in overrides:
         if not catalog.is_known(override.feature_id):
@@ -52,7 +52,7 @@ def apply_overrides(base: AssessRequest, overrides: Sequence[Override]) -> Asses
 
 
 def project_features(base: AssessRequest, overrides: Sequence[Override], days: int) -> tuple[AssessRequest, list[str]]:
-    """Proyecta desde el último valor modificado usando la pendiente del historial."""
+    """Project from the last modified value using the slope of the history."""
     result = apply_overrides(base, overrides)
     history: dict[str, list[tuple[datetime, Feature]]] = {}
     for feature_set in sorted(result.feature_sets, key=lambda item: item.computed_at):

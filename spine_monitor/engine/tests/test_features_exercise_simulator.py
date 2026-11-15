@@ -1,7 +1,7 @@
-"""Familia ``exercise`` (#41) de extremo a extremo: sesiones del simulador por ``CompositeFeatureExtractor(default_registry())``.
+"""End-to-end ``exercise`` family (#41): simulator sessions through ``CompositeFeatureExtractor(default_registry())``.
 
-La verdad es la del propio simulador: ``expected_features`` (``exercise.rep_count``, ``exercise.rep_duration_s_mean``)
-y el calendario constante de ``rep_duration_s`` (por eso el CV real es 0).
+The truth is the simulator's own: ``expected_features`` (``exercise.rep_count``, ``exercise.rep_duration_s_mean``)
+and the constant ``rep_duration_s`` schedule (hence the real CV is 0).
 """
 
 import json
@@ -17,7 +17,7 @@ from spine_contracts.models.domain.session_schema import Event, EventType
 from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
 
-# vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
+# via the installed package, not via parents[]: under mutmut the tests are copied to another tree without physiology/
 _MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
 COUNT = "exercise.rep_count"
 MEAN = "exercise.rep_duration_s_mean"
@@ -26,7 +26,7 @@ ALL_IDS = (COUNT, MEAN, CV)
 
 
 def _catalog_rep_duration_s() -> float:
-    # CATALOG_DIR viene del paquete instalado: sin rutas a carpetas hermanas (bajo mutmut no existen)
+    # CATALOG_DIR comes from the installed package: no paths to sibling folders (they do not exist under mutmut)
     entries = json.loads((CATALOG_DIR / "protocol-catalog.json").read_text(encoding="utf-8"))["entries"]
     return next(e["rep_duration_s"] for e in entries if e["protocol_id"] == "lat_pulldown_standing_v1")
 
@@ -38,7 +38,7 @@ def _mission_rep_duration_s() -> float:
     return raw["protocols"]["lat_pulldown_standing_v1"]["rep_duration_s"]
 
 
-# La misión copia el valor del catálogo (lo cruza contracts/tests/test_catalog.py); el test lee la misión, sin literal.
+# The mission copies the catalogue value (cross-checked by contracts/tests/test_catalog.py); the test reads the mission, no literal.
 REP_DURATION_S = _catalog_rep_duration_s()
 
 
@@ -46,12 +46,12 @@ def test_the_mission_rep_duration_is_the_catalog_one():
     assert _mission_rep_duration_s() == REP_DURATION_S
 
 
-# Con eventos la duración es exacta (los eventos son la verdad del calendario): tolerancia de redondeo.
+# With events the duration is exact (events are the schedule's truth): rounding tolerance.
 EVENTS_MEAN_ABS_TOLERANCE_S = 1e-6
 EVENTS_CV_ABS_TOLERANCE_PCT = 1e-6
-# Solo IMU: el umbral de borde recorta algo los extremos (velocidad casi nula); media dentro del 10 %.
+# IMU only: the edge threshold trims the ends a little (almost zero velocity); mean within 10 %.
 IMU_MEAN_REL_TOLERANCE = 0.10
-# Sin eventos el umbral de movimiento introduce un pequeño error en los bordes.
+# Without events the movement threshold introduces a small error at the edges.
 IMU_CV_MAX_PCT = 2.0
 
 SEEDS = [7, 20261113]
@@ -75,7 +75,7 @@ def _mission_config(single_rep: bool = False) -> Any:
 
 
 def _simulate(seed: int, gravity: str, *, with_events: bool, single_rep: bool = False) -> tuple[FeaturesRequest, dict[str, float]]:
-    """Petición de features de una sesión simulada y las features esperadas (verdad) del simulador."""
+    """Features request of a simulated session and the simulator's expected features (truth)."""
     from spine_contracts.models.common_schema import GravityEnvironment
     from spine_physiology import MissionGenerator
     from spine_physiology.envelope import EnvelopeKind
@@ -151,7 +151,7 @@ def test_without_events_the_imu_fallback_matches_the_simulator_truth(seed: int, 
 @pytest.mark.integration
 @pytest.mark.parametrize("seed", SEEDS)
 def test_known_unequal_durations_give_an_exact_cv(seed: int):
-    # 3, 4 y 5 s: media 4, desviación muestral 1 -> CV = 25 % exacto
+    # 3, 4 and 5 s: mean 4, sample deviation 1 -> CV = exact 25 %
     request, _truth = _simulate(seed, "earth_1g", with_events=True)
     start = min(e.timestamp for e in request.session.events or [])
     events: list[Event] = []

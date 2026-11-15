@@ -58,7 +58,7 @@
       "additionalProperties": false
     },
     "spine_history": {
-      "description": "Pre-flight spine history. Which of these factors weigh in the risk model, and how much, is decided by the clinical model (Aguado), not by this contract.",
+      "description": "Pre-flight spine history. Which of these factors weigh in the risk model, and how much, is decided by the clinical model, not by this contract.",
       "type": "object",
       "properties": {
         "low_back_pain_history": { "type": "boolean" },

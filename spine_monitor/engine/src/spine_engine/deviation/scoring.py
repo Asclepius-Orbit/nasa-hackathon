@@ -1,18 +1,18 @@
-"""Puntuación de desviación: cuántas escalas típicas se aleja un valor de su baseline."""
+"""Deviation score: how many typical scales a value is away from its baseline."""
 
 from spine_contracts import BaselineEntry
 
-# MAD -> desviación típica equivalente para datos normales.
+# MAD -> equivalent standard deviation for normal data.
 MAD_TO_SIGMA = 1.4826
 _ABSOLUTE_FLOOR = 1e-6
 
 
 class RobustZScorer:
-    """z robusto: (valor - mediana) / (1.4826 * MAD).
+    """Robust z: (value - median) / (1.4826 * MAD).
 
-    Si la MAD es ~0 (pocas sesiones, o todas iguales) usa la desviación típica; si también es ~0 usa
-    un suelo proporcional a la mediana (`relative_floor`), para no dividir por cero ni disparar un z
-    infinito con una baseline de una sola sesión.
+    If the MAD is ~0 (few sessions, or all equal) it uses the standard deviation; if that is also ~0 it uses
+    a floor proportional to the median (`relative_floor`), to avoid dividing by zero or firing an
+    infinite z with a single-session baseline.
     """
 
     def __init__(self, relative_floor: float = 0.05) -> None:

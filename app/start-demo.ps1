@@ -112,8 +112,15 @@ if (-not $SkipModelPull) {
     }
 }
 
-if ($preserveOllama) { docker @compose up -d --build --no-recreate }
-else { docker @compose up -d --build }
+if ($preserveOllama) {
+    # Start missing dependencies in Compose order (and wait for their health checks),
+    # then update the active services without asking Compose to recreate Ollama.
+    docker @compose up -d --no-recreate
+    if ($LASTEXITCODE -ne 0) { throw 'docker compose dependency startup failed' }
+    $services = @(docker @compose config --services | Where-Object { $_ -ne 'ollama' })
+    if ($LASTEXITCODE -ne 0 -or $services.Count -eq 0) { throw 'Could not enumerate demo services' }
+    docker @compose up -d --build --no-deps @services
+} else { docker @compose up -d --build }
 if ($LASTEXITCODE -ne 0 -and $gpuSelected) {
     Write-Warning 'GPU startup failed; retrying with CPU.'
     $compose = @('compose', '-f', "$app/docker-compose.yml", '--profile', $producer, '--profile', 'llm')

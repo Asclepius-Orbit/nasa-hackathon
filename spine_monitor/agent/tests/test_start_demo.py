@@ -62,6 +62,7 @@ def test_running_ollama_is_not_restarted_for_hardware_detection(tmp_path):
         " Add-Content $env:DEMO_TEST_LOG ($args -join ' ')\n"
         " $global:LASTEXITCODE = 0\n"
         " if (($args -contains 'ps') -and ($args -contains '-q')) { 'existing-id' }\n"
+        " if (($args -contains 'config') -and ($args -contains '--services')) { 'ollama'; 'backend'; 'agent' }\n"
         "}\n"
         "function curl.exe {}\n"
         "& $env:DEMO_TEST_SCRIPT -NoUi -SkipModelPull\n"
@@ -72,7 +73,34 @@ def test_running_ollama_is_not_restarted_for_hardware_detection(tmp_path):
     result = subprocess.run([PWSH, "-NoProfile", "-File", str(harness)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert "already running" in result.stdout
-    assert "--no-recreate" in (tmp_path / "calls").read_text()
+    calls = (tmp_path / "calls").read_text().splitlines()
+    assert any("up -d --no-recreate" in call for call in calls)
+    assert any("up -d --build --no-deps" in call for call in calls)
+    updated = next(call for call in calls if "up -d --build --no-deps" in call)
+    assert updated.split("--no-deps", 1)[1].split() == ["backend", "agent"]
+
+
+@pytest.mark.unit
+def test_hardware_benchmark_uses_distinct_prompts(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell is unavailable")
+    harness = tmp_path / "select.ps1"
+    harness.write_text(
+        "function Invoke-RestMethod {\n"
+        " param($Uri, $Method, $ContentType, $Body, $TimeoutSec)\n"
+        " if ($Uri -like '*/api/ps') { return @{ models=@(@{ name='qwen3.5:4b'; size_vram=100 }) } }\n"
+        " $r=$Body | ConvertFrom-Json; Add-Content $env:TEST_LOG $r.prompt\n"
+        " return @{ prompt_eval_duration=100; eval_duration=100; eval_count=16 }\n"
+        "}\n"
+        "& $env:TEST_SCRIPT -Model 'qwen3.5:4b'\n"
+    )
+    env = os.environ.copy()
+    env.update(TEST_SCRIPT=str(APP / "select-ollama-hardware.ps1"), TEST_LOG=str(tmp_path / "prompts"))
+    result = subprocess.run([PWSH, "-NoProfile", "-File", str(harness)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    prompts = (tmp_path / "prompts").read_text().splitlines()
+    assert len(prompts) == 4
+    assert len(set(prompts)) == 4
 
 
 @pytest.mark.unit

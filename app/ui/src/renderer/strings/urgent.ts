@@ -17,6 +17,8 @@ export const urgent = {
     backInMin === null
       ? ' It waits in the queue and goes to the flight surgeon when the link is back.'
       : ` It waits in the queue and goes to the flight surgeon when the link is back, in about ${String(backInMin)} min.`,
+  // Nobody is unlocked, so the ground link cannot be read: say nothing about it.
+  linkUnknownBody: 'Your report is queued on board first and goes to the flight surgeon when the link allows.',
   linkUpTitle: 'Link to the ground is up.',
   // Nothing is promised as sent until the delivery exists (#63): with the link up the report is still queued first.
   linkUpBody: ' Your report is queued on board first; it shows Sent only when the ground station confirms it.',

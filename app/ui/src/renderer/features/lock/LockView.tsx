@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router';
 import { useApi } from '../../api/ApiContext';
 import { useAuth } from '../../auth/AuthProvider';
 import { useNow } from '../../clock/Clock';
-import { MockSkipLogin } from '../../components/layout/MockSkipLogin';
 import { Button } from '../../components/ui/Button';
 import { Keypad } from '../../components/ui/Keypad';
 import { NoData } from '../../components/ui/Panel';
@@ -85,7 +84,6 @@ export function LockView(): React.JSX.Element {
         >
           {lock.signOut}
         </Button>
-        <MockSkipLogin />
       </div>
     </section>
   );

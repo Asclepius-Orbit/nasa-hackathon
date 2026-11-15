@@ -85,11 +85,22 @@ def _positive_int(value: str) -> int:
     return number
 
 
+def mcp_args_for(dataset: str) -> list[str]:
+    return ["-m", "spine_mcp_server", "--dataset", dataset]
+
+
 def parse_args(argv: Sequence[str], models: list[str], base_url: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="evals.run_live", description="Benchmark local Ollama models on the spine agent evals.")
     parser.add_argument("--models", nargs="+", default=models, help=f"Ollama tags (default: ${MODELS_VAR} or .env.example)")
     parser.add_argument("--repeat", type=_positive_int, default=3, help="repetitions per case (default 3)")
     parser.add_argument("--base-url", default=base_url, help="OpenAI-compatible endpoint of Ollama (default from AgentSettings)")
+    parser.add_argument(
+        "--dataset",
+        choices=("demo", "http"),
+        default="demo",
+        help="MCP dataset: demo (default; the eval expectations are demo-specific) or http (real app and engine; "
+        "needs SPINE_APP_URL and SPINE_ENGINE_URL, forwarded to the MCP subprocess)",
+    )
     parser.add_argument(
         "--dump", type=Path, default=None, help="write the failed runs (question, tool calls, full answer, failed checks) as JSON lines to this file"
     )
@@ -379,9 +390,9 @@ def _case_id(report_case: Any) -> str:
     return report_case.source_case_name or report_case.name  # pragma: no cover  (real Ollama)
 
 
-async def _benchmark_model(model: str, base_url: str, repeat: int) -> tuple[list[RunRecord], list[Diagnostic]]:  # pragma: no cover  (real Ollama)
-    # The eval expectations are demo-specific (AST-01 amber, fixed ids): pin the demo dataset, not the real app and engine.
-    settings = AgentSettings(model=model, ollama_base_url=base_url, mcp_args=["-m", "spine_mcp_server", "--dataset", "demo"])
+async def _benchmark_model(model: str, base_url: str, repeat: int, dataset: str) -> tuple[list[RunRecord], list[Diagnostic]]:  # pragma: no cover  (real Ollama)
+    # The eval expectations are demo-specific (AST-01 amber, fixed ids): the default is the demo dataset.
+    settings = AgentSettings(model=model, ollama_base_url=base_url, mcp_args=mcp_args_for(dataset))
     fallback = McpStatusSource(settings)
 
     async def task(inputs: EvalInput) -> AgentRun:
@@ -420,13 +431,15 @@ async def _benchmark_model(model: str, base_url: str, repeat: int) -> tuple[list
     return records, diagnostics
 
 
-async def _benchmark(models: Sequence[str], base_url: str, repeat: int, dump: Path | None) -> list[ModelSummary]:  # pragma: no cover  (real Ollama)
+async def _benchmark(  # pragma: no cover  (real Ollama)
+    models: Sequence[str], base_url: str, repeat: int, dump: Path | None, dataset: str
+) -> list[ModelSummary]:
     summaries: list[ModelSummary] = []
     if dump:
         dump.write_text("", encoding="utf-8")
     for model in models:
         print(f"Running {model} ({repeat} x {len(build_dataset().cases)} runs)...", file=sys.stderr, flush=True)
-        records, diagnostics = await _benchmark_model(model, base_url, repeat)
+        records, diagnostics = await _benchmark_model(model, base_url, repeat, dataset)
         summary = summarize(model, records)
         summaries.append(summary)
         print(format_summary(summary), "", sep="\n", flush=True)
@@ -446,7 +459,7 @@ def _run_live(env: Mapping[str, str], argv: Sequence[str]) -> int:  # pragma: no
     if problem:
         print(problem, file=sys.stderr)
         return 1
-    summaries = asyncio.run(_benchmark(args.models, args.base_url, args.repeat, args.dump))
+    summaries = asyncio.run(_benchmark(args.models, args.base_url, args.repeat, args.dump, args.dataset))
     print(format_comparison(summaries), "", format_selection(summaries, TTFT_LIMIT_S), sep="\n")
     return 0
 

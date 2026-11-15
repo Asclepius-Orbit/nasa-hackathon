@@ -48,6 +48,17 @@ it('uses the singular when the reference is built from one session', async () =>
   expect(await screen.findByText(/Version 1, built from 1 session\./)).toBeInTheDocument();
 });
 
+it('says the baseline is complete, without a count out of range, when more sessions are recorded than required', async () => {
+  class Over extends MockDataSource {
+    override getBaseline(): ReturnType<MockDataSource['getBaseline']> {
+      return super.getBaseline().then((b) => ({ ...b, recorded: 25, required: 1 }));
+    }
+  }
+  renderInWorld(<BaselineView />, { data: new Over(), route: '/baseline' });
+  expect(await screen.findByRole('heading', { level: 2, name: 'Baseline complete: 25 sessions recorded' })).toBeInTheDocument();
+  expect(screen.queryByText(/25 of 1/)).not.toBeInTheDocument();
+});
+
 const realBaseline = (view: BaselinePayload | null): void => {
   const api = new FakeAsclepiusApi();
   if (view) api.viewData.baseline = view;

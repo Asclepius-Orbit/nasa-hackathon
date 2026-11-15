@@ -5,7 +5,6 @@ import type { CrewMember } from '../../../shared/api';
 import { useApi } from '../../api/ApiContext';
 import { useAuth } from '../../auth/AuthProvider';
 import { useNow } from '../../clock/Clock';
-import { MockSkipLogin } from '../../components/layout/MockSkipLogin';
 import { Button } from '../../components/ui/Button';
 import { cx } from '../../components/ui/cx';
 import { Keypad } from '../../components/ui/Keypad';
@@ -285,7 +284,6 @@ export function LoginView(): React.JSX.Element {
         >
           {login.urgent}
         </Button>
-        <MockSkipLogin />
       </div>
     </section>
   );

@@ -11,6 +11,13 @@ APP = Path(__file__).resolve().parents[3] / "app"
 PWSH = shutil.which("pwsh") or shutil.which("powershell")
 
 
+def _write_broker_auth(app):
+    auth = app / "mosquitto" / "auth"
+    auth.mkdir(parents=True, exist_ok=True)
+    (auth / "passwd").write_text("x")
+    (auth / "acl").write_text("x")
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("gpu,error,expected_guidance", [
     (True, "could not select device driver with capabilities: [[gpu]]", True),
@@ -24,6 +31,7 @@ def test_gpu_setup_guidance_only_for_nvidia_runtime_failure(tmp_path, gpu, error
     app.mkdir()
     shutil.copy(APP / "start-demo.ps1", app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function Get-CimInstance { if ($env:TEST_GPU -eq '1') { @{ PNPDeviceID='PCI\\VEN_10DE&DEV_1234' } } }\n"
@@ -97,6 +105,7 @@ def test_startup_explains_gpu_not_used_by_ollama(tmp_path):
     for name in ("start-demo.ps1", "select-ollama-hardware.ps1"):
         shutil.copy(APP / name, app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function Get-CimInstance { @{ PNPDeviceID='PCI\\VEN_10DE&DEV_1234' } }\n"
@@ -134,6 +143,7 @@ def test_running_ollama_is_not_restarted_for_hardware_detection(tmp_path):
     app.mkdir()
     shutil.copy(APP / "start-demo.ps1", app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function docker {\n"
@@ -191,6 +201,7 @@ def test_startup_benchmarks_isolated_server_and_recovers_from_gpu_failure(tmp_pa
     for name in ("start-demo.ps1", "select-ollama-hardware.ps1"):
         shutil.copy(APP / name, app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function docker {\n"
@@ -237,6 +248,9 @@ def test_startup_continues_after_model_preparation(tmp_path, skip, pull_exit):
         "SPINE_MQTT_SIM_PASSWORD=test\nSPINE_APP_UI_TOKEN=test\n"
         "SPINE_AGENT_HTTP_TOKEN=test\nSPINE_APP_BASELINE_REQUIRED=1\n"
     )
+    (app / "mosquitto" / "auth").mkdir(parents=True)
+    (app / "mosquitto" / "auth" / "passwd").write_text("x")
+    (app / "mosquitto" / "auth" / "acl").write_text("x")
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function docker {\n"
@@ -285,3 +299,57 @@ def test_pull_prepares_active_model_and_extra_models(tmp_path):
     result = subprocess.run([bash, "-c", command], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "models").read_text().splitlines() == ["custom:1", "extra:2"]
+
+
+def _run_startup(tmp_path, extra_args, seed_exit):
+    app = tmp_path / "app"
+    app.mkdir()
+    shutil.copy(APP / "start-demo.ps1", app)
+    (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
+    harness = tmp_path / "run.ps1"
+    harness.write_text(
+        "function docker {\n"
+        " Add-Content $env:TEST_LOG ($args -join ' ')\n"
+        " $global:LASTEXITCODE = 0\n"
+        " if ($args -contains 'seed') { $global:LASTEXITCODE = [int]$env:TEST_SEED_EXIT }\n"
+        "}\n"
+        "function curl.exe {}\n"
+        "& $env:TEST_SCRIPT -NoUi -SkipModelPull " + extra_args + "\n"
+    )
+    env = os.environ.copy()
+    env.update(TEST_SCRIPT=str(app / "start-demo.ps1"), TEST_LOG=str(tmp_path / "calls"),
+               TEST_SEED_EXIT=str(seed_exit), SPINE_APP_TELEMETRY_SOURCE="simulator", SPINE_GATEWAY_DEMO="0")
+    result = subprocess.run([PWSH, "-NoProfile", "-File", str(harness)], env=env, capture_output=True, text=True)
+    calls = (tmp_path / "calls").read_text().splitlines()
+    return result, calls
+
+
+@pytest.mark.unit
+def test_demo_seed_runs_by_itself_before_the_stack_starts(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell is unavailable")
+    result, calls = _run_startup(tmp_path, "", 0)
+    assert result.returncode == 0, result.stderr
+    seed = [i for i, line in enumerate(calls) if "--profile seed run --rm --build seed" in line]
+    up = [i for i, line in enumerate(calls) if "up -d" in line]
+    assert len(seed) == 1 and up and seed[0] < up[0]
+
+
+@pytest.mark.unit
+def test_no_seed_switch_skips_the_demo_seed(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell is unavailable")
+    result, calls = _run_startup(tmp_path, "-NoSeed", 0)
+    assert result.returncode == 0, result.stderr
+    assert not any(" seed" in line for line in calls)
+
+
+@pytest.mark.unit
+def test_failed_demo_seed_only_warns_and_the_stack_still_starts(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell is unavailable")
+    result, calls = _run_startup(tmp_path, "", 1)
+    assert result.returncode == 0, result.stderr
+    assert "could not be seeded" in (result.stdout + result.stderr)
+    assert any("up -d" in line for line in calls)

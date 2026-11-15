@@ -488,7 +488,7 @@ describe('views channels', () => {
     });
   });
 
-  it.each([IPC_CHANNELS.viewsStrip, IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay, IPC_CHANNELS.viewsCordProtocols, IPC_CHANNELS.viewsCordHistory, IPC_CHANNELS.viewsHouston, IPC_CHANNELS.viewsOutbox])(
+  it.each([IPC_CHANNELS.viewsToday, IPC_CHANNELS.viewsBaseline, IPC_CHANNELS.viewsFirstDay, IPC_CHANNELS.viewsCordProtocols, IPC_CHANNELS.viewsCordHistory, IPC_CHANNELS.viewsHouston, IPC_CHANNELS.viewsOutbox])(
     'rejects %s with "locked" before login and behind the lock screen',
     async (channel) => {
       await expect(call(channel)).rejects.toThrow(/^locked$/);
@@ -498,6 +498,15 @@ describe('views channels', () => {
       expect(backend.calls).toEqual([]);
     },
   );
+
+  it('answers the strip with null, not an error, before login and behind the lock screen', async () => {
+    expect(await call(IPC_CHANNELS.viewsStrip)).toBeNull();
+    await unlock();
+    await call(IPC_CHANNELS.authLock);
+    expect(await call(IPC_CHANNELS.viewsStrip)).toBeNull();
+    expect(backend.calls).toEqual([]);
+    expect(logged).toEqual([]);
+  });
 
   it('rejects history and session with "locked" too', async () => {
     await expect(call(IPC_CHANNELS.viewsHistory, {})).rejects.toThrow(/^locked$/);

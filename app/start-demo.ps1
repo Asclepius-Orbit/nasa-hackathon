@@ -1,10 +1,14 @@
 # Starts the demo stack (sim + llm) and the desktop UI with the tokens fixed in app/.env.
 # Usage (from anywhere): powershell -File app/start-demo.ps1 [-NoUi] [-SkipModelPull]
 #   -SkipModelPull: do not check or download the Ollama model before starting (offline, model already cached).
+#   -NoSeed: do not populate AST-01/AST-02 with ~60 days of fictitious history (the seed runs by itself on every start and
+#     only fills astronauts that have no data yet).
+# app/.env and app/mosquitto/auth/{passwd,acl} are generated on first run (or when incomplete) with app/mosquitto/setup.sh,
+#   run through Git Bash on Windows; this needs docker running.
 # SPINE_APP_TELEMETRY_SOURCE (env or app/.env) picks the single telemetry producer: simulator (default) | device.
 #   simulator -> profile sim; device -> profile hardware (gateway + USB, Linux), or with SPINE_GATEWAY_DEMO=1
 #   profile gateway-demo (serial emulator, no board). SPINE_GATEWAY_DEMO=1 with simulator is rejected.
-param([switch]$NoUi, [switch]$SkipModelPull)
+param([switch]$NoUi, [switch]$SkipModelPull, [switch]$NoSeed)
 
 $ErrorActionPreference = 'Stop'
 $app = $PSScriptRoot
@@ -54,8 +58,55 @@ function Get-EnvValue([string]$name) {
     return ($line -replace "^$name=", '').Trim('"')
 }
 
-if (-not (Test-Path "$app/.env") -or -not (Select-String -Path "$app/.env" -Pattern '^SPINE_MQTT_SIM_PASSWORD=.+' -Quiet)) {
-    bash "$app/mosquitto/setup.sh"
+function Test-NonEmptyFile([string]$path) {
+    return (Test-Path -LiteralPath $path -PathType Leaf) -and ((Get-Item -LiteralPath $path).Length -gt 0)
+}
+
+# True when app/.env, the broker password file or the ACL is missing or incomplete (setup.sh keeps existing passwords).
+function Test-MqttSetupNeeded {
+    $envFile = Join-Path $app '.env'
+    if (-not (Test-NonEmptyFile $envFile)) { return $true }
+    if (-not (Select-String -LiteralPath $envFile -Pattern '^SPINE_MQTT_SIM_PASSWORD=.+' -Quiet)) { return $true }
+    foreach ($name in 'passwd', 'acl') {
+        if (-not (Test-NonEmptyFile (Join-Path $app "mosquitto/auth/$name"))) { return $true }
+    }
+    return $false
+}
+
+# Git Bash on Windows (bash on PATH may be the WSL launcher in System32); bash elsewhere.
+function Get-SetupBash {
+    if ($env:OS -ne 'Windows_NT') {
+        $cmd = Get-Command bash -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+        throw 'bash is required to run app/mosquitto/setup.sh but was not found on PATH.'
+    }
+    $candidates = @()
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($git) {
+        $execPath = (& $git.Source --exec-path 2>$null | Select-Object -First 1)
+        if ($execPath) {
+            # <git root>/(mingw64|ucrt64)/libexec/git-core -> <git root>/bin/bash.exe
+            $gitRoot = Split-Path (Split-Path (Split-Path $execPath -Parent) -Parent) -Parent
+            $candidates += Join-Path $gitRoot 'bin\bash.exe'
+        }
+    }
+    foreach ($base in $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:LOCALAPPDATA\Programs") {
+        if ($base) { $candidates += Join-Path $base 'Git\bin\bash.exe' }
+    }
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c -PathType Leaf) { return $c }
+    }
+    throw 'Git Bash was not found (bash.exe on PATH may be WSL, which cannot run app/mosquitto/setup.sh). Install Git for Windows (https://git-scm.com/download/win) and rerun.'
+}
+
+if (Test-MqttSetupNeeded) {
+    $bash = Get-SetupBash
+    Write-Host 'Generating the MQTT credentials (app/.env, app/mosquitto/auth)...'
+    & $bash (Join-Path $app 'mosquitto/setup.sh')
+    if ($LASTEXITCODE -ne 0) {
+        throw "app/mosquitto/setup.sh failed (exit code $LASTEXITCODE); fix the error above and rerun. Docker must be running."
+    }
+    if (Test-MqttSetupNeeded) { throw 'app/mosquitto/setup.sh finished but app/.env or app/mosquitto/auth is still incomplete.' }
 }
 
 # First run on a machine: random tokens, kept in app/.env (git-ignored, never shared).
@@ -146,6 +197,17 @@ if (-not $SkipModelPull) {
     else { docker @compose --profile llm-prepare run --rm ollama-pull }
     if ($LASTEXITCODE -ne 0) {
         Write-Warning 'The local model could not be prepared; the chat will not work until it is downloaded (see the agent README).'
+    }
+}
+
+# Demo data: complete profiles and ~60 days of history for AST-01 and AST-02, built with the real engine. Idempotent (an
+# astronaut that already has data is skipped), so it runs on every start. It runs before the backend so nothing else writes
+# the database meanwhile. A failure only warns: the app starts, just without the populated history.
+if (-not $NoSeed) {
+    Write-Host 'Seeding the demo data (skipped for astronauts that already have data)...'
+    docker @compose --profile seed run --rm --build seed
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning 'The demo data could not be seeded; the app starts with empty profiles. Rerun this script or see the seed service in app/docker-compose.yml.'
     }
 }
 

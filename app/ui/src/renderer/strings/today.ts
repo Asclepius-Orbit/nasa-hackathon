@@ -51,10 +51,10 @@ export const today = {
   alsoToday: 'Also today',
 } as const;
 
-/** The weekly PDF for Houston. A separate file from the daily summary on the Houston screen, which it does not replace or change. */
+/** The weekly PDF for Houston. It is generated on demand; daily summaries are sent on their own. */
 export const houstonReport = {
   title: 'Weekly report for Houston',
-  body: 'A PDF with your last seven days, to save and send to the flight surgeon. It is a separate file: the daily summary on the Houston screen is not changed by it.',
+  body: 'A PDF with your last seven days, to save and send to the flight surgeon. Daily summaries go to Houston on their own while the ground link is up, and the urgent dialog shows when one is queued.',
   button: 'Generate report for Houston',
   busy: 'Generating the report...',
   demo: 'Not available in the demo: there is no backend to build the report.',

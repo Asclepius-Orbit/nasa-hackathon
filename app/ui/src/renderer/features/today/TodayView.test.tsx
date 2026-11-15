@@ -441,13 +441,13 @@ describe('report for Houston', () => {
   }
   const findButton = (): Promise<HTMLElement> => screen.findByRole('button', { name: 'Generate report for Houston' });
 
-  it('saves the weekly PDF on click, says what was saved, and keeps it apart from the daily summary', async () => {
+  it('saves the weekly PDF on click, says what was saved, and explains how daily summaries reach Houston', async () => {
     const api = new FakeAsclepiusApi();
     real(api);
     await userEvent.click(await findButton());
     expect(await screen.findByText(`Saved as ${NAME} and opened.`)).toBeInTheDocument();
     expect(api.calls.filter((c) => c === 'houstonReport.generate')).toHaveLength(1);
-    expect(screen.getByText(/separate file: the daily summary on the Houston screen is not changed/)).toBeInTheDocument();
+    expect(screen.getByText(/Daily summaries go to Houston on their own while the ground link is up/)).toBeInTheDocument();
   });
 
   it('says clearly that nothing was saved when it fails or is cancelled, and can be tried again', async () => {

@@ -70,17 +70,32 @@ jobs:
           MUTATION_BASE: origin/${{ github.base_ref }}
         run: docker compose -f app/docker-compose.yml run --rm -T quality sh quality/mutation.sh changed
 
+  powershell-startup:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Run PowerShell startup regressions
+        working-directory: spine_monitor
+        shell: pwsh
+        run: |
+          if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { throw 'PowerShell is required' }
+          uv run --locked --only-group dev pytest agent/tests/test_start_demo.py -k startup_continues -q -p no:randomly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   gate:
-    # Preserve the existing required check while running its two independent parts on separate runners.
+    # Preserve the existing required check while running its independent parts on separate runners.
     if: always()
-    needs: [tests, mutation]
+    needs: [tests, mutation, powershell-startup]
     runs-on: ubuntu-latest
     steps:
-      - name: Require tests and mutation
+      - name: Require all quality jobs
         env:
           TESTS_RESULT: ${{ needs.tests.result }}
           MUTATION_RESULT: ${{ needs.mutation.result }}
-        run: test "$TESTS_RESULT" = success && test "$MUTATION_RESULT" = success
+          POWERSHELL_RESULT: ${{ needs.powershell-startup.result }}
+        run: test "$TESTS_RESULT" = success && test "$MUTATION_RESULT" = success && test "$POWERSHELL_RESULT" = success
 
   ui-quality:
     # Native (not compose): the bind-mounted repo is owned by the runner uid, which the image's non-root user cannot write.

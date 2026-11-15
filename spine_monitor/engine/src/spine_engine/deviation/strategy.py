@@ -33,13 +33,18 @@ class StatisticalBaselineStrategy:
             entry = reference_entry(entries, feature_id, feature_set.protocol_id, feature_set.gravity_environment)
             if entry is None:
                 continue
-            series = [
-                self._scorer.score(f.value, entry)
-                for other in ordered
-                if other.protocol_id == feature_set.protocol_id and other.gravity_environment == feature_set.gravity_environment
-                for f in other.features
-                if f.feature_id == feature_id
-            ]
+            observations = {}
+            for index, other in enumerate(ordered):
+                if other.protocol_id != feature_set.protocol_id or other.gravity_environment != feature_set.gravity_environment:
+                    continue
+                for f in other.features:
+                    if f.feature_id != feature_id:
+                        continue
+                    window = f.window or other.window
+                    # Windowless observations have no identity by which to deduplicate.
+                    key = (window.start, window.end) if window is not None else (index, None)
+                    observations[key] = self._scorer.score(f.value, entry)
+            series = list(observations.values())
             z = self._scorer.score(feature.value, entry)
             signal = self._detector.detect(series)
             result.append(

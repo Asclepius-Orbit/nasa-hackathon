@@ -73,6 +73,8 @@ SPINE_APP_TELEMETRY_SOURCE=device SPINE_GATEWAY_DEMO=1 powershell -File app/star
 
 On PowerShell set the variables with `$env:NAME='value'` or write them in `app/.env`; `-NoUi` skips the desktop app.
 
+**Demo data.** Each start of `app/start-demo.ps1` runs a one-shot seeder (`python -m monitor.demo_seed`, compose service `seed`) before the backend starts. It gives AST-01 and AST-02 a complete profile and about 60 days of fictitious but realistic history, built with the real engine: AST-01 is green and turns amber in the last week (driver `stretch.full_spine.elongation_mm`); AST-02 reaches red with an urgent symptom report already sent to Houston. It is idempotent: an astronaut that already has data is skipped (`-NoSeed` skips the seeder altogether), and to start from scratch delete only the backend volume (`docker volume rm app_backend_data`, not the Ollama models). Dates are anchored to the moment of the seed, so restart the demo before presenting it: reassessments made later have no fresh device window and show lower confidence, and after about a week the seeded urgent report leaves the 7-day window and AST-02 loses its escalation.
+
 The backend drops (warning in the log, counter `wrong_source`) every stream, status or calibration message whose `source` differs from the configured one, `replay` included. `ack` and `clock` carry no `source`, so they are not filtered. In device mode the offline Last Will of the gateway always wins in the device status.
 
 Verify it (stop the dev stack first: both need ports 1883, 8000 and 8001 free):

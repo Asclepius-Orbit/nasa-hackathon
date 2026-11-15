@@ -97,7 +97,7 @@ Edita el schema, añade o actualiza su ejemplo, regenera, ejecuta los tests y av
 - Aún sin cubrir: informe a Houston (FHIR/DTN).
 - Revisión: Andreea. Validación semántica: Aguado.
 
-## Limitaciones conocidas
+## Detalles de implementación
 - En microgravedad el acelerómetro no ve la gravedad: las features de la IMU que dependen de la orientación no son comparables con la Tierra; el catálogo prefiere las basadas en el giroscopio.
 - La librería Python `jsonschema` aplica `pattern` con `re.search`, y ahí `$` admite un salto de línea final; por eso `topics` usa `fullmatch`.
 - Los modelos generados usan tipos `constr(...)` para que los elementos de lista con restricciones sigan siendo cadenas planas; los analizadores de tipos estáticos pueden marcarlos.

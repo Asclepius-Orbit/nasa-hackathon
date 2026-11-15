@@ -73,7 +73,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`spine_physiology.sinks.pacing.paced` puede dosificar un flujo a tiempo real o a `speed` x tiempo real. Un solo día de la misión de ejemplo son unos 22 600 mensajes, casi todos chunks (ver Límites conocidos); para un fragmento más barato usa `gen.session_messages(ref)` (más abajo).
+`spine_physiology.sinks.pacing.paced` puede dosificar un flujo a tiempo real o a `speed` x tiempo real. Un solo día de la misión de ejemplo son unos 22 600 mensajes, casi todos chunks (ver Datos y configuración de la simulación); para un fragmento más barato usa `gen.session_messages(ref)` (más abajo).
 
 ## Reproducibilidad
 
@@ -191,7 +191,7 @@ uv run pytest physiology
 
 Los tests que necesitan un broker real llevan el marcador `mosquitto` y se saltan si nada escucha en `127.0.0.1:1883`; el gate (`SPINE_REQUIRE_BROKER=1`) falla en su lugar. Corren contra el broker de compose, con usuarios y ACL (`sh app/mosquitto/setup.sh` y luego `docker compose -f app/docker-compose.yml up -d mosquitto`), y leen sus credenciales de `SPINE_TEST_MQTT_USERNAME` (por defecto `spine-itest`), `SPINE_TEST_MQTT_PASSWORD` y `SPINE_TEST_MQTT_DEVICE_PASSWORD` (el servicio `quality` las pasa desde `app/.env`; a mano: `SPINE_MQTT_ITEST_PASSWORD` y `SPINE_MQTT_ITEST_DEVICE_PASSWORD` de ese fichero). Además del gateway de punta a punta, comprueban que se rechazan los clientes anónimos y las contraseñas erróneas y que un dispositivo no puede publicar en los topics de otro ni leer sus comandos. El resto de tests del gateway usan un cliente MQTT falso y tiempo virtual.
 
-## Límites conocidos
+## Datos y configuración de la simulación
 
 - Volumen del fondo: con `schedule.background.chunk_ms` a 1000 ms, cada hora de fondo son unos 3 600 chunks por stream (10 veces menos que con chunks de 100 ms); sigue creciendo con la ventana. La configuración de ejemplo limita el fondo a una hora al día.
 - El cuestionario ODI semanal es informativo: el simulador no lo genera y nunca puntúa riesgo; solo se genera el autoinforme diario.

@@ -2,6 +2,56 @@
 
 # nasa-hackathon
 
+## El projecte
+
+Asclepius Orbit és un dispositiu wearable i una aplicació experimental concebuts per ajudar els astronautes a seguir els canvis de l'esquena durant missions espacials llargues. En microgravetat canvien la columna i la musculatura de l'esquena, mentre que l'assistència mèdica pot trigar a arribar. El projecte combina mesuraments, referències individuals i un assistent sense connexió per facilitar la comprensió dels canvis i preparar informació per al metge de vol.
+
+El sistema és una ajuda per a la presa de decisions, no un dispositiu mèdic validat. Les estimacions depenen de la qualitat dels sensors i de les hipòtesis utilitzades; els marges de disseny de la NASA són context, no llindars clínics.
+
+### Prototip wearable
+
+El prototip reuneix tres sensors:
+
+- **Cordó elàstic:** un cordó conductor canvia de resistència quan s'estira. La submission descriu la col·locació de C3 a L5; el protocol d'exercici actual especifica de C3 a S1. La lectura és un indicador que necessita calibratge, no un mesurament directe de la longitud de la columna.
+- **IMU:** un acceleròmetre i giroscopi MPU-6050 registra el moviment i l'orientació durant el repòs i l'exercici.
+- **EMG:** uns elèctrodes connectats a un sensor muscular capten activitat elèctrica relacionada amb l'esforç del múscul.
+
+![Cordó elàstic i material de mesura sobre una taula](docs/submission/assets/image-31.jpeg)
+
+*Preparació i mesura del cordó elàstic.*
+
+![Elèctrodes i components electrònics durant el muntatge](docs/submission/assets/image-40.jpeg)
+
+*Connexió dels sensors i l'electrònica.*
+
+![Equip treballant amb l'Arduino i els elèctrodes](docs/submission/assets/image-48.jpeg)
+
+*Muntatge i proves del prototip.*
+
+![Cordó, IMU i elèctrodes col·locats a l'esquena d'una persona](docs/submission/assets/image-55.jpeg)
+
+*Col·locació dels sensors a l'esquena.*
+
+![Sensors i cables connectats a la placa de proves](docs/submission/assets/image-65.jpeg)
+
+*Muntatge wearable i connexions.*
+
+![Arduino i placa de proves connectats als sensors](docs/submission/assets/image-75.jpeg)
+
+*Arduino i circuit dels sensors.*
+
+L'[sketch de mesura](docs/submission/codigo_TRES_SENSORES.ino) independent del prototip imprimeix les lectures dels tres sensors. La [guia de la submission](docs/submission/README.md#independent-measurement-sketch) compara els seus pins i format sèrie amb el [firmware integrat](firmware/README.ca.md).
+
+### Programari i desplegament
+
+L'Arduino envia les lectures a un gateway que publica la telemetria mitjançant MQTT. Un backend desa i serveix les dades, mentre que el motor analitza els senyals respecte d'una referència individual. L'aplicació d'escriptori mostra sessions, historial i informes; un assistent local utilitza eines de només lectura i Ollama per explicar la informació disponible. El sistema està dissenyat per funcionar sense connexió un cop preparats els recursos i el model.
+
+![Diagrama de desplegament amb wearable, gateway o simulador, broker MQTT, backend, motor, aplicació i assistent local](docs/submission/assets/image-95.jpeg)
+
+*Diagrama simplificat de la submission, creat amb assistència d'IA i representat amb PlantUML.*
+
+La demo utilitza per defecte el simulador de fisiologia. També hi ha un emulador d'Arduino que alimenta el gateway real sense necessitat de placa; l'equip informa de proves satisfactòries amb la placa física i resultats molt semblants als del simulador. Consulta la [guia de la submission](docs/submission/README.md) per veure l'explicació completa i les fonts, la [presentació](https://docs.google.com/presentation/d/1hYA3H3u4jRxNxBpVDf_YdBsfTKYevK9d/edit?usp=sharing&ouid=105292242329575172274&rtpof=true&sd=true) i la [submission de Space Apps](https://www.spaceappschallenge.org/2026/find-a-team/asclepius-orbit/?tab=project).
+
 ## Arquitectura del xat
 
 ```text
@@ -49,17 +99,19 @@ El gateway real del wearable (`spine_monitor/gateway`) llegeix l'Arduino per USB
 docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
 ```
 
-El context de build és l'arrel del repo: si Docker no pot llegir-lo per carpetes il·legibles (restes de directoris temporals a Windows), elimina-les o construeix des d'un clon net. Encara no s'ha provat amb una placa real. Vegeu [`spine_monitor/gateway/README.ca.md`](spine_monitor/gateway/README.ca.md) (execució, configuració, cablejat i prova amb la placa) i [`firmware/README.ca.md`](firmware/README.ca.md) (sketch i protocol sèrie).
+El context de build és l'arrel del repo: si Docker no pot llegir-lo per carpetes il·legibles (restes de directoris temporals a Windows), elimina-les o construeix des d'un clon net. Vegeu [`spine_monitor/gateway/README.ca.md`](spine_monitor/gateway/README.ca.md) (execució, configuració, cablejat i prova amb la placa) i [`firmware/README.ca.md`](firmware/README.ca.md) (sketch i protocol sèrie).
 
 ## Font de telemetria: simulador o dispositiu
 
 `SPINE_APP_TELEMETRY_SOURCE` (a `app/.env` o a l'entorn) tria l'únic productor de telemetria de tota l'app: `simulator` (per defecte) o `device`. El backend només accepta aquesta `source`; qualsevol altre valor impedeix l'arrencada amb `SPINE_APP_TELEMETRY_SOURCE must be one of: simulator, device (got 'x')`. `SPINE_GATEWAY_DEMO=1` (per defecte `0`) fa que `device` usi l'emulador sèrie en lloc d'una placa; exigeix `device` i `start-demo.ps1` el rebutja amb `simulator`.
 
-| Font | Productor (perfil de compose) | On |
+| Font | Productor (perfil de Compose) | Requisit de Docker |
 |---|---|---|
-| `simulator` | simulador de fisiologia (`sim`) | qualsevol SO |
-| `device` | gateway real + Arduino per USB (`hardware`) | Linux |
-| `device` + `SPINE_GATEWAY_DEMO=1` | gateway + emulador d'Arduino (`gateway-demo`), sense placa | qualsevol SO, també Windows |
+| `simulator` | simulador de fisiologia (`sim`) | Docker Compose |
+| `device` | gateway real + Arduino per USB (`hardware`) | Docker ha de tenir accés al dispositiu sèrie de la placa |
+| `device` + `SPINE_GATEWAY_DEMO=1` | gateway + emulador d'Arduino (`gateway-demo`), sense placa | Docker Compose; no necessita dispositiu USB |
+
+L'equip ha executat el projecte amb Docker en portàtils Windows. L'equip informa de proves satisfactòries amb placa física, amb resultats molt semblants als del simulador; l'accés sèrie depèn de l'entorn de Docker triat.
 
 Regla: un sol productor alhora, mai simulador i gateway junts. Només `app/start-demo.ps1` ho imposa; compondre els perfils a mà encara permet barrejar-los.
 
@@ -82,13 +134,6 @@ cd spine_monitor && SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetr
 cd app/ui && pnpm run e2e:real          # UI contra el simulador
 cd app/ui && pnpm run e2e:real:device   # UI contra gateway + emulador
 ```
-
-Límits coneguts:
-
-- La verificació amb un Arduino físic està **pendent**: no s'ha provat amb placa. En una sessió real l'EMG està trencat i el senyal de l'IMU no és fiable.
-- El mode dispositiu amb emulador només cobreix l'aparellament i l'inici i l'aturada de sessió.
-- El protocol de lat pulldown declara `emg_lat_left` i `emg_lat_right`, però el gateway té un únic stream d'EMG, així que es rebutja. `calibrate` i la injecció d'artefactes només funcionen amb el simulador als e2e. Una issue de seguiment ho recollirà.
-- El realisme del senyal simulat es segueix per separat (#131).
 
 ## Skills de Claude Code per a pull requests
 

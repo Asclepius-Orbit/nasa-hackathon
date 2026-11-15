@@ -2,6 +2,56 @@
 
 # nasa-hackathon
 
+## The project
+
+Asclepius Orbit is an experimental wearable and application designed to help astronauts follow changes in their back during long space missions. In microgravity, the spine and back muscles change, while access to medical support may be delayed. The project combines measurements, individual baselines and an offline assistant to make changes easier to understand and to prepare information for the flight surgeon.
+
+The system is decision support, not a validated medical device. Its estimates depend on sensor quality and assumptions; NASA's design allowances are context, not clinical thresholds.
+
+### Wearable prototype
+
+The prototype brings together three sensors:
+
+- **Stretch cord:** a conductive elastic cord changes resistance as it stretches. The submission describes placing it from C3 to L5; the current exercise protocol specifies C3 to S1. Its reading is a proxy that needs calibration, not a direct measurement of spinal length.
+- **IMU:** an MPU-6050 accelerometer and gyroscope tracks movement and orientation during rest and exercise.
+- **EMG:** electrodes connected to a muscle sensor capture electrical activity associated with muscle effort.
+
+![Stretch cord and measuring equipment laid out on a table](docs/submission/assets/image-31.jpeg)
+
+*Preparing and measuring the stretch cord.*
+
+![Electrodes and electronics during assembly](docs/submission/assets/image-40.jpeg)
+
+*Connecting the sensors and electronics.*
+
+![Team working with the Arduino and electrodes](docs/submission/assets/image-48.jpeg)
+
+*Assembling and testing the prototype.*
+
+![Stretch cord, IMU and electrodes positioned on a person's back](docs/submission/assets/image-55.jpeg)
+
+*Sensor placement on the back.*
+
+![Wearable sensors and wiring connected to the breadboard](docs/submission/assets/image-65.jpeg)
+
+*The wearable assembly and its connections.*
+
+![Arduino and breadboard connected to the sensor wiring](docs/submission/assets/image-75.jpeg)
+
+*Arduino and sensor circuit.*
+
+The independent [measurement sketch](docs/submission/codigo_TRES_SENSORES.ino) used for the prototype prints readings for the three sensors. The [submission guide](docs/submission/README.md#independent-measurement-sketch) compares its pins and serial format with the integrated [firmware](firmware/README.md).
+
+### Software and deployment
+
+The Arduino sends sensor readings to a gateway, which publishes telemetry through MQTT. A backend stores and serves the data, while the engine analyses signals against an individual baseline. The desktop app presents sessions, history and reports; a local assistant uses read-only tools and Ollama to explain available information. The system is designed to operate offline once its dependencies and model have been prepared.
+
+![Deployment diagram: wearable, gateway or simulator, MQTT broker, backend, engine, desktop app and local assistant](docs/submission/assets/image-95.jpeg)
+
+*Simplified deployment diagram from the submission, created with AI assistance and rendered with PlantUML.*
+
+The default demo uses the physiology simulator. An Arduino emulator can also feed the real gateway without a board; the team reports successful physical-board tests with results very similar to the simulator. See the [submission guide](docs/submission/README.md) for the complete explanation and sources, the [presentation](https://docs.google.com/presentation/d/1hYA3H3u4jRxNxBpVDf_YdBsfTKYevK9d/edit?usp=sharing&ouid=105292242329575172274&rtpof=true&sd=true) and the [Space Apps submission](https://www.spaceappschallenge.org/2026/find-a-team/asclepius-orbit/?tab=project).
+
 ## Chat architecture
 
 ```text
@@ -49,17 +99,19 @@ The real wearable gateway (`spine_monitor/gateway`) reads the Arduino over USB s
 docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
 ```
 
-The build context is the repository root: if Docker cannot read it because of unreadable folders (leftover temporary directories on Windows), delete them or build from a clean clone. It has not been tested with a real board yet. See [`spine_monitor/gateway/README.md`](spine_monitor/gateway/README.md) (running, configuration, wiring and test with the board) and [`firmware/README.md`](firmware/README.md) (sketch and serial protocol).
+The build context is the repository root: if Docker cannot read it because of unreadable folders (leftover temporary directories on Windows), delete them or build from a clean clone. See [`spine_monitor/gateway/README.md`](spine_monitor/gateway/README.md) (running, configuration, wiring and test with the board) and [`firmware/README.md`](firmware/README.md) (sketch and serial protocol).
 
 ## Telemetry source: simulator or device
 
 `SPINE_APP_TELEMETRY_SOURCE` (in `app/.env` or the environment) picks the single producer of telemetry for the whole app: `simulator` (default) or `device`. The backend only accepts that `source`; any other value stops its start with `SPINE_APP_TELEMETRY_SOURCE must be one of: simulator, device (got 'x')`. `SPINE_GATEWAY_DEMO=1` (default `0`) makes `device` use the serial emulator instead of a board; it requires `device` and `start-demo.ps1` rejects it with `simulator`.
 
-| Source | Producer (compose profile) | Where |
+| Source | Producer (Compose profile) | Docker requirement |
 |---|---|---|
-| `simulator` | physiology simulator (`sim`) | any OS |
-| `device` | real gateway + Arduino over USB (`hardware`) | Linux |
-| `device` + `SPINE_GATEWAY_DEMO=1` | gateway + Arduino emulator (`gateway-demo`), no board | any OS, including Windows |
+| `simulator` | physiology simulator (`sim`) | Docker Compose |
+| `device` | real gateway + Arduino over USB (`hardware`) | Docker must have access to the board’s serial device |
+| `device` + `SPINE_GATEWAY_DEMO=1` | gateway + Arduino emulator (`gateway-demo`), no board | Docker Compose; no USB device required |
+
+The team has run the project with Docker on Windows laptops. The team reports successful physical-board tests with results very similar to the simulator; serial access depends on the chosen Docker environment.
 
 Rule: one producer at a time, never simulator and gateway together. Only `app/start-demo.ps1` enforces it; composing profiles by hand can still mix them.
 
@@ -82,13 +134,6 @@ cd spine_monitor && SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetr
 cd app/ui && pnpm run e2e:real          # UI against the simulator
 cd app/ui && pnpm run e2e:real:device   # UI against gateway + emulator
 ```
-
-Known limits:
-
-- Verification with a physical Arduino is **pending**: no test on a board has been done. On a real session the EMG is broken and the IMU signal is unreliable.
-- Device mode through the emulator covers pairing, session start and stop only.
-- The lat pulldown protocol declares `emg_lat_left` and `emg_lat_right`, but the gateway has one EMG stream, so it is rejected. `calibrate` and artefact injection are simulator-only in the e2e tests. A follow-up issue will track this.
-- The realism of the simulated signal is tracked separately (#131).
 
 ## Claude Code skills for pull requests
 

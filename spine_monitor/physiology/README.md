@@ -73,7 +73,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`spine_physiology.sinks.pacing.paced` can pace a stream at real time or `speed` x real time. A single day of the example mission is about 22 600 messages, almost all chunks (see Known limits); use `gen.session_messages(ref)` for a cheaper slice (below).
+`spine_physiology.sinks.pacing.paced` can pace a stream at real time or `speed` x real time. A single day of the example mission is about 22 600 messages, almost all chunks (see Simulation data and configuration); use `gen.session_messages(ref)` for a cheaper slice (below).
 
 ## Reproducibility
 
@@ -191,7 +191,7 @@ uv run pytest physiology
 
 Tests that need a real broker are marked `mosquitto` and are skipped when nothing listens on `127.0.0.1:1883`; the gate (`SPINE_REQUIRE_BROKER=1`) fails instead. They run against the compose broker, with users and ACL (`sh app/mosquitto/setup.sh`, then `docker compose -f app/docker-compose.yml up -d mosquitto`), and read their credentials from `SPINE_TEST_MQTT_USERNAME` (default `spine-itest`), `SPINE_TEST_MQTT_PASSWORD` and `SPINE_TEST_MQTT_DEVICE_PASSWORD` (the `quality` service passes them from `app/.env`; by hand: `SPINE_MQTT_ITEST_PASSWORD` and `SPINE_MQTT_ITEST_DEVICE_PASSWORD` of that file). Besides the gateway end to end, they check that anonymous clients and wrong passwords are refused and that a device cannot publish on, or read the commands of, another device. The gateway tests otherwise use a fake MQTT client and virtual time.
 
-## Known limits
+## Simulation data and configuration
 
 - Background volume: with `schedule.background.chunk_ms` at 1000 ms, every background hour is about 3 600 chunks per stream (10x fewer than with 100 ms chunks); it still scales with the window. The example config limits the background to one hour a day.
 - The weekly ODI questionnaire is informational: the simulator does not generate it and it never scores risk; only the daily self-report is generated.

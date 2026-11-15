@@ -436,12 +436,18 @@ def test_the_simulated_flight_ends_in_an_amber_assessment_decided_by_the_real_po
 
     assert validation.errors("domain/assessment", assessment) == []
     assert assessment["level"] == "amber"
-    # Amber by the risk cutoffs of the shipped policy, not by missing data and not by a rule overriding the model.
+    # The model reaches amber, and unavailable fresh measurements also trigger the incomplete-data rule.
     assert policy.amber_cutoff is not None and policy.red_cutoff is not None
     assert policy.amber_cutoff <= assessment["risk_score"] < policy.red_cutoff
-    assert assessment["completeness"] == {"score": 1.0, "missing": []}
-    assert INCOMPLETE_DATA_RULE not in {rule["rule_id"] for rule in assessment["fired_rules"]}
-    assert {rule["rule_id"] for rule in assessment["fired_rules"]} <= {rule.rule_id for rule in policy.rules}
+    assert assessment["completeness"]["score"] < 1.0
+    assert {item["what"] for item in assessment["completeness"]["missing"]} == {
+        "emg.reference.normalized_amplitude",
+        "imu.lumbar.sensor_x.orientation_deg",
+        "stretch.full_spine.resistance_change_pct",
+    }
+    assert all(item["reason"] == "no_data" for item in assessment["completeness"]["missing"])
+    assert INCOMPLETE_DATA_RULE in {rule["rule_id"] for rule in assessment["fired_rules"]}
+    assert {rule["rule_id"] for rule in assessment["fired_rules"]} <= {rule.rule_id for rule in policy.rules} | {INCOMPLETE_DATA_RULE}
     assert not any(rule["overrides_model"] for rule in assessment["fired_rules"])
 
 
@@ -528,7 +534,10 @@ async def test_simulate_scenario_starts_from_the_real_amber_and_an_override_of_i
         assert reference["based_on"] == stored["based_on"]
     assert unchanged["scenario"]["level"] == "amber"
     assert _driver_ids(unchanged["scenario"]) == _driver_ids(stored)
-    assert relieved["scenario"]["level"] == "green"
+    # Lowering the drivers reduces model risk, but cannot turn missing measurements green.
+    assert relieved["scenario"]["risk_score"] < unchanged["scenario"]["risk_score"]
+    assert relieved["scenario"]["level"] == "amber"
+    assert INCOMPLETE_DATA_RULE in {rule["rule_id"] for rule in relieved["scenario"]["fired_rules"]}
     assert relieved["scenario"]["drivers"] == []
 
 

@@ -624,6 +624,10 @@ export type Calibration = StretchCalibration | EmgMvcCalibration | ImuCalibratio
  */
 export type StretchCalibration = CalibrationBase & {
   calibration_type: "stretch";
+  /**
+   * Explicitly attested posture during the reference measurement; omitted when unknown.
+   */
+  reference_posture?: "straight_back";
   rest_resistance_ohm: number;
   /**
    * Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.
@@ -719,6 +723,10 @@ export type ImuCalibration = CalibrationBase & {
   gyro_range_dps: 250 | 500 | 1000 | 2000;
   gyro_bias_dps: Xyz;
   accel_bias_g?: Xyz;
+  /**
+   * Independently measured initial orientation around sensor X, in degrees at created_at. Gyroscope integration alone cannot establish absolute orientation; omit when no reference is available.
+   */
+  reference_orientation_x_deg?: number;
   mounting: {
     /**
      * Anatomical direction a sensor axis points to: cranial/caudal (head/feet), anterior/posterior (front/back), left/right.
@@ -902,6 +910,8 @@ export type MarkEventCommand = CommandBase & {
     | "rep_end"
     | "mvc_start"
     | "mvc_end"
+    | "reference_effort_start"
+    | "reference_effort_end"
     | "rest_start"
     | "rest_end"
     | "pain_reported"
@@ -931,6 +941,10 @@ export type CalibrateCommand = CommandBase & {
    */
   stream_ids: [string, ...string[]];
   duration_s?: number;
+  /**
+   * Operator attests that the stretch reference is measured with a straight back.
+   */
+  reference_posture?: "straight_back";
 };
 
 /**
@@ -1212,6 +1226,14 @@ export interface Assessment {
       value: number;
       operator: ">" | ">=" | "<" | "<=" | "==" | "!=";
       threshold: number;
+      /**
+       * Unit shared by value and threshold.
+       */
+      unit?: string;
+      /**
+       * Source of the threshold or operational convention.
+       */
+      source?: string;
     };
   }[];
   recommendations: string[];
@@ -1375,6 +1397,19 @@ export interface FeatureSet {
     feature_id: string;
     value: number;
     unit: string;
+    /**
+     * Time span of this feature when it differs from the enclosing feature set's window.
+     */
+    window?: {
+      /**
+       * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+       */
+      start: string;
+      /**
+       * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+       */
+      end: string;
+    };
     /**
      * How many repetitions, samples or days the value summarises.
      */
@@ -1766,6 +1801,8 @@ export interface Event {
     | "rep_end"
     | "mvc_start"
     | "mvc_end"
+    | "reference_effort_start"
+    | "reference_effort_end"
     | "rest_start"
     | "rest_end"
     | "pain_reported"
@@ -3004,11 +3041,22 @@ export interface FeaturesRequest {
   schema_version: string;
   session: Session;
   /**
-   * All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).
-   *
-   * @minItems 1
+   * Explicit UTC interval for a measured-window extraction. Both bounds are required; the engine verifies a five-second duration. Omit for the full-session feature extraction.
    */
-  chunks: [StreamChunk, ...StreamChunk[]];
+  requested_window?: {
+    /**
+     * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+     */
+    start: string;
+    /**
+     * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+     */
+    end: string;
+  };
+  /**
+   * All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).
+   */
+  chunks: StreamChunk[];
   /**
    * Every calibration referenced by session.streams[].calibration_id or by a chunk.
    */

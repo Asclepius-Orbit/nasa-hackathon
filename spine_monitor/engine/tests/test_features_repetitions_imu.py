@@ -20,7 +20,7 @@ from hypothesis import strategies as st
 from spine_contracts import FeaturesRequest
 from spine_engine.features.context import ExtractionContext, build_context
 from spine_engine.features.repetitions import ImuDetector, RepetitionService
-from spine_engine.features.repetitions_imu import detect_imu_windows
+from spine_engine.features.repetitions_imu import _merge_touching, detect_imu_windows
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "features-request.json"
 T0 = datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC)
@@ -154,6 +154,11 @@ def test_the_signature_matches_the_imu_detector_alias():
     detector: ImuDetector = detect_imu_windows
 
     assert detector(make_context([])) == ()
+
+
+def test_extended_edges_preserve_adjacent_reps_with_a_short_gap():
+    spans = [(at(0), at(3)), (at(3.15), at(6)), (at(6.05), at(9))]
+    assert _merge_touching(spans) == [(at(0), at(3)), (at(3.15), at(9))]
 
 
 def test_three_clean_reps_give_three_windows_close_to_the_truth():

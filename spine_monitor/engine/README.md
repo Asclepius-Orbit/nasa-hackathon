@@ -193,3 +193,11 @@ Default cutoffs: `amber_cutoff` 0.3, `red_cutoff` 0.8, `unknown_flag_urgency` `i
 | `RULE_SELF_REPORT_PAIN_SEVERE` | self_report `pain_nrs` >= 7 | amber | - | `REC_CONTACT_FLIGHT_SURGEON` | a pain NRS of 7 or more on the 0-10 scale is the usual convention for severe pain; cutoff to be confirmed |
 
 All recommendation codes reuse ids the UI already renders. What Aguado must confirm: the risk cutoffs, the level and urgency of each red flag (in particular `trauma_event` and the three amber flags), the pain threshold, whether further rules (deviation- or risk-based) and further recommendation codes are needed, and the wording of each recommendation.
+
+### Five-second measured limits
+
+The measured-feature extractor reports the last five seconds of a session request in each feature's own `window`; the FeatureSet window still describes the complete request. Cord resistance is compared with an explicitly attested straight-back personal reference, independently of the cord length estimate. Lumbar sensor X orientation requires the specified left-facing mounting, an absolute reference angle and uninterrupted, uniformly timed gyroscope samples from that reference to the end of the window. EMG amplitude is normalized to the personal RMS reference only when the entire window is bracketed by reference-effort events. Missing, ambiguous, invalid, or non-classifiable readings remain incomplete and cannot produce a green assessment. The assessment uses a measurement only when its window ends within five seconds of `as_of`.
+
+For streaming consumers, `requested_window` selects an explicit five-second interval and emits only measured features. Empty chunks produce explicit skipped measurements. Samples and clock anchors after the interval are ignored, and calibrations must exist before the interval starts. Continuous IMU integration can use earlier chunks back to the calibration reference.
+
+The `dropped_samples` count describes loss within a chunk but does not locate it in time. If a chunk with reported loss crosses the start of a measured window, the extractor conservatively treats that window as low quality: it cannot establish whether the loss occurred before or inside the window. Loss reported only in earlier, non-overlapping chunks does not invalidate a complete cord or EMG window.

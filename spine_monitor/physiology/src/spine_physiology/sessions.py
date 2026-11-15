@@ -185,14 +185,15 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
         # El dispositivo solo existe dentro de su ventana de encendido del día: la sesión (con su duración
         # en chunks enteros) se desplaza para caber entre el encendido, la sesión anterior y el apagado.
         earliest = power_on if previous_end is None else max(power_on, previous_end)
-        duration = chunks_for(protocol_duration_s(protocol), chunk_ms=chunk_ms) * chunk
+        reps = rep_schedule(protocol, rng=tree.rng(astronaut_id, day.index, slot.name, "exercise")) if isinstance(protocol, ExerciseProtocol) else ()
+        duration_s = exercise_duration_s(protocol, reps) if isinstance(protocol, ExerciseProtocol) else protocol_duration_s(protocol)
+        duration = chunks_for(duration_s, chunk_ms=chunk_ms) * chunk
         start = max(start, earliest)
         if start + duration > power_off:
             start = power_off - duration
         if start < earliest:
             continue  # no cabe en la ventana de encendido: la sesión no se realiza ese día
         end = start + duration
-        exercise = isinstance(protocol, ExerciseProtocol)
         plans.append(
             SessionPlan(
                 ref=SessionRef(astronaut_id, day.index, slot.name),
@@ -202,7 +203,7 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
                 start=start,
                 end=end,
                 stream_ids=tuple(protocol.streams),
-                reps=rep_schedule(protocol) if exercise else (),
+                reps=reps,
                 background=False,
                 chunk_ms=chunk_ms,
                 pauses=(),
@@ -491,7 +492,7 @@ def _exercise_events(plan: SessionPlan, protocol: ExerciseProtocol, device_plan:
     """set_start/set_end por serie, rep_start/rep_end de cada rep (rep_index de la sesión, set_index de su serie)
     y rest_start/rest_end entre series; ordenados por instante (a igual instante: set_start, rep_start, rep_end, set_end)."""
     at = lambda seconds: plan.start + timedelta(seconds=seconds)  # noqa: E731
-    sets = set_schedule(protocol)
+    sets = set_schedule(protocol, plan.reps)
     timed: list[tuple[float, int, dict[str, Any]]] = []
     for window in sets:
         timed.append((window.start_s, 0, _event("set_start", at(window.start_s), device_plan, set_index=window.index)))
@@ -644,7 +645,7 @@ def _angle(config: MissionConfig, tree: RngTree, spec: SynthSpec, state: LatentS
         )  # fmt: skip
     if spec.protocol is not None and spec.reps:
         rom = imu_signal.effective_rom_deg(spec.protocol.rom_deg, state, config.signals.imu)
-        return imu_signal.angle_profile(spec.reps, rom_deg=rom, n_samples=n, rate_hz=rate)
+        return imu_signal.angle_profile(spec.reps, rom_deg=[rom * r.amplitude_factor for r in spec.reps], n_samples=n, rate_hz=rate)
     return np.zeros(n, dtype=np.float64)
 
 
@@ -678,9 +679,12 @@ def synthesize(
             peak = (
                 emg_signal.effective_pct_mvc(spec.protocol.pct_mvc, state.muscle_deconditioning, params) if spec.protocol is not None else params.rest_pct_mvc
             )
-            pct = emg_signal.activation_profile(reps, peak_pct_mvc=peak, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
-            per_rep = emg_signal.effective_fatigue_per_rep(state.muscle_deconditioning, params)
-            fatigue = emg_signal.fatigue_profile(reps, fatigue_per_rep=per_rep, n_samples=n, rate_hz=rate)
+            peaks = [peak * (1.0 + 0.4 * r.fatigue) for r in reps]
+            pct = emg_signal.activation_profile(reps, peak_pct_mvc=peaks, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
+            fatigue = emg_signal.exercise_fatigue_profile(
+                reps, n_samples=n, rate_hz=rate, recovery_per_s=spec.protocol.recovery_per_s if spec.protocol else 0.0,
+                fatigue_per_rep=emg_signal.effective_fatigue_per_rep(state.muscle_deconditioning, params),
+            )
             raw = {"emg": emg_signal.synth_emg(rng, params, mvc_rms_mv=mvc, pct_mvc=pct, fatigue=fatigue, rate_hz=rate)}
             truth = {"pct_mvc": pct, "fatigue": fatigue, "mvc_rms_mv": mvc}
         elif kind is StreamKind.IMU:

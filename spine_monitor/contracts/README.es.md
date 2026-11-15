@@ -5,6 +5,12 @@
 Contratos de datos compartidos por todos los componentes: gateway del wearable, broker MQTT, app a bordo, motor y servidor MCP.
 **Los JSON Schemas son la fuente de verdad.** Todo lo demás se genera a partir de ellos o se comprueba contra ellos.
 
+El proyecto ha adoptado el catálogo actual y los valores de calibración por defecto como decisiones definitivas del proyecto. Los estados y fuentes históricos siguen siendo procedencia y no afirman validación clínica. Véase [la decisión del proyecto](../../docs/decision-valores-protocolo.md).
+
+Las features de umbrales medidos distinguen el cambio de resistencia del cordón de la longitud estimada, y la orientación X del sensor lumbar del rango de movimiento o de la curvatura anatómica. Se requiere una referencia personal de resistencia con la espalda recta (4.500 ohm es solo un ejemplo). La amplitud normalizada del EMG usa una referencia personal y se evalúa solo en un intervalo marcado explícitamente con `reference_effort_start` / `reference_effort_end`, no en reposo; no es una medida directa de fuerza. Estas features usan ventanas de cinco segundos.
+
+La calibración del IMU registra el montaje, el sesgo y, cuando se mide de forma independiente, `reference_orientation_x_deg` en `created_at`. La integración del giroscopio no puede establecer por sí sola una orientación absoluta, especialmente en microgravedad: una referencia ausente o inválida debe dejar la orientación sin clasificar. La evidencia de umbral puede incluir `unit` y `source`; la evidencia heredada sin estos campos sigue siendo legible. Los umbrales del informe se atribuyen a Polfer y Aguado, mientras que otros cortes operativos deben identificar su propia fuente.
+
 ## Estructura
 | Ruta | Qué es |
 |---|---|
@@ -14,7 +20,7 @@ Contratos de datos compartidos por todos los componentes: gateway del wearable, 
 | `schemas/v1/engine/` | Cuerpos HTTP del motor: `/features`, `/baseline`, `/assess`, `/simulate`, `/stretch-estimate`, errores |
 | `schemas/v1/app/` | Cuerpos HTTP de la API de solo lectura de la app: estado, histórico, explicación, listas de evaluaciones, sesiones y autoinformes, errores; y las vistas de la UI de `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | Cuerpos HTTP de la API de chat del agente LLM (`agent-openapi.yaml`): la pregunta (`chat-request`) y los eventos SSE de la respuesta (`chat-event`) |
-| `catalog/feature-catalog.json` | Cada métrica derivada (feature) con unidad, entradas, requisitos, `risk_direction` y rangos. `catalog_version` 0.2.0: las direcciones y los rangos son **provisional, pendiente de Aguado** (el estado sigue en `proposed` y cada fuente de rango empieza por "provisional, pendiente de Aguado") hasta que Aguado los valide |
+| `catalog/feature-catalog.json` | Cada métrica derivada (feature) con unidad, entradas, requisitos, `risk_direction` y rangos. El proyecto acepta las entradas actuales; los estados `proposed` y las fuentes históricas no afirman validación clínica. |
 | `catalog/protocol-catalog.json` | Datos fijos de cada protocolo (banda, series, repeticiones, descansos, agarre, tempo, postura, ids de colocación) que citan las vistas de la UI |
 | `catalog/calibration-defaults.json` | Defaults provisionales de las calibraciones del gateway (curva y reposo del cordón, ventana MVC del EMG), los mismos valores que la misión de ejemplo; curva sin validar para el montaje real (#106) |
 | `asyncapi.yaml` | Topics MQTT, dirección, QoS y retain (desde el punto de vista del gateway) |

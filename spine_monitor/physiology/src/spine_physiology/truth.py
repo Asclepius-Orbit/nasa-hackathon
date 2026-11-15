@@ -259,8 +259,8 @@ def expected_features(
         elif stream.kind is StreamKind.IMU and placement.spine_level is not None and protocol is not None:
             prefix = f"imu.{placement.spine_level.value}.{protocol.plane.value}"
             rom = effective_rom_deg(protocol.rom_deg, state, config.signals.imu)
-            features.append(_feature(f"{prefix}.rom_deg", rom, len(spec.reps)))
-            peak = _MIN_JERK_PEAK_VELOCITY * rom / (protocol.rep_duration_s / 2.0)
+            features.append(_feature(f"{prefix}.rom_deg", rom * float(np.mean([r.amplitude_factor for r in spec.reps])), len(spec.reps)))
+            peak = float(np.mean([_MIN_JERK_PEAK_VELOCITY * rom * r.amplitude_factor / ((r.end_s - r.start_s) / 2.0) for r in spec.reps]))
             features.append(_feature(f"{prefix}.peak_angular_velocity_dps", peak, len(spec.reps)))
         elif stream.kind is StreamKind.STRETCH and placement.spine_region is not None:
             prefix = f"stretch.{placement.spine_region.value}"
@@ -285,6 +285,9 @@ def expected_features(
             features.append(_feature(f"emg.{muscle}.symmetry_index_pct", 100.0 * abs(left - right) / ((left + right) / 2.0)))
     if protocol is not None:
         features.append(_feature("exercise.rep_count", len(spec.reps)))
-        features.append(_feature("exercise.rep_duration_s_mean", protocol.rep_duration_s, len(spec.reps)))
-        features.append(_feature("exercise.rep_duration_cv_pct", 0.0, len(spec.reps)))
+        durations = np.array([r.end_s - r.start_s for r in spec.reps])
+        mean = float(np.mean(durations))
+        features.append(_feature("exercise.rep_duration_s_mean", mean, len(spec.reps)))
+        cv = float(100 * np.std(durations, ddof=1) / mean) if len(durations) > 1 else 0.0
+        features.append(_feature("exercise.rep_duration_cv_pct", cv, len(spec.reps)))
     return features

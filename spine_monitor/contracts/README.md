@@ -2,8 +2,14 @@
 
 # spine-contracts (v1, draft for review)
 
+The project has adopted the current catalog and calibration defaults as definitive project choices. Historical statuses and sources remain provenance and do not claim clinical validation. See [the project decision](../../docs/decision-valores-protocolo.md).
+
 Data contracts shared by every component: wearable gateway, MQTT broker, on-board app, engine and MCP server.
 **The JSON Schemas are the source of truth.** Everything else is generated from them or checked against them.
+
+The measured-threshold features distinguish cord resistance change from estimated length, and lumbar sensor X orientation from range of motion or anatomical curvature. A straight-back personal resistance reference is required (4,500 ohm is only an example). EMG normalized amplitude uses a personal reference and is evaluated only in an explicitly marked `reference_effort_start` / `reference_effort_end` interval, not during rest; it is not a direct force measurement. These features use five-second windows.
+
+IMU calibration records the mounting, bias and, when independently measured, `reference_orientation_x_deg` at `created_at`. Gyroscope integration cannot establish an absolute orientation on its own, especially in microgravity: an absent or invalid reference must leave the orientation unclassified. Threshold evidence can include `unit` and `source`; legacy evidence without these fields remains readable. Report thresholds are attributed to Polfer and Aguado, while other operational cuts must identify their own source.
 
 ## Layout
 | Path | What |
@@ -14,7 +20,7 @@ Data contracts shared by every component: wearable gateway, MQTT broker, on-boar
 | `schemas/v1/engine/` | HTTP bodies of the engine: `/features`, `/baseline`, `/assess`, `/simulate`, `/stretch-estimate`, errors |
 | `schemas/v1/app/` | HTTP bodies of the read-only API of the app: status, history, explanation, lists of assessments, sessions and self-reports, errors; and the UI views of `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | HTTP bodies of the LLM agent chat API (`agent-openapi.yaml`): the question (`chat-request`) and the server-sent events of the answer (`chat-event`) |
-| `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements, `risk_direction` and ranges. `catalog_version` 0.2.0: the directions and ranges are **provisional** (status stays `proposed`, every range source starts with "provisional, pendiente de Aguado") until Aguado validates them |
+| `catalog/feature-catalog.json` | Every derived metric (feature) with unit, inputs, requirements, `risk_direction` and ranges. The project accepts the current entries; historical `proposed` statuses and sources do not assert clinical validation. |
 | `catalog/protocol-catalog.json` | Fixed facts of each protocol (band, sets, reps, rests, grip, tempo, posture, fit item ids) quoted by the UI views |
 | `catalog/calibration-defaults.json` | Provisional defaults of the gateway calibrations (cord curve and rest point, EMG MVC window), the same values as the example mission; example curve not validated for the real setup (#106) |
 | `asyncapi.yaml` | MQTT topics, direction, QoS and retain (the gateway's point of view) |

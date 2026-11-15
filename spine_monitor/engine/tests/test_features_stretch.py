@@ -706,3 +706,108 @@ def test_default_registry_includes_stretch():
     from spine_engine.features.registry import default_registry
 
     assert "stretch" in [family.family for family in default_registry()]
+
+
+def test_measured_stretch_requires_straight_reference():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    result = MeasuredFamily().extract(make_context([1040.0] * 50, [marked]))
+    assert next(f.value for f in result.computed if f.feature_id == STRETCH) == pytest.approx(4)
+    unmarked = MeasuredFamily().extract(make_context([1040.0] * 50, [calibration()]))
+    assert STRETCH in {s.feature_id for s in unmarked.skipped}
+
+
+def test_measured_stretch_rejects_missing_time_despite_full_sample_count():
+    from spine_engine.features.context import build_context
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    ctx = make_context([1040.0] * 50, [marked])
+    request = ctx.request.model_copy(deep=True)
+    request.chunks[1].t0_device_ms += 100
+    result = MeasuredFamily().extract(build_context(request))
+    assert STRETCH not in values(result)
+
+
+def test_measured_stretch_ignores_old_saturation_and_packet_gap():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    ctx = make_context([1040.0] * 100, [marked], counts=[0] * 10 + [500] * 90, circuit={"adc_bits": 10})
+    request = ctx.request.model_copy(deep=True)
+    request.chunks.pop(1)
+    assert values(MeasuredFamily().extract(build_context(request)))[STRETCH] == pytest.approx(4)
+
+
+def test_measured_feature_keeps_its_five_second_window_in_session_aggregate():
+    from spine_contracts import Completeness, Level
+    from spine_engine.features.composite import CompositeFeatureExtractor
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.features.registry import ExtractorRegistry
+    from spine_engine.interfaces import RiskResult, TriageContext
+    from spine_engine.measurements import STRETCH, measurements
+    from spine_engine.triage import DeclarativeTriagePolicy, PolicyConfig
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    context = make_context([1000.0] * 50 + [1075.0] * 50, [marked])
+    registry = ExtractorRegistry()
+    registry.register(MeasuredFamily())
+    output = CompositeFeatureExtractor(registry).extract(context.request)
+    assert output.window.end - output.window.start == timedelta(seconds=10)
+    feature = next(f for f in output.features if f.feature_id == STRETCH)
+    assert feature.window.end - feature.window.start == timedelta(seconds=5)
+    assert measurements([output], output.window.end)[STRETCH] == pytest.approx(7.5)
+    decision = DeclarativeTriagePolicy(PolicyConfig()).decide(
+        TriageContext(RiskResult(0), [], Completeness(score=1, missing=[]), [], output.window.end, [output])
+    )
+    assert decision.level == Level.RED
+
+
+def test_requested_window_can_assess_a_historical_five_seconds_without_aggregate_features():
+    from spine_contracts.models.engine.features_request_schema import RequestedWindow
+    from spine_engine.features.composite import CompositeFeatureExtractor
+    from spine_engine.features.registry import default_registry
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    context = make_context([1075.0] * 50 + [1000.0] * 50, [marked])
+    req = context.request.model_copy(update={"requested_window": RequestedWindow(start=at(0), end=at(50))})
+    result = CompositeFeatureExtractor(default_registry()).extract(req)
+    assert result.window.start == at(0) and result.window.end == at(50)
+    assert {f.feature_id: f.value for f in result.features}[STRETCH] == pytest.approx(7.5)
+    assert not any(f.feature_id.startswith("exercise.") for f in result.features)
+
+
+def test_requested_window_with_no_chunks_is_incomplete():
+    from spine_contracts.models.engine.features_request_schema import RequestedWindow
+    from spine_engine.features.composite import CompositeFeatureExtractor
+    from spine_engine.features.registry import default_registry
+    from spine_engine.measurements import UNITS
+
+    context = make_context([1000.0] * 50, [calibration()])
+    req = context.request.model_copy(update={"chunks": [], "requested_window": RequestedWindow(start=at(0), end=at(50))})
+    result = CompositeFeatureExtractor(default_registry()).extract(req)
+    assert result.features == []
+    assert {item.feature_id for item in result.skipped} == set(UNITS)
+    assert result.window.start == at(0) and result.window.end == at(50)
+
+
+def test_requested_window_truncates_future_samples_inside_a_chunk():
+    from spine_contracts.models.engine.features_request_schema import RequestedWindow
+    from spine_engine.features.context import build_context
+
+    context = make_context([1000.0] * 100, [calibration()])
+    req = context.request.model_copy(update={"requested_window": RequestedWindow(start=at(5), end=at(55))})
+    bounded = build_context(req)
+    chunks = [chunk for segment in bounded.segments(STREAM) for chunk in segment.chunks]
+    assert sum(chunk.n_samples for chunk in chunks) == 55
+    assert chunks[-1].n_samples == 5

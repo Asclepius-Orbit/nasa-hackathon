@@ -40,6 +40,10 @@ class Feature(BaseModel):
     )
     value: float
     unit: constr(max_length=16)
+    window: Window | None = Field(
+        None,
+        description="Time span of this feature when it differs from the enclosing feature set's window.",
+    )
     n: conint(ge=1) | None = Field(
         None, description='How many repetitions, samples or days the value summarises.'
     )

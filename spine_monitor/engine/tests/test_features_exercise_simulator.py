@@ -51,8 +51,7 @@ EVENTS_MEAN_ABS_TOLERANCE_S = 1e-6
 EVENTS_CV_ABS_TOLERANCE_PCT = 1e-6
 # Solo IMU: el umbral de borde recorta algo los extremos (velocidad casi nula); media dentro del 10 %.
 IMU_MEAN_REL_TOLERANCE = 0.10
-# CV solo con IMU: calendario constante, el error de borde cambia poco entre reps. Observado 0,45 % (semilla 7)
-# y 0,75 % (semilla 20261113), igual en 1 g y microgravedad; umbral con margen > 2x.
+# Sin eventos el umbral de movimiento introduce un pequeño error en los bordes.
 IMU_CV_MAX_PCT = 2.0
 
 SEEDS = [7, 20261113]
@@ -125,8 +124,7 @@ def test_with_session_events_the_features_match_the_simulator_truth(seed: int, g
     assert [s for s in result.get("skipped", []) if s["feature_id"].startswith("exercise.")] == []
     assert features[COUNT]["value"] == truth[COUNT]
     assert features[MEAN]["value"] == pytest.approx(truth[MEAN], abs=EVENTS_MEAN_ABS_TOLERANCE_S)
-    assert features[MEAN]["value"] == pytest.approx(REP_DURATION_S, abs=EVENTS_MEAN_ABS_TOLERANCE_S)
-    assert features[CV]["value"] == pytest.approx(0.0, abs=EVENTS_CV_ABS_TOLERANCE_PCT)
+    assert features[CV]["value"] == pytest.approx(truth[CV], abs=EVENTS_CV_ABS_TOLERANCE_PCT)
     for feature_id in ALL_IDS:
         assert features[feature_id]["unit"] == unit_for(feature_id)
         assert features[feature_id]["n"] == truth[COUNT]
@@ -145,7 +143,7 @@ def test_without_events_the_imu_fallback_matches_the_simulator_truth(seed: int, 
     assert {f for f in features if f.startswith("exercise.")} == set(ALL_IDS)
     assert features[COUNT]["value"] == truth[COUNT]
     assert features[MEAN]["value"] == pytest.approx(truth[MEAN], rel=IMU_MEAN_REL_TOLERANCE)
-    assert 0.0 <= features[CV]["value"] < IMU_CV_MAX_PCT
+    assert features[CV]["value"] == pytest.approx(truth[CV], abs=IMU_CV_MAX_PCT)
     for feature_id in ALL_IDS:
         assert features[feature_id]["unit"] == unit_for(feature_id)
 

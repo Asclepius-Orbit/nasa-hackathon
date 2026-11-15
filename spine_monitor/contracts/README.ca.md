@@ -5,6 +5,12 @@
 Contractes de dades compartits per tots els components: gateway del wearable, broker MQTT, app a bord, motor i servidor MCP.
 **Els JSON Schemas són la font de veritat.** Tota la resta es genera a partir d'ells o es comprova contra ells.
 
+El projecte ha adoptat el catàleg actual i els valors de calibratge per defecte com a decisions definitives del projecte. Els estats i fonts històrics continuen sent procedència i no afirmen validació clínica. Vegeu [la decisió del projecte](../../docs/decision-valores-protocolo.md).
+
+Les features de llindars mesurats distingeixen el canvi de resistència del cordó de la longitud estimada, i l'orientació X del sensor lumbar del rang de moviment o de la curvatura anatòmica. Cal una referència personal de resistència amb l'esquena recta (4.500 ohm és només un exemple). L'amplitud normalitzada de l'EMG usa una referència personal i s'avalua només en un interval marcat explícitament amb `reference_effort_start` / `reference_effort_end`, no en repòs; no és una mesura directa de força. Aquestes features usen finestres de cinc segons.
+
+El calibratge de l'IMU registra el muntatge, el biaix i, quan es mesura de manera independent, `reference_orientation_x_deg` a `created_at`. La integració del giroscopi no pot establir per si sola una orientació absoluta, especialment en microgravetat: una referència absent o invàlida ha de deixar l'orientació sense classificar. L'evidència de llindar pot incloure `unit` i `source`; l'evidència heretada sense aquests camps continua sent llegible. Els llindars de l'informe s'atribueixen a Polfer i Aguado, mentre que altres talls operatius han d'identificar la seva pròpia font.
+
 ## Estructura
 | Ruta | Què és |
 |---|---|
@@ -14,7 +20,7 @@ Contractes de dades compartits per tots els components: gateway del wearable, br
 | `schemas/v1/engine/` | Cossos HTTP del motor: `/features`, `/baseline`, `/assess`, `/simulate`, `/stretch-estimate`, errors |
 | `schemas/v1/app/` | Cossos HTTP de l'API de només lectura de l'app: estat, històric, explicació, llistes d'avaluacions, sessions i autoinformes, errors; i les vistes de la UI de `ui-openapi.yaml` (`ui-*`) |
 | `schemas/v1/agent/` | Cossos HTTP de l'API de xat de l'agent LLM (`agent-openapi.yaml`): la pregunta (`chat-request`) i els esdeveniments SSE de la resposta (`chat-event`) |
-| `catalog/feature-catalog.json` | Cada mètrica derivada (feature) amb unitat, entrades, requisits, `risk_direction` i rangs. `catalog_version` 0.2.0: les direccions i els rangs són **provisional, pendiente de Aguado** (l'estat continua sent `proposed` i cada font de rang comença per "provisional, pendiente de Aguado") fins que Aguado els validi |
+| `catalog/feature-catalog.json` | Cada mètrica derivada (feature) amb unitat, entrades, requisits, `risk_direction` i rangs. El projecte accepta les entrades actuals; els estats `proposed` i les fonts històriques no afirmen validació clínica. |
 | `catalog/protocol-catalog.json` | Dades fixes de cada protocol (banda, sèries, repeticions, descansos, agafada, tempo, postura, ids de col·locació) que citen les vistes de la UI |
 | `catalog/calibration-defaults.json` | Valors per defecte provisionals dels calibratges del gateway (corba i repòs del cordó, finestra MVC de l'EMG), els mateixos valors que la missió d'exemple; corba sense validar per al muntatge real (#106) |
 | `asyncapi.yaml` | Topics MQTT, direcció, QoS i retain (des del punt de vista del gateway) |

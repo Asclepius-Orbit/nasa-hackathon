@@ -1,5 +1,7 @@
 # Protocolo estandarizado del ejercicio y colocación de sensores
 
+> Los valores y el alcance actuales se consideran definitivos por decisión de proyecto. Véase [la decisión](decision-valores-protocolo.md); las marcas históricas de pendiente no requieren más trabajo para cerrar las issues vinculadas.
+
 Fuente: comentario de Aguado en la issue #12. Los valores viven en el contrato (`spine_monitor/contracts/catalog/protocol-catalog.json`, ejemplos de `examples/valid/`) y en la misión de ejemplo del simulador (`spine_monitor/physiology/configs/example-mission.yaml`). Este documento los resume; si discrepan, manda el contrato.
 
 ## Protocolos (`protocol_id`)
@@ -54,22 +56,22 @@ Fuentes sobre el comportamiento del material: [fabricante del cordón Adafruit 5
 
 ## MVC
 
-El comentario no define el procedimiento de contracción voluntaria máxima. Las features `emg.*.rms_pct_mvc` y `emg.*.peak_pct_mvc` siguen requiriendo `emg_mvc_calibration` y quedan sin uso real hasta que **Aguado** lo defina.
+Se adoptan como definitivos los valores y el comportamiento que ya implementa el proyecto: el gateway registra una captura de 5 s por defecto (configurable) y calcula la MVC como el máximo RMS en una ventana de 250 ms. La misión simulada declara tres intentos; el gateway no ejecuta automáticamente tres capturas. Las features `emg.*.rms_pct_mvc` y `emg.*.peak_pct_mvc` requieren `emg_mvc_calibration`.
 
 ## Estado del hardware (#13)
 
 El protocolo declara dos canales EMG, pero el firmware y el gateway reales publican uno (`emg_lat_left`) hasta confirmar el hardware con Polfer. El formato de las tramas serie no cambia.
 
-## Datos sin validar y dónde se cambian
+## Valores y dónde se cambian
 
-Los datos que Aguado aún no ha validado (issue #106) tienen una fuente única por valor. Cambiar la fuente propaga el valor solo cuando la columna «Se actualiza a mano» está vacía; en el resto, la lista es cerrada y un test falla si una copia diverge. Todos siguen provisionales («PENDIENTE medición Aguado»): al cambiar un valor, mantén o actualiza la marca según corresponda.
+Los valores actuales del proyecto se consideran definitivos por decisión del proyecto. La siguiente tabla indica dónde se mantienen y comprueban; la decisión no implica que cada valor haya sido medido o validado clínicamente. Cambiar la fuente propaga el valor solo cuando la columna «Se actualiza a mano» está vacía; en el resto, la lista es cerrada y un test falla si una copia diverge.
 
 ## Dónde se cambia cada valor
 
-| Valor (provisional) | Fuente única | Se actualiza a mano (lista cerrada) | Test que falla si diverge |
+| Valor | Fuente única | Se actualiza a mano (lista cerrada) | Test que falla si diverge |
 |---|---|---|---|
 | Descanso entre series (30 s), series y repeticiones (4 × 15), banda (verde, 25 kg) | `protocol-catalog.json` | `example-mission.yaml` (`planned_sets`, `reps_per_set`, `rest_between_sets_s`, `load`); `app/ui/src/main/sessions/protocols.ts` (banda, series, reps; no lleva el descanso); mocks de `app/ui/src/renderer/data/mock/` | `contracts/tests/test_catalog.py` (cruce misión↔catálogo); `protocols.test.ts`; `protocol-values.test.ts` (mocks) |
-| Descanso al terminar (`rest_seconds`, 120 s; provisional, pendiente de Aguado) | `protocol-catalog.json` | mocks de la UI; el texto «2 min» de la UI se deriva de este valor (`strings/session.ts`) | `protocol-values.test.ts`; `contracts/tests/test_catalog.py` (marca pendiente) |
+| Descanso al terminar (`rest_seconds`, 120 s) | `protocol-catalog.json` | mocks de la UI; el texto «2 min» de la UI se deriva de este valor (`strings/session.ts`) | `protocol-values.test.ts`; `contracts/tests/test_catalog.py` |
 | Ritmo (`rep_duration_s` 3,0 s, `rest_between_reps_s` 0,6 s), `gap_s` (30 s) y `rom_deg` (30°) | `protocol-catalog.json` | `example-mission.yaml` (`rep_duration_s`, `rest_between_reps_s`, `rom_deg`, `bracket.gap_s`) | `contracts/tests/test_catalog.py`; `physiology/tests/test_protocol_sets.py` |
 | Longitud del cordón en reposo (650 mm; 666 mm del segundo astronauta) | `example-mission.yaml` (por astronauta, simulador) | `contracts/catalog/calibration-defaults.json` (de ahí lo lee el gateway; `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` lo cambia en el dispositivo real); `calibration.stretch.json`; `features-request.json`; READMEs de gateway, contracts y firmware | `engine/tests/test_features_stretch_simulator.py` lee la misión; `contracts/tests/test_calibration_defaults.py` cruza la misión con el fichero (solo AST-01, 650 mm) |
 | Curva del cordón | `contracts/catalog/calibration-defaults.json` (curva de 4 puntos y reposo 6012 ohm / 650 mm); el gateway la escala a la R0 medida y `SPINE_GATEWAY_STRETCH_CURVE` la sustituye | `example-mission.yaml` (`signals.stretch.curve`) | `contracts/tests/test_calibration_defaults.py`; `gateway/tests/test_calibration.py`; `physiology/tests/test_signals_stretch.py` |

@@ -99,9 +99,12 @@
               "minItems": 1,
               "uniqueItems": true
             },
-            "duration_s": { "type": "number", "exclusiveMinimum": 0 }
+            "duration_s": { "type": "number", "exclusiveMinimum": 0 },
+            "reference_posture": { "const": "straight_back", "description": "Operator attests that the stretch reference is measured with a straight back." }
           },
-          "required": ["type", "session_id", "calibration_type", "stream_ids"]
+          "required": ["type", "session_id", "calibration_type", "stream_ids"],
+          "if": { "required": ["reference_posture"] },
+          "then": { "properties": { "calibration_type": { "const": "stretch" } } }
         }
       ],
       "unevaluatedProperties": false

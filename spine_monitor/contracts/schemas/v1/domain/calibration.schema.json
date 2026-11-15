@@ -42,6 +42,7 @@
           "type": "object",
           "properties": {
             "calibration_type": { "const": "stretch" },
+            "reference_posture": { "const": "straight_back", "description": "Explicitly attested posture during the reference measurement; omitted when unknown." },
             "rest_resistance_ohm": { "type": "number", "exclusiveMinimum": 0 },
             "rest_length_mm": {
               "description": "Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.",
@@ -119,6 +120,7 @@
             "gyro_range_dps": { "type": "integer", "enum": [250, 500, 1000, 2000] },
             "gyro_bias_dps": { "$ref": "../common.schema.json#/$defs/xyz" },
             "accel_bias_g": { "$ref": "../common.schema.json#/$defs/xyz" },
+            "reference_orientation_x_deg": { "type": "number", "minimum": 0, "maximum": 180, "description": "Independently measured initial orientation around sensor X, in degrees at created_at. Gyroscope integration alone cannot establish absolute orientation; omit when no reference is available." },
             "mounting": {
               "type": "object",
               "properties": {

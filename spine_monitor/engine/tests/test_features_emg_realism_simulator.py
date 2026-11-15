@@ -16,6 +16,7 @@ import pytest
 from spine_contracts import FeaturesRequest, dump, validation
 from spine_engine.features.composite import CompositeFeatureExtractor
 from spine_engine.features.registry import default_registry
+from spine_engine.measurements import UNITS
 
 _SPEC = importlib.util.spec_from_file_location("_emg_amplitude_simulator", Path(__file__).with_name("test_features_emg_simulator.py"))
 assert _SPEC is not None and _SPEC.loader is not None
@@ -31,9 +32,10 @@ MAINS_MV, WANDER_MV, ECG_MV = 0.05, 0.05, 0.1
 _ECG_RMS_MV = ECG_MV * math.sqrt(0.01 * math.sqrt(math.pi) * 70.0 / 60.0)
 INTERFERENCE_RMS_MV = math.sqrt(MAINS_MV**2 / 2 + WANDER_MV**2 + _ECG_RMS_MV**2)
 
-# RMS activo: la interferencia (~0,07 mV rms) es una fracción pequeña del RMS de esfuerzo (~0,5 mV rms), que suma en cuadratura:
-# observado 1,6 % (semilla 7, ambos lados); umbral 5 % (el mismo que sin artefactos, ver test_features_emg_simulator).
-RMS_MV_REL = 0.05
+# RMS activo: la verdad no incluye saturación. Con el ADC bipolar de ±1,65 mV y la MVC de la misión,
+# las colas de la señal se recortan: observado 6,3 % y 5,6 % por debajo de la verdad (semilla 7).
+# El umbral del 8 % incluye ese sesgo, además de la interferencia aditiva (~0,07 mV rms).
+RMS_MV_REL = 0.08
 # RMS en reposo: sin artefactos es ~0,04 mV; con ellos domina la interferencia. Teórico sqrt(verdad^2 + interferencia^2);
 # observado 2-3 % de desvío de eso; umbral 10 % (ventanas de reposo cortas: ~1 s entre reps).
 REST_REL = 0.10
@@ -72,7 +74,7 @@ def _simulated() -> tuple[dict[str, Any], dict[str, float]]:
 def _extract(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     result = dump(CompositeFeatureExtractor(default_registry()).extract(FeaturesRequest.model_validate(payload)))
     assert validation.errors("domain/feature-set", result) == []
-    assert result.get("skipped", []) == []
+    assert not [s for s in result.get("skipped", []) if s["feature_id"] not in UNITS]
     return {f["feature_id"]: f for f in result["features"]}
 
 
@@ -104,3 +106,8 @@ def test_the_quantized_session_is_made_of_whole_adc_steps_and_inside_the_adc_ran
     assert values
     assert max(abs(v / lsb - round(v / lsb)) for v in values) < 1e-3  # el JSON redondea; los pasos siguen siendo enteros
     assert min(values) >= -(2 ** (acq["adc_bits"] - 1)) * lsb - 1e-9 and max(values) <= (2 ** (acq["adc_bits"] - 1) - 1) * lsb + 1e-9
+    # La comparación con la verdad sin recorte requiere que esta sesión realmente alcance ambos topes del ADC.
+    for stream_id in SIDES:
+        stream_values = [v for c in payload["chunks"] if c["stream_id"] == stream_id for v in c["data"]["emg"]]
+        assert min(stream_values) == pytest.approx(-(2 ** (acq["adc_bits"] - 1)) * lsb, abs=1e-6)
+        assert max(stream_values) == pytest.approx((2 ** (acq["adc_bits"] - 1) - 1) * lsb, abs=1e-6)

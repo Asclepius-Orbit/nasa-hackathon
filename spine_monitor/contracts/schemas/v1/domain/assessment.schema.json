@@ -117,7 +117,9 @@
               "datum": { "type": "string" },
               "value": { "type": "number" },
               "operator": { "type": "string", "enum": [">", ">=", "<", "<=", "==", "!="] },
-              "threshold": { "type": "number" }
+              "threshold": { "type": "number" },
+              "unit": { "type": "string", "minLength": 1, "maxLength": 32, "description": "Unit shared by value and threshold." },
+              "source": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Source of the threshold or operational convention." }
             },
             "required": ["datum", "value", "operator", "threshold"],
             "additionalProperties": false

@@ -49,6 +49,8 @@ class CompositeFeatureExtractor:
         computed: dict[str, FeatureValue] = {}
         skipped: set[tuple[str, Reason]] = set()
         for family in self._registry:
+            if request.requested_window is not None and family.family != "measured":
+                continue
             result = family.extract(context)
             for item in result.computed:
                 unit = unit_for(item.feature_id)
@@ -64,7 +66,8 @@ class CompositeFeatureExtractor:
                 skipped.add((omitted.feature_id, omitted.reason))
 
         session = request.session
-        extra: dict[str, Any] = {"window": context.window} if context.window else {}
+        result_window = request.requested_window or context.window
+        extra: dict[str, Any] = {"window": result_window.model_dump()} if result_window else {}
         return FeatureSet(
             schema_version=SCHEMA_VERSION,
             astronaut_id=session.astronaut_id,
@@ -86,4 +89,6 @@ class CompositeFeatureExtractor:
             return None
         quality = item.quality if item.quality is not None else assessment.to_quality()
         extra: dict[str, Any] = {} if item.n is None else {"n": item.n}  # n es opcional pero no admite null
+        if item.window is not None:
+            extra["window"] = {"start": item.window[0], "end": item.window[1]}
         return FeatureValue(feature_id=item.feature_id, value=item.value, unit=unit, quality=quality, **extra)

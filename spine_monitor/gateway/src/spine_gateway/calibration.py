@@ -68,6 +68,7 @@ class CalibrationRecorder:
         new_id: Callable[[], str],
         *,
         session_id: str | None = None,
+        reference_posture: str | None = None,
     ) -> None:
         kind = _KIND.get(calibration_type)
         if kind is None:
@@ -81,6 +82,7 @@ class CalibrationRecorder:
         self._settings = settings
         self._new_id = new_id
         self._session_id = session_id
+        self._reference_posture = reference_posture
         self._period_ms = 1000 / SAMPLE_RATE_HZ[kind]
         self._start_ms: int | None = None
         self._covered_ms = 0.0
@@ -144,6 +146,7 @@ class CalibrationRecorder:
             {
                 **self._base(now),
                 "rest_resistance_ohm": r0,
+                **({"reference_posture": self._reference_posture} if self._reference_posture is not None else {}),
                 "rest_length_mm": l0,
                 "curve": {
                     "model": "piecewise_linear",

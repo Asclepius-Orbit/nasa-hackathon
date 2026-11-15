@@ -557,7 +557,7 @@ def build_router(
 
     @router.post("/sessions/{session_id}/calibrations", status_code=202)
     async def calibrate(session_id: str, body: CalibrateBody) -> dict[str, Any]:
-        return {"command": await control.calibrate(session_id, body.calibration_type, body.stream_ids, body.duration_s)}
+        return {"command": await control.calibrate(session_id, body.calibration_type, body.stream_ids, body.duration_s, body.reference_posture)}
 
     @router.get("/commands/{command_id}")
     async def get_command(command_id: str) -> dict[str, Any]:

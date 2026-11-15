@@ -1,4 +1,4 @@
-import json
+﻿import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -30,9 +30,16 @@ def with_history(req: AssessRequest, values: list[float]) -> list:
     sets = []
     for day, value in enumerate(values):
         feature_set = template.model_copy(deep=True)
-        feature_set.computed_at = template.computed_at + timedelta(days=day - len(values))
+        offset = timedelta(days=day - len(values))
+        feature_set.computed_at = template.computed_at + offset
+        if feature_set.window:
+            feature_set.window.start += offset
+            feature_set.window.end += offset
         feature_set.session_id = None
         for feature in feature_set.features:
+            if feature.window:
+                feature.window.start += offset
+                feature.window.end += offset
             if feature.feature_id == ROM:
                 feature.value = value
         sets.append(feature_set)
@@ -111,6 +118,26 @@ def test_history_of_another_protocol_or_gravity_does_not_feed_the_detector():
     assert not result[ROM].sustained
 
 
+@pytest.mark.unit
+def test_duplicate_measured_window_does_not_create_a_third_session_point():
+    from spine_contracts.models.domain.feature_set_schema import Window
+
+    req = request()
+    history = with_history(req, [40.0, 40.0])
+    for item in history:
+        item.window = Window(start=item.computed_at - timedelta(seconds=5), end=item.computed_at)
+    duplicate = history[-1].model_copy(deep=True)
+    duplicate.features = [f for f in duplicate.features if f.feature_id == ROM]
+    duplicate.features[0].window = duplicate.window
+    duplicate.window = None
+    duplicate.computed_at += timedelta(seconds=1)
+
+    result = by_feature(default_baseline_strategy(EngineSettings()).deviations(req.baseline, [*history, duplicate]))
+
+    assert result[ROM].n_points == 2
+    assert not result[ROM].sustained
+
+
 def test_scorer_and_detector_are_injected():
     class FixedScorer:
         def score(self, value, entry):
@@ -135,7 +162,7 @@ def test_plugs_into_the_pipeline_and_the_assessment_still_conforms_to_the_schema
     assessment = pipeline.evaluate(request())
 
     assert validation.errors("domain/assessment", dump(assessment)) == []
-    assert assessment.completeness.score == pytest.approx(4 / 9)
+    assert assessment.completeness.score == pytest.approx(4 / 12)
     assert assessment.drivers == []
 
 
@@ -184,3 +211,4 @@ def test_partial_risk_weights_keep_the_other_domains_scoring():
     assessment = default_pipeline(EngineSettings(_env_file=None, risk_domain_weights={AssessmentDomain.MUSCLE: 2.0})).evaluate(req)
 
     assert ROM in {d.feature_id for d in assessment.drivers}
+

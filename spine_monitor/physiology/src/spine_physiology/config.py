@@ -321,6 +321,12 @@ class ExerciseProtocol(_Model):
     rom_deg: PositiveFloat
     plane: AnatomicalPlane
     load: LoadConfig
+    # Hipótesis del modelo, no mediciones clínicas: carga relativa, resistencia,
+    # recuperación por segundo y variabilidad relativa entre repeticiones.
+    effort_load: PositiveFloat
+    fatigue_resistance: PositiveFloat
+    recovery_per_s: NonNegFloat
+    individual_variability: UnitInterval
 
     @property
     def planned_reps(self) -> int:

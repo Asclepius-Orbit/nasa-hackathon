@@ -163,7 +163,7 @@ def _missing(assessment: dict[str, Any]) -> list[str]:
 
 
 @pytest.mark.integration
-def test_a_further_normal_session_with_normal_self_reports_is_green_and_misses_nothing_computed_elsewhere() -> None:
+def test_normal_session_is_incomplete_without_current_measured_windows() -> None:
     client = TestClient(create_default_app())
     reference, held_out = _split()
     reports, context, as_of = _normal_context([*reference, *held_out])
@@ -175,19 +175,20 @@ def test_a_further_normal_session_with_normal_self_reports_is_green_and_misses_n
     assert assessment["risk_score"] == 0.0
     assert assessment["drivers"] == []
     assert assessment["based_on"]["baseline_id"] == baseline["baseline_id"]
-    assert assessment["level"] == Level.GREEN.value
-    assert assessment["fired_rules"] == []
+    assert assessment["level"] == Level.AMBER.value
+    assert {r["rule_id"] for r in assessment["fired_rules"]} == {INCOMPLETE_DATA_RULE}
     evaluated = {d["domain"] for d in assessment["domains"] if d["evaluated"]}
     assert {"kinematics", "spine_length"} <= evaluated
     missing = _missing(assessment)
-    assert not [what for what in missing if what.startswith(("exercise.", "imu."))]
+    assert "imu.lumbar.sensor_x.orientation_deg" in missing
     # a feature one set skipped but another computed is not missing
     computed = {f["feature_id"] for fs in [*reference, *held_out] for f in fs["features"]}
-    assert computed.isdisjoint(missing)
+    measured = {"imu.lumbar.sensor_x.orientation_deg", "stretch.full_spine.resistance_change_pct", "emg.reference.normalized_amplitude"}
+    assert (computed - measured).isdisjoint(missing)
 
 
 @pytest.mark.integration
-def test_without_self_reports_only_the_symptom_features_are_missing() -> None:
+def test_without_self_reports_symptoms_and_current_measured_windows_are_missing() -> None:
     client = TestClient(create_default_app())
     reference, held_out = _split()
     baseline = _baseline(client, reference)
@@ -198,7 +199,9 @@ def test_without_self_reports_only_the_symptom_features_are_missing() -> None:
     assert assessment["drivers"] == []
     missing = _missing(assessment)
     assert missing
-    assert all(what.startswith("symptoms.") for what in missing)
+    assert all(what.startswith("symptoms.") or what in {
+        "imu.lumbar.sensor_x.orientation_deg", "stretch.full_spine.resistance_change_pct", "emg.reference.normalized_amplitude"
+    } for what in missing)
     assert {r["rule_id"] for r in assessment["fired_rules"]} <= {INCOMPLETE_DATA_RULE}
 
 

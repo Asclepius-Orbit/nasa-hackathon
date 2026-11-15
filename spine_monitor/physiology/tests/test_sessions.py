@@ -52,7 +52,8 @@ def test_plan_day_lists_scheduled_sessions_and_background_sorted(config, timelin
         assert plan.chunk_ms == sess.chunk_ms_for(config, background=plan.background)
         assert (plan.end - plan.start) % timedelta(milliseconds=plan.chunk_ms) == timedelta(0)
     exercise = next(p for p in plans if p.ref.slot == "lat_pulldown")
-    assert exercise.session_type == "exercise" and exercise.reps == rep_schedule(config.protocol("lat_pulldown_standing_v1"))
+    expected_rng = RngTree(config.seed).rng(A, day.index, "lat_pulldown", "exercise")
+    assert exercise.session_type == "exercise" and exercise.reps == rep_schedule(config.protocol("lat_pulldown_standing_v1"), rng=expected_rng)
     assert abs((exercise.start - day.at(config.schedule.sessions[1].time_utc)).total_seconds()) < 5 * 600
     background = next(p for p in plans if p.background)
     assert background.session_type == "spine_check" and background.stream_ids == ("imu_t9", "stretch_spine")
@@ -241,6 +242,24 @@ def _synth(config, slot, *, day=0, gravity=None):
 def _clean(raw):
     for fault in raw["faults"]["quality"].values():
         fault["probability"] = 0.0
+
+
+def test_emg_fatigue_parameters_affect_exercise_synthesis():
+    def configured(per_rep, gain):
+        def edit(raw):
+            raw["signals"]["emg"]["fatigue_per_rep"] = per_rep
+            raw["signals"]["emg"]["deconditioning_fatigue_gain"] = gain
+        return make_config(edit)
+
+    def fatigue(per_rep, gain):
+        _, synthesis = _synth(configured(per_rep, gain), "lat_pulldown", day=4)
+        return synthesis.stream("emg_lat_left").truth["fatigue"]
+
+    baseline = fatigue(0.0, 0.0)
+    increased = fatigue(0.02, 0.0)
+    deconditioned = fatigue(0.02, 3.0)
+    assert np.max(increased - baseline) > 0
+    assert np.max(deconditioned - increased) > 0
 
 
 def test_synthesis_shapes_channels_and_calibration(config):

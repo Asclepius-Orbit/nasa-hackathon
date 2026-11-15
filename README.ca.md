@@ -2,6 +2,16 @@
 
 # nasa-hackathon
 
+## Arquitectura del xat
+
+```text
+UI d'escriptori -- HTTP POST /chat + SSE --> Servidor HTTP de l'agent -- MCP --> Servidor MCP --> API de lectura del backend
+                                                        |
+                                                        +--> Ollama (LLM local)
+```
+
+La UI crida directament l'agent amb un token i `X-Astronaut-Id`. Tancar la connexió cancel·la la resposta. L'agent pot oferir una resposta alternativa determinista si el LLM no està disponible. Consulta la [guia de l'API de l'agent](spine_monitor/agent/README.ca.md) i el [contracte OpenAPI](spine_monitor/contracts/agent-openapi.yaml).
+
 ## Antropometria i evidència fora de línia
 
 L'[inventari de fonts](docs/anthropometry-sources.md) recull guies de disseny de la NASA i un estudi relacionat, amb població, mètode, pàgines, limitacions i condicions de reutilització. Els valors de la NASA d'aproximadament el 3 % de l'estatura dreta i el 6 % de l'altura asseguda són marges de disseny de naus, no llindars clínics. Una predicció del motor és experimental: depèn de la referència terrestre individual en la mateixa postura, de la incertesa del sensor i de les hipòtesis indicades; estatura, altura asseguda i longitud estimada del cordó són magnituds diferents.

@@ -5,7 +5,7 @@ la resistencia sale de ``adc_counts`` (``stretch_curve.adc_to_resistance``); si 
 chunk sin ninguna de las dos no aporta muestras. Las resistencias no finitas (ADC a 0 o saturado, NaN) se descartan.
 La elongación por muestra sale de la curva y la longitud de reposo de ``calibration.stretch``. La espera de
 recuperación es ``recovery_wait_s`` de esa calibración (aunque esté caducada) o, si no la trae, la
-``default_recovery_wait_s`` del constructor (provisional hasta #46). Por stream stretch con ``placement.spine_region``:
+``default_recovery_wait_s`` del constructor. Por stream stretch con ``placement.spine_region``:
 
 - Muestras pasivas: las que no caen en ``[inicio de activa, fin de activa + espera)`` de ninguna repetición (sin
   repeticiones, p. ej. ``spine_check``, todas). ``elongation_mm`` = media de su elongación, ``elongation_pct`` =
@@ -14,7 +14,7 @@ recuperación es ``recovery_wait_s`` de esa calibración (aunque esté caducada)
 - Por repetición (ventana activa ``inicio <= t < fin``): ``peak_elongation_mm`` = máxima elongación, ``range_mm`` =
   máx − mín. Publicado = media sobre las repeticiones con muestras; ``n`` las cuenta.
 - ``recovery_time_s``: por repetición, segundos desde el fin de la activa hasta la primera muestra con elongación
-  ``<= recovery_fraction · pico de esa repetición`` (PROVISIONAL hasta #46), buscada en ``[fin, fin + espera)``
+  ``<= recovery_fraction · pico de esa repetición``, buscada en ``[fin, fin + espera)``
   recortado al fin del reposo de la ``RepWindow`` si lo tiene. Una repetición que no recupera ahí se excluye;
   publicado = media de las que recuperan, ``n`` las cuenta; si ninguna recupera, ``no_data``.
 

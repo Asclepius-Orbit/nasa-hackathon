@@ -30,6 +30,7 @@ from typing import Any
 import pytest
 from spine_contracts import FeaturesRequest
 from spine_engine.features.ordering import IncidentKind, order_chunks
+from spine_engine.measurements import UNITS
 
 _SPEC = importlib.util.spec_from_file_location("_stretch_simulator", Path(__file__).with_name("test_features_stretch_simulator.py"))
 assert _SPEC is not None and _SPEC.loader is not None
@@ -91,6 +92,10 @@ def _extract(payload: dict[str, Any]) -> dict[str, Any]:
     return _SIM._extract(payload)
 
 
+def _legacy_skipped(result: dict[str, Any]) -> dict[str, str]:
+    return {key: value for key, value in _SIM._skipped(result).items() if key not in UNITS}
+
+
 def _chunks_of(payload: dict[str, Any], stream_id: str) -> list[dict[str, Any]]:
     return [c for c in payload["chunks"] if c["stream_id"] == stream_id]
 
@@ -127,7 +132,7 @@ def test_without_the_calibration_of_a_family_its_calibrated_features_are_skipped
     result = _extract(payload)
 
     features = _SIM._by_id(result)
-    assert _SIM._skipped(result) == dict.fromkeys(skipped_ids, "no_calibration")
+    assert _legacy_skipped(result) == dict.fromkeys(skipped_ids, "no_calibration")
     assert not skipped_ids & set(features)
     assert kept_ids <= set(features)
     # lo que no depende de esa calibración sale idéntico a la sesión completa
@@ -158,8 +163,8 @@ def test_an_absent_stream_skips_exactly_its_features_as_stream_missing_and_leave
     result = _extract(payload)
 
     features = _SIM._by_id(result)
-    assert {i for i, r in _SIM._skipped(result).items() if r == "stream_missing"} == affected
-    assert set(_SIM._skipped(result)) == affected
+    assert {i for i, r in _legacy_skipped(result).items() if r == "stream_missing"} == affected
+    assert set(_legacy_skipped(result)) == affected
     assert not affected & set(features)
     assert set(features) == set(full) - affected
     # exercise sale de los eventos de la sesión (no de ningún stream) y los demás streams no se ven afectados
@@ -180,7 +185,7 @@ def test_the_imu_at_10_hz_is_never_skipped_for_its_sample_rate_and_stays_close_t
 
     features = _SIM._by_id(result)
     assert "insufficient_sample_rate" not in set(_SIM._skipped(result).values())
-    assert not [i for i in _SIM._skipped(result) if i.startswith("imu.")]
+    assert not [i for i in _legacy_skipped(result) if i.startswith("imu.")]
     assert features[IMU_ROM]["value"] == pytest.approx(sim.truth[IMU_ROM], rel=IMU_10HZ_ROM_REL)
     assert features[IMU_PEAK]["value"] == pytest.approx(sim.truth[IMU_PEAK], rel=IMU_10HZ_PEAK_REL)
     assert features[IMU_ROM]["n"] == features[IMU_PEAK]["n"] == sim.truth["exercise.rep_count"]
@@ -222,7 +227,7 @@ def test_with_seq_gaps_the_features_are_computed_and_flagged_with_the_coverage_a
     result = _extract(sim.payload)
 
     features = _SIM._by_id(result)
-    assert _SIM._skipped(result) == {}
+    assert _legacy_skipped(result) == {}
     assert set(features) == set(clean)  # nada se omite ni se inventa por los huecos
     assert not [i for i in clean if "packet_gap" in _quality_of(clean, i)["flags"]]
     coverage: dict[str, float] = {}

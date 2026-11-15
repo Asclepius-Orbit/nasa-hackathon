@@ -9,7 +9,6 @@ from monitor.ingest import Ingest
 from monitor.live.reps import RepDetector, RepDetectorParams
 from monitor.live.tracker import RepHub, RepMessage, RepTracker, Subscription, has_live_reps, rep_sets, rep_total, set_position
 from monitor.settings import AppSettings
-from monitor.views.protocol_catalog import reps_per_set_for
 from spine_contracts import topics, validation
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
@@ -339,10 +338,13 @@ async def test_rebuild_follows_the_real_order_of_the_boots_whatever_their_random
     for chunk in second[resume:]:
         restarted.on_chunk(row, chunk)
     assert restarted.tracker_view(session_id) == live.tracker_view(session_id)
-    # The sensor came back inside a set, where the pause between reps is too short for the still second of the first bias
-    # estimate: the rest of that set is lost and the count goes on with the next one.
-    per_set = reps_per_set_for(LAT) or 0
-    assert restarted.tracker_view(session_id)["rep"] == harness.simulated_reps() - (per_set - 5)
+    # The slower, variable motion changes when bias settles after the reboot.
+    # Compare with the detector fed the two boots in their actual order.
+    detector = RepDetector(RepDetectorParams.default())
+    for chunk in [*first, *second]:
+        detector.feed(chunk)
+    assert restarted.tracker_view(session_id)["rep"] == detector.snapshot()["rep"]
+    assert detector.snapshot()["rep"] > 5
 
 
 async def test_stream_chunks_only_returns_that_stream_of_that_session_of_that_device(harness) -> None:

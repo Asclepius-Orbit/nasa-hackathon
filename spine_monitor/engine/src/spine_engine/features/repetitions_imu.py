@@ -48,6 +48,9 @@ NOISE_K_PEAK = 8.0
 NOISE_K_EDGE = 3.0
 # Dos picos del mismo signo más cercanos que esto son el mismo lóbulo.
 MIN_PEAK_SEPARATION_S = 0.25
+# Los bordes de lóbulos ya se extienden hacia el reposo: no fusionar repeticiones
+# vecinas con una pausa breve solo porque los bordes quedan próximos.
+MIN_REP_GAP_S = 0.1
 # Una pausa entre repeticiones más larga que esta vez la mediana de las pausas es un descanso entre series.
 SET_GAP_FACTOR = 5.0
 # MAD -> sigma para ruido gaussiano; las diferencias de ruido blanco tienen sigma·√2.
@@ -115,7 +118,7 @@ def _merge_touching(spans: list[tuple[datetime, datetime]]) -> list[tuple[dateti
     """Una repetición que el ruido parte en dos pares ida/vuelta pegados es una sola: sin reposo entre ellos no hay dos."""
     merged: list[tuple[datetime, datetime]] = []
     for start, end in spans:
-        if merged and (start - merged[-1][1]).total_seconds() < MIN_PEAK_SEPARATION_S:
+        if merged and (start - merged[-1][1]).total_seconds() < MIN_REP_GAP_S:
             merged[-1] = (merged[-1][0], end)
         else:
             merged.append((start, end))

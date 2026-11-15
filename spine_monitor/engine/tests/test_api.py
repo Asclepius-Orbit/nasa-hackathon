@@ -1,4 +1,4 @@
-import json
+﻿import json
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -175,7 +175,7 @@ def test_assess_returns_a_valid_assessment(client):
     body = response.json()
     assert validation.errors("domain/assessment", body) == []
     assert body["astronaut_id"] == "AST-01"
-    assert body["completeness"]["score"] == pytest.approx(4 / 9)
+    assert body["completeness"]["score"] == pytest.approx(4 / 12)
 
 
 @pytest.mark.parametrize("part", ["baseline", "profile", "feature_sets"])
@@ -230,7 +230,7 @@ def test_simulate_without_overrides_projects_the_base_unchanged(client):
 
 
 class RecordingPipeline(AssessmentPipeline):
-    """Pipeline de los stubs que además guarda lo que se le pide evaluar."""
+    """Pipeline de los stubs que ademÃ¡s guarda lo que se le pide evaluar."""
 
     def __init__(self) -> None:
         super().__init__(NullBaselineStrategy(), NullRiskModel(), NullTriagePolicy())
@@ -427,3 +427,4 @@ def test_simulate_problems_carry_title_and_detail(client):
     assert unknown["detail"] == "The feature 'stretch.not.in_catalog' is not in the catalog."
     assert (invalid["title"], invalid["status"]) == ("Invalid request", 422)
     assert invalid["detail"] == "The override on 'stretch.full_spine.peak_elongation_mm' does not give a finite value."
+

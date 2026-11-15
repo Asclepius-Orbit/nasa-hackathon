@@ -6,9 +6,9 @@
   "mission_day": 87,
   "level": "amber",
   "risk_score": -0.0,
-  "confidence": 0.444444,
+  "confidence": 0.333333,
   "completeness": {
-    "score": 0.444444,
+    "score": 0.333333,
     "missing": [
       {
         "what": "exercise.rep_count",
@@ -29,23 +29,35 @@
       {
         "what": "symptoms.stiffness_nrs_7d_mean",
         "reason": "no_baseline"
+      },
+      {
+        "what": "emg.reference.normalized_amplitude",
+        "reason": "no_data"
+      },
+      {
+        "what": "imu.lumbar.sensor_x.orientation_deg",
+        "reason": "no_data"
+      },
+      {
+        "what": "stretch.full_spine.resistance_change_pct",
+        "reason": "no_data"
       }
     ]
   },
   "domains": [
     {
       "domain": "spine_length",
-      "level": "green",
+      "level": "amber",
       "evaluated": true
     },
     {
       "domain": "muscle",
-      "level": "green",
+      "level": "amber",
       "evaluated": true
     },
     {
       "domain": "kinematics",
-      "level": "green",
+      "level": "amber",
       "evaluated": true
     },
     {
@@ -64,7 +76,7 @@
       "description": "Incomplete data",
       "evidence": {
         "datum": "completeness",
-        "value": 0.444444,
+        "value": 0.333333,
         "operator": "<",
         "threshold": 1.0
       }

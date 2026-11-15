@@ -74,6 +74,8 @@ class EventType(str, Enum):
     REP_END = 'rep_end'
     MVC_START = 'mvc_start'
     MVC_END = 'mvc_end'
+    REFERENCE_EFFORT_START = 'reference_effort_start'
+    REFERENCE_EFFORT_END = 'reference_effort_end'
     REST_START = 'rest_start'
     REST_END = 'rest_end'
     PAIN_REPORTED = 'pain_reported'

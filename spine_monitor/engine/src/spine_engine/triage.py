@@ -7,9 +7,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from spine_contracts import AssessmentDomain, DailySelfReport, Escalation, FiredRule, Level, RedFlagReport, Urgency
-from spine_contracts.models.domain.assessment_schema import Domain2, Evidence, Operator
+from spine_contracts.models.domain.assessment_schema import Domain2, Evidence
 
+from spine_engine.features.symptoms import WINDOW
 from spine_engine.interfaces import TriageContext, TriageDecision
+from spine_engine.measurements import SOURCE, UNITS, classify, measurements
 from spine_engine.pipeline import domain_of
 
 _LEVEL = {Level.GREEN: 0, Level.AMBER: 1, Level.RED: 2}
@@ -93,8 +95,20 @@ class DeclarativeTriagePolicy:
         recommendations: list[str] = []
         urgencies: list[Urgency] = []
         reasons: list[str] = []
-        flags = {flag.value for report in context.self_reports if report.timestamp <= context.as_of
-                 and isinstance(report, (DailySelfReport, RedFlagReport)) for flag in (report.red_flags or [])}
+        for key, value in measurements(list(context.feature_sets), context.as_of).items():
+            measured_level, category, operator, threshold = classify(key, value)
+            domain = domain_of(key)
+            assert domain is not None
+            level = max(level, measured_level, key=_LEVEL.__getitem__)
+            domain_levels[domain] = max(domain_levels[domain], measured_level, key=_LEVEL.__getitem__)
+            evidence = Evidence.model_validate({"datum": key, "value": value, "operator": operator,
+                                                "threshold": threshold, "unit": UNITS[key], "source": SOURCE})
+            fired.append(FiredRule(rule_id=f"RULE_MEASURED_{domain.value.upper()}_{category}",
+                domain=Domain2(domain.value), level=measured_level,
+                overrides_model=_LEVEL[measured_level] > _LEVEL[model_level], evidence=evidence))
+        reports = [report for report in context.self_reports if context.as_of - WINDOW <= report.timestamp <= context.as_of]
+        flags = {flag.value for report in reports
+                 if isinstance(report, (DailySelfReport, RedFlagReport)) for flag in (report.red_flags or [])}
         recognized: set[str] = set()
         for rule in self.config.rules:
             if rule.datum == "red_flag":
@@ -104,8 +118,7 @@ class DeclarativeTriagePolicy:
             elif rule.datum == "risk":
                 values = [context.risk.score]
             elif rule.datum == "self_report":
-                values = [float(value) for report in context.self_reports if report.kind == "daily"
-                          and report.timestamp <= context.as_of
+                values = [float(value) for report in reports if report.kind == "daily"
                           if (value := getattr(report, rule.key, None)) is not None]
             else:
                 values = [d.value for d in context.deviations if d.feature_id == rule.key]
@@ -120,7 +133,8 @@ class DeclarativeTriagePolicy:
                     domain_levels[domain] = max(domain_levels.get(domain, Level.GREEN), rule.level, key=_LEVEL.__getitem__)
                 fired.append(FiredRule(rule_id=rule.rule_id, domain=Domain2(rule.domain), level=rule.level,
                     overrides_model=_LEVEL[rule.level] > _LEVEL[model_level],
-                    evidence=Evidence(datum=rule.key or rule.datum, value=value, operator=Operator(rule.operator), threshold=rule.threshold)))
+                    evidence=Evidence.model_validate({"datum": rule.key or rule.datum, "value": value,
+                                                      "operator": rule.operator, "threshold": rule.threshold})))
                 recommendations.extend(rule.recommendations)
                 if rule.urgency is not None:
                     urgencies.append(rule.urgency)
@@ -134,7 +148,7 @@ class DeclarativeTriagePolicy:
                 "description": f"Unrecognized red flag: {flag}"}))
         if context.completeness.score < 1 or context.completeness.missing:
             level = max(level, Level.AMBER, key=_LEVEL.__getitem__)
-            evidence = (Evidence(datum="completeness", value=context.completeness.score, operator=Operator.field__1, threshold=1)
+            evidence = (Evidence.model_validate({"datum": "completeness", "value": context.completeness.score, "operator": "<", "threshold": 1})
                         if context.completeness.score < 1 else None)
             fields: dict[str, object] = {"rule_id": "RULE_INCOMPLETE_DATA", "domain": Domain2.SAFETY, "level": Level.AMBER,
                       "overrides_model": _LEVEL[Level.AMBER] > _LEVEL[model_level], "description": "Incomplete data"}

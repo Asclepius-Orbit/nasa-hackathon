@@ -68,7 +68,7 @@ from spine_physiology.sessions import (
     StreamSynthesis,
     SynthSpec,
 )
-from spine_physiology.signals import rep_schedule
+from spine_physiology.signals import exercise_duration_s, rep_schedule
 from spine_physiology.state import DayInfo, LatentModel, MissionTimeline
 
 _US = timedelta(microseconds=1)
@@ -508,9 +508,11 @@ class MissionGenerator:
         chunk_ms = sess.chunk_ms_for(config, background=False)
         if protocol is not None:
             exercise = isinstance(protocol, ExerciseProtocol)
+            reps = rep_schedule(protocol, rng=RngTree(self._seed).rng(*keys, "exercise")) if exercise else ()
+            duration = exercise_duration_s(protocol, reps) if exercise else sess.protocol_duration_s(protocol)
             spec = self._live_spec(
-                (*keys, "protocol"), cursor, sess.chunks_for(sess.protocol_duration_s(protocol), chunk_ms=chunk_ms), chunk_ms, streams, info,
-                background=False, reps=rep_schedule(protocol) if exercise else (), protocol=protocol if exercise else None, residual=residual,
+                (*keys, "protocol"), cursor, sess.chunks_for(duration, chunk_ms=chunk_ms), chunk_ms, streams, info,
+                background=False, reps=reps, protocol=protocol if exercise else None, residual=residual,
             )  # fmt: skip
             calibrations = self._in_force(astronaut_id, info.index, streams)  # por bloque: un `calibrate` vale desde el siguiente
             synthesis = sess.synthesize(config, self._seed, spec, member=config.member(astronaut_id), state=state, calibrations=calibrations)

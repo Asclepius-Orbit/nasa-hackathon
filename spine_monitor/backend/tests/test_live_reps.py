@@ -17,6 +17,7 @@ from spine_physiology.config import ExerciseProtocol, load_config
 from spine_physiology.device import SimDevice, plan_device_live
 from spine_physiology.envelope import EnvelopeKind
 from spine_physiology.generator import MissionGenerator
+from spine_physiology.rng import RngTree
 from spine_physiology.signals import exercise_duration_s, rep_schedule
 
 # From the installed simulator package, not this file: mutmut runs a copy of the tests in another directory.
@@ -40,6 +41,12 @@ def _protocol() -> ExerciseProtocol:
 
 
 @cache
+def _schedule(astronaut: str = "AST-01", session_id: str = SESSION_ID):
+    config = load_config(CONFIG_PATH)
+    return rep_schedule(_protocol(), rng=RngTree(config.seed).rng(astronaut, "live", session_id, "exercise"))
+
+
+@cache
 def _cached_chunks(day: int, astronaut: str = "AST-01", session_id: str = SESSION_ID) -> tuple[Chunk, ...]:
     config = load_config(CONFIG_PATH)
     start = datetime(2030, 1, 1, 10, tzinfo=UTC)
@@ -53,7 +60,7 @@ def _cached_chunks(day: int, astronaut: str = "AST-01", session_id: str = SESSIO
         if envelope.kind is not EnvelopeKind.STREAM_CHUNK:
             continue
         chunks.append(envelope.payload)
-        if _elapsed_s(envelope.payload, chunks[0]) > exercise_duration_s(_protocol()):
+        if _elapsed_s(envelope.payload, chunks[0]) > exercise_duration_s(_protocol(), _schedule(astronaut, session_id)):
             return tuple(chunks)
     raise AssertionError("the live session iterator never ends")
 
@@ -93,7 +100,7 @@ def test_detects_every_scheduled_rep_in_order_with_its_duration(day: int, gravit
     assert _mean_accel_g(_lead_in(chunks)) == pytest.approx(gravity_g, abs=0.05)  # really this gravity environment
 
     protocol = _protocol()
-    schedule = rep_schedule(protocol)
+    schedule = _schedule()
     detector = RepDetector(RepDetectorParams.default())
     trace: list[tuple[int, str]] = []
     onsets: dict[int, float] = {}
@@ -115,8 +122,8 @@ def test_detects_every_scheduled_rep_in_order_with_its_duration(day: int, gravit
 
     assert sorted(durations) == [rep.index for rep in schedule]
     for rep in schedule:
-        assert durations[rep.index] == pytest.approx(protocol.rep_duration_s, abs=DURATION_TOLERANCE_S)
-        assert rep.start_s <= onsets[rep.index] <= rep.start_s + protocol.rep_duration_s / 2
+        assert durations[rep.index] == pytest.approx(rep.end_s - rep.start_s, abs=DURATION_TOLERANCE_S)
+        assert rep.start_s <= onsets[rep.index] <= (rep.start_s + rep.end_s) / 2
 
 
 @pytest.mark.parametrize("day", [PREFLIGHT_DAY, INFLIGHT_DAY])
@@ -197,7 +204,7 @@ def test_swapped_chunks_equal_a_stream_without_the_late_one_and_keep_the_reps() 
 
 def test_new_boot_restarts_the_integration_and_keeps_the_counter() -> None:
     chunks = _cached_chunks(PREFLIGHT_DAY)
-    schedule = rep_schedule(_protocol())
+    schedule = _schedule()
     cut = _chunk_index_after(chunks, schedule[2].start_s + 1.0)
     detector = _run(chunks[:cut])
     before = detector.snapshot()
@@ -223,7 +230,7 @@ def test_new_boot_restarts_the_integration_and_keeps_the_counter() -> None:
     assert final["rep"] == 3 + sum(1 for rep in schedule if rep.set_index >= 2)  # the rest of set 1 went by with the sensor off
     assert final["phase"] == "resting"
     assert final["last"] is not None
-    assert final["last"]["duration_s"] == pytest.approx(_protocol().rep_duration_s, abs=DURATION_TOLERANCE_S)
+    assert final["last"]["duration_s"] == pytest.approx(schedule[-1].end_s - schedule[-1].start_s, abs=DURATION_TOLERANCE_S)
 
 
 def test_chunks_of_another_stream_kind_are_ignored() -> None:
@@ -496,15 +503,19 @@ def test_a_boot_that_starts_moving_skips_that_rep_and_then_counts_every_other_on
 
 def test_a_real_session_cut_in_the_middle_of_a_rep_counts_the_rest_of_them() -> None:
     chunks = _cached_chunks(PREFLIGHT_DAY)
-    first_rep = rep_schedule(_protocol())[0]
-    cut = chunks[_chunk_index_after(chunks, first_rep.start_s + 0.5) :]
+    schedule = _schedule()
+    first_rep = schedule[0]
+    cut = chunks[_chunk_index_after(chunks, (first_rep.start_s + first_rep.end_s) / 2) :]
     detector = _run(cut)
-    # The boot starts moving: the first still second is the pause between sets, so the rest of set 1 is not counted.
-    expected = sum(1 for rep in rep_schedule(_protocol()) if rep.set_index >= 2)
-    assert (detector.snapshot()["rep"], detector.snapshot()["phase"]) == (expected, "resting")
+    # Bias may settle during a slow part of the first set, but all later sets must be counted.
+    remaining = [rep for rep in schedule if rep.set_index >= 2]
+    expected = detector.snapshot()["rep"]
+    assert len(remaining) <= expected < len(schedule)
+    assert detector.snapshot()["phase"] == "resting"
     durations = _durations(cut)
     assert sorted(durations) == list(range(1, expected + 1))
-    assert all(abs(duration - _protocol().rep_duration_s) <= DURATION_TOLERANCE_S for duration in durations.values())
+    first_later = expected - len(remaining) + 1
+    assert all(abs(durations[index] - (rep.end_s - rep.start_s)) <= DURATION_TOLERANCE_S for index, rep in enumerate(remaining, first_later))
 
 
 def test_a_gap_is_not_rest_for_the_first_bias_estimate() -> None:

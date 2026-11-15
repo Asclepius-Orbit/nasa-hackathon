@@ -1,67 +1,67 @@
-"""Bucle async del gateway falso: se comporta en MQTT como el gateway real del wearable.
+"""Async loop of the fake gateway: it behaves on MQTT like the real wearable gateway.
 
-Por cada astronauta del config (`FakeGateway`, normalmente uno por conexión MQTT, ver `serve`):
-- Se suscribe a `topics.cmd(astronaut_id, device_id)`. Cada comando se valida contra el JSON Schema
-  (`spine_contracts.validation`) y con `spine_contracts.command_adapter`, y se responde en
-  `topics.ack(...)` (CommandAck, QoS 1). Todo comando aceptado recibe `accepted` y, al acabar, `completed`:
-  - start_session: `accepted` y empieza a publicar los chunks de esa sesión (`MissionGenerator.live_session`);
-    `completed` cuando acaba (stop_session o `max_duration_s`). `rejected` con `busy` si ya hay una sesión,
-    `unknown_stream` si pide un stream que el dispositivo no tiene y `device_offline` si está reiniciando.
-  - stop_session: `accepted`, vacía lo que el dispositivo ya había comprometido, `completed` del
-    start_session y luego `completed` del stop. `rejected`/`no_session` si no hay sesión o no coincide.
-  - mark_event: `accepted` + `completed` (solo con la sesión indicada en curso; si no, `no_session`). No
-    cambia la señal: el protocolo en vivo sigue su propio ritmo.
-  - calibrate: `accepted` y `completed` con `result.calibration_id` (`MissionGenerator.live_calibration`)
-    pasados `duration_s` (o al momento). Justo antes del `completed` se publica cada calibración en
-    `topics.calibration(...)` (QoS 1, retained), salvo que otro `calibrate` del mismo stream la haya
-    sustituido mientras tanto. El contrato solo admite un calibration_id por ack: con varios streams va el
-    del primero (todas pasan a estar vigentes igualmente).
-  - Comando inválido: `rejected`/`invalid_command` si se puede leer su command_id; si no, se ignora.
-    Un error inesperado al procesarlo da `failed`/`internal`; el gateway nunca se cae por un comando.
-- DeviceStatus retained en `topics.status(...)` al arrancar y cada `device.status_interval_s`; ClockSync
-  retained en `topics.clock(...)` al arrancar, al empezar cada sesión y cada `device.clock_sync_interval_s`.
-  `last_seq` de cada stream = último seq PUBLICADO del arranque en curso (nunca uno aún no enviado).
-  Last Will retained con `status: offline` (`last_will`) y el mismo `offline` al pararse limpiamente.
-- Calibraciones en el bus: antes de publicar un chunk con `calibration_id`, si cita la calibración vigente
-  de su stream (`MissionGenerator.calibration_in_force`: la de un `calibrate` o, si no, la programada de la
-  misión ese día) y no es la retained de `topics.calibration(...)`, se publica (retained). Así un consumidor
-  que se conecta tarde resuelve el calibration_id de los chunks que recibe. Tras un `calibrate`, los chunks
-  que quedan del bloque en curso (como mucho un intervalo de estado) aún citan la anterior: no se republica
-  si ya salió otra después, de modo que la retained de un stream nunca vuelve atrás. El ground truth nunca
-  va al bus.
-- Fondo (si `schedule.background.enabled`): IMU + cordón de `live_background` siempre que no hay sesión
-  (sin la ventana horaria del config: el gateway es para demos a cualquier hora). Una sesión lo pausa
-  (mismo stream_id, el seq sigue) y al acabar se reanuda con el mismo session_id; cada día de misión
-  nuevo tiene su session_id de fondo.
-- Día de misión = `start_day` + (reloj de pared − arranque) × `speed` / 1 día, acotado a la misión. Lo
-  usan las sesiones y el fondo al empezar (una sesión no cambia de día a media sesión).
-- Dispositivo: `plan_device_live` desde el arranque, con horizonte = la ventana diaria de encendido del
-  config (una carga de batería). Al agotarse, y sin sesión en curso, se "recarga": plan nuevo (boot_id
-  nuevo, seq y reloj a 0, batería llena) y se publica estado y anclaje al momento.
+For each astronaut in the config (`FakeGateway`, normally one per MQTT connection, see `serve`):
+- Subscribes to `topics.cmd(astronaut_id, device_id)`. Each command is validated against the JSON Schema
+  (`spine_contracts.validation`) and with `spine_contracts.command_adapter`, and answered on
+  `topics.ack(...)` (CommandAck, QoS 1). Every accepted command gets `accepted` and, when done, `completed`:
+  - start_session: `accepted` and starts publishing that session's chunks (`MissionGenerator.live_session`);
+    `completed` when it ends (stop_session or `max_duration_s`). `rejected` with `busy` if a session already
+    exists, `unknown_stream` if it asks for a stream the device does not have and `device_offline` if it is rebooting.
+  - stop_session: `accepted`, flushes what the device had already committed, `completed` of the
+    start_session and then `completed` of the stop. `rejected`/`no_session` if there is no session or it does not match.
+  - mark_event: `accepted` + `completed` (only with the given session running; otherwise `no_session`). It does not
+    change the signal: the live protocol follows its own pace.
+  - calibrate: `accepted` and `completed` with `result.calibration_id` (`MissionGenerator.live_calibration`)
+    after `duration_s` (or immediately). Just before the `completed`, each calibration is published on
+    `topics.calibration(...)` (QoS 1, retained), unless another `calibrate` of the same stream has replaced it
+    in the meantime. The contract only allows one calibration_id per ack: with several streams the first one's
+    is used (all of them become in force anyway).
+  - Invalid command: `rejected`/`invalid_command` if its command_id can be read; otherwise it is ignored.
+    An unexpected error while processing it gives `failed`/`internal`; the gateway never crashes because of a command.
+- Retained DeviceStatus on `topics.status(...)` at startup and every `device.status_interval_s`; retained ClockSync
+  on `topics.clock(...)` at startup, at the start of each session and every `device.clock_sync_interval_s`.
+  `last_seq` of each stream = last PUBLISHED seq of the current boot (never one not yet sent).
+  Retained Last Will with `status: offline` (`last_will`) and the same `offline` on a clean stop.
+- Calibrations on the bus: before publishing a chunk with `calibration_id`, if it cites the calibration in force
+  for its stream (`MissionGenerator.calibration_in_force`: that of a `calibrate` or, otherwise, the mission's
+  scheduled one that day) and it is not the retained one on `topics.calibration(...)`, it is published (retained). This way a
+  consumer that connects late resolves the calibration_id of the chunks it receives. After a `calibrate`, the chunks
+  left in the current block (at most one status interval) still cite the previous one: it is not republished
+  if another one has come out after it, so a stream's retained never goes backwards. Ground truth never
+  goes on the bus.
+- Background (if `schedule.background.enabled`): IMU + cord from `live_background` whenever there is no session
+  (without the config's time window: the gateway is for demos at any hour). A session pauses it
+  (same stream_id, seq continues) and when it ends it resumes with the same session_id; each new mission
+  day has its own background session_id.
+- Mission day = `start_day` + (wall clock - start) × `speed` / 1 day, bounded to the mission. Sessions
+  and background use it when they start (a session does not change day mid-session).
+- Device: `plan_device_live` from startup, with horizon = the config's daily power-on window
+  (one battery charge). When it runs out, and with no session running, it is "recharged": new plan (new boot_id,
+  seq and clock at 0, full battery) and status and anchor are published immediately.
 
-Los chunks se publican a su `received_at` según el reloj inyectado (`clock`) y se espera con `sleep`
-(inyectable): los tests corren en tiempo virtual y con un cliente MQTT falso (Protocol `MqttClient`). La
-espera máxima es un chunk de la fuente activa (sesión: `signals.chunk_ms`; fondo:
-`schedule.background.chunk_ms`) y un comando la corta al momento.
+Chunks are published at their `received_at` according to the injected clock (`clock`) and waiting is done with `sleep`
+(injectable): tests run in virtual time and with a fake MQTT client (Protocol `MqttClient`). The
+maximum wait is one chunk of the active source (session: `signals.chunk_ms`; background:
+`schedule.background.chunk_ms`) and a command cuts it short immediately.
 
-Detalle del vaciado: leer el siguiente chunk de un iterador en vivo compromete en el dispositivo el seq
-de ese chunk en todos los streams. Al pausar o parar, se publican los chunks ya comprometidos (pueden
-llevar `received_at` unos ms en el futuro) y la siguiente fuente empieza tras el último, así el seq de
-cada stream sigue sin huecos y los tramos no se solapan.
+Flush detail: reading the next chunk from a live iterator commits that chunk's seq on the device
+for all streams. When pausing or stopping, the already committed chunks are published (they may
+carry a `received_at` a few ms in the future) and the next source starts after the last one, so each
+stream's seq continues without gaps and the spans do not overlap.
 
-Síntesis fuera del bucle: leer de un iterador en vivo puede sintetizar un protocolo entero (EMG filtrado,
-todos los streams), así que se hace en un hilo (`asyncio.to_thread`) mientras se tiene `_lock`: los
-comandos esperan al lock como antes, pero el bucle (keepalive de MQTT, recepción) sigue vivo. Lo leído se
-guarda en el `_Source` y solo se quita al publicarse; si la tarea se cancela a media lectura, el hilo
-acaba y su resultado se recoge en la siguiente (`_Source.settle`), sin perder ni repetir chunks.
+Synthesis outside the loop: reading from a live iterator can synthesize a whole protocol (filtered EMG,
+all streams), so it is done in a thread (`asyncio.to_thread`) while holding `_lock`: commands
+wait for the lock as before, but the loop (MQTT keepalive, reception) stays alive. What was read is
+kept in the `_Source` and only removed when published; if the task is cancelled mid-read, the thread
+finishes and its result is collected on the next one (`_Source.settle`), without losing or repeating chunks.
 
-Reconexión (`_serve`): si el broker rechaza la conexión o la corta (MqttError), se espera con backoff
-exponencial (`mqtt_reconnect_*` de los settings) y se abre otra conexión (con su Last Will) sobre el mismo
-`FakeGateway`: sesión, fondo, seq del dispositivo y chunks ya leídos siguen igual. Un chunk cuyo publish
-falla no se quita y se publica en la conexión siguiente (sin hueco de seq; como mucho un duplicado si el
-broker llegó a recibirlo, lo normal en QoS 1). Al reconectar se republican estado y anclaje al momento
-(el Last Will habrá dejado `offline`) y, antes del siguiente chunk, su calibración (el broker puede haber
-perdido los retained). SIGTERM sigue parando limpio con el `offline` retained.
+Reconnection (`_serve`): if the broker rejects or drops the connection (MqttError), it waits with exponential
+backoff (`mqtt_reconnect_*` of the settings) and opens another connection (with its Last Will) on the same
+`FakeGateway`: session, background, device seq and already read chunks stay as they were. A chunk whose publish
+fails is not removed and is published on the next connection (no seq gap; at most a duplicate if the
+broker did receive it, normal in QoS 1). On reconnecting, status and anchor are republished immediately
+(the Last Will will have left `offline`) and, before the next chunk, its calibration (the broker may have
+lost the retained ones). SIGTERM still stops cleanly with the retained `offline`.
 """
 
 import asyncio
@@ -109,17 +109,17 @@ _log = logging.getLogger(__name__)
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _DAY_S = 86400.0
 _MESSAGE_MAX = 300  # maxLength de error.message en command-ack.schema.json
-# Los comandos del esquema son diminutos (cientos de bytes): por encima de esto ni se parsea (un JSON enorme o
-# anidado hasta el absurdo no debe costar tiempo ni tumbar el bucle). Si se lee su command_id, `invalid_command`.
+# The schema's commands are tiny (hundreds of bytes): above this they are not even parsed (a huge or
+# absurdly nested JSON must not cost time or bring down the loop). If its command_id is read, `invalid_command`.
 _PAYLOAD_MAX_BYTES = 16 * 1024
 _COMMAND_ID_PREFIX = re.compile(rb'"command_id"\s*:\s*"([0-9a-f-]{36})"')
-# Tope de max_duration_s / duration_s: el esquema no lo acota y un valor enorme desborda timedelta/datetime
-# (OverflowError) cuando ya se habría tocado el estado. 30 días cubre de sobra cualquier misión de demo.
+# Cap for max_duration_s / duration_s: the schema does not bound it and a huge value overflows timedelta/datetime
+# (OverflowError) when state would already have been touched. 30 days is plenty for any demo mission.
 _DURATION_MAX_S = 30 * 86400
-# Comandos ya tratados por dispositivo (LRU): un QoS 1 puede reentregarse (DUP) y entonces se reenvían los
-# mismos acks en vez de volver a ejecutar el comando.
+# Commands already handled per device (LRU): a QoS 1 can be redelivered (DUP) and then the
+# same acks are resent instead of running the command again.
 _HANDLED_MAX = 256
-# Envelopes por lectura en el hilo de síntesis (acota memoria si el reloj salta mucho de golpe).
+# Envelopes per read in the synthesis thread (bounds memory if the clock jumps a lot at once).
 _PULL_MAX = 256
 
 type AckStatus = Literal["accepted", "rejected", "completed", "failed"]
@@ -127,17 +127,17 @@ type AckCode = Literal["busy", "unknown_stream", "no_session", "device_offline",
 
 
 class IncomingMessage(Protocol):
-    """Lo que usa el gateway de `aiomqtt.Message`."""
+    """What the gateway uses from `aiomqtt.Message`."""
 
     @property
-    def topic(self) -> object: ...  # aiomqtt.Topic; str(topic) da el topic
+    def topic(self) -> object: ...  # aiomqtt.Topic; str(topic) gives the topic
 
     @property
     def payload(self) -> bytes | bytearray | str | int | float | None: ...
 
 
 class MqttClient(MqttPublisher, Protocol):
-    """Lo que usa el gateway de `aiomqtt.Client`."""
+    """What the gateway uses from `aiomqtt.Client`."""
 
     def subscribe(self, topic: str, qos: int) -> Awaitable[object]: ...
 
@@ -146,7 +146,7 @@ class MqttClient(MqttPublisher, Protocol):
 
 
 def _encode(payload: dict[str, Any]) -> bytes:
-    """JSON compacto en UTF-8 (lo mismo que publicaría el sink MQTT)."""
+    """Compact JSON in UTF-8 (the same the MQTT sink would publish)."""
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
@@ -163,16 +163,16 @@ def _seconds_of_day(t: time) -> float:
 
 
 def _next_after(at: datetime, step: timedelta, now: datetime) -> datetime:
-    """Primer `at + n × step` (n >= 1) posterior a `now`."""
+    """First `at + n × step` (n >= 1) after `now`."""
     if at > now:
         return at
     return at + (math.floor((now - at) / step) + 1) * step
 
 
 def _pull_bus(iterator: Iterator[Envelope], until: datetime | None) -> list[Envelope]:
-    """(En un hilo.) Lee del iterador en vivo, sintetizando lo que haga falta, hasta el primer envelope del
-    bus posterior a `until` (incluido); con `until` None, uno solo; como mucho `_PULL_MAX`. El ground truth
-    (sin topic) se descarta: solo JSONL, nunca al bus."""
+    """(In a thread.) Reads from the live iterator, synthesizing whatever is needed, up to the first bus envelope
+    after `until` (included); with `until` None, just one; at most `_PULL_MAX`. Ground truth
+    (no topic) is discarded: JSONL only, never on the bus."""
     out: list[Envelope] = []
     while len(out) < _PULL_MAX:
         envelope = next(iterator)
@@ -185,11 +185,11 @@ def _pull_bus(iterator: Iterator[Envelope], until: datetime | None) -> list[Enve
 
 
 class _Source:
-    """Iterador en vivo (sesión o fondo) con los envelopes del bus ya leídos y aún sin publicar.
+    """Live iterator (session or background) with the bus envelopes already read and not yet published.
 
-    La lectura (que compromete seq en el dispositivo y puede sintetizar un bloque entero) corre en un hilo;
-    solo debe lanzarse con el `_lock` del gateway tomado. Un envelope sale del buffer (`take`) solo tras
-    publicarse.
+    The read (which commits seq on the device and may synthesize a whole block) runs in a thread;
+    it must only be launched with the gateway's `_lock` held. An envelope leaves the buffer (`take`) only after
+    being published.
     """
 
     def __init__(
@@ -197,30 +197,30 @@ class _Source:
     ) -> None:
         self._iterator = iterator
         self._buffer: deque[Envelope] = deque()
-        # Lectura en curso en un hilo; sobrevive a la cancelación de la tarea que la lanzó (ver `settle`).
+        # Read in progress in a thread; survives the cancellation of the task that launched it (see `settle`).
         self._pending: asyncio.Future[list[Envelope]] | None = None
         self.device = device
         self.session_id = session_id
         self.day = day
         self.streams = streams
-        self.chunk = chunk  # duración de chunk de esta fuente (sesión o fondo): marca el ritmo del bucle
-        self.boot_id: int | None = None  # arranque del último chunk leído
+        self.chunk = chunk  # chunk duration of this source (session or background): sets the loop's pace
+        self.boot_id: int | None = None  # boot of the last chunk read
 
     @property
     def buffered(self) -> bool:
         return bool(self._buffer)
 
     async def settle(self) -> None:
-        """Recoge una lectura que quedó en vuelo (tarea cancelada, p. ej. por una desconexión): al volver,
-        ningún hilo toca ya el dispositivo ni el iterador."""
+        """Collects a read left in flight (cancelled task, e.g. by a disconnection): on return,
+        no thread touches the device or the iterator any more."""
         pending = self._pending
         if pending is None:
             return
         try:
-            # shield: si cancelan esta tarea, el hilo sigue y su resultado se recoge en la próxima llamada.
+            # shield: if this task is cancelled, the thread continues and its result is collected on the next call.
             got = await asyncio.shield(pending)
         except asyncio.CancelledError:
-            if pending.cancelled():  # solo si el bucle se cierra: nada que recoger
+            if pending.cancelled():  # only if the loop is closing: nothing to collect
                 self._pending = None
             raise
         except BaseException:
@@ -232,7 +232,7 @@ class _Source:
             self.boot_id = int(got[-1].payload["boot_id"])
 
     async def peek(self, until: datetime | None = None) -> Envelope:
-        """El siguiente envelope del bus sin publicar; si no hay, lee (en un hilo) hasta pasar `until`."""
+        """The next unpublished bus envelope; if there is none, reads (in a thread) until past `until`."""
         await self.settle()
         while not self._buffer:
             self._pending = asyncio.ensure_future(asyncio.to_thread(_pull_bus, self._iterator, until))
@@ -240,21 +240,21 @@ class _Source:
         return self._buffer[0]
 
     def take(self) -> Envelope:
-        """Quita el primero (ya publicado)."""
+        """Removes the first one (already published)."""
         return self._buffer.popleft()
 
 
 @dataclass(slots=True)
 class _Session:
     session_id: str
-    command_id: str  # el del start_session, para su `completed`
+    command_id: str  # the start_session's, for its `completed`
     source: _Source
     deadline: datetime | None
 
 
 @dataclass(slots=True)
 class _Unit:
-    """Estado de un dispositivo (un astronauta)."""
+    """State of a device (one astronaut)."""
 
     member: CrewMember
     device: SimDevice
@@ -265,17 +265,17 @@ class _Unit:
     next_clock: datetime
     session: _Session | None = None
     background: _Source | None = None
-    # Último seq publicado por (boot_id, stream_id).
+    # Last seq published per (boot_id, stream_id).
     published: dict[tuple[int, str], int] = field(default_factory=dict)
-    # Lo que sale más tarde, en orden: calibraciones y el `completed` de un calibrate con duración.
+    # What goes out later, in order: calibrations and the `completed` of a calibrate with a duration.
     pending: list[tuple[datetime, Envelope]] = field(default_factory=list)
-    # command_id -> acks ya enviados (LRU acotada a `_HANDLED_MAX`), para responder igual a una reentrega.
+    # command_id -> acks already sent (LRU bounded to `_HANDLED_MAX`), to answer a redelivery the same way.
     handled: OrderedDict[str, list[Envelope]] = field(default_factory=OrderedDict)
-    # topic de calibración -> calibration_id retained ahí por esta conexión (se vacía al reconectar).
+    # calibration topic -> calibration_id retained there by this connection (cleared on reconnect).
     retained_calibrations: dict[str, str] = field(default_factory=dict)
-    # topic de calibración -> último calibration_id publicado en cualquier conexión (no se vacía al reconectar).
+    # calibration topic -> last calibration_id published on any connection (not cleared on reconnect).
     bus_calibrations: dict[str, str] = field(default_factory=dict)
-    unresolved_calibrations: set[str] = field(default_factory=set)  # ids sin calibración conocida (avisados ya)
+    unresolved_calibrations: set[str] = field(default_factory=set)  # ids without a known calibration (already warned)
 
     def sources(self) -> list[_Source]:
         return [s for s in (self.session.source if self.session is not None else None, self.background) if s is not None]
@@ -299,8 +299,8 @@ class FakeGateway:
         sleep: Callable[[float], Awaitable[object]] = asyncio.sleep,
         astronaut_ids: Sequence[str] | None = None,
     ) -> None:
-        """`clock` devuelve el instante UTC actual (aware); `sleep` espera esos segundos (tiempo virtual en
-        tests). `astronaut_ids` limita el gateway a esos astronautas (None = toda la tripulación)."""
+        """`clock` returns the current UTC instant (aware); `sleep` waits those seconds (virtual time in
+        tests). `astronaut_ids` limits the gateway to those astronauts (None = the whole crew)."""
         config = generator.config
         if not 0 <= settings.start_day < config.total_days:
             raise ValueError(f"start_day {settings.start_day} outside the mission (0..{config.total_days - 1})")
@@ -311,8 +311,8 @@ class FakeGateway:
         self._clock = clock
         self._sleep = sleep
         self._lock = asyncio.Lock()
-        self._wake = asyncio.Event()  # un comando procesado despierta al bucle (puede haber empezado una sesión)
-        # Cada fuente a su ritmo: las sesiones trocean en `signals.chunk_ms` y el fondo en el suyo.
+        self._wake = asyncio.Event()  # a processed command wakes the loop (a session may have started)
+        # Each source at its own pace: sessions are chunked at `signals.chunk_ms` and the background at its own.
         self._session_chunk = sess.chunk_delta(sess.chunk_ms_for(config, background=False))
         self._background_chunk = sess.chunk_delta(sess.chunk_ms_for(config, background=True))
         self._stream_ids = {s.stream_id for s in config.device.streams}
@@ -325,7 +325,7 @@ class FakeGateway:
         self._units = [self._boot(member, self._started_at) for member in members]
         self._by_cmd_topic = {topics.cmd(u.astronaut_id, u.device_id): u for u in self._units}
 
-    # --- tiempo -----------------------------------------------------------------------------------
+    # --- time -----------------------------------------------------------------------------------
 
     def _now(self) -> datetime:
         now = self._clock()
@@ -334,7 +334,7 @@ class FakeGateway:
         return now
 
     def mission_day(self, now: datetime) -> int:
-        """Índice de día de misión en `now`: avanza con el reloj de pared × speed, acotado a la misión."""
+        """Mission day index at `now`: advances with the wall clock × speed, bounded to the mission."""
         elapsed = max(0.0, (now - self._started_at).total_seconds())
         day = self._start_day + math.floor(elapsed * self._speed / _DAY_S)
         return min(day, self._config.total_days - 1)
@@ -343,7 +343,7 @@ class FakeGateway:
     def command_topics(self) -> list[str]:
         return list(self._by_cmd_topic)
 
-    # --- dispositivo ------------------------------------------------------------------------------
+    # --- device ------------------------------------------------------------------------------
 
     def _boot(self, member: CrewMember, now: datetime) -> _Unit:
         seed = self._generator.seed
@@ -365,16 +365,16 @@ class FakeGateway:
         return DeviceStatus.model_validate(payload)
 
     def last_will(self, astronaut_id: str) -> aiomqtt.Will:
-        """Last Will del dispositivo: DeviceStatus `offline` retained, QoS 1 (con la hora de la conexión)."""
+        """The device's Last Will: retained `offline` DeviceStatus, QoS 1 (with the connection time)."""
         member = self._config.member(astronaut_id)
         status = self._offline_status(member, self._now())
         return aiomqtt.Will(topic=topics.status(member.astronaut_id, member.device_id), payload=_encode(dump(status)), qos=QOS, retain=True)
 
-    # --- publicación ------------------------------------------------------------------------------
+    # --- publishing ------------------------------------------------------------------------------
 
     async def _publish(self, client: MqttPublisher, envelope: Envelope) -> None:
-        # Todo lo de MQTT_KINDS lleva topic (chunks, estado, anclaje, acks y calibraciones, estas retained);
-        # el ground truth no llega aquí: `_pull_bus` lo descarta.
+        # Everything in MQTT_KINDS has a topic (chunks, status, anchor, acks and calibrations, the latter retained);
+        # ground truth does not get here: `_pull_bus` discards it.
         assert envelope.topic is not None, f"{envelope.kind} is not published on the bus"
         await client.publish(envelope.topic, payload=_encode(envelope.payload), qos=QOS, retain=envelope.retained)
 
@@ -386,15 +386,15 @@ class FakeGateway:
         unit.published[key] = max(unit.published.get(key, -1), int(envelope.payload["seq"]))
 
     async def _ensure_calibration(self, client: MqttPublisher, unit: _Unit, chunk: Envelope) -> None:
-        """Deja retained en el bus la calibración que cita un chunk antes de publicarlo, sin que la retained de
-        su stream vuelva nunca a una anterior."""
+        """Leaves retained on the bus the calibration a chunk cites before publishing it, without its stream's
+        retained ever going back to an earlier one."""
         calibration_id = str(chunk.payload["calibration_id"])
         stream_id = str(chunk.payload["stream_id"])
         day = self.mission_day(chunk.at) if chunk.day is None else chunk.day
         record = self._generator.calibration_in_force(unit.astronaut_id, stream_id, day)
         if record is None or record.calibration_id != calibration_id:
-            # Chunk de un bloque sintetizado antes de un `calibrate`: cita la anterior. Solo se (re)publica si
-            # en el bus no ha salido otra después para ese stream (p. ej. el calibrate aún no ha acabado).
+            # Chunk of a block synthesized before a `calibrate`: it cites the previous one. It is only (re)published if
+            # no other one has come out on the bus afterwards for that stream (e.g. the calibrate has not finished yet).
             topic = topics.calibration(unit.astronaut_id, unit.device_id, stream_id)
             if unit.bus_calibrations.get(topic, calibration_id) != calibration_id:
                 return
@@ -407,14 +407,14 @@ class FakeGateway:
         await self._publish_calibration(client, unit, calibration_envelope(unit.astronaut_id, unit.device_id, record, record.created_at))
 
     def _still_in_force(self, unit: _Unit, envelope: Envelope) -> bool:
-        """La calibración del sobre sigue siendo la vigente de su stream (ningún `calibrate` posterior la sustituyó)."""
+        """The envelope's calibration is still the one in force for its stream (no later `calibrate` replaced it)."""
         payload = envelope.payload
         day = self.mission_day(envelope.at) if envelope.day is None else envelope.day
         record = self._generator.calibration_in_force(unit.astronaut_id, str(payload["stream_id"]), day)
         return record is not None and record.calibration_id == payload["calibration_id"]
 
     async def _publish_calibration(self, client: MqttPublisher, unit: _Unit, envelope: Envelope) -> None:
-        """Publica una calibración (retained) salvo que ya sea la retained de su topic en esta conexión."""
+        """Publishes a calibration (retained) unless it is already the retained one on its topic on this connection."""
         assert envelope.kind is EnvelopeKind.CALIBRATION and envelope.retained and envelope.topic is not None
         calibration_id = str(envelope.payload["calibration_id"])
         if unit.retained_calibrations.get(envelope.topic) == calibration_id:
@@ -427,15 +427,15 @@ class FakeGateway:
         return Envelope.of(kind, model, at=at, astronaut_id=unit.astronaut_id, day=self.mission_day(at), topic=topic, retained=retained)
 
     def _published_seqs(self, unit: _Unit, at: datetime) -> dict[str, int]:
-        """stream_id -> último seq publicado en el arranque en curso en `at` (para `last_seq`)."""
+        """stream_id -> last seq published in the boot in progress at `at` (for `last_seq`)."""
         epoch = unit.device.plan.epoch_at(at)
         if epoch is None:
             return {}
         return {stream_id: seq for (boot_id, stream_id), seq in unit.published.items() if boot_id == epoch.boot_id}
 
     async def _publish_status(self, client: MqttPublisher, unit: _Unit, now: datetime) -> None:
-        # Lo comprometido en el dispositivo va por delante de lo publicado (lecturas de anticipo): el estado
-        # declara solo lo que ya está en el bus.
+        # What is committed on the device is ahead of what is published (look-ahead reads): the status
+        # declares only what is already on the bus.
         status = unit.device.status(unit.status_rng, now, published=self._published_seqs(unit, now))
         await self._publish(
             client, self._envelope(EnvelopeKind.DEVICE_STATUS, status, unit, now, topics.status(unit.astronaut_id, unit.device_id), retained=True)
@@ -443,7 +443,7 @@ class FakeGateway:
 
     async def _publish_clock(self, client: MqttPublisher, unit: _Unit, now: datetime) -> None:
         sync = unit.device.clock_sync(unit.clock_rng, now)
-        if sync is not None:  # reiniciando: no hay reloj que anclar
+        if sync is not None:  # rebooting: there is no clock to anchor
             await self._publish(
                 client, self._envelope(EnvelopeKind.CLOCK_SYNC, sync, unit, now, topics.clock(unit.astronaut_id, unit.device_id), retained=True)
             )
@@ -470,7 +470,7 @@ class FakeGateway:
         return self._envelope(EnvelopeKind.COMMAND_ACK, CommandAck.model_validate(body), unit, at, topics.ack(unit.astronaut_id, unit.device_id))
 
     async def _publish_ack(self, client: MqttPublisher, unit: _Unit, envelope: Envelope) -> None:
-        """Publica un ack y lo anota (si su comando sigue en la LRU) para poder reenviarlo ante una reentrega."""
+        """Publishes an ack and records it (if its command is still in the LRU) so it can be resent on a redelivery."""
         await self._publish(client, envelope)
         sent = unit.handled.get(str(envelope.payload["command_id"]))
         if sent is not None:
@@ -479,24 +479,24 @@ class FakeGateway:
     async def _reply(self, client: MqttPublisher, unit: _Unit, command_id: str, status: AckStatus, at: datetime, **kw: Any) -> None:
         await self._publish_ack(client, unit, self._ack(unit, command_id, status, at, **kw))
 
-    # --- fuentes de chunks ------------------------------------------------------------------------
+    # --- chunk sources ------------------------------------------------------------------------
 
     async def _drain(self, client: MqttPublisher, unit: _Unit, source: _Source, until: datetime) -> datetime:
-        """Publica los chunks con `received_at` <= `until`; devuelve cuándo toca el siguiente."""
+        """Publishes the chunks with `received_at` <= `until`; returns when the next one is due."""
         while True:
             envelope = await source.peek(until)
             if envelope.at > until:
                 return envelope.at
             await self._publish_chunk(client, unit, envelope)
-            source.take()  # solo tras publicarse: si falla, se reintenta en la conexión siguiente
+            source.take()  # only after publishing: if it fails, it is retried on the next connection
 
     async def _flush(self, client: MqttPublisher, unit: _Unit, source: _Source) -> datetime | None:
-        """Publica lo que el dispositivo ya comprometió en `source` (ver docstring del módulo). Devuelve el
-        último `received_at` publicado (None si nada)."""
+        """Publishes what the device already committed in `source` (see the module docstring). Returns the
+        last `received_at` published (None if nothing)."""
         last: datetime | None = None
         pulls = 0
-        # Una pérdida justo en el corte obliga a leer un chunk más de ese stream; el tope solo protege
-        # de un bucle si algo no cuadra.
+        # A loss right at the cut forces reading one more chunk of that stream; the cap only protects
+        # against a loop if something does not add up.
         max_pulls = 4 * len(source.streams)
         while True:
             await source.settle()
@@ -514,7 +514,7 @@ class FakeGateway:
             if pulls >= max_pulls:
                 _log.warning("%s: flush of session %s stopped after %d chunks", unit.astronaut_id, source.session_id, pulls)
                 break
-            await source.peek()  # lee uno más (en un hilo)
+            await source.peek()  # reads one more (in a thread)
             pulls += 1
         return last
 
@@ -532,17 +532,17 @@ class FakeGateway:
         )
 
     async def _stop_background(self, client: MqttPublisher, unit: _Unit, now: datetime) -> datetime:
-        """Pausa el fondo; devuelve desde cuándo puede empezar la siguiente fuente."""
+        """Pauses the background; returns from when the next source can start."""
         source = unit.background
         if source is None:
             return now
-        # Primero vaciar y luego soltar: si el broker se cae a medias, el fondo sigue y se vacía después.
+        # Flush first and then release: if the broker goes down midway, the background stays and is flushed later.
         last = await self._flush(client, unit, source)
         unit.background = None
         return now if last is None else max(now, last)
 
     def _session_streams(self, command: StartSessionCommand) -> tuple[str, ...]:
-        """Los streams que usará `live_session` (misma regla)."""
+        """The streams `live_session` will use (same rule)."""
         if command.stream_ids:
             return tuple(command.stream_ids)
         protocol = self._config.protocols.get(command.protocol_id)
@@ -551,20 +551,20 @@ class FakeGateway:
         return tuple(s.stream_id for s in self._config.device.streams)
 
     async def _end_session(self, client: MqttPublisher, unit: _Unit, now: datetime) -> None:
-        """Acaba la sesión en curso: vacía, `completed` del start_session y reanuda el fondo."""
+        """Ends the current session: flushes, `completed` of the start_session and resumes the background."""
         session = unit.session
         assert session is not None
-        # Vaciar antes de soltar la sesión (ver `_stop_background`); el `completed` al final: si no sale,
-        # el estado ya es coherente (fondo en marcha) y solo se pierde ese ack.
+        # Flush before releasing the session (see `_stop_background`); the `completed` last: if it does not go out,
+        # the state is already consistent (background running) and only that ack is lost.
         last = await self._flush(client, unit, session.source)
         unit.session = None
         self._start_background(unit, now if last is None else max(now, last), self.mission_day(now))
         await self._reply(client, unit, session.command_id, "completed", now)
 
-    # --- comandos ---------------------------------------------------------------------------------
+    # --- commands ---------------------------------------------------------------------------------
 
     async def handle(self, client: MqttClient, topic: str, payload: bytes) -> None:
-        """Procesa un comando recibido en un topic `.../cmd`. Nunca lanza por un comando malo."""
+        """Processes a command received on a `.../cmd` topic. Never raises because of a bad command."""
         try:
             await self._handle(client, topic, payload)
         finally:
@@ -582,7 +582,7 @@ class FakeGateway:
             if not oversized:
                 try:
                     data = json.loads(payload)
-                except (ValueError, RecursionError):  # ValueError cubre UnicodeDecodeError y JSONDecodeError
+                except (ValueError, RecursionError):  # ValueError covers UnicodeDecodeError and JSONDecodeError
                     data = None
             command_id = data.get("command_id") if isinstance(data, dict) else None
             if oversized:
@@ -593,7 +593,7 @@ class FakeGateway:
                 return
             now = self._now()
             previous = unit.handled.get(command_id)
-            if previous:  # reentrega (DUP): mismos acks, sin volver a ejecutar
+            if previous:  # redelivery (DUP): same acks, without running again
                 unit.handled.move_to_end(command_id)
                 _log.info("%s: command %s redelivered, resending its %d acks", unit.astronaut_id, command_id, len(previous))
                 try:
@@ -611,11 +611,11 @@ class FakeGateway:
                     await self._reply(client, unit, command_id, "rejected", now, code="invalid_command", message=message)
                 else:
                     await self._dispatch(client, unit, command_id, data, now)
-            except Exception:  # noqa: BLE001  (un comando nunca tumba el gateway)
+            except Exception:  # noqa: BLE001  (a command never brings the gateway down)
                 _log.exception("%s: command %s failed", unit.astronaut_id, command_id)
                 with contextlib.suppress(Exception):
                     await self._reply(client, unit, command_id, "failed", now, code="internal", message="internal gateway error")
-            if not unit.handled.get(command_id, True):  # no llegó a salir ningún ack: una reentrega se ejecuta de nuevo
+            if not unit.handled.get(command_id, True):  # no ack went out: a redelivery runs again
                 del unit.handled[command_id]
 
     async def _dispatch(self, client: MqttPublisher, unit: _Unit, command_id: str, data: Any, now: datetime) -> None:
@@ -628,7 +628,7 @@ class FakeGateway:
             message = f"command for {command.astronaut_id}/{command.device_id} received on the topic of {unit.astronaut_id}/{unit.device_id}"
             await self._reply(client, unit, command_id, "rejected", now, code="invalid_command", message=message)
             return
-        # `not <= tope` también rechaza NaN/inf (json.loads acepta 1e999); se valida antes de tocar estado.
+        # `not <= cap` also rejects NaN/inf (json.loads accepts 1e999); validated before touching state.
         duration = command.max_duration_s if isinstance(command, StartSessionCommand) else command.duration_s if isinstance(command, CalibrateCommand) else None
         if duration is not None and not duration <= _DURATION_MAX_S:
             message = f"duration exceeds the {_DURATION_MAX_S} s limit of this gateway"
@@ -659,8 +659,8 @@ class FakeGateway:
         if unit.device.plan.epoch_at(now) is None:
             await self._reply(client, unit, cid, "rejected", now, code="device_offline", message="the device is rebooting")
             return
-        # `accepted` primero: si publicarlo falla no se ha tocado nada (ni sesión ni fondo) y el estado
-        # sigue coherente con el `failed` que verá el cliente.
+        # `accepted` first: if publishing it fails nothing has been touched (neither session nor background) and the state
+        # stays consistent with the `failed` the client will see.
         await self._reply(client, unit, cid, "accepted", now)
         start = await self._stop_background(client, unit, now)
         iterator = self._generator.live_session(
@@ -676,7 +676,7 @@ class FakeGateway:
         unit.session = _Session(command.session_id, cid, source, deadline)
         try:
             await self._publish_clock(client, unit, now)
-        except Exception:  # noqa: BLE001  (la sesión ya está aceptada y en marcha; el ClockSync periódico lo repone)
+        except Exception:  # noqa: BLE001  (the session is already accepted and running; the periodic ClockSync restores it)
             _log.warning("%s: could not publish the ClockSync at session start", unit.astronaut_id, exc_info=True)
 
     async def _stop_session(self, client: MqttPublisher, unit: _Unit, command: StopSessionCommand, now: datetime) -> None:
@@ -715,11 +715,11 @@ class FakeGateway:
         except ValueError as error:
             await self._reply(client, unit, cid, "rejected", now, code="invalid_command", message=str(error))
             return
-        # El generador ya las da por vigentes (`calibration_in_force`): el siguiente bloque de la sesión o del
-        # fondo las cita, aunque sea antes de `done`, y `_ensure_calibration` las publica antes de su primer chunk.
+        # The generator already treats them as in force (`calibration_in_force`): the next block of the session or
+        # background cites them, even before `done`, and `_ensure_calibration` publishes them before their first chunk.
         await self._reply(client, unit, cid, "accepted", now)
         completed = self._ack(unit, cid, "completed", done, calibration_id=calibrations[0].payload["calibration_id"])
-        # Las calibraciones (retained) antes del `completed`: quien lea el ack ya puede resolver su id.
+        # The (retained) calibrations before the `completed`: whoever reads the ack can already resolve its id.
         if done <= now:
             for calibration in calibrations:
                 await self._publish_calibration(client, unit, calibration)
@@ -728,28 +728,28 @@ class FakeGateway:
             unit.pending += [(done, calibration) for calibration in calibrations]
             unit.pending.append((done, completed))
 
-    # --- bucle ------------------------------------------------------------------------------------
+    # --- loop ------------------------------------------------------------------------------------
 
     async def tick(self, client: MqttPublisher) -> datetime:
-        """Publica todo lo que toca hasta ahora (chunks, acks diferidos, ClockSync, DeviceStatus) y
-        devuelve el instante de lo siguiente."""
+        """Publishes everything due up to now (chunks, deferred acks, ClockSync, DeviceStatus) and
+        returns the instant of the next thing."""
         async with self._lock:
             now = self._now()
             return min([await self._tick_unit(client, unit, now) for unit in self._units])
 
     async def _settle(self, unit: _Unit) -> None:
-        """Recoge lecturas que una cancelación dejó en vuelo: después ningún hilo toca este dispositivo."""
+        """Collects reads that a cancellation left in flight: afterwards no thread touches this device."""
         for source in unit.sources():
             await source.settle()
 
     async def _tick_unit(self, client: MqttPublisher, unit: _Unit, now: datetime) -> datetime:
         await self._settle(unit)
         due: list[datetime] = []
-        # sorted es estable: calibraciones antes que su `completed`. Cada una sale de `pending` al publicarse.
+        # sorted is stable: calibrations before their `completed`. Each one leaves `pending` when published.
         for item in sorted((p for p in unit.pending if p[0] <= now), key=lambda p: p[0]):
             envelope = item[1]
             if envelope.kind is EnvelopeKind.CALIBRATION:
-                if self._still_in_force(unit, envelope):  # otro `calibrate` posterior del stream ya la sustituyó: no se publica
+                if self._still_in_force(unit, envelope):  # a later `calibrate` of the stream already replaced it: not published
                     await self._publish_calibration(client, unit, envelope)
             else:
                 await self._publish_ack(client, unit, envelope)
@@ -780,7 +780,7 @@ class FakeGateway:
         return min(due)
 
     async def _idle_upkeep(self, client: MqttPublisher, unit: _Unit, now: datetime) -> None:
-        """Sin sesión: recarga el dispositivo si agotó su plan y mantiene el fondo en el día de misión actual."""
+        """No session: recharges the device if it exhausted its plan and keeps the background on the current mission day."""
         start = now
         if now >= unit.device_until:
             start = await self._stop_background(client, unit, now)
@@ -800,8 +800,8 @@ class FakeGateway:
             await self.handle(client, str(message.topic), _as_bytes(message.payload))
 
     def _step(self) -> float:
-        """Espera máxima del bucle (s): un chunk de la fuente activa más corta (la sesión de cada dispositivo
-        o, sin ella, su fondo; sin ninguna, un chunk de sesión)."""
+        """Maximum loop wait (s): one chunk of the shortest active source (each device's session
+        or, without one, its background; with neither, a session chunk)."""
         chunks = [
             unit.session.source.chunk if unit.session is not None else unit.background.chunk if unit.background is not None else self._session_chunk
             for unit in self._units
@@ -809,7 +809,7 @@ class FakeGateway:
         return min(chunks).total_seconds()
 
     async def _wait(self, seconds: float) -> None:
-        """Espera `seconds` con `sleep` (inyectable) o hasta que un comando despierte al bucle (`_wake`)."""
+        """Waits `seconds` with `sleep` (injectable) or until a command wakes the loop (`_wake`)."""
         if not self._wake.is_set():
             sleeper = asyncio.ensure_future(self._sleep(seconds))
             waker = asyncio.ensure_future(self._wake.wait())
@@ -822,14 +822,14 @@ class FakeGateway:
         self._wake.clear()
 
     async def _pump(self, client: MqttPublisher) -> None:
-        # Como mucho un chunk de la fuente activa de espera, y un comando la corta: una sesión que empieza
-        # mientras el fondo (chunks más largos) duerme publica enseguida.
+        # At most one chunk of the active source of waiting, and a command cuts it short: a session that starts
+        # while the background (longer chunks) sleeps publishes right away.
         while True:
             due = await self.tick(client)
             await self._wait(min(self._step(), max(0.0, (due - self._now()).total_seconds())))
 
     async def _shutdown(self, client: MqttPublisher) -> None:
-        """Parada limpia: DeviceStatus `offline` retained (el Last Will solo salta si la conexión se pierde)."""
+        """Clean stop: retained `offline` DeviceStatus (the Last Will only fires if the connection is lost)."""
         now = self._now()
         for unit in self._units:
             status = self._offline_status(unit.member, now, battery_pct=unit.device.battery_pct(now))
@@ -837,13 +837,13 @@ class FakeGateway:
                 await self._publish(
                     client, self._envelope(EnvelopeKind.DEVICE_STATUS, status, unit, now, topics.status(unit.astronaut_id, unit.device_id), retained=True)
                 )
-            except Exception:  # noqa: BLE001  (el broker puede haberse ido ya)
+            except Exception:  # noqa: BLE001  (the broker may already be gone)
                 _log.warning("%s: could not publish the offline status on shutdown", unit.astronaut_id, exc_info=True)
 
     async def _announce(self, client: MqttPublisher) -> None:
-        """Conexión nueva (también tras reconectar): anclaje y estado antes que nada (el Last Will pudo dejar
-        `offline`) y las calibraciones se vuelven a publicar antes de su siguiente chunk (el broker pudo
-        perder sus retained). Sesión, fondo y seq siguen como estaban."""
+        """New connection (also after reconnecting): anchor and status first of all (the Last Will may have left
+        `offline`) and the calibrations are republished before their next chunk (the broker may have
+        lost its retained ones). Session, background and seq stay as they were."""
         async with self._lock:
             now = self._now()
             for unit in self._units:
@@ -855,10 +855,10 @@ class FakeGateway:
                 unit.next_status = now + self._status_every
 
     async def run(self, client: MqttClient) -> None:
-        """Una conexión: suscribe a `.../cmd`, publica estado inicial y atiende comandos y streaming.
+        """One connection: subscribes to `.../cmd`, publishes the initial status and serves commands and streaming.
 
-        Lanza MqttError si la conexión se pierde (el gateway queda listo para otra `run` con un cliente
-        nuevo, ver `_serve`). Si se cancela (SIGTERM) o falla por otra cosa, publica antes el `offline`.
+        Raises MqttError if the connection is lost (the gateway is left ready for another `run` with a new
+        client, see `_serve`). If it is cancelled (SIGTERM) or fails for another reason, it first publishes `offline`.
         """
         try:
             for topic in self._by_cmd_topic:
@@ -868,8 +868,8 @@ class FakeGateway:
             try:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             finally:
-                # Las dos paradas antes de seguir: ni un chunk ni un estado `ok` después del `offline`. Si el
-                # bombeo se corta a media lectura, `_Source.settle` la recoge en la conexión siguiente.
+                # Both stops before continuing: neither a chunk nor an `ok` status after the `offline`. If the
+                # pump is cut mid-read, `_Source.settle` collects it on the next connection.
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -877,7 +877,7 @@ class FakeGateway:
                 task.result()
             raise aiomqtt.MqttError("the message stream ended")
         except aiomqtt.MqttError:
-            raise  # conexión perdida: el Last Will ya avisa y no hay por dónde publicar
+            raise  # connection lost: the Last Will already notifies and there is nothing to publish through
         except BaseException:
             await self._shutdown(client)
             raise
@@ -898,8 +898,8 @@ async def _serve(
     clock: Callable[[], datetime],
     sleep: Callable[[float], Awaitable[object]] = asyncio.sleep,
 ) -> None:
-    """Una conexión MQTT por dispositivo (cada una con su Last Will) y un `FakeGateway` por dispositivo, que
-    sobrevive a las reconexiones (`_connection`). `sleep` también marca las esperas del backoff."""
+    """One MQTT connection per device (each with its Last Will) and one `FakeGateway` per device, which
+    survives reconnections (`_connection`). `sleep` also times the backoff waits."""
     config: MissionConfig = generator.config
     _log.info(
         "gateway for %s on %s:%d (day %d, speed %s)",
@@ -929,9 +929,9 @@ async def _connection(
     client_factory: ClientFactory,
     sleep: Callable[[float], Awaitable[object]],
 ) -> None:
-    """Conecta (con el Last Will de esta conexión) y ejecuta `gateway.run`; si el broker rechaza la conexión
-    o la corta (MqttError), espera con backoff exponencial (`mqtt_reconnect_*`, de vuelta a la inicial tras
-    conectar) y lo intenta de nuevo sobre el mismo gateway. Solo acaba al cancelarse (o por otro error)."""
+    """Connects (with this connection's Last Will) and runs `gateway.run`; if the broker rejects the connection
+    or drops it (MqttError), waits with exponential backoff (`mqtt_reconnect_*`, back to the initial one after
+    connecting) and tries again on the same gateway. It only ends when cancelled (or on another error)."""
     identifier = f"{settings.mqtt_client_id}-{member.device_id}"
     username = settings.mqtt_username.replace("{device_id}", member.device_id) if settings.mqtt_username is not None else None
     password = settings.mqtt_password.get_secret_value() if settings.mqtt_password is not None else None
@@ -958,12 +958,12 @@ async def _connection(
 
 
 async def serve(settings: GatewaySettings) -> None:
-    """Carga el YAML, conecta con aiomqtt (Last Will offline, reconexión con backoff) y ejecuta
-    `FakeGateway.run`. SIGTERM (Docker) para limpiamente, como Ctrl+C, también mientras espera para reconectar."""
+    """Loads the YAML, connects with aiomqtt (offline Last Will, reconnection with backoff) and runs
+    `FakeGateway.run`. SIGTERM (Docker) stops cleanly, like Ctrl+C, also while waiting to reconnect."""
     generator = MissionGenerator(load_config(settings.config), settings.seed)
     task = asyncio.create_task(_serve(generator, settings, client_factory=aiomqtt.Client, clock=_utc_now))
     loop = asyncio.get_running_loop()
-    with contextlib.suppress(NotImplementedError, RuntimeError, AttributeError):  # Windows no tiene SIGTERM en el bucle
+    with contextlib.suppress(NotImplementedError, RuntimeError, AttributeError):  # Windows has no SIGTERM in the loop
         loop.add_signal_handler(signal.SIGTERM, task.cancel)
     try:
         await task

@@ -1,8 +1,8 @@
-"""Familia ``stretch`` (#45): elongación del cordón, pico y rango por repetición, recuperación y resistencia de reposo.
+"""``stretch`` family (#45): cord elongation, peak and range per repetition, recovery and rest resistance.
 
-Rejilla de tiempo: 10 Hz (una muestra cada 100 ms) desde ``T0``; la muestra ``i`` cae en ``T0 + 100 ms·i``.
-Curva de los tests: (1000 Ω, 100 mm) y (2000 Ω, 200 mm) con reposo de 100 mm, así que la elongación en mm es
-``(R − 1000) / 10`` y ``R = 1000 + 10·e``. Las repeticiones se fijan con un ``FakeService`` (frontera).
+Time grid: 10 Hz (one sample every 100 ms) from ``T0``; sample ``i`` falls at ``T0 + 100 ms·i``.
+Test curve: (1000 Ω, 100 mm) and (2000 Ω, 200 mm) with a rest of 100 mm, so the elongation in mm is
+``(R − 1000) / 10`` and ``R = 1000 + 10·e``. Repetitions are fixed with a ``FakeService`` (boundary).
 """
 
 import dataclasses
@@ -24,7 +24,7 @@ from spine_engine.features.repetitions import RepetitionService, RepWindow, RepW
 from spine_engine.features.stretch import StretchFamily
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "features-request.json"
-T0 = datetime(2026, 11, 13, 10, 3, 0, 100000, tzinfo=UTC)  # UTC de la ancla de reloj del ejemplo (device 180000 ms)
+T0 = datetime(2026, 11, 13, 10, 3, 0, 100000, tzinfo=UTC)  # UTC of the example's clock anchor (device 180000 ms)
 ANCHOR_DEVICE_MS = 180_000
 BOOT = 2893746120
 RATE_HZ = 10.0
@@ -47,12 +47,12 @@ def at(samples: int) -> datetime:
 
 
 def window(index: int, start: int, end: int, rest_end: int | None) -> RepWindow:
-    """Repetición con la activa [start, end) y el reposo [end, rest_end), en muestras de la rejilla."""
+    """Repetition with active [start, end) and rest [end, rest_end), in grid samples."""
     return RepWindow(index, at(start), at(end), at(end) if rest_end is not None else None, at(rest_end) if rest_end is not None else None)
 
 
 class FakeService(RepetitionService):
-    """Frontera: devuelve unas ventanas fijas, sin mirar el contexto."""
+    """Boundary: returns fixed windows, ignoring the context."""
 
     def __init__(self, windows: tuple[RepWindow, ...]) -> None:
         super().__init__()
@@ -63,7 +63,7 @@ class FakeService(RepetitionService):
 
 
 def ohm(elongations: list[float]) -> list[float]:
-    """Resistencias que dan esas elongaciones (mm) con la curva de los tests."""
+    """Resistances that give those elongations (mm) with the test curve."""
     return [1000.0 + 10.0 * e for e in elongations]
 
 
@@ -150,7 +150,7 @@ def make_context(
     session_calibration_id: str | None = CAL_ID,
     chunk_calibration_id: str | None = None,
 ) -> ExtractionContext:
-    """Contexto con un único stream stretch declarado (``region``), sus chunks y calibraciones."""
+    """Context with a single declared stretch stream (``region``), its chunks and calibrations."""
     payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
     declared = {"stream_id": STREAM, "stream_kind": "stretch", "placement": {"spine_region": region}, "sample_rate_hz": RATE_HZ}
     payload["session"]["streams"] = [{**declared, "calibration_id": session_calibration_id}]
@@ -198,7 +198,7 @@ def test_posture_resistance_without_samples_is_skipped():
     assert skipped(family_for().extract(context))[fid("straight_resistance_ohm")] is Reason.NO_DATA
 
 
-# --- sin repeticiones: lo pasivo -----------------------------------------------------------------------------
+# --- without repetitions: the passive part -----------------------------------------------------------------------------
 
 
 def test_the_family_declares_every_concrete_catalog_id_of_the_stretch_features():
@@ -212,7 +212,7 @@ def test_the_family_declares_every_concrete_catalog_id_of_the_stretch_features()
 
 
 def test_without_repetitions_the_passive_features_are_the_means_over_all_samples():
-    # elongaciones 2 y 4 mm a partes iguales: media 3 mm = 3 % de 100 mm; R media 1030 Ω
+    # elongations 2 and 4 mm in equal parts: mean 3 mm = 3 % of 100 mm; mean R 1030 Ω
     context = make_context(ohm([2.0] * 10 + [4.0] * 10))
 
     result = family_for().extract(context)
@@ -228,11 +228,11 @@ def test_without_repetitions_the_passive_features_are_the_means_over_all_samples
     assert skipped(result) == dict.fromkeys((fid(n) for n in PER_REP), Reason.TOO_FEW_REPETITIONS)
 
 
-# --- de las cuentas ADC a la resistencia ---------------------------------------------------------------------
+# --- from ADC counts to resistance ---------------------------------------------------------------------
 
 CIRCUIT = {"adc_bits": 10, "vref_v": 3.3, "series_resistor_ohm": 1000.0}
-# 10 bits (full 1023) y Rs 1000 Ω: 341 cuentas -> 500 Ω, 682 -> 2000 Ω; con la curva (500, 100) (2000, 250) y
-# reposo 100 mm, 500 Ω es elongación 0 y 2000 Ω, 150 mm.
+# 10 bits (full 1023) and Rs 1000 Ω: 341 counts -> 500 Ω, 682 -> 2000 Ω; with the curve (500, 100) (2000, 250) and
+# rest 100 mm, 500 Ω is elongation 0 and 2000 Ω, 150 mm.
 ADC_CURVE = [(500.0, 100.0), (2000.0, 250.0)]
 
 
@@ -257,7 +257,7 @@ def test_the_adc_counts_win_over_a_derived_resistance_in_the_same_chunk():
 
 
 def test_saturated_or_zero_adc_counts_are_discarded():
-    # 0 y 1023 (= 2^10 − 1) no son invertibles: salen NaN y no cuentan
+    # 0 and 1023 (= 2^10 − 1) are not invertible: they come out NaN and do not count
     context = make_context(counts=[0, 1023] + [341] * 4 + [682] * 4, circuit=CIRCUIT, calibrations=[calibration(points=ADC_CURVE)])
 
     result = family_for().extract(context)
@@ -287,7 +287,7 @@ def test_without_circuit_nor_resistance_everything_is_skipped_as_no_data():
 
 
 def test_only_the_chunks_with_a_resistance_source_contribute():
-    # primer chunk sin circuito ni resistencia; el segundo con resistencia derivada de 5 mm
+    # first chunk without circuit or resistance; the second with a resistance derived from 5 mm
     context = make_context(counts=[341] * 20)
     payload = context.request.model_dump(mode="json")
     payload["chunks"][1]["data"]["resistance_ohm"] = ohm([5.0] * 10)
@@ -309,7 +309,7 @@ def test_nan_derived_resistances_are_discarded():
     assert computed(result)[fid("elongation_mm")].n == 9
 
 
-# --- calibración, stream ausente y región --------------------------------------------------------------------
+# --- calibration, missing stream and region --------------------------------------------------------------------
 
 PASSIVE_SIGNAL = ohm([2.0] * 10 + [4.0] * 10)
 
@@ -346,7 +346,7 @@ def test_a_curve_with_repeated_resistances_is_unusable_and_skipped_as_no_calibra
 
 
 def test_the_calibration_id_of_the_chunk_wins_over_the_one_of_the_session():
-    # la sesión apunta a una curva que daría 2·e; el chunk, a la de los tests
+    # the session points to a curve that would give 2·e; the chunk, to the tests' one
     calibrations = [calibration(), calibration(calibration_id=OTHER_CAL_ID, points=[(1000.0, 100.0), (2000.0, 300.0)])]
     context = make_context(PASSIVE_SIGNAL, calibrations, session_calibration_id=OTHER_CAL_ID, chunk_calibration_id=CAL_ID)
 
@@ -368,7 +368,7 @@ def test_a_resolved_calibration_that_is_not_a_stretch_one_counts_as_no_calibrati
 
 
 def test_a_declared_stream_without_chunks_is_skipped_as_stream_missing():
-    # el ejemplo con sus chunks de EMG e IMU pero sin los del cordón lumbar declarado
+    # the example with its EMG and IMU chunks but without those of the declared lumbar cord
     payload = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
     payload["chunks"] = [c for c in payload["chunks"] if c["stream_kind"] != "stretch"]
 
@@ -394,7 +394,7 @@ def test_the_output_order_follows_the_catalog():
 
 
 def test_non_stretch_streams_are_ignored():
-    # el ejemplo declara también EMG e IMU: solo el cordón lumbar da features de esta familia
+    # the example also declares EMG and IMU: only the lumbar cord gives features of this family
     context = build_context(FeaturesRequest.model_validate(json.loads(_EXAMPLE.read_text(encoding="utf-8"))))
 
     result = family_for().extract(context)
@@ -411,16 +411,16 @@ def test_no_declared_stretch_stream_gives_an_empty_result():
     assert result == FamilyResult()
 
 
-# --- por repetición: pico y rango ----------------------------------------------------------------------------
+# --- per repetition: peak and range ----------------------------------------------------------------------------
 
-# rep 1: activa [0,10) con 2 y 8 mm, reposo [10,30) que baja a 0,5 mm en la muestra 12 y a 0 después;
-# rep 2: activa [30,40) con 1 y 10 mm, reposo [40,60) que baja a 0,9 mm en la 44; cola pasiva [60,70) a 3 mm.
+# rep 1: active [0,10) with 2 and 8 mm, rest [10,30) that drops to 0.5 mm at sample 12 and to 0 afterwards;
+# rep 2: active [30,40) with 1 and 10 mm, rest [40,60) that drops to 0.9 mm at 44; passive tail [60,70) at 3 mm.
 REP1 = [2.0] * 5 + [8.0] * 5 + [4.0, 4.0, 0.5] + [0.0] * 17
 REP2 = [1.0] * 5 + [10.0] * 5 + [5.0] * 4 + [0.9] + [0.0] * 15
 TAIL = [3.0] * 10
 TWO_REPS = (window(1, 0, 10, 30), window(2, 30, 40, 60))
 TWO_REP_SIGNAL = ohm(REP1 + REP2 + TAIL)
-# rep 3: activa [70,80) con 0 y 6 mm, sin reposo ni muestras después
+# rep 3: active [70,80) with 0 and 6 mm, no rest or samples afterwards
 THREE_REPS = (*TWO_REPS, window(3, 70, 80, None))
 THREE_REP_SIGNAL = ohm(REP1 + REP2 + TAIL + [0.0] * 5 + [6.0] * 5)
 
@@ -429,8 +429,8 @@ def test_peak_and_range_are_the_means_of_each_repetition_max_and_max_minus_min()
     result = family_for(*TWO_REPS).extract(make_context(TWO_REP_SIGNAL))
 
     by_id = computed(result)
-    assert by_id[fid("peak_elongation_mm")].value == pytest.approx(9.0)  # (8 + 10) / 2, no el máximo global 10
-    assert by_id[fid("range_mm")].value == pytest.approx(7.5)  # (6 + 9) / 2, no el rango global 9
+    assert by_id[fid("peak_elongation_mm")].value == pytest.approx(9.0)  # (8 + 10) / 2, not the global maximum 10
+    assert by_id[fid("range_mm")].value == pytest.approx(7.5)  # (6 + 9) / 2, not the global range 9
     assert by_id[fid("peak_elongation_mm")].n == 2
     assert by_id[fid("range_mm")].n == 2
 
@@ -445,7 +445,7 @@ def test_peak_and_range_with_three_repetitions():
 
 
 def test_a_negative_peak_is_kept():
-    # el cordón por debajo de su reposo en las dos activas: -3 y -1 mm (la curva baja hasta 50 mm)
+    # the cord below its rest in both actives: -3 and -1 mm (the curve drops to 50 mm)
     signal = ohm([-3.0] * 10 + [-1.0] * 10)
     curve = [calibration(points=[(500.0, 50.0), (1000.0, 100.0), (2000.0, 200.0)])]
 
@@ -456,7 +456,7 @@ def test_a_negative_peak_is_kept():
 
 
 def test_the_active_window_is_half_open():
-    # activas [2,4) y [6,8): las muestras 4 y 8 (100 mm) no cuentan; la 2 y la 6 sí
+    # actives [2,4) and [6,8): samples 4 and 8 (100 mm) do not count; 2 and 6 do
     signal = ohm([0.0, 0.0, 1.0, 2.0, 100.0, 0.0, 3.0, 4.0, 100.0, 0.0])
 
     result = family_for(window(1, 2, 4, None), window(2, 6, 8, None)).extract(make_context(signal))
@@ -489,11 +489,11 @@ def test_the_calibration_reason_comes_before_too_few_repetitions():
     assert skipped(result) == dict.fromkeys((fid(n) for n in CALIBRATED), Reason.NO_CALIBRATION)
 
 
-# --- lo pasivo con repeticiones --------------------------------------------------------------------------------
+# --- the passive part with repetitions --------------------------------------------------------------------------------
 
 
 def test_with_repetitions_the_passive_features_skip_the_active_windows_and_their_recovery_wait():
-    # con la espera de 2 s (20 muestras) desde cada fin de activa solo queda la cola [60,70) a 3 mm
+    # with the 2 s wait (20 samples) from each active end only the tail [60,70) at 3 mm remains
     result = family_for(*TWO_REPS).extract(make_context(TWO_REP_SIGNAL))
 
     by_id = computed(result)
@@ -504,7 +504,7 @@ def test_with_repetitions_the_passive_features_skip_the_active_windows_and_their
 
 
 def test_the_passive_samples_start_exactly_when_the_recovery_wait_ends():
-    # una rep [0,10) con espera de 1 s: excluye [0,20); la muestra 20 (7 mm) ya cuenta, la 19 (100 mm) no
+    # one rep [0,10) with a 1 s wait: excludes [0,20); sample 20 (7 mm) already counts, 19 (100 mm) does not
     signal = ohm([0.0] * 19 + [100.0] + [7.0])
 
     result = family_for(window(1, 0, 10, None), wait_s=1.0).extract(make_context(signal))
@@ -530,12 +530,12 @@ def test_when_the_repetitions_cover_every_sample_the_passive_features_are_no_dat
     assert skipped(result)[fid("rest_resistance_ohm")] is Reason.NO_DATA
 
 
-# --- recuperación ---------------------------------------------------------------------------------------------
+# --- recovery ---------------------------------------------------------------------------------------------
 
 
 def recovering_reps(offset: int, *, rest: int = 40, low: float = 0.0, with_rest: bool = True) -> tuple[tuple[RepWindow, ...], list[float]]:
-    """Dos repeticiones iguales: activa de 10 muestras a 10 mm y luego ``rest`` muestras a 5 mm hasta ``offset``
-    (muestras desde el fin de la activa) y a ``low`` mm desde ahí. El umbral es la fracción por defecto (0,1) · 10 mm."""
+    """Two equal repetitions: an active phase of 10 samples at 10 mm and then ``rest`` samples at 5 mm until ``offset``
+    (samples from the end of the active phase) and at ``low`` mm from there. The threshold is the default fraction (0.1) · 10 mm."""
     period = 10 + rest
     signal = ([10.0] * 10 + [5.0] * offset + [low] * (rest - offset)) * 2
     reps = tuple(window(i + 1, i * period, i * period + 10, i * period + period if with_rest else None) for i in range(2))
@@ -550,7 +550,7 @@ def test_the_recovery_time_is_the_mean_time_from_the_end_of_each_repetition_to_t
 
 
 def test_a_repetition_that_does_not_recover_is_left_out_of_the_recovery_time():
-    # la rep 3 no tiene muestras tras su activa: no recupera y no cuenta
+    # rep 3 has no samples after its active phase: it does not recover and does not count
     result = family_for(*THREE_REPS).extract(make_context(THREE_REP_SIGNAL))
 
     assert computed(result)[fid("recovery_time_s")].value == pytest.approx(0.3)
@@ -566,7 +566,7 @@ def test_a_sample_recovered_right_at_the_end_of_the_repetition_gives_zero():
 
 
 def test_the_last_sample_inside_the_recovery_wait_still_counts():
-    # espera 2 s = 20 muestras: la búsqueda es [fin, fin + 2 s); la muestra 19 tras el fin (1,9 s) está dentro
+    # wait 2 s = 20 samples: the search is [end, end + 2 s); sample 19 after the end (1.9 s) is inside
     reps, signal = recovering_reps(19)
 
     result = family_for(*reps).extract(make_context(signal))
@@ -584,7 +584,7 @@ def test_no_recovery_within_the_wait_skips_the_recovery_time_as_no_data():
 
 
 def test_the_rest_window_limits_the_search():
-    # reposo de 15 muestras y recuperación en la 16: dentro de la espera de 2 s pero ya fuera del reposo
+    # rest of 15 samples and recovery at 16: inside the 2 s wait but already outside the rest
     reps, signal = recovering_reps(16, rest=40)
     reps = tuple(dataclasses.replace(r, rest_end=r.end + timedelta(milliseconds=1500)) for r in reps)
 
@@ -615,7 +615,7 @@ def test_recovered_means_at_or_below_a_tenth_of_the_repetition_peak(low: float, 
 
 
 def test_the_threshold_uses_the_peak_of_each_repetition():
-    # rep 1 con pico 10 (umbral 1) y rep 2 con pico 30 (umbral 3): 2 mm recupera solo la segunda
+    # rep 1 with peak 10 (threshold 1) and rep 2 with peak 30 (threshold 3): 2 mm recovers only the second
     signal = ohm([10.0] * 10 + [5.0] * 2 + [2.0] * 28 + [30.0] * 10 + [5.0] * 2 + [2.0] * 28)
     reps = (window(1, 0, 10, 40), window(2, 40, 50, 80))
 
@@ -626,7 +626,7 @@ def test_the_threshold_uses_the_peak_of_each_repetition():
 
 
 def test_the_recovery_wait_of_the_calibration_wins_over_the_default_when_shorter():
-    # recupera a 1,5 s: con la espera de la calibración (1 s) no; con la de por defecto (3 s) sí
+    # recovers at 1.5 s: with the calibration's wait (1 s) no; with the default one (3 s) yes
     reps, signal = recovering_reps(15)
 
     result = family_for(*reps, wait_s=3.0).extract(make_context(signal, [calibration(recovery_wait_s=1.0)]))
@@ -661,7 +661,7 @@ def test_without_recovery_wait_in_the_calibration_the_default_is_used():
 
 
 def test_the_passive_samples_also_use_the_recovery_wait_of_the_calibration():
-    # rep [0,10); calibración con espera de 1 s: excluye [0,20); la cola desde la 20 está a 7 mm
+    # rep [0,10); calibration with a 1 s wait: excludes [0,20); the tail from 20 is at 7 mm
     signal = ohm([0.0] * 19 + [100.0] + [7.0] * 5)
 
     result = family_for(window(1, 0, 10, None), wait_s=5.0).extract(make_context(signal, [calibration(recovery_wait_s=1.0)]))
@@ -686,7 +686,7 @@ def test_a_chunk_of_another_kind_under_the_stretch_stream_id_is_ignored():
 @example(offset=0, peak=1.0)
 @example(offset=19, peak=90.0)
 def test_the_recovery_time_is_the_offset_of_the_first_sample_at_or_below_the_threshold(offset: int, peak: float):
-    # dos reps iguales con pico ``peak``; antes de ``offset`` la elongación es la mitad del pico (no recuperada)
+    # two equal reps with peak ``peak``; before ``offset`` the elongation is half the peak (not recovered)
     signal = ohm(([peak] * 10 + [peak / 2.0] * offset + [0.0] * (40 - offset)) * 2)
     reps = (window(1, 0, 10, 50), window(2, 50, 60, 100))
 

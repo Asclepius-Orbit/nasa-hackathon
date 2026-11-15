@@ -1,4 +1,4 @@
-"""Lectura de comandos (tamaño, command_id, esquema, ids) y construcción de acks: lógica pura."""
+"""Command reading (size, command_id, schema, ids) and ack construction: pure logic."""
 
 import json
 from datetime import UTC, datetime
@@ -73,7 +73,7 @@ def test_an_oversized_command_id_is_found_with_spaces_around_the_colon() -> None
     raw = b'{"command_id" :  "' + CID.encode() + b'", "padding": "' + b"x" * 20_000 + b'"}'
     incoming = read(raw)
     assert incoming is not None and incoming.command_id == CID and incoming.rejection is not None
-    # Solo se busca en los primeros PAYLOAD_MAX_BYTES: un command_id más allá no cuenta.
+    # Only the first PAYLOAD_MAX_BYTES are searched: a command_id beyond that does not count.
     assert read(b'{"padding": "' + b"x" * 20_000 + b'", "command_id": "' + CID.encode() + b'"}') is None
 
 

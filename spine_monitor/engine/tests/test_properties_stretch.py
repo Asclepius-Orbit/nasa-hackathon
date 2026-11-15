@@ -1,4 +1,4 @@
-"""Invariantes de la conversión del cordón (#45)."""
+"""Invariants of the cord conversion (#45)."""
 
 import numpy as np
 import pytest
@@ -20,7 +20,7 @@ _positive = st.floats(min_value=1.0, max_value=1e4, allow_nan=False, allow_infin
 
 @st.composite
 def curves(draw: st.DrawFn, *, monotone: bool) -> list[Point]:
-    """Curva válida construida directamente: resistencias estrictamente crecientes (sin duplicados)."""
+    """Validly built curve directly: strictly increasing resistances (no duplicates)."""
     n = draw(st.integers(min_value=2, max_value=8))
     r = np.cumsum([draw(_positive), *draw(st.lists(_step, min_size=n - 1, max_size=n - 1))])
     if monotone:
@@ -32,7 +32,7 @@ def curves(draw: st.DrawFn, *, monotone: bool) -> list[Point]:
 
 
 def _divider_counts(r: float, rs: float, full: int) -> int:
-    """Cuentas del simulador sin ruido: round(Vout/vref · full) con Vout = vref·R/(R+Rs)."""
+    """Noiseless simulator counts: round(Vout/vref · full) with Vout = vref·R/(R+Rs)."""
     return round(r / (r + rs) * full)
 
 
@@ -44,9 +44,9 @@ def _divider_counts(r: float, rs: float, full: int) -> int:
 def test_divider_roundtrip_is_within_quantisation(bits: int, rs: float, ratio: float) -> None:
     full = 2**bits - 1
     r = ratio * rs
-    x = full * r / (r + rs)  # cuentas sin redondear; |round(x) − x| <= 0.5
+    x = full * r / (r + rs)  # unrounded counts; |round(x) − x| <= 0.5
     back = float(adc_to_resistance(_divider_counts(r, rs, full), adc_bits=bits, series_resistor_ohm=rs))
-    # R(c) = Rs·c/(full − c) es creciente: el error queda acotado por el salto de R en ±0.5 cuentas.
+    # R(c) = Rs·c/(full − c) is increasing: the error is bounded by the jump of R over ±0.5 counts.
     bound = rs * (x + 0.5) / (full - x - 0.5) - rs * (x - 0.5) / (full - x + 0.5)
     assert abs(back - r) <= bound * (1 + 1e-9)
 
@@ -71,7 +71,7 @@ def test_output_stays_within_curve_length_range(curve: list[Point], r: float) ->
 
 @given(rest=_positive, d=_positive)
 def test_elongation_is_anchored_at_rest_length(rest: float, d: float) -> None:
-    # Ancla escala y signo: reposo -> 0, reposo + d -> +d (estirado), reposo - d -> -d (acortado).
+    # Anchors scale and sign: rest -> 0, rest + d -> +d (stretched), rest - d -> -d (shortened).
     assert float(elongation_mm(rest, rest)) == 0.0
     assert float(elongation_pct(rest, rest)) == 0.0
     np.testing.assert_allclose(elongation_mm(rest + d, rest), d, rtol=1e-9, atol=1e-9)

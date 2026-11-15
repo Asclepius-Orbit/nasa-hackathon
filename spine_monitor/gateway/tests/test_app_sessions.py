@@ -1,4 +1,4 @@
-"""Comandos de sesión del gateway real: start_session, stop_session, max_duration_s y mark_event."""
+"""Session commands of the real gateway: start_session, stop_session, max_duration_s and mark_event."""
 
 import asyncio
 from typing import Any
@@ -61,7 +61,7 @@ def test_start_session_streams_every_frame_of_its_streams_with_its_session_id(ha
             assert statuses_of(h, 1) == ["accepted"]
             await h.run_device(0.5)
             session = session_chunks(h)
-            # Un chunk por lote y stream, a su frecuencia nativa: EMG incluido (sin stream_ids = los tres).
+            # One chunk per batch and stream, at its native rate: EMG included (no stream_ids = all three).
             assert {(c["stream_id"], c["sample_rate_hz"], c["n_samples"]) for c in session} == {
                 ("emg_lat_left", 1000.0, 100), ("imu_t9", 100.0, 10), ("stretch_spine", 20.0, 2),
             }  # fmt: skip
@@ -105,7 +105,7 @@ def test_stop_completes_the_start_then_the_stop_and_background_resumes_with_cont
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            await h.run_device(2.5)  # dos chunks de fondo y media ventana que se tira al empezar
+            await h.run_device(2.5)  # two background chunks and half a window that is discarded on start
             await h.send(start(1))
             await h.run_device(1.0)
             await h.send(stop(2))
@@ -113,11 +113,11 @@ def test_stop_completes_the_start_then_the_stop_and_background_resumes_with_cont
             assert acks == [(cid(1), "accepted"), (cid(2), "accepted"), (cid(1), "completed"), (cid(2), "completed")]
             await h.run_device(2.0)
             chunks = h.client.payloads("stream")
-            # Fondo -> sesión -> fondo con el mismo stream_id y el seq seguido (la ventana parcial no consume seq).
+            # Background -> session -> background with the same stream_id and consecutive seq (the partial window does not consume seq).
             for stream_id, numbers in seqs([c for c in chunks if c["stream_id"] != "emg_lat_left"]).items():
                 assert numbers == list(range(len(numbers))), stream_id
             assert [c["session_id"] == SESSION for c in chunks if c["stream_id"] == "imu_t9"] == [False] * 2 + [True] * 10 + [False] * 2
-            assert h.client.payloads("status")[-1]["streams"][0]["state"] == "disabled"  # EMG fuera de sesión
+            assert h.client.payloads("status")[-1]["streams"][0]["state"] == "disabled"  # EMG outside a session
 
     go(scenario())
 
@@ -126,8 +126,8 @@ def test_starting_and_ending_a_session_restarts_the_background_windows(harness) 
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            await h.run_device(1.5)  # ventana de fondo del cordón a medias (lotes de 1100 a 1500 ms)
-            await h.send(start(1, stream_ids=["imu_t9"]))  # el cordón sigue de fondo, pero su ventana empieza de cero
+            await h.run_device(1.5)  # cord background window half done (batches from 1100 to 1500 ms)
+            await h.send(start(1, stream_ids=["imu_t9"]))  # the cord stays in the background, but its window starts from zero
             await h.run_device(1.5)
             await h.send(stop(2))
             await h.run_device(1.0)
@@ -148,12 +148,12 @@ def test_max_duration_ends_the_session_by_the_injected_clock(harness) -> None:
             assert statuses_of(h, 1) == ["accepted", "completed"]
             completed = h.client.acks(cid(1))[-1]
             assert completed["timestamp"] == "2026-11-02T09:00:03Z"
-            # El estado sale en el acto: el EMG vuelve a no participar y el resto a 10 Hz de fondo.
+            # The status goes out immediately: EMG stops participating again and the rest go back to 10 Hz background.
             status = h.client.payloads("status")[-1]
             assert status["timestamp"] == "2026-11-02T09:00:03Z"
             assert [(s["state"], s.get("sample_rate_hz")) for s in status["streams"]] == [("disabled", None), ("active", 10.0), ("active", 10.0)]
             assert max(c["received_at"] for c in session_chunks(h)) <= "2026-11-02T09:00:03Z"
-            await h.send(start(2, OTHER))  # ya no está ocupado
+            await h.send(start(2, OTHER))  # no longer busy
             assert statuses_of(h, 2) == ["accepted"]
 
     go(scenario())
@@ -167,11 +167,11 @@ def test_stop_before_max_duration_cancels_its_timer(harness) -> None:
             await h.run_device(1.0)
             sleeping = h.time.pending()
             await h.send(stop(2))
-            assert h.time.pending() == sleeping - 1  # su temporizador ya no espera
+            assert h.time.pending() == sleeping - 1  # its timer is no longer waiting
             await h.send(start(3, OTHER))
             await h.run_device(5.0)
             assert statuses_of(h, 1) == ["accepted", "completed"]
-            assert statuses_of(h, 3) == ["accepted"]  # el temporizador de la primera no acaba la segunda
+            assert statuses_of(h, 3) == ["accepted"]  # the first one's timer does not end the second
 
     go(scenario())
 
@@ -186,7 +186,7 @@ def test_start_session_anchors_the_clock_with_the_last_tick_or_the_next_one(harn
             clock = h.client.payloads("clock")
             assert len(clock) == before + 1 and clock[-1]["device_ms"] == 2000 and clock[-1]["utc"] == "2026-11-02T09:00:02Z"
             await h.send(stop(2))
-            # Arranque nuevo sin tick aún: el ancla queda pendiente hasta el primero (nunca se inventa).
+            # New boot without a tick yet: the anchor stays pending until the first one (never made up).
             await h.hello(boot_id=8)
             clocks = len(h.client.payloads("clock"))
             await h.send(start(3, OTHER))
@@ -245,14 +245,14 @@ def test_a_link_drop_keeps_the_session_but_new_device_commands_are_rejected(harn
             await h.run_device(1.0)
             await h.link_down()
             await h.send(start(2, OTHER))
-            assert h.client.acks(cid(2))[0]["error"]["code"] == "busy"  # mismo orden que el gateway falso: busy antes que offline
-            await h.send(mark(3))  # no necesita el dispositivo
+            assert h.client.acks(cid(2))[0]["error"]["code"] == "busy"  # same order as the fake gateway: busy before offline
+            await h.send(mark(3))  # does not need the device
             assert statuses_of(h, 3) == ["accepted", "completed"]
             await h.link_up()
             await h.hello(boot_id=8)
             await h.run_device(0.5)
             after = [c for c in session_chunks(h) if c["boot_id"] == 8]
-            assert after and min(c["seq"] for c in after) == 0  # la sesión sigue con el arranque nuevo
+            assert after and min(c["seq"] for c in after) == 0  # the session continues with the new boot
             await h.send(stop(4))
             assert statuses_of(h, 1) == ["accepted", "completed"]
 

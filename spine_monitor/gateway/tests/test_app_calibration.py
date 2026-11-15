@@ -1,4 +1,4 @@
-"""Comando calibrate del gateway real: grabación de stretch y emg_mvc con los lotes del dispositivo."""
+"""Real gateway calibrate command: recording of stretch and emg_mvc with the device batches."""
 
 import asyncio
 from typing import Any
@@ -49,7 +49,7 @@ def test_stretch_calibration_is_published_retained_before_its_completed_ack_and_
             await h.run_device(1.9)
             assert h.client.on("calibration") == []
             background_during = [c for c in h.client.payloads("stream") if c["stream_kind"] == "stretch"]
-            assert len(background_during) == 2  # los chunks siguen saliendo durante la calibración
+            assert len(background_during) == 2  # the chunks keep flowing during the calibration
             await h.run_device(0.2)
             relevant = [p for p in h.client.published if p.channel in ("calibration", "ack")]
             calibration, completed = relevant[-2:]
@@ -63,7 +63,7 @@ def test_stretch_calibration_is_published_retained_before_its_completed_ack_and_
             await h.run_device(1.0)
             cord = h.client.payloads("stream")[-1]
             assert cord["stream_kind"] == "stretch" and cord["calibration_id"] == FIRST_ID
-            assert cord["data"]["length_mm"] == pytest.approx([650.0] * 10)  # en reposo: la longitud de reposo
+            assert cord["data"]["length_mm"] == pytest.approx([650.0] * 10)  # at rest: the rest length
 
     go(scenario())
 
@@ -81,7 +81,7 @@ def test_emg_mvc_calibration_completes_during_a_session(harness) -> None:
             assert calibration.payload["muscle"] == "latissimus_dorsi" and calibration.payload["window_ms"] == 250
             assert [a["status"] for a in acks(h, 2)] == ["accepted", "completed"]
             assert acks(h, 2)[-1]["result"]["calibration_id"] == calibration.payload["calibration_id"]
-            assert [a["status"] for a in acks(h, 1)] == ["accepted"]  # la sesión sigue
+            assert [a["status"] for a in acks(h, 1)] == ["accepted"]  # the session continues
 
     go(scenario())
 
@@ -116,7 +116,7 @@ def test_a_calibration_that_cannot_be_computed_fails(harness, calibration_type: 
             assert [a["status"] for a in acks(h, 1)] == ["accepted", "failed"]
             assert acks(h, 1)[-1]["error"] == {"code": "calibration_failed", "message": message}
             assert h.client.on("calibration") == []
-            await h.send(calibrate(2, calibration_type, [stream_id], duration_s=1))  # ya no está ocupado
+            await h.send(calibrate(2, calibration_type, [stream_id], duration_s=1))  # no longer busy
             assert [a["status"] for a in acks(h, 2)] == ["accepted"]
 
     go(scenario())
@@ -134,7 +134,7 @@ def test_a_calibration_without_data_times_out_five_seconds_after_its_duration(ha
             failed = acks(h, 1)[-1]
             assert failed["error"] == {"code": "calibration_failed", "message": "calibration_timeout: no complete data within 7.0 s"}
             assert failed["timestamp"] == "2026-11-02T09:00:07Z"
-            await h.run_device(3.0)  # los lotes que llegan después ya no calibran nada
+            await h.run_device(3.0)  # batches arriving afterwards no longer calibrate anything
             assert h.client.on("calibration") == []
 
     go(scenario())

@@ -1,8 +1,8 @@
-"""Familia ``emg_spectral`` (#43): frecuencia mediana del EMG por repetición, su media y su pendiente entre repeticiones.
+"""``emg_spectral`` family (#43): median EMG frequency per repetition, its mean and its slope across repetitions.
 
-Rejilla de tiempo de los tests: 1000 Hz (una muestra por ms) desde ``T0``; la muestra ``i`` cae en ``T0 + i ms``.
-Las repeticiones se fijan con un ``FakeService`` (frontera). La señal es una senoide de frecuencia conocida o ruido
-de banda conocida dentro de cada repetición, y ceros fuera.
+Time grid of the tests: 1000 Hz (one sample per ms) from ``T0``; sample ``i`` falls at ``T0 + i ms``.
+Repetitions are fixed with a ``FakeService`` (boundary). The signal is a sinusoid of known frequency or noise
+of a known band inside each repetition, and zeros outside.
 """
 
 import json
@@ -37,9 +37,9 @@ MEDIAN_LEFT = f"emg.{MUSCLE}.left.median_freq_hz"
 SLOPE_LEFT = f"emg.{MUSCLE}.left.median_freq_slope_hz_per_rep"
 MEDIAN_RIGHT = f"emg.{MUSCLE}.right.median_freq_hz"
 SLOPE_RIGHT = f"emg.{MUSCLE}.right.median_freq_slope_hz_per_rep"
-REP_LEN = 1000  # muestras por repetición (1 s): resolución espectral de 1 Hz
+REP_LEN = 1000  # samples per repetition (1 s): 1 Hz spectral resolution
 GAP = 200
-# El PSD de una senoide pura cae en ~3 bins (ventana de Hann): la mediana cae a menos de 2 bins de la frecuencia.
+# The PSD of a pure sinusoid falls in ~3 bins (Hann window): the median falls within 2 bins of the frequency.
 TONE_TOL_HZ = 2.0
 
 
@@ -48,7 +48,7 @@ def at(samples: int, rate_hz: float = RATE_HZ) -> datetime:
 
 
 class FakeService(RepetitionService):
-    """Frontera: devuelve unas ventanas fijas, sin mirar el contexto."""
+    """Boundary: returns fixed windows, ignoring the context."""
 
     def __init__(self, windows: tuple[RepWindow, ...]) -> None:
         super().__init__()
@@ -71,7 +71,7 @@ def band_noise(low_hz: float, high_hz: float, n: int, seed: int = 7) -> np.ndarr
 
 
 def signal_of(reps: list[np.ndarray]) -> tuple[list[float], list[tuple[int, int]]]:
-    """Concatena las repeticiones separadas por ceros; devuelve la señal y el [inicio, fin) de cada una en muestras."""
+    """Concatenates the repetitions separated by zeros; returns the signal and the [start, end) of each in samples."""
     samples: list[float] = [0.0] * GAP
     spans: list[tuple[int, int]] = []
     for rep in reps:
@@ -89,7 +89,7 @@ def windows_of(spans: list[tuple[int, int]], indexes: list[int] | None = None, r
 def chunks_of(
     stream_id: str, samples: list[float], signal_kind: str, size: int = 500, rate_hz: float = RATE_HZ, reboot_at: int | None = None
 ) -> list[dict[str, Any]]:
-    """Chunks de ``size`` muestras; desde la muestra ``reboot_at`` (múltiplo de ``size``) cambian de ``boot_id``."""
+    """Chunks of ``size`` samples; from sample ``reboot_at`` (a multiple of ``size``) they change ``boot_id``."""
     out: list[dict[str, Any]] = []
     for seq, start in enumerate(range(0, len(samples), size)):
         part = samples[start : start + size]
@@ -145,7 +145,7 @@ def make_context(
             chunks[-1]["signal_kind"] = last_chunk_kind
         payload["chunks"].extend(chunks)
     payload["calibrations"] = []
-    if reboot_at is not None:  # el segundo arranque tiene su ancla, con el mismo mapa device_ms -> UTC
+    if reboot_at is not None:  # the second boot has its anchor, with the same device_ms -> UTC map
         payload["clock_syncs"].append({**payload["clock_syncs"][0], "boot_id": BOOT2})
     return build_context(FeaturesRequest.model_validate(payload))
 
@@ -159,7 +159,7 @@ def run(
     rate_hz: float = RATE_HZ,
     reboot_at: int | None = None,
 ) -> FamilyResult:
-    """Un stream izquierdo con las repeticiones dadas."""
+    """A left stream with the given repetitions."""
     samples, spans = signal_of(reps)
     context = make_context({LEFT: samples}, signal_kind=signal_kind, last_chunk_kind=last_chunk_kind, rate_hz=rate_hz, reboot_at=reboot_at)
     return EmgSpectralFamily(FakeService(windows_of(spans, indexes, rate_hz))).extract(context)
@@ -189,7 +189,7 @@ def test_pure_tone_median_is_its_frequency():
 
 
 def test_band_limited_noise_median_is_the_band_centre():
-    # banda plana 50-150 Hz: la mitad de la potencia queda por debajo de 100 Hz
+    # flat band 50-150 Hz: half the power lies below 100 Hz
     result = run([band_noise(50.0, 150.0, 4000), band_noise(50.0, 150.0, 4000, seed=8)])
     assert values(result)[MEDIAN_LEFT] == pytest.approx(100.0, abs=6.0)
 
@@ -211,7 +211,7 @@ def test_slope_sign_follows_the_trend():
 
 
 def test_slope_is_against_the_repetition_index_not_the_position():
-    # índices 1 y 3 (la 2 no está): 40 Hz de diferencia en 2 repeticiones = 20 Hz/rep, como la verdad de terreno
+    # indices 1 and 3 (2 is missing): 40 Hz difference over 2 repetitions = 20 Hz/rep, like the ground truth
     result = run([tone(100.0), tone(60.0)], indexes=[1, 3])
     assert values(result)[SLOPE_LEFT] == pytest.approx(-20.0, abs=TONE_TOL_HZ)
 
@@ -235,7 +235,7 @@ def test_no_repetitions_is_too_few():
 
 
 def test_repetition_with_too_few_samples_does_not_count():
-    # dos repeticiones buenas y una de 63 muestras a otra frecuencia: ni cuenta en n ni mueve la media
+    # two good repetitions and one of 63 samples at another frequency: it neither counts in n nor moves the mean
     result = run([tone(80.0), tone(80.0), tone(300.0, 63)])
     assert {f.feature_id: f.n for f in result.computed}[MEDIAN_LEFT] == 2
     assert values(result)[MEDIAN_LEFT] == pytest.approx(80.0, abs=TONE_TOL_HZ)
@@ -341,7 +341,7 @@ def test_nan_in_every_repetition_is_no_data():
 
 
 def test_repetition_split_by_a_reboot_uses_its_longest_piece():
-    # 300 muestras a 80 Hz (arranque 1) y 700 a 150 Hz (arranque 2): vale el trozo largo; la otra repetición, 150 Hz
+    # 300 samples at 80 Hz (boot 1) and 700 at 150 Hz (boot 2): the long piece wins; the other repetition, 150 Hz
     split = np.concatenate([tone(80.0, 300), tone(150.0, 700)])
     result = run([split, tone(150.0)], reboot_at=500)
     assert {f.feature_id: f.n for f in result.computed}[MEDIAN_LEFT] == 2
@@ -361,20 +361,20 @@ def test_missing_chunk_does_not_join_discontinuous_samples():
 
 @pytest.mark.parametrize("rate_hz", [500.0, 2000.0])
 def test_tone_median_at_other_sample_rates(rate_hz: float):
-    rep = tone(80.0, int(rate_hz), rate_hz=rate_hz)  # 1 s: resolución de 1 Hz a cualquier frecuencia de muestreo
+    rep = tone(80.0, int(rate_hz), rate_hz=rate_hz)  # 1 s: 1 Hz resolution at any sampling frequency
     found = values(run([rep, rep], rate_hz=rate_hz))[MEDIAN_LEFT]
     assert found == pytest.approx(80.0, abs=TONE_TOL_HZ)
 
 
 def test_short_middle_repetition_leaves_a_gap_in_the_slope_index():
-    # índices 0, 2, 3; la 2 es corta y se descarta: 100 Hz en el índice 0 y 60 Hz en el 3 -> -40/3 Hz/rep
+    # indices 0, 2, 3; 2 is short and is discarded: 100 Hz at index 0 and 60 Hz at index 3 -> -40/3 Hz/rep
     result = run([tone(100.0), tone(300.0, 63), tone(60.0)], indexes=[0, 2, 3])
     assert values(result)[SLOPE_LEFT] == pytest.approx(-40.0 / 3.0, abs=TONE_TOL_HZ)
     assert {f.feature_id: f.n for f in result.computed}[SLOPE_LEFT] == 2
 
 
 def test_repetition_with_the_minimum_samples_has_the_right_value():
-    # 64 muestras: segmento de 64, resolución 1000/64 = 15,6 Hz; el lóbulo de Hann abarca ±2 bins = ±31,25 Hz
+    # 64 samples: 64 segment, resolution 1000/64 = 15.6 Hz; the Hann lobe spans ±2 bins = ±31.25 Hz
     result = run([tone(200.0, 64), tone(200.0, 64)])
     assert values(result)[MEDIAN_LEFT] == pytest.approx(200.0, abs=2 * RATE_HZ / 64)
 

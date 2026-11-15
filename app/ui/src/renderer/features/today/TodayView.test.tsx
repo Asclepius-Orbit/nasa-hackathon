@@ -383,7 +383,7 @@ describe('live rep on Today (real data)', () => {
     setup({ data: new TwoSessions(TODAY) });
     const row = (): HTMLElement => screen.getByText('Session in progress').closest('li') as HTMLElement;
     await screen.findByText('Session in progress');
-    // La suscripción se registra en un efecto posterior al primer render: sin esperarla, emitir no llega a nadie y la carrera depende de la carga de la máquina.
+    // The subscription is registered in an effect after the first render: without waiting for it, emitting reaches nobody and the race depends on machine load.
     await waitFor(() => {
       expect(listeners.has(SID)).toBe(true);
     });

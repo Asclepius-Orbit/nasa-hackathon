@@ -1,4 +1,4 @@
-"""Destinos de los `Envelope`s del núcleo: JSONL en disco, MQTT y ritmo de emisión (pacing).
+"""Destinations for the core's `Envelope`s: JSONL on disk, MQTT and emission pacing.
 
-Los sinks no cambian los payloads: misma semilla ⇒ mismos payloads sea cual sea el sink o la velocidad.
+Sinks never change the payloads: same seed => same payloads whatever the sink or speed.
 """

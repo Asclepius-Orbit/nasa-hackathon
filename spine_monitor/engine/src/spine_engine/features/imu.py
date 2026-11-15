@@ -1,23 +1,23 @@
-"""Familia ``imu`` (#44): rango de movimiento y velocidad angular pico por plano, y RMS del acelerómetro.
+"""``imu`` family (#44): range of motion and peak angular velocity per plane, and accelerometer RMS.
 
-Basada en el giróscopo, que no depende de la gravedad (comparable entre Tierra y microgravedad). Por cada stream
-IMU declarado en la sesión, con su ``placement.spine_level`` (nunca fijado aquí):
+Based on the gyroscope, which does not depend on gravity (comparable between Earth and microgravity). For each IMU
+stream declared in the session, with its ``placement.spine_level`` (never fixed here):
 
-- Plano -> eje del sensor con ``calibration.imu.mounting`` (marco corporal del simulador: sagital = rotación sobre
-  el eje izquierda-derecha, frontal = sobre el anterior, transversal = sobre el craneal). El signo sigue al eje
-  (``left``, ``anterior``, ``cranial`` positivos). Sin eje del sensor para un plano: ese plano es ``no_calibration``.
-- ``gyro_bias_dps`` de la calibración se resta a cada eje del sensor.
-- Por repetición (ventana activa, ``start <= t < end``) y plano: ``rom_deg`` = recorrido (máx − mín) del ángulo
-  integrado (cada muestra con el periodo de su chunk) desde
-  0 antes de la primera muestra; ``peak_angular_velocity_dps`` = máximo de ``|ω|``.
-- ``accel_rms_g`` = RMS de la magnitud del acelerómetro tras quitar a cada eje su media en la repetición (la
-  componente estática: gravedad y ``accel_bias_g``, que esa resta ya cancela).
-- Valor publicado = media sobre las repeticiones con muestras; ``n`` = cuántas. Cada repetición lee el segmento
-  (``boot_id``) con más muestras en su ventana: nunca se unen dos arranques.
+- Plane -> sensor axis with ``calibration.imu.mounting`` (simulator body frame: sagittal = rotation about
+  the left-right axis, frontal = about the anterior one, transverse = about the cranial one). The sign follows the axis
+  (``left``, ``anterior``, ``cranial`` positive). No sensor axis for a plane: that plane is ``no_calibration``.
+- ``gyro_bias_dps`` of the calibration is subtracted from each sensor axis.
+- Per repetition (active window, ``start <= t < end``) and plane: ``rom_deg`` = excursion (max - min) of the
+  integrated angle (each sample with the period of its chunk) from
+  0 before the first sample; ``peak_angular_velocity_dps`` = maximum of ``|ω|``.
+- ``accel_rms_g`` = RMS of the accelerometer magnitude after removing each axis's mean over the repetition (the
+  static component: gravity and ``accel_bias_g``, which that subtraction already cancels).
+- Published value = mean over the repetitions with samples; ``n`` = how many. Each repetition reads the segment
+  (``boot_id``) with the most samples in its window: two boots are never joined.
 
-Motivos de ``skipped`` en orden: ``stream_missing``, la calibración (``no_calibration``/``calibration_expired``),
-``no_data`` (sin segmentos con UTC o sin muestras en ninguna repetición), ``too_few_repetitions`` (ninguna). La
-frecuencia de muestreo no descarta ninguna feature de esta familia. Nunca lanza.
+``skipped`` reasons in order: ``stream_missing``, the calibration (``no_calibration``/``calibration_expired``),
+``no_data`` (no segments with UTC or no samples in any repetition), ``too_few_repetitions`` (none). The
+sampling rate does not discard any feature of this family. Never raises.
 """
 
 from collections.abc import Sequence
@@ -45,7 +45,7 @@ TEMPLATES = (
 
 _GYRO = ("gyro_x", "gyro_y", "gyro_z")
 _ACCEL = ("accel_x", "accel_y", "accel_z")
-# Eje corporal (positivo, negativo) de cada plano: el mismo marco que el simulador.
+# Body axis (positive, negative) of each plane: the same frame as the simulator.
 _PLANE_AXES = {
     AnatomicalPlane.SAGITTAL: (BodyAxis.LEFT, BodyAxis.RIGHT),
     AnatomicalPlane.FRONTAL: (BodyAxis.ANTERIOR, BodyAxis.POSTERIOR),
@@ -56,7 +56,7 @@ type Signal = NDArray[np.float64]
 
 
 def plane_channel(mounting: Mounting, plane: AnatomicalPlane) -> tuple[str, float] | None:
-    """Canal del giróscopo que mide la rotación del plano y su signo; ``None`` si el montaje no lo cubre."""
+    """Gyroscope channel that measures the rotation of the plane and its sign; ``None`` if the mounting does not cover it."""
     positive, negative = _PLANE_AXES[plane]
     for channel, axis in (("gyro_x", mounting.sensor_x), ("gyro_y", mounting.sensor_y), ("gyro_z", mounting.sensor_z)):
         if axis is positive:
@@ -67,33 +67,33 @@ def plane_channel(mounting: Mounting, plane: AnatomicalPlane) -> tuple[str, floa
 
 
 def range_of_motion_deg(omega_dps: Signal, rate_hz: float | Signal) -> float:
-    """Recorrido del ángulo integrado (rectángulos de ``1/rate_hz``), con ángulo 0 antes de la primera muestra.
+    """Excursion of the integrated angle (rectangles of ``1/rate_hz``), with angle 0 before the first sample.
 
-    ``rate_hz`` puede ser una frecuencia por muestra: cada una se integra con el periodo de su chunk.
+    ``rate_hz`` may be a per-sample rate: each one is integrated with the period of its chunk.
     """
     angle = np.concatenate(([0.0], np.cumsum(omega_dps / rate_hz)))
     return float(angle.max() - angle.min())
 
 
 def peak_angular_velocity_dps(omega_dps: Signal) -> float:
-    """Máximo de ``|ω|``."""
+    """Maximum of ``|ω|``."""
     return float(np.abs(omega_dps).max())
 
 
 def accel_rms_g(ax: Signal, ay: Signal, az: Signal) -> float:
-    """RMS de la magnitud de la aceleración dinámica (cada eje menos su media)."""
+    """RMS of the dynamic acceleration magnitude (each axis minus its mean)."""
     dynamic = sum((axis - axis.mean()) ** 2 for axis in (ax, ay, az))
     return float(np.sqrt(np.mean(dynamic)))
 
 
 @dataclass(frozen=True, slots=True)
 class _RepSamples:
-    sample_rates_hz: Signal  # la frecuencia del chunk de cada muestra: la de la integración del ROM
+    sample_rates_hz: Signal  # the chunk rate of each sample: the one used to integrate the ROM
     channels: dict[str, Signal]
 
 
 class ImuFamily:
-    """Features IMU por stream, plano y repetición, a partir de las ventanas del servicio inyectado."""
+    """IMU features per stream, plane and repetition, from the windows of the injected service."""
 
     family = "imu"
     feature_ids: Sequence[str] = tuple(feature_id for template in TEMPLATES for feature_id in expand_template(template))
@@ -150,7 +150,7 @@ def _rep_samples(context: ExtractionContext, segments: Sequence[Segment], window
 
 
 def _segment_rep(context: ExtractionContext, segment: Segment, window: RepWindow) -> _RepSamples:
-    """Muestras de la ventana en un segmento, chunk a chunk para conocer la frecuencia de cada una."""
+    """Samples of the window in a segment, chunk by chunk to know the rate of each one."""
     rates: list[float] = []
     parts: dict[str, list[Signal]] = {name: [] for name in _GYRO + _ACCEL}
     for chunk in segment.chunks:

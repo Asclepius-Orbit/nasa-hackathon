@@ -136,7 +136,7 @@ def test_config_is_frozen():
 
 
 def test_background_chunk_is_independent_of_the_session_chunk(raw):
-    # 5 Hz no da muestras enteras en 100 ms (sesiones) pero sí en 1000 ms (fondo): se valida contra el chunk del fondo.
+    # 5 Hz does not give whole samples in 100 ms (sessions) but does in 1000 ms (background): validated against the background chunk.
     data = variant(raw, lambda d: d["schedule"]["background"]["sample_rates_hz"].update(imu=5.0))
     assert MissionConfig.model_validate(data).schedule.background.sample_rates_hz.imu == 5.0
 

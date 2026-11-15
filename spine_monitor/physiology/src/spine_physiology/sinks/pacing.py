@@ -1,8 +1,8 @@
-"""Ritmo de emisión: tan rápido como se pueda (`speed=None`) o real/acelerado (`speed` × tiempo real).
+"""Emission pacing: as fast as possible (`speed=None`) or real/accelerated (`speed` × real time).
 
-Dueño: D1. El primer mensaje ancla el tiempo simulado (`Envelope.at`) al reloj de pared; cada mensaje
-siguiente espera hasta `ancla_pared + (at − ancla_sim) / speed`. Nunca reordena ni altera los mensajes.
-Reloj y sleep inyectables para tests deterministas.
+Owner: D1. The first message anchors the simulated time (`Envelope.at`) to the wall clock; each following
+message waits until `wall_anchor + (at − sim_anchor) / speed`. It never reorders or alters the messages.
+Clock and sleep are injectable for deterministic tests.
 """
 
 import asyncio
@@ -21,7 +21,7 @@ class Pacer:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
-        """`speed`: factor sobre el tiempo real (> 0), o None para no esperar nunca."""
+        """`speed`: factor over real time (> 0), or None to never wait."""
         if speed is not None and not speed > 0:
             raise ValueError("speed must be > 0 or None")
         self._speed = speed
@@ -44,7 +44,7 @@ class Pacer:
 
 
 async def paced(messages: Iterable[Envelope], pacer: Pacer) -> AsyncIterator[Envelope]:
-    """Los mensajes en el mismo orden, cada uno cuando le toca según `pacer`."""
+    """The messages in the same order, each one when its turn comes according to `pacer`."""
     for envelope in messages:
         await pacer.wait_for(envelope.at)
         yield envelope

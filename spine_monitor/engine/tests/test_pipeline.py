@@ -199,7 +199,7 @@ def test_based_on_lists_each_input_once():
     assert validation.errors("domain/assessment", dump(assessment)) == []
 
 
-# Fakes sin herencia: el pipeline solo depende de la forma (Protocol).
+# Fakes without inheritance: the pipeline only depends on the shape (Protocol).
 class FakeBaseline:
     def __init__(self):
         self.calls = []

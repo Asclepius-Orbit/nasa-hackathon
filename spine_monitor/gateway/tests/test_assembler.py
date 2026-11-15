@@ -1,4 +1,4 @@
-"""Ensamblado de chunks MQTT v1 a partir de los lotes del Arduino: conversiones, calidad, seq/huecos y fondo."""
+"""Assembly of MQTT v1 chunks from the Arduino batches: conversions, quality, seq/gaps and background."""
 
 import math
 from datetime import UTC, datetime
@@ -37,7 +37,7 @@ QUIET: ImuSample = (100, -200, 8192, 655, -655, 0)
 
 
 def payload(chunk: EmgChunk | ImuChunk | StretchChunk) -> dict[str, Any]:
-    """Serializa con ``dump`` y comprueba el schema completo (con sus reglas if/then), no solo Pydantic."""
+    """Serializes with ``dump`` and checks the full schema (with its if/then rules), not just Pydantic."""
     data = dump(chunk)
     assert validation.errors("telemetry/stream-chunk", data) == []
     return data
@@ -86,7 +86,7 @@ def session(a: ChunkAssembler, frame: Frame, calibration: StretchCalibration | N
     return result
 
 
-# --- constantes ---
+# --- constants ---
 
 
 def test_batch_constants_follow_the_firmware() -> None:
@@ -96,7 +96,7 @@ def test_batch_constants_follow_the_firmware() -> None:
     assert (BACKGROUND_FRAMES, BACKGROUND_SAMPLE_RATE_HZ) == (10, 10.0)
 
 
-# --- conversiones ---
+# --- conversions ---
 
 
 @pytest.mark.parametrize(("bits", "expected"), [(8, 255), (10, 1023), (12, 4095)])
@@ -159,7 +159,7 @@ def test_counts_to_resistance_divider(counts: float, expected: float) -> None:
 
 @pytest.mark.parametrize("counts", [0, -1, 1023, 1024, 65535])
 def test_counts_to_resistance_not_computable_at_the_rails(counts: int) -> None:
-    # 0: cordón en corto; máximo (o más, el protocolo no limita a 10 bits): circuito abierto.
+    # 0: cord shorted; maximum (or more, the protocol does not limit to 10 bits): open circuit.
     assert counts_to_resistance(counts, adc_bits=10, series_resistor_ohm=10000.0) is None
 
 
@@ -174,9 +174,9 @@ CURVE = [(5000.0, 100.0), (10000.0, 200.0), (20000.0, 250.0)]
         (10000.0, (200.0, True)),
         (15000.0, (225.0, True)),
         (20000.0, (250.0, True)),
-        (4999.0, (100.0, False)),  # recorte al extremo inferior
+        (4999.0, (100.0, False)),  # clipped to the lower end
         (1.0, (100.0, False)),
-        (20001.0, (250.0, False)),  # recorte al extremo superior
+        (20001.0, (250.0, False)),  # clipped to the upper end
     ],
 )
 def test_resistance_to_length_piecewise_linear_with_clamp(resistance: float, expected: tuple[float, bool]) -> None:
@@ -188,7 +188,7 @@ def test_resistance_to_length_sorts_the_points() -> None:
     assert resistance_to_length(7500.0, list(reversed(CURVE))) == (pytest.approx(150.0), True)
 
 
-# --- chunks de sesión ---
+# --- session chunks ---
 
 
 def test_frame_before_any_boot_is_discarded(settings: GatewaySettings) -> None:
@@ -200,7 +200,7 @@ def test_frame_before_any_boot_is_discarded(settings: GatewaySettings) -> None:
 
 KINDS = list(SignalKind)
 HALF_SCALE = 1023 / 2
-"""Offset de la señal cruda: se asume polarizada a Vref/2 (NO verificado con hardware)."""
+"""Offset of the raw signal: assumed biased to Vref/2 (NOT verified with hardware)."""
 
 
 def emg_assembler(settings: GatewaySettings, kind: SignalKind) -> ChunkAssembler:
@@ -252,7 +252,7 @@ def test_emg_clean_and_clipped_quality(settings: GatewaySettings, kind: SignalKi
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_emg_at_rest_is_clipping_only_for_raw(settings: GatewaySettings, kind: SignalKind) -> None:
-    # Envolvente y rectificada: cerca de 0 es el músculo en reposo, un valor sano. Cruda (centrada): 0 es saturación real.
+    # Envelope and rectified: near 0 is resting muscle, a healthy value. Raw (centred): 0 is real saturation.
     rest = payload(session(emg_assembler(settings, kind), emg(0, (0,) * 100)))
     expected = {"score": 0.0, "flags": ["clipping"]} if kind is SignalKind.RAW else {"score": 1.0, "flags": []}
     assert rest["quality"]["emg"] == {**expected, "assessed_by": "gateway"}
@@ -342,7 +342,7 @@ def test_imu_unsupported_range_in_settings_raises_on_construction(settings: Gate
     ],
 )
 def test_samples_of_the_wrong_shape_raise(assembler: ChunkAssembler, frame: Frame) -> None:
-    # El parser nunca construye estos frames: es un error de programación, no un dato del dispositivo.
+    # The parser never builds these frames: it is a programming error, not device data.
     with pytest.raises(TypeError, match=f"{frame.kind.name} frame with samples of the wrong shape"):
         assembler.session_chunk(frame, session_id=SESSION, received_at=AT)
 
@@ -364,8 +364,8 @@ def test_stretch_chunk_without_calibration(assembler: ChunkAssembler) -> None:
     [((0, 341), ["clipping"]), ((341, 1023), ["clipping", "lead_off"]), ((2000, 341), ["clipping", "lead_off"])],
 )
 def test_stretch_rails_drop_resistance_for_the_whole_chunk(assembler: ChunkAssembler, samples: tuple[int, int], flags: list[str]) -> None:
-    # number_array no admite null y las columnas deben tener n_samples entradas: sin R calculable en una muestra no se
-    # publica resistance_ohm (ni length_mm, que depende de ella) en todo el chunk.
+    # number_array does not allow null and the columns must have n_samples entries: without a computable R in one sample,
+    # resistance_ohm is not published (nor length_mm, which depends on it) in the whole chunk.
     data = payload(session(assembler, cord(0, samples), stretch_calibration(CURVE)))
     assert data["units"] == {"adc_counts": "count"}
     assert data["data"] == {"adc_counts": list(samples)}
@@ -400,7 +400,7 @@ def test_stretch_length_quality_inherits_the_adc_quality(assembler: ChunkAssembl
     assert data["quality"]["length_mm"] == {"score": PACKET_GAP_SCORE, "flags": ["packet_gap"], "assessed_by": "gateway"}
 
 
-# --- seq, huecos, duplicados y arranques ---
+# --- seq, gaps, duplicates and boots ---
 
 
 def test_seq_counts_per_stream(assembler: ChunkAssembler) -> None:
@@ -447,7 +447,7 @@ def test_duplicates_and_rewinds_are_discarded(assembler: ChunkAssembler, second:
     result = assembler.session_chunk(emg(second), session_id=SESSION, received_at=AT)
     assert result == Discarded(FrameKind.EMG, second, reason)
     assert assembler.next_seq(FrameKind.EMG) == 1
-    assert payload(session(assembler, emg(6)))["seq"] == 1  # el descarte no movió el último frame_seq
+    assert payload(session(assembler, emg(6)))["seq"] == 1  # the discard did not move the last frame_seq
 
 
 @pytest.mark.parametrize("n", [1, 99, 101])
@@ -489,7 +489,7 @@ def test_emg_in_background_still_tracks_frame_seq(assembler: ChunkAssembler) -> 
     assert "dropped_samples" not in data
 
 
-# --- fondo ---
+# --- background ---
 
 
 def test_background_accumulator_rejects_emg() -> None:
@@ -499,8 +499,8 @@ def test_background_accumulator_rejects_emg() -> None:
 
 def test_background_accumulator_averages_imu_with_half_to_even() -> None:
     acc = BackgroundAccumulator(FrameKind.IMU)
-    # Sumas por eje 25, 35, -25, -35, 5 y 20 en 10 muestras: medias 2.5 -> 2, 3.5 -> 4, -2.5 -> -2, -3.5 -> -4 (empates
-    # al par), 0.5 -> 0 y 2.0 -> 2.
+    # Per-axis sums 25, 35, -25, -35, 5 and 20 over 10 samples: means 2.5 -> 2, 3.5 -> 4, -2.5 -> -2, -3.5 -> -4 (ties
+    # to even), 0.5 -> 0 and 2.0 -> 2.
     frame_samples = ((3, 4, -3, -4, 1, 2),) * 5 + ((2, 3, -2, -3, 0, 2),) * 5
     steps = [acc.add(Frame(FrameKind.IMU, s, 1000 + 100 * s, frame_samples), 0) for s in range(10)]
     assert [st.window for st in steps[:9]] == [None] * 9
@@ -526,7 +526,7 @@ def test_background_gap_drops_the_partial_window_and_realigns() -> None:
     acc = BackgroundAccumulator(FrameKind.CORD)
     for s in range(4):
         assert acc.add(cord(s), 0).window is None
-    # Faltan los frames 4 y 5: la ventana parcial (4 frames) y los 2 perdidos tocan ceil(6/10) = 1 ventana de 1 s.
+    # Frames 4 and 5 are missing: the partial window (4 frames) and the 2 lost ones touch ceil(6/10) = 1 window of 1 s.
     first = acc.add(cord(6, t0=1600), 2)
     assert (first.lost_windows, first.window) == (1, None)
     steps = [acc.add(cord(s), 0) for s in range(7, 16)]
@@ -574,7 +574,7 @@ def test_background_quality_is_the_worst_frame(assembler: ChunkAssembler) -> Non
     chunk = results[-1]
     assert isinstance(chunk, StretchChunk)
     data = payload(chunk)
-    # Frame 3 tiene media round(170.5) = 170, calculable: R y longitud se publican.
+    # Frame 3 has mean round(170.5) = 170, computable: R and length are published.
     assert data["data"]["adc_counts"] == [341, 341, 341, 170, 341, 341, 341, 341, 341, 341]
     assert data["quality"]["adc_counts"] == {"score": 0.5, "flags": ["clipping"], "assessed_by": "gateway"}
     assert data["quality"]["length_mm"] == {"score": pytest.approx(0.5), "flags": ["clipping", "out_of_calibration"], "assessed_by": "gateway"}
@@ -587,7 +587,7 @@ def test_background_seq_after_a_gap(assembler: ChunkAssembler) -> None:
     assert assembler.next_seq(FrameKind.CORD) == 1
     for s in range(10, 13):
         assembler.background_chunk(cord(s), session_id=SESSION, received_at=AT)
-    # Hueco de 25 frames (13..37): ventana parcial de 3 + 25 perdidos -> ceil(28/10) = 3 seq consumidos.
+    # Gap of 25 frames (13..37): partial window of 3 + 25 lost -> ceil(28/10) = 3 seq consumed.
     assert assembler.background_chunk(cord(38), session_id=SESSION, received_at=AT) == Pending(FrameKind.CORD, 38)
     assert assembler.next_seq(FrameKind.CORD) == 4
     last = [assembler.background_chunk(cord(s), session_id=SESSION, received_at=AT) for s in range(39, 48)][-1]
@@ -609,10 +609,10 @@ def test_background_and_session_share_the_seq(assembler: ChunkAssembler) -> None
     for s in range(10):
         assembler.background_chunk(imu(s), session_id=SESSION, received_at=AT)
     assembler.background_chunk(imu(10), session_id=SESSION, received_at=AT)
-    assembler.reset_background()  # empieza la sesión: la ventana parcial se tira sin consumir seq
+    assembler.reset_background()  # the session starts: the partial window is discarded without consuming seq
     assert session(assembler, imu(11)).seq == 1
     assert session(assembler, imu(12)).seq == 2
-    assembler.reset_background()  # acaba la sesión
+    assembler.reset_background()  # the session ends
     results = [assembler.background_chunk(imu(s), session_id=SESSION, received_at=AT) for s in range(13, 23)]
     assert isinstance(results[-1], ImuChunk)
     assert results[-1].seq == 3
@@ -630,6 +630,6 @@ def test_new_boot_resets_the_background(assembler: ChunkAssembler) -> None:
 
 
 def test_background_window_time_is_uniform() -> None:
-    # 10 frames de 100 ms -> 10 muestras a 10 Hz que cubren exactamente 1 s.
+    # 10 frames of 100 ms -> 10 samples at 10 Hz covering exactly 1 s.
     assert BACKGROUND_FRAMES * BATCH_MS / 1000 * BACKGROUND_SAMPLE_RATE_HZ == BACKGROUND_FRAMES
     assert math.isclose(1000 / BACKGROUND_SAMPLE_RATE_HZ, BATCH_MS)

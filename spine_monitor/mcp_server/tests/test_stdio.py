@@ -1,4 +1,4 @@
-"""Test de integración del servidor por stdio: se lanza `python -m spine_mcp_server` como subproceso y se habla MCP con él."""
+"""Integration test of the server over stdio: `python -m spine_mcp_server` is launched as a subprocess and MCP is spoken to it."""
 
 import os
 import sys
@@ -24,7 +24,7 @@ def anyio_backend() -> str:
 @pytest.mark.anyio
 async def test_stdio_server_lists_the_eight_tools_and_answers_get_current_status():
     params = StdioServerParameters(command=sys.executable, args=["-m", "spine_mcp_server", "--dataset", "demo"])
-    # El stderr del servidor se descarta: el predeterminado (`sys.stderr`) puede estar cerrado bajo la captura de pytest o de mutmut.
+    # The server stderr is discarded: the default (`sys.stderr`) may be closed under pytest or mutmut capture.
     with anyio.fail_after(TIMEOUT_SECONDS), open(os.devnull, "w") as errlog:
         async with Client(stdio_client(params, errlog=errlog)) as client:
             tools = {tool.name for tool in (await client.list_tools()).tools}

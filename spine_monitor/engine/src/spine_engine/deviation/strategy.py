@@ -1,4 +1,4 @@
-"""Estrategia de baseline personal: z de la última sesión + cambio sostenido sobre el histórico."""
+"""Personal baseline strategy: z of the latest session + sustained change over the history."""
 
 from collections.abc import Sequence
 
@@ -9,10 +9,10 @@ from spine_engine.reference import index_entries, reference_entry
 
 
 class StatisticalBaselineStrategy:
-    """Implementa `BaselineStrategy`. Puntúa y detecta con las estrategias que se le inyectan.
+    """Implements `BaselineStrategy`. Scores and detects with the strategies injected into it.
 
-    La puntuación es la del último valor de cada feature. El histórico de feature sets (mismo
-    protocolo y entorno de gravedad) alimenta el detector, que dice si el cambio es sostenido o ruido.
+    Scoring uses the latest value of each feature. The history of feature sets (same
+    protocol and gravity environment) feeds the detector, which says whether the change is sustained or noise.
     """
 
     def __init__(self, scorer: DeviationScorer, detector: ChangeDetector) -> None:

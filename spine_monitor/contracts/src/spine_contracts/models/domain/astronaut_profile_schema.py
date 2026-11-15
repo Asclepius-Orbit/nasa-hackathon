@@ -176,7 +176,7 @@ class AstronautProfile(BaseModel):
     anthropometry: Anthropometry
     spine_history: SpineHistory | None = Field(
         None,
-        description='Pre-flight spine history. Which of these factors weigh in the risk model, and how much, is decided by the clinical model (Aguado), not by this contract.',
+        description='Pre-flight spine history. Which of these factors weigh in the risk model, and how much, is decided by the clinical model, not by this contract.',
     )
     space_history: SpaceHistory | None = None
     fitness: Fitness | None = None

@@ -1,4 +1,4 @@
-"""Modelo de riesgo genérico sobre las desviaciones: sin rangos clínicos ni sentido de riesgo por feature."""
+"""Generic risk model over the deviations: no clinical ranges or per-feature risk direction."""
 
 import math
 from collections.abc import Mapping, Sequence
@@ -9,7 +9,7 @@ from spine_contracts import AssessmentDomain, Driver
 from spine_engine.interfaces import Deviation, RiskResult
 from spine_engine.pipeline import domain_of
 
-# ASSUMPTION: provisional weights, pending Aguado. Multiplier of a driver's contribution by the level of the
+# ASSUMPTION: provisional weights, pending clinical validation. Multiplier of a driver's contribution by the level of the
 # catalog range its value falls in. Alert keeps the generic weight; a value that is clinically normal is
 # damped, a critical one is amplified. A value in no range, or a feature without ranges, uses 1.0.
 RANGE_LEVEL_WEIGHTS: Final[Mapping[str, float]] = {"normal": 0.5, "alert": 1.0, "critical": 2.0}
@@ -17,7 +17,7 @@ _WORST_FIRST: Final = ("critical", "alert", "normal")
 
 
 class CatalogView(Protocol):
-    """Lo que el modelo lee del catálogo de features. Lanza `KeyError` con un id que no conoce."""
+    """What the model reads from the feature catalog. Raises `KeyError` with an id it does not know."""
 
     def risk_direction(self, feature_id: str) -> str: ...
 
@@ -30,7 +30,7 @@ def _within(bounds: Mapping[str, float | None], value: float) -> bool:
 
 
 def range_level(ranges: Mapping[str, Any], value: float) -> str | None:
-    """Nivel (critical, alert o normal) del rango que contiene `value`; extremos inclusivos, gana el peor."""
+    """Level (critical, alert or normal) of the range containing `value`; ends inclusive, the worst wins."""
     for level in _WORST_FIRST:
         bounds = ranges.get(level)
         if bounds is not None and _within(bounds, value):
@@ -39,27 +39,27 @@ def range_level(ranges: Mapping[str, Any], value: float) -> str | None:
 
 
 class DeviationRiskModel:
-    """Implementa `RiskModel`. Combina el |z| de las desviaciones sostenidas.
+    """Implements `RiskModel`. Combines the |z| of the sustained deviations.
 
-    Cada desviación sostenida aporta `|z| · peso de su dominio · persistencia`, con la persistencia
-    `min(n_points, persistence_points) / persistence_points`. La suma se satura a [0, 1] con
-    `1 - exp(-suma / saturation)`, calculada con `expm1` para no perder sumas diminutas (con sumas muy
-    grandes el redondeo llega a 1.0). Sin `risk_direction` conocido, cualquier sentido es peor: se usa
-    |z|, y el signo solo viaja en `deviation_z` del driver. Una desviación aislada, sin z o de una
-    feature sin dominio no aporta riesgo. La confianza es la completitud: lo que falta no la sube.
+    Each sustained deviation contributes `|z| · weight of its domain · persistence`, with persistence
+    `min(n_points, persistence_points) / persistence_points`. The sum is saturated to [0, 1] with
+    `1 - exp(-sum / saturation)`, computed with `expm1` so as not to lose tiny sums (with very
+    large sums rounding reaches 1.0). Without a known `risk_direction`, any direction is worse: |z|
+    is used, and the sign only travels in the driver's `deviation_z`. An isolated deviation, without z or of a
+    feature without a domain contributes no risk. Confidence is completeness: what is missing does not raise it.
 
-    Con un catálogo (`CatalogView`), el sentido de riesgo de la feature filtra la desviación: `lower_is_worse`
-    solo cuenta si baja, `higher_is_worse` solo si sube, `none` nunca cuenta y `either_is_worse` o
-    `unspecified` usan |z|. El sentido es `Deviation.direction` y, si falta, el signo de z. Si la feature
-    tiene rangos, el nivel donde cae su valor (extremos inclusivos, el peor gana en un extremo compartido)
-    multiplica la contribución con `RANGE_LEVEL_WEIGHTS`; un valor fuera de todo rango o una feature sin
-    rangos se queda en el modelo genérico de z. Un id que el catálogo no conoce también. Sin catálogo
-    (por defecto) nada de esto aplica.
+    With a catalog (`CatalogView`), the feature's risk direction filters the deviation: `lower_is_worse`
+    only counts if it goes down, `higher_is_worse` only if it goes up, `none` never counts and `either_is_worse` or
+    `unspecified` use |z|. The direction is `Deviation.direction` and, if missing, the sign of z. If the feature
+    has ranges, the level where its value falls (ends inclusive, the worst wins at a shared end)
+    multiplies the contribution with `RANGE_LEVEL_WEIGHTS`; a value outside every range or a feature without
+    ranges stays in the generic z model. So does an id the catalog does not know. Without a catalog
+    (the default) none of this applies.
 
-    Limitación: `n_points` es el largo de la serie de la feature, no el tramo final desviado, y los
-    detectores exigen un mínimo de puntos para marcar una desviación como sostenida. Con
-    `persistence_points` menor o igual a ese mínimo el factor de persistencia vale siempre 1.
-    Un dominio ausente de `domain_weights` no aporta riesgo (`EngineSettings` los completa).
+    Limitation: `n_points` is the length of the feature's series, not the final deviated stretch, and the
+    detectors require a minimum number of points to mark a deviation as sustained. With
+    `persistence_points` less than or equal to that minimum the persistence factor is always 1.
+    A domain absent from `domain_weights` contributes no risk (`EngineSettings` fills them in).
     """
 
     def __init__(
@@ -85,7 +85,7 @@ class DeviationRiskModel:
         self._catalog = catalog
 
     def _catalog_weight(self, deviation: Deviation, z: float) -> float:
-        """Factor del catálogo sobre la contribución: 0 si la desviación va en el sentido bueno."""
+        """Catalog factor on the contribution: 0 if the deviation goes in the good direction."""
         if self._catalog is None:
             return 1.0
         try:

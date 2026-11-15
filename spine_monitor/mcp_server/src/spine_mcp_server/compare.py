@@ -1,6 +1,6 @@
-"""Cálculo puro de la salida de la herramienta MCP `compare_periods` (contrato `mcp/compare-periods`).
+"""Pure computation of the output of the MCP tool `compare_periods` (contract `mcp/compare-periods`).
 
-Recibe los dos historiales ya leídos (periodo A y periodo B) y no hace I/O. Todo delta es B menos A.
+Takes the two histories already read (period A and period B) and does no I/O. Every delta is B minus A.
 """
 
 from collections import Counter, defaultdict
@@ -9,23 +9,23 @@ from typing import Any
 
 from spine_contracts import SCHEMA_VERSION, Assessment, ComparePeriods, History, Level
 
-# Clave de comparación: solo son comparables valores de la misma feature, protocolo y gravedad.
+# Comparison key: only values of the same feature, protocol and gravity are comparable.
 type Key = tuple[str, str, str]
 
-# Gravedad de cada nivel, para desempatar `latest` cuando dos assessments comparten `as_of`: gana el peor.
+# Severity of each level, to break ties for `latest` when two assessments share `as_of`: the worst wins.
 _SEVERITY = {Level.GREEN: 0, Level.AMBER: 1, Level.RED: 2}
 
 
 def compare_periods(a: History, b: History) -> ComparePeriods:
-    """Compara dos ventanas del historial de un mismo astronauta.
+    """Compare two history windows of the same astronaut.
 
-    Lanza ValueError si los historiales son de astronautas distintos.
+    Raises ValueError if the histories belong to different astronauts.
     """
     if a.astronaut_id != b.astronaut_id:
         raise ValueError(f"cannot compare histories of different astronauts: {a.astronaut_id} vs {b.astronaut_id}")
     values_a, values_b = _values_by_key(a), _values_by_key(b)
     common = sorted(values_a.keys() & values_b.keys())
-    # Una clave con más de una unidad (entre periodos o dentro de uno) no es comparable: fuera de features y aviso.
+    # A key with more than one unit (across periods or within one) is not comparable: left out of features and a warning is raised.
     mismatched = [key for key in common if len(values_a[key].keys() | values_b[key].keys()) > 1]
     features = [_comparison(key, values_a[key], values_b[key]) for key in common if key not in mismatched]
     warnings = [
@@ -60,10 +60,10 @@ def compare_periods(a: History, b: History) -> ComparePeriods:
 
 
 def _values_by_key(history: History) -> dict[Key, dict[str, list[float]]]:
-    """Valores de cada clave agrupados por unidad.
+    """Values of each key grouped by unit.
 
-    Los feature sets sin protocolo o sin gravedad (p. ej. ventanas móviles de síntomas) no tienen clave
-    comparable y se ignoran; siguen contando en `feature_sets_count`.
+    Feature sets without a protocol or without gravity (e.g. rolling symptom windows) have no comparable
+    key and are ignored; they still count in `feature_sets_count`.
     """
     grouped: dict[Key, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for feature_set in history.feature_sets:
@@ -81,7 +81,7 @@ def _key_dict(key: Key) -> dict[str, str]:
 
 
 def _comparison(key: Key, by_unit_a: dict[str, list[float]], by_unit_b: dict[str, list[float]]) -> dict[str, Any]:
-    """Entrada de `features` para una clave con la misma y única unidad en ambos periodos."""
+    """`features` entry for a key with the same single unit in both periods."""
     (unit,) = by_unit_a
     stats_a, stats_b = _stats(by_unit_a[unit]), _stats(by_unit_b[unit])
     return _key_dict(key) | {
@@ -112,7 +112,7 @@ def _is_empty(history: History) -> bool:
 
 
 def _levels(assessments: list[Assessment]) -> dict[str, Any]:
-    """Recuento por nivel y nivel del assessment más reciente (el peor si empatan en `as_of`)."""
+    """Count per level and level of the most recent assessment (the worst if they tie on `as_of`)."""
     counts = Counter(x.level for x in assessments)
     latest = max(assessments, key=lambda x: (x.as_of, _SEVERITY[x.level]), default=None)
     return {
@@ -124,7 +124,7 @@ def _levels(assessments: list[Assessment]) -> dict[str, Any]:
 
 
 def _score(values_a: list[float], values_b: list[float]) -> dict[str, float | None]:
-    """Media por periodo (null sin assessments) y delta b - a (null si falta un lado)."""
+    """Mean per period (null without assessments) and delta b - a (null if a side is missing)."""
     mean_a = fmean(values_a) if values_a else None
     mean_b = fmean(values_b) if values_b else None
     delta = None if mean_a is None or mean_b is None else mean_b - mean_a

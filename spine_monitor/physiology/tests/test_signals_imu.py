@@ -33,7 +33,7 @@ def params(config) -> ImuSignalConfig:
 
 @pytest.fixture(scope="module")
 def clean(params) -> ImuSignalConfig:
-    """Sin ruido, sesgo, deriva, filtro ni cuantizacion: el modelo ideal."""
+    """Without noise, bias, drift, filter or quantisation: the ideal model."""
     return params.model_copy(
         update={
             "accel_noise_density_ug_rthz": 0.0,
@@ -88,7 +88,7 @@ def test_effective_rom(params):
 def test_angle_profile_reps(protocol, params):
     rate = params.sample_rate_hz
     reps = rep_schedule(protocol)
-    n = int((reps[-1].end_s + 20.0) * rate)  # alcanza más allá de las reps
+    n = int((reps[-1].end_s + 20.0) * rate)  # reaches beyond the reps
     angle = angle_profile(reps, rom_deg=protocol.rom_deg, n_samples=n, rate_hz=rate)
     assert angle.shape == (n,)
     assert angle.min() == 0.0
@@ -97,7 +97,7 @@ def test_angle_profile_reps(protocol, params):
     first = reps[0]
     peak = int(round((first.start_s + first.end_s) / 2 * rate))
     assert angle[peak] == pytest.approx(protocol.rom_deg, rel=1e-3)
-    assert angle[int(first.end_s * rate) + 1] == 0.0  # descanso entre reps
+    assert angle[int(first.end_s * rate) + 1] == 0.0  # rest between reps
 
 
 def test_angle_profile_per_rep_rom(protocol, params):
@@ -119,7 +119,7 @@ def test_background_profile_bends():
     angle = background_angle_profile(np.random.default_rng(1), **kwargs)
     assert angle.max() == pytest.approx(20.0, rel=1e-3)
     assert angle.min() == 0.0
-    # Cada flexión cruza el 50 % del ROM dos veces: ~ 2 cruces por flexión (~60 en 5 h a 12/h).
+    # Each flexion crosses 50 % of the ROM twice: ~ 2 crossings per flexion (~60 in 5 h at 12/h).
     crossings = np.count_nonzero(np.diff((angle > 10.0).astype(int)) != 0)
     assert 60 <= crossings <= 180
     assert np.array_equal(angle, background_angle_profile(np.random.default_rng(1), **kwargs))
@@ -141,22 +141,22 @@ def test_gravity_norm_earth_and_micro(clean):
     )  # fmt: skip
     assert set(earth) == set(IMU_CHANNELS)
     assert norm(earth).mean() == pytest.approx(1.0, abs=1e-9)
-    # De pie y en reposo el acelerómetro apunta a craneal (sensor_x = cranial en el ejemplo).
+    # Standing at rest the accelerometer points cranially (sensor_x = cranial in the example).
     assert earth["accel_x"].mean() == pytest.approx(1.0, abs=1e-9)
     assert norm(micro).max() == pytest.approx(0.0, abs=1e-9)
 
 
 def test_gravity_norm_rotated_noisy(params):
-    """Con ruido y sesgo del ejemplo, y flexionando, |accel| sigue cerca de 1 g (movimiento lento)."""
+    """With the example noise and bias, while flexing, |accel| stays close to 1 g (slow motion)."""
     rate = params.sample_rate_hz
     t = np.arange(int(30 * rate)) / rate
-    angle = 20.0 * (1 - np.cos(2 * np.pi * t / 10.0)) / 2  # lento: aceleración lineal despreciable
+    angle = 20.0 * (1 - np.cos(2 * np.pi * t / 10.0)) / 2  # slow: negligible linear acceleration
     out = synth_imu(
         np.random.default_rng(3), params, angle_deg=angle, plane=AnatomicalPlane.SAGITTAL,
         gravity_g=1.0, rate_hz=rate, tremor_dps=0.0,
     )  # fmt: skip
     assert norm(out).mean() == pytest.approx(1.0, abs=0.02)
-    # Gravedad parcial (Luna): la norma escala con la gravedad.
+    # Partial gravity (Moon): the norm scales with gravity.
     moon = synth_imu(
         np.random.default_rng(3), params, angle_deg=angle, plane=AnatomicalPlane.SAGITTAL,
         gravity_g=0.16, rate_hz=rate, tremor_dps=0.0,
@@ -165,14 +165,14 @@ def test_gravity_norm_rotated_noisy(params):
 
 
 def test_sagittal_tilt_direction(clean):
-    """A 30 deg de flexión sagital, la gravedad se reparte en craneal (cos) y posterior (sen) del tronco."""
+    """At 30 deg of sagittal flexion, gravity is split into cranial (cos) and posterior (sin) trunk components."""
     angle = np.full(50, 30.0)
     out = synth_imu(
         np.random.default_rng(0), clean, angle_deg=angle, plane=AnatomicalPlane.SAGITTAL,
         gravity_g=1.0, rate_hz=clean.sample_rate_hz, tremor_dps=0.0,
     )  # fmt: skip
     assert out["accel_x"].mean() == pytest.approx(np.cos(np.deg2rad(30.0)))
-    # sensor_z = posterior: el "arriba" del mundo queda hacia atrás del tronco inclinado hacia delante.
+    # sensor_z = posterior: the world "up" ends up behind the trunk leaning forward.
     assert out["accel_z"].mean() == pytest.approx(np.sin(np.deg2rad(30.0)))
     assert out["accel_y"].mean() == pytest.approx(0.0, abs=1e-12)
 
@@ -186,7 +186,7 @@ def test_gyro_integrates_back_to_angle(clean, protocol):
         np.random.default_rng(0), clean, angle_deg=angle, plane=AnatomicalPlane.SAGITTAL,
         gravity_g=1.0, rate_hz=rate, tremor_dps=0.0,
     )  # fmt: skip
-    # sagital -> eje izquierda; sensor_y = left en el ejemplo: gyro_y = dθ/dt, el resto 0.
+    # sagittal -> left axis; sensor_y = left in the example: gyro_y = dθ/dt, the rest 0.
     assert np.abs(out["gyro_x"]).max() == 0.0 and np.abs(out["gyro_z"]).max() == 0.0
     integrated = np.concatenate([[0.0], np.cumsum((out["gyro_y"][1:] + out["gyro_y"][:-1]) / 2 / rate)])
     assert np.abs(integrated - angle).max() < 0.02 * protocol.rom_deg
@@ -200,14 +200,14 @@ def test_transverse_plane_gyro_on_cranial_axis(clean):
         np.random.default_rng(0), clean, angle_deg=angle, plane=AnatomicalPlane.TRANSVERSE,
         gravity_g=1.0, rate_hz=rate, tremor_dps=0.0,
     )  # fmt: skip
-    # sensor_x = cranial: el giro transversal aparece en gyro_x y la gravedad no cambia.
+    # sensor_x = cranial: the transverse rotation shows up in gyro_x and gravity does not change.
     assert out["gyro_x"].mean() == pytest.approx(10.0 / (99 / rate))
     assert np.abs(out["gyro_y"]).max() == 0.0
     assert out["accel_x"].min() == pytest.approx(1.0)
 
 
 def test_linear_motion_component(clean):
-    """En microgravedad solo queda la aceleración lineal: centrípeta/tangencial, escala con lever_arm."""
+    """In microgravity only the linear acceleration remains: centripetal/tangential, scales with lever_arm."""
     rate = clean.sample_rate_hz
     t = np.arange(int(10 * rate)) / rate
     angle = 20.0 * (1 - np.cos(2 * np.pi * t / 2.0)) / 2
@@ -218,7 +218,7 @@ def test_linear_motion_component(clean):
     assert norm(no_arm).max() == pytest.approx(0.0, abs=1e-12)
     omega = np.deg2rad(np.gradient(angle, 1 / rate))
     alpha = np.gradient(omega, 1 / rate)
-    # sensor_z = posterior: tangencial (anterior) con signo negativo; sensor_x = cranial: centrípeta negativa.
+    # sensor_z = posterior: tangential (anterior) with negative sign; sensor_x = cranial: negative centripetal.
     assert out["accel_z"] == pytest.approx(-clean.lever_arm_m * alpha / STANDARD_GRAVITY_MS2, abs=1e-12)
     assert out["accel_x"] == pytest.approx(-clean.lever_arm_m * omega**2 / STANDARD_GRAVITY_MS2, abs=1e-12)
 
@@ -226,7 +226,7 @@ def test_linear_motion_component(clean):
 def test_ranges_clip(params):
     rate = params.sample_rate_hz
     t = np.arange(int(4 * rate)) / rate
-    angle = 40.0 * (1 - np.cos(2 * np.pi * t / 0.2)) / 2  # muy rápido: satura el giróscopo
+    angle = 40.0 * (1 - np.cos(2 * np.pi * t / 0.2)) / 2  # very fast: saturates the gyroscope
     tight = params.model_copy(update={"accel_range_g": 2, "gyro_range_dps": 250})
     out = synth_imu(
         np.random.default_rng(0), tight, angle_deg=angle, plane=AnatomicalPlane.SAGITTAL,
@@ -236,7 +236,7 @@ def test_ranges_clip(params):
         assert np.abs(out[ch]).max() <= 250.0
     for ch in ("accel_x", "accel_y", "accel_z"):
         assert np.abs(out[ch]).max() <= 2.0
-    assert np.abs(out["gyro_y"]).max() == 250.0  # realmente satura
+    assert np.abs(out["gyro_y"]).max() == 250.0  # really saturates
     free = synth_imu(
         np.random.default_rng(0), params.model_copy(update={"gyro_range_dps": 2000}), angle_deg=angle,
         plane=AnatomicalPlane.SAGITTAL, gravity_g=1.0, rate_hz=rate, tremor_dps=0.0,
@@ -280,8 +280,8 @@ def test_lowpass_is_causal_and_responds_gradually(clean):
     params = clean.model_copy(update={"lever_arm_m": 0.0, "dlpf_hz": 10.0})
     out = synth_imu(np.random.default_rng(0), params, angle_deg=angle, plane=AnatomicalPlane.SAGITTAL, gravity_g=1.0, rate_hz=rate, tremor_dps=0.0)
     ideal = np.cos(np.deg2rad(30.0))
-    assert np.all(out["accel_x"][:100] == 1.0)  # sin pre-respuesta
-    assert out["accel_x"][100] > ideal + 0.5 * (1.0 - ideal)  # tarda en seguir el escalon
+    assert np.all(out["accel_x"][:100] == 1.0)  # no pre-response
+    assert out["accel_x"][100] > ideal + 0.5 * (1.0 - ideal)  # takes time to follow the step
     assert np.all(np.diff(out["accel_x"][99:]) <= 1e-12)  # monotono
     assert out["accel_x"][-1] == pytest.approx(ideal, abs=1e-3)
 
@@ -340,13 +340,13 @@ def test_no_drift_keeps_bias_constant(clean):
 
 
 def test_drift_does_not_shift_the_noise_stream(params):
-    """El ruido blanco sale del mismo rng que antes: una deriva distinta no cambia sus muestras."""
+    """The white noise comes from the same rng as before: a different drift does not change its samples."""
     a = params.model_copy(update={"gyro_bias_drift_sigma_dps": 0.0, "quantize_output": False})
     b = a.model_copy(update={"gyro_bias_drift_sigma_dps": 0.5})
     kwargs = _still(100.0, 20.0)
     x = synth_imu(np.random.default_rng(3), a, **kwargs)["gyro_x"]
     y = synth_imu(np.random.default_rng(3), b, **kwargs)["gyro_x"]
-    assert np.abs(np.diff(y - x)).max() < 0.1  # la diferencia es solo la deriva lenta
+    assert np.abs(np.diff(y - x)).max() < 0.1  # the difference is only the slow drift
 
 
 def test_quantization_to_int16_steps(params):
@@ -407,7 +407,7 @@ def test_background_bends_are_rare_at_a_few_per_hour():
     for seed in range(5):
         angle = background_angle_profile(
             np.random.default_rng(seed), n_samples=600, rate_hz=10.0, bends_per_hour=6.0, bend_rom_deg=20.0, bend_duration_s=3.0
-        )  # 60 s: 0.1 flexiones esperadas
+        )  # 60 s: 0.1 expected flexions
         assert np.count_nonzero(angle) < 0.5 * angle.size
 
 

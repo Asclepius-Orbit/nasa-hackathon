@@ -70,7 +70,7 @@ class PolicyConfig(BaseModel):
 
     @classmethod
     def default(cls):
-        """Provisional policy shipped in the package (pending Aguado; not a clinical validation)."""
+        """Provisional policy shipped in the package (pending clinical validation; not a clinical validation)."""
         return cls.model_validate_json(resources.files("spine_engine").joinpath("triage-policy.json").read_text(encoding="utf-8"))
 
 

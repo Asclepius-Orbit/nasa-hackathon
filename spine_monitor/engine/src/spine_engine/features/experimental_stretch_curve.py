@@ -1,8 +1,8 @@
-"""Modelo exploratorio de cordón; sus resultados no son mediciones clínicas.
+"""Exploratory cord model; its results are not clinical measurements.
 
-Supone resistencia uniforme, contactos despreciables, deformación uniforme y contactos
-fijos al material. Devuelve la longitud total equivalente del ensayo o una estimación
-del tramo entre contactos; ninguna sustituye una calibración validada del wearable.
+Assumes uniform resistance, negligible contacts, uniform deformation and contacts
+fixed to the material. Returns the equivalent total length of the test or an estimate
+of the span between contacts; neither replaces a validated calibration of the wearable.
 """
 
 import json
@@ -19,7 +19,7 @@ type Trial = tuple[float, Sequence[float]]
 
 @cache
 def measured_trials() -> tuple[float, tuple[Trial, ...]]:
-    """Carga las mediciones de banco y separación de contactos del catálogo empaquetado."""
+    """Load the bench measurements and contact separations from the packaged catalog."""
     data = json.loads((CATALOG_DIR / "cord-measurements.json").read_text(encoding="utf-8"))
     bench = data["bench"]
     return float(bench["contact_spacing_mm"]), tuple(
@@ -30,11 +30,11 @@ def measured_trials() -> tuple[float, tuple[Trial, ...]]:
 def estimate_equivalent_total_length_mm(
     resistance_ohm: float, trials: Sequence[Trial], bench_contact_span_mm: float, measurement_contact_span_mm: float
 ) -> float | None:
-    """Interpola la longitud total equivalente de ensayo; fuera del dominio retorna ``None``.
+    """Interpolate the equivalent total test length; outside the domain returns ``None``.
 
-    Las lecturas de cada punto se promedian. La resistencia media del tramo de ensayo
-    se multiplica por la razón entre las separaciones de contactos, suponiendo que
-    la resistencia por unidad de longitud es uniforme y la de contacto despreciable.
+    The readings of each point are averaged. The mean resistance of the test span
+    is multiplied by the ratio between the contact separations, assuming that
+    resistance per unit length is uniform and contact resistance negligible.
     """
     if not all(isfinite(v) and v > 0 for v in (bench_contact_span_mm, measurement_contact_span_mm)):
         raise ValueError("contact spans must be finite and positive")
@@ -70,7 +70,7 @@ def estimate_equivalent_total_length_mm(
 def estimate_contact_span_mm(
     resistance_ohm: float, straight_resistance_ohm: float, trials: Sequence[Trial], bench_contact_span_mm: float, straight_span_mm: float
 ) -> float | None:
-    """Estima el tramo actual suponiendo deformación uniforme y contactos fijos al material."""
+    """Estimate the current span assuming uniform deformation and contacts fixed to the material."""
     baseline = estimate_equivalent_total_length_mm(straight_resistance_ohm, trials, bench_contact_span_mm, straight_span_mm)
     current = estimate_equivalent_total_length_mm(resistance_ohm, trials, bench_contact_span_mm, straight_span_mm)
     if baseline is None or current is None:

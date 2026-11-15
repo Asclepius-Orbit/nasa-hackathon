@@ -68,7 +68,7 @@ class AppSettings(BaseSettings):
 
     # Cord-resistance protocols (back straight, maximum flexion): days between in-flight follow-ups of each posture and the minimum
     # quality score of a feature for the measurement to count as valid. Both are placeholders (7 days is an example, not a fixed
-    # cadence; the score is not a validated threshold): PENDIENTE Aguado.
+    # cadence; the score is not a validated threshold): PENDING clinical validation.
     cord_follow_up_interval_days: int = Field(default=7, ge=1)
     cord_min_quality_score: float = Field(default=0.5, ge=0, le=1)
 

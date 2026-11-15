@@ -5,7 +5,7 @@ a posture is the latest feature value of its protocol from a session that comple
 Earth and flight are told apart by phase and gravity together (the reference is pre-flight at 1 g, a follow-up is in flight at another gravity;
 any other combination is neither, e.g. a pre-flight session in microgravity).
 
-The cadence is an input (days between follow-ups), not a clinical rule: its default is an example, pending Aguado. The length estimate
+The cadence is an input (days between follow-ups), not a clinical rule: its default is an example, pending clinical validation. The length estimate
 is calculated by the engine (`/stretch-estimate`) from the bench cord measurements under explicit assumptions; it is labelled as
 calculated, never as a measured or clinically validated length, and it is outside the triage.
 """
@@ -129,7 +129,7 @@ def estimate_request(protocol_id: str, state: PostureMeasurements) -> EstimateRe
     """What to ask the engine for, or the code of why no estimate can be asked.
 
     The model compares the current resistance with the straight-back Earth reference over the straight-back contact span; the span between
-    the contacts in maximum flexion is not measured (pending Aguado), so that posture gets no estimate rather than an invented length.
+    the contacts in maximum flexion is not measured (pending clinical validation), so that posture gets no estimate rather than an invented length.
     """
     if state.earth is None:
         return "ESTIMATE_NO_EARTH_REFERENCE"

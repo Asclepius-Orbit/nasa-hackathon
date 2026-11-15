@@ -1,16 +1,16 @@
-"""Extractor compuesto: ejecuta las familias registradas y arma el ``FeatureSet`` (#40).
+"""Composite extractor: runs the registered families and assembles the ``FeatureSet`` (#40).
 
-Reglas:
+Rules:
 
-- Chunks de streams no declarados o de otra sesión se ignoran; nunca hay 422/500 por una petición
-  incoherente: lo no calculable sale en ``skipped`` (sin chunks utilizables, 200 con lo que cada familia omita).
-- Cada feature calculada lleva la unidad del catálogo y la calidad común (``assess_quality`` sobre los
-  streams que declaró usar, ``assessed_by="engine"``). Cobertura 0 (sin segmentos con UTC) o valor no
-  finito -> ``skipped`` ``no_data``.
-- Un ``feature_id`` fuera del catálogo es un error de programación de la familia: ``UnknownFeatureIdError``.
-- Salida determinista: ``features`` ordenadas por id y ``skipped`` por (id, motivo); si un id se emite dos
-  veces gana la primera aparición, y un id calculado nunca figura también en ``skipped``.
-- ``window`` es el rango UTC de los chunks con reloj; sin anclas se omite.
+- Chunks of undeclared streams or of another session are ignored; there is never a 422/500 for an
+    incoherent request: whatever cannot be computed goes into ``skipped`` (no usable chunks: 200 with whatever each family omits).
+- Each computed feature carries the catalog unit and the common quality (``assess_quality`` over the
+    streams it declared using, ``assessed_by="engine"``). Coverage 0 (no segments with UTC) or non-finite value
+    finite -> ``skipped`` ``no_data``.
+- A ``feature_id`` outside the catalog is a programming error of the family: ``UnknownFeatureIdError``.
+- Deterministic output: ``features`` sorted by id and ``skipped`` by (id, reason); if an id is emitted twice
+    the first occurrence wins, and a computed id never also appears in ``skipped``.
+- ``window`` is the UTC range of the chunks with a clock; without anchors it is omitted.
 """
 
 import math
@@ -34,10 +34,10 @@ def _engine_version() -> str | None:
 
 
 class CompositeFeatureExtractor:
-    """Implementa ``FeatureExtractor`` sobre un registro de familias.
+    """Implements ``FeatureExtractor`` over a registry of families.
 
-    ``clock_uncertain_ms``: si se indica, una feature cuyo reloj tenga una incertidumbre mayor lleva el flag
-    ``clock_uncertain``. Sin valor no se marca nada (no hay umbral por defecto).
+    ``clock_uncertain_ms``: if given, a feature whose clock has a larger uncertainty carries the flag
+    ``clock_uncertain``. Without a value nothing is flagged (there is no default threshold).
     """
 
     def __init__(self, registry: ExtractorRegistry, *, clock_uncertain_ms: float | None = None) -> None:
@@ -88,7 +88,7 @@ class CompositeFeatureExtractor:
         if assessment.coverage == 0.0 or not math.isfinite(item.value):
             return None
         quality = item.quality if item.quality is not None else assessment.to_quality()
-        extra: dict[str, Any] = {} if item.n is None else {"n": item.n}  # n es opcional pero no admite null
+        extra: dict[str, Any] = {} if item.n is None else {"n": item.n}  # n is optional but does not allow null
         if item.window is not None:
             extra["window"] = {"start": item.window[0], "end": item.window[1]}
         return FeatureValue(feature_id=item.feature_id, value=item.value, unit=unit, quality=quality, **extra)

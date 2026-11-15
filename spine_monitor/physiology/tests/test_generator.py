@@ -30,8 +30,8 @@ SCHEMAS = {
 
 
 def tiny_raw() -> dict:
-    """Misión de ejemplo encogida para tests: 4 días en 3 tramos, encendido 40 min, sesiones y fondo cortos,
-    chunks de 500 ms y fallos frecuentes (la validación JSON Schema cuesta ~2 ms por chunk)."""
+    """Example mission shrunk for tests: 4 days in 3 segments, powered on 40 min, short sessions and background,
+    500 ms chunks and frequent faults (JSON Schema validation costs ~2 ms per chunk)."""
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     raw["start_mission_day"] = -1
     raw["segments"] = [
@@ -77,7 +77,7 @@ def mission(config) -> list[Envelope]:
 
 @pytest.fixture(scope="module")
 def sparse_config() -> MissionConfig:
-    """stretch/imu cada 7 días: el día 2 (segundo del tramo inflight) usa las calibraciones del día 1."""
+    """stretch/imu every 7 days: day 2 (second of the inflight segment) uses the calibrations of day 1."""
 
     def edit(raw):
         raw["calibration"]["stretch"]["every_n_days"] = 7
@@ -97,19 +97,19 @@ def session_of(envelope: Envelope) -> str | None:
 
 
 def first_emissions(mission: list[Envelope]) -> dict[tuple[str, str], Envelope]:
-    """(astronauta, calibration_id) -> sobre de la calibración tal como la emitió la misión completa."""
+    """(astronaut, calibration_id) -> envelope of the calibration as emitted by the full mission."""
     out: dict[tuple[str, str], Envelope] = {}
     for m in mission:
         if m.kind is EnvelopeKind.CALIBRATION:
-            assert (m.astronaut_id, m.payload["calibration_id"]) not in out  # iter_messages no repite calibraciones
+            assert (m.astronaut_id, m.payload["calibration_id"]) not in out  # iter_messages does not repeat calibrations
             out[(m.astronaut_id, m.payload["calibration_id"])] = m
     return out
 
 
 def unresolved_citations(messages: list[Envelope]) -> tuple[int, list[str]]:
-    """(chunks con calibration_id, ids sin resolver en `messages`). Un chunk necesita su calibración emitida
-    antes; un registro Session, en algún punto de la salida (la que se registra en esa sesión sale justo
-    después del Session, en el mismo instante)."""
+    """(chunks with calibration_id, unresolved ids in `messages`). A chunk needs its calibration emitted
+    earlier; a Session record, somewhere in the output (the one registered in that session comes right
+    after the Session, at the same instant)."""
     everything = {(m.astronaut_id, m.payload["calibration_id"]) for m in messages if m.kind is EnvelopeKind.CALIBRATION}
     emitted: set[tuple[str, str]] = set()
     cited, missing = 0, []
@@ -125,7 +125,7 @@ def unresolved_citations(messages: list[Envelope]) -> tuple[int, list[str]]:
     return cited, missing
 
 
-# --- Reproducibilidad -------------------------------------------------------------------------------
+# --- Reproducibility -------------------------------------------------------------------------------
 
 
 def test_same_seed_gives_identical_output_and_another_seed_differs(config, mission):
@@ -139,7 +139,7 @@ def test_a_day_equals_its_slice_of_the_mission_whatever_the_consumption_order(sp
     generator = MissionGenerator(sparse_config)
     mission = sparse_mission
     late, early = generator.day_messages(3, include_carried_calibrations=False), generator.day_messages(2, "AST-02", include_carried_calibrations=False)
-    # Consumo intercalado de dos días y de un astronauta suelto en el mismo generador.
+    # Interleaved consumption of two days and a single astronaut in the same generator.
     got3, got0 = [], []
     for a, b in itertools.zip_longest(late, early):
         if a is not None:
@@ -155,7 +155,7 @@ def test_every_session_equals_its_slice_of_the_day(sparse_config, sparse_mission
     for day in (0, 2):
         for astronaut in ("AST-01", "AST-02"):
             day_msgs = [m for m in sparse_mission if m.day == day and m.astronaut_id == astronaut]
-            for plan in reversed(generator.sessions(day, astronaut)):  # orden inverso a propósito
+            for plan in reversed(generator.sessions(day, astronaut)):  # reverse order on purpose
                 alone = list(generator.session_messages(plan.ref, include_carried_calibrations=False))
                 assert alone == [m for m in day_msgs if session_of(m) == plan.session_id], plan.ref
                 assert Counter(m.kind for m in alone)[EnvelopeKind.SESSION] == 1
@@ -174,22 +174,22 @@ def test_a_day_regenerated_alone_carries_the_calibrations_still_in_force_from_ea
             assert exact == [m for m in sparse_mission if m.day == day.index and m.astronaut_id in crew]
             n = len(alone) - len(exact)
             carried = alone[:n]
-            assert alone[n:] == exact  # primero las arrastradas, luego el día exacto
+            assert alone[n:] == exact  # first the carried ones, then the exact day
             in_force = [(a, r) for a in crew for s in streams if (r := generator.calibration_in_force(a, s, day.index)) is not None]
             assert {(m.astronaut_id, m.payload["calibration_id"]) for m in carried} == {(a, r.calibration_id) for a, r in in_force if r.day < day.index}
             assert len(carried) == len({(m.astronaut_id, m.payload["calibration_id"]) for m in carried})
             for m in carried:
-                # Bit a bit el sobre que la misión emitió el día en que se registró (ids, created_at, at, day).
+                # Bit for bit the envelope the mission emitted on the day it was registered (ids, created_at, at, day).
                 assert m.kind is EnvelopeKind.CALIBRATION and m.day < day.index
                 assert m == emitted[(m.astronaut_id, m.payload["calibration_id"])]
                 carried_types.add(m.payload["calibration_type"])
             cited, missing = unresolved_citations(alone)
-            assert cited > 0 and missing == []  # el día suelto se resuelve solo
+            assert cited > 0 and missing == []  # the single day resolves on its own
             if carried:
                 carried_days.add(day.index)
-                assert unresolved_citations(exact)[1]  # sin las arrastradas, no
+                assert unresolved_citations(exact)[1]  # without the carried ones, it does not
     assert carried_days == {2}
-    assert carried_types == {"stretch", "imu"}  # las emg_mvc se registran en su sesión: nunca se arrastran
+    assert carried_types == {"stretch", "imu"}  # emg_mvc are registered in their session: never carried
 
 
 def test_a_session_regenerated_alone_carries_the_calibrations_recorded_outside_it(sparse_config, sparse_mission):
@@ -213,7 +213,7 @@ def test_a_session_regenerated_alone_carries_the_calibrations_recorded_outside_i
                 origins.add("earlier day" if m.day < day else "same day")
             cited, missing = unresolved_citations(alone)
             assert cited > 0 and missing == [], plan.ref
-    assert origins == {"earlier day", "same day"}  # día 2: las del día 1; y otras sesiones del mismo día
+    assert origins == {"earlier day", "same day"}  # day 2: those of day 1; and other sessions of the same day
 
 
 def test_unknown_session_or_day_fails_eagerly(config):
@@ -226,7 +226,7 @@ def test_unknown_session_or_day_fails_eagerly(config):
         generator.day_messages(0, "AST-99")
 
 
-# --- Misión: días, orden, validación ---------------------------------------------------------------
+# --- Mission: days, order, validation ---------------------------------------------------------------
 
 
 def test_days_follow_the_segments(config, mission):
@@ -319,7 +319,7 @@ def test_status_last_seq_never_runs_ahead_of_the_chunks(config, mission):
     assert checked > 0
 
 
-# --- Fondo, calibraciones, ground truth -------------------------------------------------------------
+# --- Background, calibrations, ground truth -------------------------------------------------------------
 
 
 def test_background_pauses_during_a_session_and_seq_continues():
@@ -335,17 +335,17 @@ def test_background_pauses_during_a_session_and_seq_continues():
     imu = [m.payload for m in generator.day_messages(1, "AST-01") if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_id"] == "imu_t9"]
     ids = [p["session_id"] for p in imu]
     runs = [key for key, _ in itertools.groupby(ids)]
-    assert runs[-3:] == [background.session_id, exercise.session_id, background.session_id]  # pre/post solo llevan el cordon
+    assert runs[-3:] == [background.session_id, exercise.session_id, background.session_id]  # pre/post only carry the cord
     day = generator.day_messages(1, "AST-01")
     cord = [m.payload["session_id"] for m in day if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_id"] == "stretch_spine"]
     order = [key for key, _ in itertools.groupby(cord)]
     pre, post = plans["pre_spine_check"].session_id, plans["post_spine_check"].session_id
     assert order.index(pre) < order.index(exercise.session_id) < order.index(post)
-    assert [p["seq"] for p in imu] == list(range(len(imu)))  # mismo stream_id, el seq sigue a través de las sesiones
+    assert [p["seq"] for p in imu] == list(range(len(imu)))  # same stream_id, the seq continues across sessions
     session_rates = {p["session_id"]: p["sample_rate_hz"] for p in imu}
     assert session_rates[background.session_id] == config.schedule.background.sample_rates_hz.imu
     assert session_rates[exercise.session_id] == config.signals.imu.sample_rate_hz
-    # Ningún chunk del fondo cae dentro de la sesión.
+    # No background chunk falls inside the session.
     for p in imu:
         if p["session_id"] == background.session_id:
             end = datetime.fromisoformat(p["received_at"]) - timedelta(milliseconds=config.faults.device.clock.latency_ms.max)
@@ -353,8 +353,8 @@ def test_background_pauses_during_a_session_and_seq_continues():
 
 
 def test_every_stretch_chunk_has_its_retained_calibration_emitted_earlier(config, mission):
-    """Las calibraciones viajan por MQTT (retained) y salen antes de los chunks que las referencian."""
-    emitted: dict[tuple[str, str], Envelope] = {}  # (astronauta, calibration_id) -> sobre
+    """Calibrations travel over MQTT (retained) and are emitted before the chunks that reference them."""
+    emitted: dict[tuple[str, str], Envelope] = {}  # (astronaut, calibration_id) -> envelope
     checked = 0
     for m in mission:
         if m.kind is EnvelopeKind.CALIBRATION:
@@ -364,7 +364,7 @@ def test_every_stretch_chunk_has_its_retained_calibration_emitted_earlier(config
             emitted[(m.astronaut_id, p["calibration_id"])] = m
         elif m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_kind"] == "stretch":
             p = m.payload
-            earlier = emitted[(m.astronaut_id, p["calibration_id"])]  # KeyError: aún no emitida
+            earlier = emitted[(m.astronaut_id, p["calibration_id"])]  # KeyError: not yet emitted
             assert earlier.payload["stream_id"] == p["stream_id"] and earlier.retained and earlier.at <= m.at
             checked += 1
     assert checked > 0 and {m.topic.rsplit("/", 2)[-2] for m in emitted.values()} == {"calibration"}
@@ -400,7 +400,7 @@ def test_background_chunks_are_about_ten_times_fewer_than_at_100_ms_and_slices_s
     generator = MissionGenerator(config)
     bg = next(p for p in generator.sessions(1, "AST-01") if p.background)
     day = [m for m in generator.day_messages(1, "AST-01") if session_of(m) == bg.session_id]
-    assert list(generator.session_messages(bg.ref, include_carried_calibrations=False)) == day  # la sesión de fondo sola = su rebanada del día (seq incluido)
+    assert list(generator.session_messages(bg.ref, include_carried_calibrations=False)) == day  # background session alone = its slice of the day
     seqs = [m.payload["seq"] for m in day if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_id"] == "imu_t9"]
     assert seqs == sorted(seqs) and seqs[0] >= 0
 
@@ -417,7 +417,7 @@ def test_length_mm_always_carries_the_calibration_in_force(config, mission):
         if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_kind"] == "stretch":
             p = m.payload
             assert "length_mm" in p["data"]
-            calibration = calibrations[p["calibration_id"]]  # emitida antes en la misión
+            calibration = calibrations[p["calibration_id"]]  # emitted earlier in the mission
             assert calibration["calibration_type"] == "stretch" and calibration["created_at"] <= p["received_at"]
             assert declared[(p["session_id"], p["stream_id"])] == p["calibration_id"]
             seen += 1
@@ -427,9 +427,9 @@ def test_length_mm_always_carries_the_calibration_in_force(config, mission):
 def test_calibration_schedule(config, mission):
     cals = [m for m in mission if m.kind is EnvelopeKind.CALIBRATION and m.astronaut_id == "AST-01"]
     days = {t: sorted({m.day for m in cals if m.payload["calibration_type"] == t}) for t in ("stretch", "imu", "emg_mvc")}
-    assert days["stretch"] == days["imu"] == [0, 1, 2, 3]  # every 2 days + inicio de cada tramo
+    assert days["stretch"] == days["imu"] == [0, 1, 2, 3]  # every 2 days + start of each segment
     assert days["emg_mvc"] == [0, 1, 2, 3]
-    assert Counter(m.payload["calibration_type"] for m in cals)["emg_mvc"] == 2 * 4  # dos EMG por sesión de ejercicio
+    assert Counter(m.payload["calibration_type"] for m in cals)["emg_mvc"] == 2 * 4  # two EMG per exercise session
 
 
 def test_ground_truth_records_are_present_and_consistent(config, mission):
@@ -438,7 +438,7 @@ def test_ground_truth_records_are_present_and_consistent(config, mission):
     n_days, n_crew, n_sessions = 4, 2, 4
     assert by_type["latent_state"] == by_type["device_events"] == n_days * n_crew
     assert by_type["quality_faults"] == by_type["lost_chunks"] == by_type["expected_features"] == n_days * n_crew * n_sessions
-    # Seq emitidos + perdidos = rango continuo por (astronauta, día, arranque, stream).
+    # Emitted + lost seq = continuous range per (astronaut, day, boot, stream).
     seqs: dict[tuple, set[int]] = defaultdict(set)
     n_lost = 0
     for m in mission:
@@ -461,7 +461,7 @@ def test_ground_truth_records_are_present_and_consistent(config, mission):
     assert len({(a, d) for a, d, _ in boots}) <= len(boots) <= n_days * n_crew + reboots
 
 
-# --- Re-simulación A/B ------------------------------------------------------------------------------
+# --- A/B re-simulation ------------------------------------------------------------------------------
 
 
 def test_resimulate_changes_only_what_depends_on_gravity(config):
@@ -508,7 +508,7 @@ def test_resimulate_changes_only_what_depends_on_gravity(config):
     assert generator.resimulate(ref, GravityEnvironment.MICROGRAVITY) == micro
 
 
-# --- API en vivo ------------------------------------------------------------------------------------
+# --- Live API ------------------------------------------------------------------------------------
 
 T0 = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)
 LIVE_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
@@ -536,7 +536,7 @@ def test_live_background_then_session_then_background_keeps_seq():
     )  # fmt: skip
     first = next(session)
     assert first.kind is EnvelopeKind.GROUND_TRUTH and first.payload["type"] == "expected_features"
-    in_session = take_chunks(session, 200)  # más que el protocolo: sigue en reposo
+    in_session = take_chunks(session, 200)  # more than the protocol: remains at rest
     resumed = take_chunks(
         generator.live_background(astronaut_id="AST-01", day=1, device=device, session_id=LIVE_BACKGROUND, start=T0 + timedelta(seconds=200)), 10
     )
@@ -601,7 +601,7 @@ def test_calibration_in_force_is_the_live_one_or_else_the_scheduled_one_of_that_
     scheduled = [sess.scheduled_calibrations(sparse_config, sparse_config.seed, timeline, "AST-01", d)["stretch_spine"] for d in timeline]
     assert [generator.calibration_in_force("AST-01", "stretch_spine", d.index) for d in timeline] == scheduled
     assert scheduled[2] == scheduled[1] and generator.calibration_in_force("AST-01", "imu_t9", 2).day == 1
-    assert generator.calibration_in_force("AST-01", "emg_lat_left", 2) is None  # la MVC solo existe en vivo o en su sesión
+    assert generator.calibration_in_force("AST-01", "emg_lat_left", 2) is None  # the MVC only exists live or in its session
     (first,) = generator.live_calibration(
         astronaut_id="AST-01", day=2, session_id=LIVE_SESSION, calibration_type="stretch", stream_ids=["stretch_spine"], at=T0
     )
@@ -610,7 +610,7 @@ def test_calibration_in_force_is_the_live_one_or_else_the_scheduled_one_of_that_
     )
     assert {generator.calibration_in_force("AST-01", "stretch_spine", d.index).calibration_id for d in timeline} == {second.payload["calibration_id"]}
     assert generator.calibration_in_force("AST-02", "stretch_spine", 2).calibration_id != second.payload["calibration_id"]
-    # Por id: también una en vivo ya sustituida, o una programada vigente ese día.
+    # By id: also a live one already superseded, or a scheduled one in force that day.
     assert (
         generator.calibration("AST-01", first.payload["calibration_id"], 2).model == generator.calibration("AST-01", first.payload["calibration_id"], 0).model
     )
@@ -659,7 +659,7 @@ def test_live_blocks_pick_up_a_calibration_made_while_they_run():
         after = stretch(4 * block)
         first_seq = before[0]["seq"]
         assert {p["calibration_id"] for p in before} == {old}, name
-        # El bloque en curso sigue con la anterior; desde el siguiente, la nueva (búsqueda por bloque).
+        # The current block continues with the previous one; from the next, the new one (per-block lookup).
         assert all(p["calibration_id"] == (old if p["seq"] - first_seq < block else new) for p in after), name
         assert any(p["calibration_id"] == new for p in after), name
         old = new
@@ -679,7 +679,7 @@ def test_live_blocks_after_midnight_keep_the_awake_window_of_the_mission_day(con
 
 def test_live_packet_gap_survives_block_boundaries():
     def edit(raw):
-        raw["device"]["status_interval_s"] = 0.5  # bloques de un chunk: cada chunk es frontera de bloque
+        raw["device"]["status_interval_s"] = 0.5  # one-chunk blocks: each chunk is a block boundary
         raw["faults"]["device"]["packet_loss"].update(probability=0.3, burst_chunks={"min": 1, "max": 1})
 
     config = tiny_config(edit)
@@ -734,7 +734,7 @@ def test_calibrations_made_at_power_on_outside_any_session_are_emitted_that_day(
     assert [m.day for m in day0] == [0, 0]
 
 
-# La identidad de las cachés interna es lo único observable de que se calculan una vez (la salida es idéntica con o sin caché).
+# The identity of the internal caches is the only observable sign that they are computed once (the output is identical with or without cache).
 def test_plans_and_scheduled_calibrations_are_computed_once_and_reused(config):
     generator = MissionGenerator(config)
     assert generator.sessions(1, "AST-01") is generator.sessions(1, "AST-01")
@@ -749,14 +749,14 @@ def test_session_plan_of_a_missing_slot_names_it(config):
     assert excinfo.value.args == ("no session 'nope' for AST-01 on day 0",)
 
 
-# Helper privado puro: sus casos (redondeo al microsegundo, k>0) no se pueden aislar en la salida publica de una mision.
+# Pure private helper: its cases (rounding to the microsecond, k>0) cannot be isolated in the public output of a mission.
 def test_chunk_start_is_the_real_instant_of_the_chunk():
     from spine_physiology.generator import _chunk_start
 
     start = datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
     assert _chunk_start(start, 0, 100, 200.0) == start
     assert _chunk_start(start, 3, 100, 200.0) == start + timedelta(seconds=1.5)
-    assert _chunk_start(start, 1, 10, 3.0) == start + timedelta(microseconds=3_333_333)  # redondeado al microsegundo
+    assert _chunk_start(start, 1, 10, 3.0) == start + timedelta(microseconds=3_333_333)  # rounded to the microsecond
 
 
 def _plan_with_boots(*boots):
@@ -770,30 +770,30 @@ def _plan_with_boots(*boots):
     return t0, DevicePlan("AST-01", "DEV-01", t0, t0 + timedelta(seconds=30), epochs, ())
 
 
-# Helper privado puro: los solapes y bordes de arranque que prueba no los produce un plan real
-# (arranques disjuntos), asi que no se alcanzan desde la salida publica.
+# Pure private helper: the overlaps and boot edges it tests are not produced by a real plan
+# (disjoint boots), so they are not reachable from the public output.
 def test_existing_chunk_ends_cover_only_chunks_that_start_while_a_boot_is_up():
     from spine_physiology.generator import _existing_chunk_ends
 
-    # 30 chunks de 1 s desde t0; arranque 1 en [2, 10) y arranque 2 desde el 20, abierto.
+    # 30 chunks of 1 s from t0; boot 1 in [2, 10) and boot 2 from 20, open-ended.
     t0, plan = _plan_with_boots((2, 10), (20, None))
     ends = _existing_chunk_ends(plan, t0, 30, 10, 10.0)
     seconds = [(e - t0).total_seconds() for e in ends]
-    # Empiezan en 2..9 y 20..29 (inicio == arranque incluido, inicio == caida excluido): acaban en 3..10 y 21..30.
+    # They start at 2..9 and 20..29 (start == boot included, start == drop excluded): they end at 3..10 and 21..30.
     assert seconds == [*range(3, 11), *range(21, 31)]
 
 
 def test_existing_chunk_ends_never_count_a_chunk_twice_and_follow_the_chunk_grid():
     from spine_physiology.generator import _existing_chunk_ends
 
-    t0, plan = _plan_with_boots((0, 4), (2, None))  # solapados (no ocurre en la practica): el primero se queda el chunk
-    ends = _existing_chunk_ends(plan, t0, 6, 5, 4.0)  # chunks de 1.25 s
+    t0, plan = _plan_with_boots((0, 4), (2, None))  # overlapping (does not happen in practice): the first keeps the chunk
+    ends = _existing_chunk_ends(plan, t0, 6, 5, 4.0)  # 1.25 s chunks
     assert [(e - t0).total_seconds() for e in ends] == [1.25, 2.5, 3.75, 5.0, 6.25, 7.5]
     t0, plan = _plan_with_boots((0, None))
     assert _existing_chunk_ends(plan, t0, 0, 5, 4.0) == []
 
 
-# Helper privado puro: el empate exacto con la marca solo se da con instantes construidos a mano.
+# Pure private helper: the exact tie with the mark only happens with hand-built instants.
 def test_reorder_releases_only_what_is_strictly_before_the_mark():
     from spine_physiology.generator import _Reorder
 
@@ -802,7 +802,7 @@ def test_reorder_releases_only_what_is_strictly_before_the_mark():
     for second, kind in ((2, EnvelopeKind.SESSION), (1, EnvelopeKind.SELF_REPORT), (2, EnvelopeKind.DAILY_CONTEXT), (3, EnvelopeKind.GROUND_TRUTH)):
         reorder.push(Envelope(kind=kind, topic=None, payload={}, at=t0 + timedelta(seconds=second), retained=False, astronaut_id="AST-01", day=0))
     assert [e.kind for e in reorder.release(t0 + timedelta(seconds=2))] == [EnvelopeKind.SELF_REPORT]
-    assert [e.kind for e in reorder.release(t0 + timedelta(seconds=3))] == [EnvelopeKind.SESSION, EnvelopeKind.DAILY_CONTEXT]  # empate: orden de llegada
+    assert [e.kind for e in reorder.release(t0 + timedelta(seconds=3))] == [EnvelopeKind.SESSION, EnvelopeKind.DAILY_CONTEXT]  # tie: arrival order
     assert [e.kind for e in reorder.release(None)] == [EnvelopeKind.GROUND_TRUTH]
 
 
@@ -850,10 +850,10 @@ def test_live_exercise_session_announces_its_features_then_streams_contiguous_ch
         "protocol_id": "lat_pulldown_standing_v1", "gravity_environment": "microgravity",
     }  # fmt: skip
     reps = next(f for f in first.payload["features"] if f["feature_id"] == "exercise.rep_count")
-    assert reps["value"] == 4.0  # las 2 series x 2 reps del protocolo: va como ejercicio, con sus reps
+    assert reps["value"] == 4.0  # the protocol's 2 sets x 2 reps: goes as exercise, with its reps
     for stream_id in ("imu_t9", "emg_lat_left"):
         chunks = [m.payload for m in messages if m.kind is EnvelopeKind.STREAM_CHUNK and m.payload["stream_id"] == stream_id]
-        assert len(chunks) > 50  # el protocolo (44 chunks) y al menos un bloque de reposo despues
+        assert len(chunks) > 50  # the protocol (44 chunks) and at least one rest block afterwards
         steps = {b["t0_device_ms"] - a["t0_device_ms"] for a, b in itertools.pairwise(chunks)}
         assert steps <= {round(config.signals.chunk_ms) + d for d in (-1, 0, 1)}
     block_ends = [m for m in messages[1:] if m.kind is EnvelopeKind.GROUND_TRUTH]
@@ -909,7 +909,7 @@ def _live_digest(messages) -> str:
 
 
 def test_live_output_for_a_fixed_seed_is_pinned():
-    """Pin de los valores en vivo (las etiquetas de RNG `live`/`rest`/`protocol`/`device`/`calibration` solo se notan aqui)."""
+    """Pin of the live values (the RNG labels `live`/`rest`/`protocol`/`device`/`calibration` are only noticeable here)."""
     config = tiny_config(lambda raw: raw["faults"]["device"]["packet_loss"].update(probability=0.0))
     generator = MissionGenerator(config)
     session = list(

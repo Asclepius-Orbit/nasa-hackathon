@@ -15,7 +15,7 @@ The doubles are only at the boundaries: the MQTT broker (in memory), the wall cl
 wearable gateway (the test delivers what the simulator emits and acks the commands) and the LLM (a scripted model that
 calls the tools and builds its answer from what they returned).
 
-ASSUMPTION (provisional, to be reviewed with Uri): the engine runs with `risk_saturation` = ENGINE_RISK_SATURATION instead
+ASSUMPTION (provisional, to be reviewed): the engine runs with `risk_saturation` = ENGINE_RISK_SATURATION instead
 of its default 3.0. With the default the same simulated data is red with the risk score saturated at 1.0: the cord
 elongation of the third day in microgravity is some 70 robust deviations away from a three-session Earth baseline, and
 the score is 1 - exp(-sum|z| / risk_saturation). No clinical value, no threshold of the triage policy and no catalog

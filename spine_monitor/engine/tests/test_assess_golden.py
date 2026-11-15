@@ -1,4 +1,4 @@
-"""`POST /assess` con el ejemplo del contrato y la configuración por defecto reproduce un snapshot versionado."""
+"""`POST /assess` with the contract example and the default configuration reproduces a versioned snapshot."""
 
 import json
 import os
@@ -14,8 +14,8 @@ pytestmark = pytest.mark.golden
 
 GOLDEN = Path(__file__).parent / "golden" / "assess-example.json"
 EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "assess-request.json"
-# Lo único que no es determinista: el id generado en cada evaluación. Los tiempos se fijan igualmente por si
-# el motor añade alguno de reloj de pared.
+# The only non-deterministic part: the id generated on each assessment. Times are pinned anyway in case
+# the engine adds a wall-clock one.
 NORMALIZED = {"assessment_id": "<assessment_id>", "as_of": "<time>", "created_at": "<time>", "computed_at": "<time>"}
 
 
@@ -30,7 +30,7 @@ def _normalized(value: Any) -> Any:
 
 
 def snapshot() -> dict[str, Any]:
-    # Sin `.env`: el snapshot es el de la configuración por defecto, no el de la máquina que lo ejecuta.
+    # Without `.env`: the snapshot is the default configuration's, not that of the machine running it.
     client = TestClient(create_default_app(EngineSettings(_env_file=None)))
     response = client.post("/assess", json=json.loads(EXAMPLE.read_text(encoding="utf-8")))
     assert response.status_code == 200

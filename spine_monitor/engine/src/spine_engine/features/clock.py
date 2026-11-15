@@ -1,14 +1,14 @@
-"""Reloj del dispositivo -> UTC por ``boot_id`` a partir de anclas ``ClockSync``.
+"""Device clock -> UTC per ``boot_id`` from ``ClockSync`` anchors.
 
-Modelo por arranque: ``utc = a + b·device_ms``.
+Per-boot model: ``utc = a + b·device_ms``.
 
-- ≥2 anclas con ``device_ms`` distintos: mínimos cuadrados (``b`` captura la deriva del cristal).
-- 1 ancla, todas con el mismo ``device_ms`` o pendiente ajustada ≤ 0 (anclas incoherentes): offset
-  fijo con ``b = 1`` (media de ``utc - device_ms``). Un reloj que va hacia atrás no se acepta.
-- 0 anclas: el arranque no tiene UTC (``None``); quien llama lo trata como ``no_data``.
+- ≥2 anchors with distinct ``device_ms``: least squares (``b`` captures the crystal drift).
+- 1 anchor, all with the same ``device_ms`` or fitted slope ≤ 0 (inconsistent anchors): fixed
+  offset with ``b = 1`` (mean of ``utc - device_ms``). A clock running backwards is not accepted.
+- 0 anchors: the boot has no UTC (``None``); the caller treats it as ``no_data``.
 
-Para no perder precisión con valores grandes, el ajuste se hace en coordenadas relativas (al menor
-``device_ms`` y a la ancla UTC más temprana). Nada lanza excepciones: lo no representable es ``None``.
+To avoid losing precision with large values, the fit is done in relative coordinates (to the smallest
+``device_ms`` and the earliest UTC anchor). Nothing raises exceptions: what cannot be represented is ``None``.
 """
 
 from collections.abc import Iterable, Sequence
@@ -22,11 +22,11 @@ _MS = timedelta(milliseconds=1)
 
 @dataclass(frozen=True, slots=True)
 class ClockFit:
-    """Ajuste de un ``boot_id``.
+    """Fit of one ``boot_id``.
 
-    ``offset_ms`` es UTC en ``device_ms = 0`` medido en ms desde ``reference``. ``uncertainty_ms`` es la
-    peor ``uncertainty_ms`` de las anclas (no se inventa más); ``max_residual_ms`` es el mayor
-    residuo del ajuste sobre las propias anclas.
+    ``offset_ms`` is UTC at ``device_ms = 0`` measured in ms from ``reference``. ``uncertainty_ms`` is the
+    worst ``uncertainty_ms`` of the anchors (no more is invented); ``max_residual_ms`` is the largest
+    residual of the fit over the anchors themselves.
     """
 
     boot_id: int
@@ -40,11 +40,11 @@ class ClockFit:
 
     @property
     def offset_ms(self) -> float:
-        """``a`` del modelo, en ms desde ``reference``."""
+        """``a`` of the model, in ms from ``reference``."""
         return self.intercept_ms - self.slope * self.reference_device_ms
 
     def to_utc(self, device_ms: int) -> datetime | None:
-        """UTC de una lectura del reloj del dispositivo; ``None`` si no es representable."""
+        """UTC of a device clock reading; ``None`` if not representable."""
         try:
             relative = self.intercept_ms + self.slope * float(device_ms - self.reference_device_ms)
             return self.reference + timedelta(milliseconds=relative)
@@ -71,28 +71,28 @@ def _fit(boot_id: int, anchors: Sequence[ClockSync]) -> ClockFit:
 
 @dataclass(frozen=True, slots=True)
 class DeviceClock:
-    """Ajustes por ``boot_id``. Se construye con :meth:`from_syncs`."""
+    """Fits per ``boot_id``. Built with :meth:`from_syncs`."""
 
     fits: dict[int, ClockFit]
 
     @classmethod
     def from_syncs(cls, syncs: Iterable[ClockSync] | None) -> DeviceClock:
-        """Agrupa las anclas por ``boot_id`` y ajusta cada arranque (el orden de entrada no importa)."""
+        """Group the anchors by ``boot_id`` and fit each boot (input order does not matter)."""
         by_boot: dict[int, list[ClockSync]] = {}
         for sync in syncs or ():
             by_boot.setdefault(sync.boot_id, []).append(sync)
         return cls({boot: _fit(boot, anchors) for boot, anchors in by_boot.items()})
 
     def fit(self, boot_id: int) -> ClockFit | None:
-        """Ajuste del arranque, o ``None`` si no tiene anclas."""
+        """Fit of the boot, or ``None`` if it has no anchors."""
         return self.fits.get(boot_id)
 
     def to_utc(self, boot_id: int, device_ms: int) -> datetime | None:
-        """UTC de ``device_ms`` en ese arranque; ``None`` si no hay anclas o no es representable."""
+        """UTC of ``device_ms`` in that boot; ``None`` if there are no anchors or it is not representable."""
         fit = self.fits.get(boot_id)
         return None if fit is None else fit.to_utc(device_ms)
 
     def uncertainty_ms(self, boot_id: int) -> float | None:
-        """Peor ``uncertainty_ms`` de las anclas del arranque, o ``None`` si no tiene anclas."""
+        """Worst ``uncertainty_ms`` of the boot's anchors, or ``None`` if it has no anchors."""
         fit = self.fits.get(boot_id)
         return None if fit is None else fit.uncertainty_ms

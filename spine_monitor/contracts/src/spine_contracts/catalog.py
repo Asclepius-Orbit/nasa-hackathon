@@ -1,12 +1,12 @@
-"""Catálogo de features como módulo de runtime.
+"""Feature catalog as a runtime module.
 
-Carga `feature-catalog.json`, expande los ids con plantilla (`emg.{muscle}.{side}.rms_mv`) a ids concretos
-con los enums de `common.schema.json` y resuelve la unidad, la dirección de riesgo y los rangos de un id
-concreto. No contiene valores clínicos: viven en el JSON (provisionales hasta que Aguado los valide) y este
-módulo solo los lee.
+Loads `feature-catalog.json`, expands templated ids (`emg.{muscle}.{side}.rms_mv`) to concrete ids
+with the enums of `common.schema.json` and resolves the unit, risk direction and ranges of a concrete
+id. It holds no clinical values: they live in the JSON (provisional until clinically validated) and this
+module only reads them.
 
-El catálogo se lee del repositorio (`contracts/catalog`) al ejecutar desde el workspace de uv, y de la copia
-incluida en el wheel (`spine_contracts/catalog`) al instalarlo por separado, igual que los esquemas.
+The catalog is read from the repository (`contracts/catalog`) when running from the uv workspace, and from the
+copy bundled in the wheel (`spine_contracts/catalog`) when installed separately, like the schemas.
 """
 
 import json
@@ -27,7 +27,7 @@ type CatalogEntry = Mapping[str, Any]
 
 
 class UnknownFeatureIdError(KeyError):
-    """El feature_id no corresponde a ninguna entrada (expandida) del catálogo."""
+    """The feature_id matches no (expanded) catalog entry."""
 
     def __init__(self, feature_id: str) -> None:
         super().__init__(feature_id)
@@ -39,7 +39,7 @@ class UnknownFeatureIdError(KeyError):
 
 @cache
 def load_catalog() -> Catalog:
-    """Catálogo de features tal como está en `feature-catalog.json` (compartido: no lo mutes)."""
+    """Feature catalog as in `feature-catalog.json` (shared: do not mutate it)."""
     path = CATALOG_DIR / "feature-catalog.json"
     if not path.is_file():
         raise FileNotFoundError(f"feature catalog not found at {path}; run from the repository workspace or install the wheel")
@@ -53,12 +53,12 @@ def _common_defs() -> dict[str, Any]:
 
 
 def placeholders(template: str) -> list[str]:
-    """Nombres de los marcadores `{nombre}` de un id con plantilla, en orden."""
+    """Names of the `{name}` placeholders of a templated id, in order."""
     return [part[1:-1] for part in template.split(".") if part.startswith("{")]
 
 
 def expand_template(template: str) -> list[str]:
-    """Ids concretos de una plantilla: producto cartesiano de los enums de `common.schema.json`."""
+    """Concrete ids of a template: Cartesian product of the enums of `common.schema.json`."""
     names = placeholders(template)
     defs = _common_defs()
     values = [cast(list[str], defs[name]["enum"]) for name in names]
@@ -66,7 +66,7 @@ def expand_template(template: str) -> list[str]:
 
 
 def expand_ids(entry: CatalogEntry) -> list[str]:
-    """Ids concretos de una entrada del catálogo."""
+    """Concrete ids of a catalog entry."""
     return expand_template(str(entry["feature_id"]))
 
 
@@ -83,36 +83,36 @@ def _entry_for(feature_id: str) -> CatalogEntry:
 
 
 def all_feature_ids() -> list[str]:
-    """Todos los ids concretos del catálogo, en orden de entrada."""
+    """All concrete ids of the catalog, in entry order."""
     return list(_entries_by_id())
 
 
 def is_known(feature_id: str) -> bool:
-    """True si `feature_id` es un id concreto del catálogo (una plantilla sin expandir no lo es)."""
+    """True if `feature_id` is a concrete catalog id (an unexpanded template is not)."""
     return feature_id in _entries_by_id()
 
 
 def unit_for(feature_id: str) -> str:
-    """Unidad de la entrada cuya plantilla produce `feature_id`; lanza `UnknownFeatureIdError` si no existe."""
+    """Unit of the entry whose template produces `feature_id`; raises `UnknownFeatureIdError` if it does not exist."""
     return str(_entry_for(feature_id)["unit"])
 
 
 def risk_direction(feature_id: str) -> str:
-    """`risk_direction` de la entrada de `feature_id` (puede ser `unspecified`); `UnknownFeatureIdError` si no existe."""
+    """`risk_direction` of the entry of `feature_id` (may be `unspecified`); `UnknownFeatureIdError` if it does not exist."""
     return str(_entry_for(feature_id)["risk_direction"])
 
 
 def ranges(feature_id: str) -> dict[str, Any] | None:
-    """Rangos normal/alert/critical/source de la entrada de `feature_id`, o None si no hay; `UnknownFeatureIdError` si no existe."""
+    """normal/alert/critical/source ranges of the entry of `feature_id`, or None if there are none; `UnknownFeatureIdError` if it does not exist."""
     value = _entry_for(feature_id)["ranges"]
     return None if value is None else cast(dict[str, Any], value)
 
 
 @cache
 def load_calibration_defaults() -> dict[str, Any]:
-    """Defaults provisionales de calibración (`calibration-defaults.json`): curva del cordón, reposo y ventana MVC.
+    """Provisional calibration defaults (`calibration-defaults.json`): cord curve, rest point and MVC window.
 
-    Los lee el gateway y los comprueban los tests contra la misión de ejemplo (compartido: no lo mutes).
+    The gateway reads them and the tests check them against the example mission (shared: do not mutate it).
     """
     path = CATALOG_DIR / "calibration-defaults.json"
     if not path.is_file():

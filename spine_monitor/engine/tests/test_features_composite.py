@@ -1,4 +1,4 @@
-"""Extractor compuesto y registro por familia (#40): se prueban con familias falsas, sin métricas reales."""
+"""Composite extractor and per-family registry (#40): tested with fake families, no real metrics."""
 
 import json
 import math
@@ -45,7 +45,7 @@ def make_request(data: dict | None = None) -> FeaturesRequest:
 
 @dataclass
 class FakeFamily:
-    """Familia de pruebas: ``produce`` decide qué devuelve a partir del contexto y lo guarda para inspeccionarlo."""
+    """Test family: ``produce`` decides what to return from the context and stores it for inspection."""
 
     family: str
     feature_ids: tuple[str, ...]
@@ -259,7 +259,7 @@ def test_an_extractor_quality_override_replaces_the_common_one():
 def test_clock_uncertainty_above_the_configured_threshold_flags_the_quality():
     registry = ExtractorRegistry()
     registry.register(emitting(STRETCH_ID, STRETCH))
-    request = make_request()  # ancla con incertidumbre de 18 ms
+    request = make_request()  # anchor with an uncertainty of 18 ms
 
     flagged = dump(CompositeFeatureExtractor(registry, clock_uncertain_ms=10).extract(request))
     unflagged = dump(CompositeFeatureExtractor(registry, clock_uncertain_ms=18).extract(request))

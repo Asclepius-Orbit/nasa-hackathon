@@ -1,4 +1,4 @@
-"""Modelo exploratorio: longitud total equivalente del ensayo, no longitud clínica."""
+"""Exploratory model: equivalent total length of the trial, not clinical length."""
 
 import pytest
 from hypothesis import given

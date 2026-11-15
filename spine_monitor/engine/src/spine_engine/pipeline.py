@@ -20,7 +20,7 @@ from spine_engine.features.symptoms import WINDOW, symptom_feature_set
 from spine_engine.interfaces import BaselineStrategy, Deviation, RiskModel, TriageContext, TriagePolicy
 from spine_engine.measurements import UNITS, measurements
 
-# Dominio de evaluación según el prefijo del feature_id (hasta que el catálogo lo diga).
+# Evaluation domain according to the feature_id prefix (until the catalog says so).
 _DOMAIN_BY_PREFIX = {
     "emg": AssessmentDomain.MUSCLE,
     "stretch": AssessmentDomain.SPINE_LENGTH,
@@ -45,7 +45,7 @@ def domain_of(feature_id: str) -> AssessmentDomain | None:
 
 
 def _completeness(feature_sets: Sequence[FeatureSet], deviations: Sequence[Deviation], direct: dict[str, float] | None = None) -> Completeness:
-    """Qué parte de lo esperado se pudo evaluar. Lo que falta nunca cuenta como verde."""
+    """What part of what was expected could be evaluated. What is missing never counts as green."""
     compared = {d.feature_id for d in deviations}
     if direct is not None:
         compared = (compared - UNITS.keys()) | direct.keys()
@@ -68,7 +68,7 @@ def _completeness(feature_sets: Sequence[FeatureSet], deviations: Sequence[Devia
 
 
 class AssessmentPipeline:
-    """Sin estado: baseline + features entran, una evaluación sale."""
+    """Stateless: baseline + features go in, an evaluation comes out."""
 
     def __init__(
         self,
@@ -128,7 +128,7 @@ class AssessmentPipeline:
                 self_report_ids=list(dict.fromkeys(report.report_id for report in reports)),
             ),
         )
-        # `dump` emite lo que se fijó: un `mission_day=None` explícito saldría como null y el schema pide un entero.
+        # `dump` emits what was set: an explicit `mission_day=None` would come out as null and the schema requires an integer.
         if request.mission_day is not None:
             assessment.mission_day = request.mission_day
         return assessment

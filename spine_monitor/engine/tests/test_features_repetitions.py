@@ -1,4 +1,4 @@
-"""Ventanas de repetición (#41): detección desde eventos del protocolo y servicio con respaldo IMU inyectable."""
+"""Repetition windows (#41): detection from protocol events and a service with an injectable IMU fallback."""
 
 import json
 from datetime import UTC, datetime, timedelta
@@ -66,7 +66,7 @@ def test_the_rest_between_sets_is_not_a_rest_between_reps():
 
     assert [w.index for w in (first, second, third)] == [1, 2, 3]
     assert first.rest == (at(4), at(5))
-    assert second.rest is None  # último de su serie: el descanso largo no cuenta
+    assert second.rest is None  # last of its series: the long rest does not count
     assert third.rest is None
 
 
@@ -109,7 +109,7 @@ def test_consecutive_duplicate_starts_and_ends_collapse_into_one_window():
 
 @pytest.mark.parametrize("end_at", [1.0, 0.5])
 def test_a_window_that_ends_at_or_before_its_start_is_dropped(end_at: float):
-    # el fin llega "después" de un rep_start posterior en el orden por tiempo: nunca fin <= inicio
+    # the end arrives "after" a later rep_start in time order: never end <= start
     assert detect_from_events([ev("rep_start", 1), ev("rep_end", end_at)]) == ()
 
 

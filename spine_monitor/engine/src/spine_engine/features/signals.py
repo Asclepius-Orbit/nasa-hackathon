@@ -1,9 +1,9 @@
-"""Muestras de un segmento con su instante UTC, recortables a una ventana (#42, #44).
+"""Samples of a segment with their UTC instant, trimmable to a window (#42, #44).
 
-Cada chunk aporta ``n`` muestras: la ``i`` cae en ``t0_device_ms + i·1000/sample_rate_hz`` del dispositivo y su UTC
-sale del ajuste de reloj del ``boot_id`` (milisegundos del dispositivo redondeados). Nunca se unen muestras de dos
-``boot_id``: quien llama pide un segmento cada vez. Sin lanzar: lo que no tiene UTC (arranque sin ancla, valor no
-representable) no aparece en el resultado.
+Each chunk contributes ``n`` samples: the ``i``-th falls at the device's ``t0_device_ms + i·1000/sample_rate_hz`` and its UTC
+comes from the clock fit of the ``boot_id`` (rounded device milliseconds). Samples of two
+``boot_id`` are never joined: the caller asks for one segment at a time. Never raises: what has no UTC (boot without an anchor, unrepresentable
+value) does not appear in the result.
 """
 
 from collections.abc import Sequence
@@ -19,7 +19,7 @@ from spine_engine.features.ordering import Segment
 
 @dataclass(frozen=True, slots=True)
 class SegmentSamples:
-    """Muestras de un segmento: ``times[i]`` y ``ends[i]`` (UTC del inicio y del fin de la muestra) y su valor en cada canal."""
+    """Samples of a segment: ``times[i]`` and ``ends[i]`` (UTC of the start and end of the sample) and its value in each channel."""
 
     times: tuple[datetime, ...]
     ends: tuple[datetime, ...]
@@ -32,17 +32,17 @@ def segment_samples(
     channels: Sequence[str],
     window: tuple[datetime, datetime] | None = None,
 ) -> SegmentSamples:
-    """Muestras del segmento en orden de ``seq`` para los ``channels`` pedidos, con ``start <= t < end`` si hay ventana.
+    """Samples of the segment in ``seq`` order for the requested ``channels``, with ``start <= t < end`` if there is a window.
 
-    Un chunk al que le falta algún canal pedido se salta entero; en los demás se usa el menor número de muestras
-    entre canales. Con ventana vacía o fuera del segmento, o sin UTC, devuelve tuplas y arrays vacíos con todos los canales.
+    A chunk missing any requested channel is skipped entirely; in the others the smallest number of samples
+    among channels is used. With an empty window or one outside the segment, or without UTC, returns empty tuples and arrays for all channels.
     """
     times: list[datetime] = []
     ends: list[datetime] = []
     values: dict[str, list[float]] = {name: [] for name in channels}
     for chunk in segment.chunks:
         found = [getattr(chunk.data, name, None) for name in channels]
-        # los canales del IMU son RootModel (``.root``); el ``emg`` del contrato es ya una lista
+        # the IMU channels are RootModel (``.root``); the contract's ``emg`` is already a list
         columns = [getattr(channel, "root", channel) for channel in found if channel is not None]
         if len(columns) < len(found):
             continue

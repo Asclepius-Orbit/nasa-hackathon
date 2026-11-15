@@ -738,7 +738,7 @@ paths:
     get:
       operationId: getHoustonView
       summary: Houston screen
-      description: Latest summary prepared for the ground station, state of the link and last confirmed contact. `summary` is null while the astronaut has nothing yet. The transport is simulated (`transport` is `simulated`) and the content is pending validation by Aguado (`content_validated` is false).
+      description: Latest summary prepared for the ground station, state of the link and last confirmed contact. `summary` is null while the astronaut has nothing yet. The transport is simulated (`transport` is `simulated`) and the content is pending clinical validation (`content_validated` is false).
       parameters:
         - $ref: '#/components/parameters/AstronautId'
       responses:

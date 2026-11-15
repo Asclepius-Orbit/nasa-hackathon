@@ -1,4 +1,4 @@
-"""Montaje por defecto del motor a partir de la configuración."""
+"""Default assembly of the engine from the settings."""
 
 from spine_contracts import catalog
 
@@ -32,7 +32,7 @@ def default_baseline_strategy(settings: EngineSettings) -> StatisticalBaselineSt
 
 
 def default_pipeline(settings: EngineSettings) -> AssessmentPipeline:
-    """Construye la evaluación estadística y la política de triaje configurable."""
+    """Build the statistical assessment and the configurable triage policy."""
     risk = DeviationRiskModel(settings.risk_domain_weights, settings.risk_persistence_points, settings.risk_saturation, catalog)
     config = PolicyConfig.from_file(settings.triage_policy_file) if settings.triage_policy_file else PolicyConfig.default()
     return AssessmentPipeline(default_baseline_strategy(settings), risk, DeclarativeTriagePolicy(config))

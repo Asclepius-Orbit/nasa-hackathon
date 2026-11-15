@@ -9,6 +9,7 @@ import { shouldUseMockData } from '../../data/AppDataProvider';
 import { createMockChat } from '../../data/mock/MockChat';
 import { chat as copy, toolName } from '../../strings/chat';
 import styles from './ChatView.module.css';
+import { Markdown } from './Markdown';
 
 const MAX_QUESTION = 2000;
 
@@ -67,7 +68,7 @@ function reduce(turns: Turn[], action: Action): Turn[] {
 
 /**
  * Chat with the spine assistant about the astronaut's own data. It goes straight through the bridge (`useApi().chat`), not
- * the DataSource: it is a live conversation, not a view. One answer at a time; text is shown as plain text as it streams;
+ * the DataSource: it is a live conversation, not a view. One answer at a time; the answer is rendered as Markdown as it streams (the question stays plain text);
  * the assistant's tool calls are shown as small "Looked at" chips; a `fallback` replaces the text and says it is not the
  * assistant's own. Nothing here diagnoses: the screen says so, and a corrected answer says it was corrected.
  */
@@ -168,7 +169,7 @@ export function ChatView(): React.JSX.Element {
                     </p>
                   )}
                   {turn.fallback && <p className={styles.fallback}>{copy.fallbackLabel}</p>}
-                  {turn.text !== '' && <p className={styles.text}>{turn.text}</p>}
+                  {turn.text !== '' && <Markdown text={turn.text} />}
                   {turn.notices.map((code) => (
                     <p key={code} className={styles.notice}>
                       {copy.notice[code]}

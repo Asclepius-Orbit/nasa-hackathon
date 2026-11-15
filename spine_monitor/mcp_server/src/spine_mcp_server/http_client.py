@@ -1,7 +1,7 @@
-"""Cliente HTTP real del puerto `AppReader`, sobre la API de lectura de la app (`contracts/app-openapi.yaml`).
+"""Real HTTP client of the `AppReader` port, over the app read API (`contracts/app-openapi.yaml`).
 
-Todo fallo se señala con `UpstreamError`, igual que los mocks: los problem details de la app (4xx) pasan tal cual
-y los fallos de transporte o de forma se traducen a 502, 503 o 504. No se hace ninguna llamada de red al construir.
+Every failure is signalled with `UpstreamError`, like the mocks: the app problem details (4xx) pass through as they are
+and transport or shape failures are translated to 502, 503 or 504. No network call is made on construction.
 """
 
 from datetime import datetime
@@ -28,11 +28,11 @@ from spine_contracts import (
 from spine_mcp_server.errors import UpstreamError
 
 MAX_DETAIL_CHARS = 500
-"""Tope del detalle que viene de la app y llega al LLM (contenido aguas arriba, no confiable)."""
+"""Cap on the detail coming from the app and reaching the LLM (upstream content, untrusted)."""
 
 
 class _AppApi:
-    """Base común de los clientes de la API de lectura de la app: cliente httpx, cierre y traducción de errores en `_get`."""
+    """Common base of the app read API clients: httpx client, closing and error translation in `_get`."""
 
     def __init__(self, base_url: str, *, client: httpx.Client | None = None, timeout: float = 10.0) -> None:
         self._owns_client = client is None
@@ -40,7 +40,7 @@ class _AppApi:
         self._base = base_url.rstrip("/")
 
     def close(self) -> None:
-        """Cierra el cliente httpx propio; uno inyectado lo cierra quien lo creó."""
+        """Close the own httpx client; an injected one is closed by whoever created it."""
         if self._owns_client:
             self._client.close()
 
@@ -66,7 +66,7 @@ class _AppApi:
 
 
 class HttpAppReader(_AppApi):
-    """`AppReader` que consulta la API de lectura de la app por HTTP."""
+    """`AppReader` that queries the app read API over HTTP."""
 
     def get_status(self, astronaut_id: str) -> Status:
         return self._get(f"/crew/{_segment(astronaut_id)}/status", Status)
@@ -85,14 +85,14 @@ class HttpAppReader(_AppApi):
 
 
 class HttpAssessBaseSource(_AppApi):
-    """`AssessBaseSource` que pide a la API de lectura de la app la petición de valoración que enviaría ahora."""
+    """`AssessBaseSource` that asks the app read API for the assessment request it would send now."""
 
     def get_base(self, astronaut_id: str) -> AssessRequest:
         return self._get(f"/crew/{_segment(astronaut_id)}/assess-base", AssessRequest)
 
 
 def _segment(identifier: str) -> str:
-    """Un id como un único segmento de ruta: `/`, `?`, `#` o `..` no pueden cambiar de endpoint ni abrir la query."""
+    """An id as a single path segment: `/`, `?`, `#` or `..` cannot change the endpoint or open the query."""
     return quote(identifier, safe="")
 
 
@@ -108,7 +108,7 @@ def _problem(response: httpx.Response) -> AppErrorResponse | None:
 
 
 def _detail(problem: AppErrorResponse | ErrorResponse) -> str | None:
-    """`detail` del problema o, si no lo trae, sus errores de campo (`pointer: message`); recortado a `MAX_DETAIL_CHARS`."""
+    """The problem `detail` or, if absent, its field errors (`pointer: message`); truncated to `MAX_DETAIL_CHARS`."""
     detail = problem.detail or "; ".join(f"{error.pointer}: {error.message}" for error in problem.errors or []) or None
     return None if detail is None else detail[:MAX_DETAIL_CHARS]
 
@@ -124,7 +124,7 @@ def _failure(response: httpx.Response) -> UpstreamError:
 
 
 class HttpSimulator:
-    """Simulator que consulta directamente el motor mediante su contrato HTTP."""
+    """Simulator that queries the engine directly through its HTTP contract."""
 
     def __init__(self, base_url: str, *, client: httpx.Client | None = None, timeout: float = 10.0) -> None:
         self._owns_client = client is None

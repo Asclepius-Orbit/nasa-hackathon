@@ -141,7 +141,7 @@ class CordPosture(BaseModel):
     estimate: CordLengthEstimate | None
     estimate_unavailable: EstimateUnavailable | None = Field(
         ...,
-        description='Why there is no estimate; null when there is one. ESTIMATE_NO_EARTH_REFERENCE and ESTIMATE_NO_FOLLOW_UP: a measurement is missing. ESTIMATE_REFERENCE_LENGTH_UNKNOWN: the distance between the contacts in this posture is not measured (only the straight back has it; pending Aguado). ESTIMATE_OUT_OF_MODEL_RANGE: a resistance is outside the bench model. ESTIMATE_ENGINE_UNAVAILABLE: the engine did not answer.',
+        description='Why there is no estimate; null when there is one. ESTIMATE_NO_EARTH_REFERENCE and ESTIMATE_NO_FOLLOW_UP: a measurement is missing. ESTIMATE_REFERENCE_LENGTH_UNKNOWN: the distance between the contacts in this posture is not measured (only the straight back has it; pending clinical validation). ESTIMATE_OUT_OF_MODEL_RANGE: a resistance is outside the bench model. ESTIMATE_ENGINE_UNAVAILABLE: the engine did not answer.',
     )
 
 
@@ -156,6 +156,6 @@ class CordProtocolsView(BaseModel):
     )
     cadence_days: conint(ge=1) = Field(
         ...,
-        description='Days between in-flight measurements of each posture. Configurable; the default is an example, not a clinical cadence (pending Aguado).',
+        description='Days between in-flight measurements of each posture. Configurable; the default is an example, not a clinical cadence (pending clinical validation).',
     )
     postures: list[CordPosture] = Field(..., max_length=2, min_length=2)

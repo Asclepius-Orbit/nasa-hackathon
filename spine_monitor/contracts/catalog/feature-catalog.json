@@ -26,7 +26,7 @@
       "risk_direction": "unspecified",
       "ranges": null,
       "status": "proposed",
-      "notes": "PENDIENTE Aguado: the MVC procedure is not yet defined in the protocol, so this feature stays unusable until it is."
+      "notes": "PENDING clinical validation: the MVC procedure is not yet defined in the protocol, so this feature stays unusable until it is."
     },
     {
       "feature_id": "emg.{muscle}.{side}.peak_pct_mvc",
@@ -39,7 +39,7 @@
       "risk_direction": "unspecified",
       "ranges": null,
       "status": "proposed",
-      "notes": "PENDIENTE Aguado: the MVC procedure is not yet defined in the protocol, so this feature stays unusable until it is."
+      "notes": "PENDING clinical validation: the MVC procedure is not yet defined in the protocol, so this feature stays unusable until it is."
     },
     {
       "feature_id": "emg.{muscle}.{side}.median_freq_hz",
@@ -101,7 +101,7 @@
       "risk_direction": "unspecified",
       "ranges": null,
       "status": "proposed",
-      "notes": "Cord response is non-linear and recovers slowly (1-2 min): measure after the recovery wait. Elongation comes from the resistance change against the rest resistance R0 through a measured curve; a resistance of 350 ohm is the cord's resistance per inch at rest, not a 2.54 cm deformation. Standard protocol: cord C3-C4 to L5-S1 (~650 mm, PENDIENTE medición Aguado)."
+      "notes": "Cord response is non-linear and recovers slowly (1-2 min): measure after the recovery wait. Elongation comes from the resistance change against the rest resistance R0 through a measured curve; a resistance of 350 ohm is the cord's resistance per inch at rest, not a 2.54 cm deformation. Standard protocol: cord C3-C4 to L5-S1 (~650 mm, PENDING measurement)."
     },
     {
       "feature_id": "stretch.{spine_region}.elongation_pct",
@@ -208,7 +208,7 @@
       "description": "Percentage change in resistance from the individual's straight-back reference; not a length estimate.",
       "domain": "spine_length", "unit": "%", "inputs": ["stretch"],
       "requires": ["stretch_calibration"], "risk_direction": "higher_is_worse", "ranges": null,
-      "status": "proposed", "notes": "Polfer and Aguado: caution from 4%, danger from 7.5%. A 4500 ohm reference is an example, not a substitute for personal calibration."
+      "status": "proposed", "notes": "Device report: caution from 4%, danger from 7.5%. A 4500 ohm reference is an example, not a substitute for personal calibration."
     },
     {
       "feature_id": "imu.lumbar.sensor_x.orientation_deg",
@@ -216,7 +216,7 @@
       "description": "Calibrated orientation of the lumbar sensor around its X axis, distinct from range of motion and lumbar curvature.",
       "domain": "kinematics", "unit": "deg", "inputs": ["imu"],
       "requires": ["imu_calibration"], "risk_direction": "higher_is_worse", "ranges": null,
-      "status": "proposed", "notes": "Polfer and Aguado: 25 to below 35 degrees normal, 35 to below 42 caution, 42 and above danger; below 25 is unclassifiable."
+      "status": "proposed", "notes": "Device report: 25 to below 35 degrees normal, 35 to below 42 caution, 42 and above danger; below 25 is unclassifiable."
     },
     {
       "feature_id": "emg.reference.normalized_amplitude",
@@ -224,7 +224,7 @@
       "description": "Processed amplitude relative to a personal reference on the 0-1023 scale, measured during a reproducible reference effort, not during rest or as a direct measure of force.",
       "domain": "muscle", "unit": "counts", "inputs": ["emg", "session_events"],
       "requires": ["emg_mvc_calibration"], "risk_direction": "lower_is_worse", "ranges": null,
-      "status": "proposed", "notes": "Polfer and Aguado: normal 922-1023, mild 819-921, moderate 717-818, high 614-716, critical 0-613."
+      "status": "proposed", "notes": "Device report: normal 922-1023, mild 819-921, moderate 717-818, high 614-716, critical 0-613."
     },
     {
       "feature_id": "imu.{spine_level}.{anatomical_plane}.peak_angular_velocity_dps",

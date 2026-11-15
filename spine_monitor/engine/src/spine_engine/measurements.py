@@ -1,4 +1,4 @@
-﻿"""Measured device limits from Polfer and Aguado, evaluated independently of deviations.
+﻿"""Measured device limits from the device report, evaluated independently of deviations.
 
 Inputs must be calibrated five-second feature sets. EMG is only valid when explicitly
 produced by a reference-effort test, as specified by its feature identifier.
@@ -13,7 +13,7 @@ STRETCH = "stretch.full_spine.resistance_change_pct"
 IMU = "imu.lumbar.sensor_x.orientation_deg"
 EMG = "emg.reference.normalized_amplitude"
 UNITS = {STRETCH: "%", IMU: "deg", EMG: "counts"}
-SOURCE = "Polfer and Aguado device report"
+SOURCE = "Device report"
 
 
 def measurements(feature_sets: list[FeatureSet], as_of: datetime) -> dict[str, float]:

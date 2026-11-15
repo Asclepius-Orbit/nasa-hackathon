@@ -1,13 +1,13 @@
-"""Resolución de la calibración de un stream. Nunca lanza: lo no resoluble es ``MISSING``.
+"""Resolution of a stream's calibration. Never raises: what cannot be resolved is ``MISSING``.
 
-Reglas:
+Rules:
 
-- El ``calibration_id`` del chunk manda sobre el de ``session.streams[]``.
-- Se busca en ``request.calibrations`` por ``calibration_id``; si hay ids repetidos gana el primero.
-- Solo aplica si coinciden astronauta, dispositivo y ``stream_id`` y, cuando el stream está declarado, su tipo corresponde
-  al ``stream_kind`` (stretch -> stretch, emg_mvc -> emg, imu -> imu). Si no: ``no_calibration``.
-- ``valid_until`` anterior a ``at`` -> se resuelve pero queda ``EXPIRED`` (``calibration_expired``).
-  Igual a ``at`` sigue vigente. Sin ``at`` no se juzga la caducidad.
+- The chunk's ``calibration_id`` takes precedence over that of ``session.streams[]``.
+- It is looked up in ``request.calibrations`` by ``calibration_id``; with repeated ids the first one wins.
+- It only applies if astronaut, device and ``stream_id`` match and, when the stream is declared, its type matches
+  the ``stream_kind`` (stretch -> stretch, emg_mvc -> emg, imu -> imu). Otherwise: ``no_calibration``.
+- ``valid_until`` earlier than ``at`` -> it is resolved but stays ``EXPIRED`` (``calibration_expired``).
+  Equal to ``at`` it is still valid. Without ``at`` expiry is not judged.
 """
 
 from dataclasses import dataclass
@@ -21,7 +21,7 @@ _KIND_OF_CALIBRATION = {"stretch": "stretch", "emg_mvc": "emg", "imu": "imu"}
 
 
 class CalibrationStatus(StrEnum):
-    """Estado de la resolución."""
+    """State of the resolution."""
 
     RESOLVED = "resolved"
     MISSING = "missing"
@@ -33,7 +33,7 @@ _REASONS = {CalibrationStatus.MISSING: Reason.NO_CALIBRATION, CalibrationStatus.
 
 @dataclass(frozen=True, slots=True)
 class CalibrationResolution:
-    """Calibración elegida para un stream (o su ausencia) y por qué."""
+    """Calibration chosen for a stream (or its absence) and why."""
 
     stream_id: str
     calibration_id: str | None
@@ -42,7 +42,7 @@ class CalibrationResolution:
 
     @property
     def reason(self) -> Reason | None:
-        """Motivo de ``skipped`` del contrato, o ``None`` si está resuelta y vigente."""
+        """Contract ``skipped`` reason, or ``None`` if it is resolved and valid."""
         return _REASONS.get(self.status)
 
 
@@ -53,7 +53,7 @@ def resolve_calibration(
     chunk_calibration_id: str | None = None,
     at: datetime | None = None,
 ) -> CalibrationResolution:
-    """Resuelve la calibración de ``stream_id`` para el instante ``at`` (p. ej. fin de la ventana)."""
+    """Resolve the calibration of ``stream_id`` for the instant ``at`` (e.g. end of the window)."""
     declared = next((s for s in request.session.streams if s.stream_id == stream_id), None)
     calibration_id = chunk_calibration_id or (declared.calibration_id if declared else None)
 

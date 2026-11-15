@@ -1,18 +1,18 @@
-"""Estado del dispositivo, ancla de reloj y session_id de fondo del gateway real.
+"""Device status, clock anchor and background session_id of the real gateway.
 
-Lógica pura: sin I/O y sin reloj (``now``/``at`` los pone quien llama). Los payloads salen validados con los modelos del
-contrato y listos para JSON (``spine_contracts.dump``).
+Pure logic: no I/O and no clock (``now``/``at`` are supplied by the caller). Payloads come out validated with the
+contract models and ready for JSON (``spine_contracts.dump``).
 
-Estados de un stream (enum ``state`` de ``telemetry/device-status``: ``active``/``stalled``/``disabled``):
+States of a stream (enum ``state`` of ``telemetry/device-status``: ``active``/``stalled``/``disabled``):
 
-- ``disabled``: no participa (el EMG fuera de una sesión que lo incluya) o aún no ha mandado ningún lote y no ha pasado
-  ``stall_timeout_s`` desde que se conoció el arranque (el firmware emite cada kind cada 100 ms: es el margen de arranque).
-- ``active``: llegó un lote hace menos de ``stall_timeout_s``.
-- ``stalled``: participa y lleva ``stall_timeout_s`` sin lotes (o nunca los mandó pasado el margen; p. ej. el firmware no
-  emite tramas ``I`` si el MPU no responde).
+- ``disabled``: does not participate (EMG outside a session that includes it) or has not yet sent any batch and
+  ``stall_timeout_s`` has not elapsed since the boot was known (the firmware emits each kind every 100 ms: this is the boot margin).
+- ``active``: a batch arrived less than ``stall_timeout_s`` ago.
+- ``stalled``: participates and has gone ``stall_timeout_s`` without batches (or never sent any once the margin passed; e.g. the firmware does not
+  emit ``I`` frames if the MPU does not respond).
 
-Estado global (enum ``status``: ``ok``/``degraded``/``offline``): ``offline`` con el enlace serie caído o sin ningún
-hello/tick desde que se abrió el puerto; ``degraded`` si algún stream está ``stalled``; si no, ``ok``.
+Global state (``status`` enum: ``ok``/``degraded``/``offline``): ``offline`` with the serial link down or with no
+hello/tick since the port was opened; ``degraded`` if any stream is ``stalled``; otherwise ``ok``.
 """
 
 import math
@@ -28,9 +28,9 @@ from spine_contracts import SCHEMA_VERSION, ClockSync, DeviceStatus, dump
 from spine_gateway.settings import GatewaySettings
 
 BACKGROUND_NAMESPACE = uuid.UUID("5b0d7a0e-3c1f-5e8e-9a4c-2f6d1b7e8a90")
-"""Namespace UUID del session_id de fondo; fijo para que el de un día no cambie entre versiones del gateway."""
+"""Namespace UUID of the background session_id; fixed so that the one for a given day does not change between gateway versions."""
 FIRMWARE_VERSION_MAX = 32
-"""``maxLength`` de ``firmware_version`` en ``telemetry/device-status``."""
+"""``maxLength`` of ``firmware_version`` in ``telemetry/device-status``."""
 _LINK = {"type": "usb_serial"}
 
 
@@ -48,7 +48,7 @@ class Health(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class StreamReport:
-    """Una entrada de ``streams`` del DeviceStatus; ``None`` omite el campo."""
+    """An entry of the DeviceStatus ``streams``; ``None`` omits the field."""
 
     stream_id: str
     stream_kind: str
@@ -58,7 +58,7 @@ class StreamReport:
 
 
 def stream_state(*, expected: bool, last_frame_at: datetime | None, since: datetime, now: datetime, stall_timeout_s: float) -> StreamState:
-    """``since``: desde cuándo se conoce el arranque en curso (inicio del margen de un stream sin datos)."""
+    """``since``: when the current boot became known (start of the margin for a stream without data)."""
     if not expected:
         return StreamState.DISABLED
     timeout = timedelta(seconds=stall_timeout_s)
@@ -68,7 +68,7 @@ def stream_state(*, expected: bool, last_frame_at: datetime | None, since: datet
 
 
 def stall_deadline(*, expected: bool, last_frame_at: datetime | None, since: datetime, now: datetime, stall_timeout_s: float) -> datetime | None:
-    """Instante en que ``stream_state`` cambiaría sin más lotes, o ``None`` si ya no cambiaría solo."""
+    """Instant at which ``stream_state`` would change without more batches, or ``None`` if it would no longer change by itself."""
     if not expected:
         return None
     deadline = (since if last_frame_at is None else last_frame_at) + timedelta(seconds=stall_timeout_s)
@@ -76,7 +76,7 @@ def stall_deadline(*, expected: bool, last_frame_at: datetime | None, since: dat
 
 
 def health(*, device_known: bool, states: Iterable[StreamState]) -> Health:
-    """``device_known``: el enlace está arriba y el dispositivo ha mandado un hello o tick desde que se abrió el puerto."""
+    """``device_known``: the link is up and the device has sent a hello or tick since the port was opened."""
     if not device_known:
         return Health.OFFLINE
     return Health.DEGRADED if StreamState.STALLED in set(states) else Health.OK
@@ -96,7 +96,7 @@ def device_status(
     firmware_version: str | None,
     streams: Sequence[StreamReport],
 ) -> dict[str, Any]:
-    """DeviceStatus completo de un dispositivo conocido. Sin batería ni temperatura: el Arduino no las mide."""
+    """Full DeviceStatus of a known device. No battery or temperature: the Arduino does not measure them."""
     body: dict[str, Any] = {
         **_header(settings),
         "timestamp": at,
@@ -122,12 +122,12 @@ def _stream(report: StreamReport) -> dict[str, Any]:
 
 
 def offline_status(settings: GatewaySettings, *, at: datetime) -> dict[str, Any]:
-    """DeviceStatus ``offline`` (Last Will, enlace serie caído, parada): no afirma nada del dispositivo."""
+    """``offline`` DeviceStatus (Last Will, serial link down, stop): asserts nothing about the device."""
     return dump(DeviceStatus.model_validate({**_header(settings), "timestamp": at, "status": Health.OFFLINE.value, "source": "device", "link": _LINK}))
 
 
 def clock_sync(settings: GatewaySettings, *, boot_id: int, device_ms: int, utc: datetime) -> dict[str, Any]:
-    """Ancla ``gateway_receive_time``: los ``millis`` de un tick y la hora a la que llegó al gateway."""
+    """``gateway_receive_time`` anchor: the ``millis`` of a tick and the time at which it reached the gateway."""
     body = {
         **_header(settings),
         "boot_id": boot_id,
@@ -140,13 +140,13 @@ def clock_sync(settings: GatewaySettings, *, boot_id: int, device_ms: int, utc: 
 
 
 def background_session_id(settings: GatewaySettings, at: datetime) -> str:
-    """session_id del fondo: uuid5 determinista del dispositivo y del día UTC de ``at`` (cambia a medianoche UTC)."""
+    """Background session_id: deterministic uuid5 of the device and the UTC day of ``at`` (changes at UTC midnight)."""
     day = at.astimezone(UTC).date().isoformat()
     return str(uuid.uuid5(BACKGROUND_NAMESPACE, f"{settings.astronaut_id}/{settings.device_id}/background/{day}"))
 
 
 def next_after(at: datetime, step: timedelta, now: datetime) -> datetime:
-    """Primer ``at + n·step`` (n >= 0) posterior a ``now``."""
+    """First ``at + n·step`` (n >= 0) after ``now``."""
     if at > now:
         return at
     return at + (math.floor((now - at) / step) + 1) * step

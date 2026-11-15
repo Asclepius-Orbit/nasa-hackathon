@@ -1,4 +1,4 @@
-"""Propiedades del ensamblado: monotonía de las conversiones, ida y vuelta del divisor, chunks siempre válidos y fondo."""
+"""Assembly properties: monotonicity of the conversions, divider round trip, always-valid chunks and background."""
 
 from datetime import UTC, datetime
 
@@ -40,7 +40,7 @@ def frames(kind: FrameKind) -> st.SearchStrategy[Frame]:
 
 @st.composite
 def curves(draw: st.DrawFn) -> list[tuple[float, float]]:
-    """Curvas resistencia -> longitud crecientes en ambas coordenadas, como las de una calibración real."""
+    """Resistance -> length curves increasing in both coordinates, like those of a real calibration."""
     rs = draw(st.lists(st.floats(1.0, 1e6), min_size=2, max_size=6, unique=True).map(sorted))
     ls = draw(st.lists(st.floats(1.0, 1e4), min_size=len(rs), max_size=len(rs), unique=True).map(sorted))
     return list(zip(rs, ls, strict=True))
@@ -69,7 +69,7 @@ def test_resistance_round_trips_to_counts(bits: int, data: st.DataObject, rs: fl
     counts = data.draw(st.integers(1, full - 1))
     r = counts_to_resistance(counts, adc_bits=bits, series_resistor_ohm=rs)
     assert r is not None
-    # Inversa del divisor: counts = full · R / (Rs + R).
+    # Divider inverse: counts = full · R / (Rs + R).
     assert full * r / (rs + r) == pytest.approx(counts, rel=1e-9)
 
 
@@ -121,7 +121,7 @@ def test_any_valid_frame_yields_a_schema_valid_chunk(settings: GatewaySettings, 
     assembler = ChunkAssembler(settings)
     assembler.on_new_boot(boot)
     if background and frame.kind is not FrameKind.EMG:
-        # La ventana se cierra con 10 frames contiguos: repite el mismo contenido avanzando frame_seq.
+        # The window closes with 10 contiguous frames: repeats the same content while advancing frame_seq.
         frames = [Frame(frame.kind, (frame.frame_seq + i) % 0x10000, frame.t0_ms, frame.samples) for i in range(BACKGROUND_FRAMES)]
         results = [assembler.background_chunk(f, session_id=SESSION, received_at=AT, stretch_calibration=calibration) for f in frames]
         chunk = results[-1]
@@ -133,7 +133,7 @@ def test_any_valid_frame_yields_a_schema_valid_chunk(settings: GatewaySettings, 
 
 @given(gaps=st.lists(st.integers(0, 3), min_size=1, max_size=60), kind=st.sampled_from([FrameKind.IMU, FrameKind.CORD]))
 def test_background_emits_one_window_per_ten_contiguous_frames(gaps: list[int], kind: FrameKind) -> None:
-    """Cada ventana sale justo cuando se cierran 10 frames contiguos desde el último hueco o la última ventana."""
+    """Each window goes out exactly when 10 contiguous frames close since the last gap or the last window."""
     acc = BackgroundAccumulator(kind)
     sample: int | ImuSample = (0, 0, 0, 0, 0, 0) if kind is FrameKind.IMU else 500
     samples = (sample,) * SAMPLES_PER_BATCH[kind]
@@ -142,7 +142,7 @@ def test_background_emits_one_window_per_ten_contiguous_frames(gaps: list[int], 
     for gap in gaps:
         seq += 1 + gap
         run = 1 if gap else run + 1
-        step = acc.add(Frame(kind, seq, 0, samples), gap)  # pyright: ignore[reportArgumentType]  # samples es int o ImuSample según kind
+        step = acc.add(Frame(kind, seq, 0, samples), gap)  # pyright: ignore[reportArgumentType]  # samples is int or ImuSample depending on kind
         if run == BACKGROUND_FRAMES:
             assert step.window is not None
             assert [f.frame_seq for f in step.window.frames] == list(range(seq - BACKGROUND_FRAMES + 1, seq + 1))

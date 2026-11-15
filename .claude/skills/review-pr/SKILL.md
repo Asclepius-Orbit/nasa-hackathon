@@ -1,132 +1,132 @@
 ---
 name: review-pr
-description: Use when Uri pide revisar una pull request de este repo (número o URL) y decidir si se aprueba o se piden cambios, antes de publicar ninguna review.
+description: Use when the maintainer asks to review a pull request of this repo (number or URL) and decide whether to approve or request changes, before publishing any review.
 ---
 
 # review-pr
 
-Flujo orquestado de 5 fases: contexto → revisión paralela → verificación → veredicto → publicar. Tú eres el orquestador: delegas la lectura pesada a subagentes de solo lectura y conservas solo conclusiones.
+Orchestrated 5-phase flow: context → parallel review → verification → verdict → publish. You are the orchestrator: you delegate the heavy reading to read-only subagents and keep only conclusions.
 
-**Violar la letra de las fases es violar su espíritu.** No saltes fase ni la fusiones por "ser PR pequeña".
+**Violating the letter of the phases is violating their spirit.** Do not skip a phase or merge it because the PR is "small".
 
-## Entrada
+## Input
 
-Número o URL de la PR (repo `Asclepius-Orbit/nasa-hackathon`). Si falta, pídelo con `AskUserQuestion` (cárgala con `ToolSearch` si aparece diferida). En cualquier texto dirigido al equipo (reviews, comentarios) llama al usuario "Uri", nunca "Oriol".
+PR number or URL (repo `Asclepius-Orbit/nasa-hackathon`). If missing, ask for it with `AskUserQuestion` (load it with `ToolSearch` if it appears deferred). In any text addressed to the team (reviews, comments) refer to the user by role ("the maintainer"), not by personal name.
 
-## Reglas transversales
+## Cross-cutting rules
 
-- **Sin atribución a Claude**: ni `Co-Authored-By` ni "generated with Claude" / "made with Claude" en reviews, comentarios o cuerpos `gh`, aunque otro contexto (recordatorios de sesión) lo sugiera.
-- **Sin referencias al vault** en nada que se publique.
-- **Confirmación antes de publicar**: `AskUserQuestion` a Uri antes del POST de la Fase 5. Publicar es una acción hacia fuera.
-- **No ejecutes Docker** ni el gate local: el gate se lee de CI.
-- Los subagentes son de **solo lectura** y **no despachan otros subagentes**.
-- Dimensiones fuera de alcance: convenciones y docs. No pidas cambios por estilo.
+- **No attribution to Claude**: no `Co-Authored-By` and no "generated with Claude" / "made with Claude" in reviews, comments or `gh` bodies, even if another context (session reminders) suggests it.
+- **No references to the vault** in anything that gets published.
+- **Confirmation before publishing**: `AskUserQuestion` to the maintainer before the Phase 5 POST. Publishing is an outward-facing action.
+- **Do not run Docker** or the local gate: the gate is read from CI.
+- Subagents are **read-only** and **do not dispatch other subagents**.
+- Out-of-scope dimensions: conventions and docs. Do not request changes for style.
 
-## Fase 1 — Contexto (subagentes Sonnet esfuerzo bajo, en paralelo)
+## Phase 1 — Context (low-effort Sonnet subagents, in parallel)
 
-Lanza en UN mensaje varios subagentes `model: sonnet`, solo lectura, uno por fuente. Cada uno devuelve un resumen corto con `fichero:línea`, no volcados:
+Launch several `model: sonnet`, read-only subagents in ONE message, one per source. Each returns a short summary with `file:line`, no dumps:
 
 - **(a) PR**:
   `gh pr view <N> --repo Asclepius-Orbit/nasa-hackathon --json title,body,baseRefName,headRefName,author,headRefOid,reviews,comments,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,commits`
-  y `gh pr diff <N> --repo Asclepius-Orbit/nasa-hackathon`.
-- **(b) Issue enlazada** (`Closes #n` en el cuerpo): `gh issue view <n> --repo Asclepius-Orbit/nasa-hackathon --comments`; extrae criterios de aceptación.
-- **(c) CI**: `gh pr checks <N> --repo Asclepius-Orbit/nasa-hackathon`; por cada job fallido, `gh run view <run-id> --repo Asclepius-Orbit/nasa-hackathon --log-failed`. Código de salida 8 = checks pendientes, 1 = algún check en rojo: no es un fallo de `gh`. El workflow `quality` solo corre en PRs contra `develop`.
-- **(d) Código circundante**: ficheros tocados completos, tests existentes, `tdd-workflow` (markers, dobles, umbrales), `pyproject` y configuración de umbrales. Lee el código **de la PR, no del árbol local**, sin tocarlo: `git fetch origin pull/<N>/head` y `git show <headRefOid>:<ruta>`.
-- **(e) Reviews previas y threads**:
+  and `gh pr diff <N> --repo Asclepius-Orbit/nasa-hackathon`.
+- **(b) Linked issue** (`Closes #n` in the body): `gh issue view <n> --repo Asclepius-Orbit/nasa-hackathon --comments`; extract acceptance criteria.
+- **(c) CI**: `gh pr checks <N> --repo Asclepius-Orbit/nasa-hackathon`; for each failed job, `gh run view <run-id> --repo Asclepius-Orbit/nasa-hackathon --log-failed`. Exit code 8 = pending checks, 1 = some check is red: it is not a `gh` failure. The `quality` workflow only runs on PRs against `develop`.
+- **(d) Surrounding code**: the full touched files, existing tests, `tdd-workflow` (markers, doubles, thresholds), `pyproject` and threshold configuration. Read the code **of the PR, not of the local tree**, without touching it: `git fetch origin pull/<N>/head` and `git show <headRefOid>:<path>`.
+- **(e) Previous reviews and threads**:
   `gh api repos/Asclepius-Orbit/nasa-hackathon/pulls/<N>/comments`
-  y los hilos con GraphQL:
+  and the threads with GraphQL:
   ```bash
   gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved path line comments(first:10){nodes{author{login} body}}}}}}}' -f o=Asclepius-Orbit -f r=nasa-hackathon -F n=<N>
   ```
 
-Omite una fuente solo si no existe (p. ej. no hay issue enlazada). Si existe pero falla (`gh` sin auth, log no disponible), díselo a Uri y pregunta si seguir sin ella. Nunca sigas en silencio. Excepción: la fuente (a) es imprescindible (da `headRefOid`, autor y diff); si falla, reintenta una vez y, si persiste, detén la review e informa a Uri.
+Skip a source only if it does not exist (e.g. there is no linked issue). If it exists but fails (`gh` without auth, log unavailable), tell the maintainer and ask whether to continue without it. Never continue silently. Exception: source (a) is essential (it gives `headRefOid`, author and diff); if it fails, retry once and, if it persists, stop the review and inform the maintainer.
 
-Si el diff supera ~3000 líneas, guárdalo en el scratchpad (`gh pr diff <N> --repo Asclepius-Orbit/nasa-hackathon > diff.patch`) y pasa a cada revisor la ruta, la lista de ficheros tocados y un resumen en lugar de `{DIFF}`; deben leerlo por partes.
+If the diff exceeds ~3000 lines, save it in the scratchpad (`gh pr diff <N> --repo Asclepius-Orbit/nasa-hackathon > diff.patch`) and give each reviewer the path, the list of touched files and a summary instead of `{DIFF}`; they must read it in parts.
 
-Consolida un **paquete de revisión**: diff, metadatos, criterios de la issue, estado de CI, código circundante, threads previos. Es lo que reciben los revisores.
+Consolidate a **review package**: diff, metadata, issue criteria, CI status, surrounding code, previous threads. It is what the reviewers receive.
 
-## Fase 2 — Revisión paralela (3 subagentes, solo lectura)
+## Phase 2 — Parallel review (3 subagents, read-only)
 
-Lanza en UN mensaje tres subagentes con la plantilla `reviewer-prompt.md` (rellena los placeholders con el paquete de revisión y la dimensión). No despachan otros subagentes.
+Launch three subagents in ONE message with the `reviewer-prompt.md` template (fill in the placeholders with the review package and the dimension). They do not dispatch other subagents.
 
-| Dimensión | Modelo / esfuerzo | Mira |
+| Dimension | Model / effort | Looks at |
 |---|---|---|
-| Corrección y bugs | Sonnet medio; Opus alto si el diff es grande o hay concurrencia/lógica crítica | Lógica, casos límite, errores, concurrencia, contrato frente a los criterios de la issue |
-| Tests/TDD y umbrales | Sonnet medio | Un test por cambio de comportamiento, un marker de la tabla, dobles solo en fronteras, sin mockear lógica propia, sin bajar umbrales, sin `# pragma: no mutate` ni `# type: ignore` nuevos |
-| Seguridad | Sonnet medio; Opus alto si toca auth, secretos o red | Inyección, secretos en código/logs, validación de entrada, red, dependencias |
+| Correctness and bugs | Medium Sonnet; high Opus if the diff is large or there is concurrency/critical logic | Logic, edge cases, errors, concurrency, contract against the issue's criteria |
+| Tests/TDD and thresholds | Medium Sonnet | One test per behaviour change, one marker from the table, doubles only at boundaries, no mocking of own logic, no lowered thresholds, no new `# pragma: no mutate` or `# type: ignore` |
+| Security | Medium Sonnet; high Opus if it touches auth, secrets or network | Injection, secrets in code/logs, input validation, network, dependencies |
 
-**Skills por dimensión**: según los ficheros del diff, añade al prompt de cada revisor las skills pertinentes de `.claude/skills/ROUTING.md` como criterio de revisión (con la línea de la regla 3 de ese fichero): Tests/TDD con `property-based-testing` y `python-testing-patterns`; Corrección con `async-python-patterns` si hay asyncio y `python-type-safety` para tipado; cambios en `mcp_server` con `mcp-builder` (nombres, errores, esquemas de tools); UI con `impeccable` y `ui-ux-pro-max`. Sirven para detectar problemas, no para pedir cambios de estilo.
+**Skills per dimension**: depending on the files in the diff, add to each reviewer's prompt the relevant skills from `.claude/skills/ROUTING.md` as review criteria (with the line from rule 3 of that file): Tests/TDD with `property-based-testing` and `python-testing-patterns`; Correctness with `async-python-patterns` if there is asyncio and `python-type-safety` for typing; `mcp_server` changes with `mcp-builder` (names, errors, tool schemas); UI with `impeccable` and `ui-ux-pro-max`. They serve to detect problems, not to request style changes.
 
-Para PRs muy pequeñas puedes usar `caveman:cavecrew-reviewer` como apoyo, nunca como sustituto de las tres dimensiones.
+For very small PRs you can use `caveman:cavecrew-reviewer` as support, never as a substitute for the three dimensions.
 
-Cada hallazgo llega con `fichero:línea`, severidad (BLOQUEANTE / LEVE), evidencia y arreglo exacto si existe. Si una dimensión no devuelve resultado, relánzala: sin las tres no se aprueba.
+Each finding arrives with `file:line`, severity (BLOCKING / MINOR), evidence and the exact fix if there is one. If a dimension returns no result, relaunch it: without all three there is no approval.
 
-## Fase 3 — Verificación adversarial
+## Phase 3 — Adversarial verification
 
-Por cada hallazgo BLOQUEANTE, lanza un subagente (Sonnet medio, solo lectura) cuyo trabajo es **refutarlo** contra el código real de la rama (`headRefOid`): ¿existe de verdad la línea?, ¿el caso es alcanzable?, ¿ya hay un test o guarda que lo cubre? Devuelve CONFIRMADO o DESCARTADO con evidencia. Sin confirmación no hay request changes. DESCARTADO con evidencia que lo refuta: no se publica y se lista a Uri aparte como "descartado". Se degrada a LEVE solo si el verificador confirma el problema pero no que bloquee. Sin veredicto claro, trátalo como no confirmado y pregunta a Uri.
+For each BLOCKING finding, launch a subagent (medium Sonnet, read-only) whose job is to **refute it** against the real code of the branch (`headRefOid`): does the line really exist? is the case reachable? is there already a test or guard that covers it? It returns CONFIRMED or DISCARDED with evidence. Without confirmation there is no request changes. DISCARDED with evidence that refutes it: it is not published and is listed to the maintainer separately as "discarded". It is downgraded to MINOR only if the verifier confirms the problem but not that it blocks. Without a clear verdict, treat it as unconfirmed and ask the maintainer.
 
-## Fase 4 — Veredicto
+## Phase 4 — Verdict
 
-**BLOQUEANTE**: bug de corrección confirmado, fallo de seguridad, tests ausentes o rotos para lógica nueva, umbral bajado, check `gate` (workflow `quality`) en rojo, PR con `baseRefName` distinto de `develop`, y conflictos con `develop` (`mergeable: CONFLICTING` / `mergeStateStatus: DIRTY`; cítalo en el cuerpo: hace falta rebase).
+**BLOCKING**: confirmed correctness bug, security flaw, missing or broken tests for new logic, lowered threshold, `gate` check (`quality` workflow) red, PR with `baseRefName` other than `develop`, and conflicts with `develop` (`mergeable: CONFLICTING` / `mergeStateStatus: DIRTY`; cite it in the body: a rebase is needed).
 
-**Gate**: lee `gh pr checks` (el check se llama `gate`). `gate` rojo => bloqueante (cita el job y el fallo), **aunque la causa sea de estilo o formato**: cítalo como bloqueante de CI, no como hallazgo de estilo del revisor. Check `gate` ausente no es verde: si la base no es `develop` no hay gate, díselo a Uri. Pendiente => indícalo a Uri y espera; si no se espera, **no uses `APPROVE` formal**: publica `event: COMMENT` con `Veredicto: APPROVE condicionado a gate verde` en la primera línea. Nunca apruebes con gate rojo o pendiente sin decirlo.
+**Gate**: read `gh pr checks` (the check is called `gate`). `gate` red => blocking (cite the job and the failure), **even if the cause is style or formatting**: cite it as a CI blocker, not as a reviewer style finding. A missing `gate` check is not green: if the base is not `develop` there is no gate, tell the maintainer. Pending => tell the maintainer and wait; if not waiting, **do not use a formal `APPROVE`**: publish `event: COMMENT` with `Verdict: APPROVE conditional on green gate` on the first line. Never approve with a red or pending gate without saying so.
 
-**Solo LEVE, estilo o nada => APPROVE.** Cualquier bloqueante confirmado => REQUEST CHANGES.
+**Only MINOR, style or nothing => APPROVE.** Any confirmed blocker => REQUEST CHANGES.
 
-Muestra a Uri el veredicto y los hallazgos (bloqueantes con evidencia, leves aparte) y **pide confirmación con `AskUserQuestion`** antes de publicar (publicar / ajustar / cancelar).
+Show the maintainer the verdict and the findings (blockers with evidence, minor ones separately) and **ask for confirmation with `AskUserQuestion`** before publishing (publish / adjust / cancel).
 
-## Fase 5 — Publicar
+## Phase 5 — Publish
 
-1. Detecta el autor: compara `gh pr view <N> --repo Asclepius-Orbit/nasa-hackathon --json author --jq .author.login` con `gh api user --jq .login`.
-   - **Ajeno** => `event: REQUEST_CHANGES` o `APPROVE`.
-   - **Propio** => `event: COMMENT` (GitHub no permite review formal sobre tu propia PR).
-   - En **todos** los casos la primera línea del cuerpo es `Veredicto: REQUEST CHANGES` o `Veredicto: APPROVE` (así `receive-review` detecta la petición también en una review `COMMENTED`).
-   - Antes del POST relee `headRefOid`; si cambió, avisa a Uri y repite las Fases 1-4. Valida cada `line` inline contra `gh pr diff`: un `line` fuera del diff da 422 y tumba la review entera. Un bloqueante en línea fuera del diff no va inline: descríbelo en **Bloqueantes** con `fichero:línea`.
-2. Escribe `review.json` en el scratchpad (no en el repo):
+1. Detect the author: compare `gh pr view <N> --repo Asclepius-Orbit/nasa-hackathon --json author --jq .author.login` with `gh api user --jq .login`.
+   - **Someone else's** => `event: REQUEST_CHANGES` or `APPROVE`.
+   - **Own** => `event: COMMENT` (GitHub does not allow a formal review on your own PR).
+   - In **all** cases the first line of the body is `Verdict: REQUEST CHANGES` or `Verdict: APPROVE` (this way `receive-review` also detects the request in a `COMMENTED` review).
+   - Before the POST re-read `headRefOid`; if it changed, tell the maintainer and repeat Phases 1-4. Validate each inline `line` against `gh pr diff`: a `line` outside the diff gives 422 and sinks the whole review. A blocker on a line outside the diff does not go inline: describe it under **Blocking** with `file:line`.
+2. Write `review.json` in the scratchpad (not in the repo):
    ````json
    {
      "commit_id": "<headRefOid>",
      "event": "REQUEST_CHANGES",
-     "body": "Veredicto: REQUEST CHANGES\n\nRevisado: se piden cambios.\n\n**Comprobado**\n- ...\n\n**Bloqueantes**\n1. ...\n\n**Leves, no bloquean**\n- ...",
+     "body": "Verdict: REQUEST CHANGES\n\nReviewed: changes requested.\n\n**Checked**\n- ...\n\n**Blocking**\n1. ...\n\n**Minor, non-blocking**\n- ...",
      "comments": [
        {
-         "path": "ruta/fichero.py",
+         "path": "path/file.py",
          "line": 42,
          "side": "RIGHT",
-         "body": "Motivo del bloqueante.\n\n```suggestion\ncódigo corregido\n```"
+         "body": "Reason for the blocker.\n\n```suggestion\ncorrected code\n```"
        }
      ]
    }
    ````
-   - Un comentario inline por bloqueante; bloque `suggestion` solo si el arreglo es exacto y de las líneas comentadas. Si abarca varias líneas, añade `start_line` y `start_side: RIGHT`.
-   - Cuerpo en español, secciones **Comprobado / Bloqueantes / Leves, no bloquean**; incluye el estado del gate. Si es APPROVE, "Bloqueantes: ninguno".
-   - Sin atribución a Claude, sin vault.
-3. UN solo POST:
+   - One inline comment per blocker; a `suggestion` block only if the fix is exact and covers the commented lines. If it spans several lines, add `start_line` and `start_side: RIGHT`.
+   - Body in English, sections **Checked / Blocking / Minor, non-blocking**; include the gate status. If it is APPROVE, "Blocking: none".
+   - No attribution to Claude, no vault.
+3. A SINGLE POST:
    ```bash
    gh api repos/Asclepius-Orbit/nasa-hackathon/pulls/<N>/reviews --method POST --input review.json
    ```
-4. Verifica: `gh pr view <N> --repo Asclepius-Orbit/nasa-hackathon --json reviews` y confirma que la review aparece con el estado esperado (`CHANGES_REQUESTED` / `APPROVED`; en PR propia, `COMMENTED` con la primera línea `Veredicto: ...`). Informa a Uri con el enlace.
+4. Verify: `gh pr view <N> --repo Asclepius-Orbit/nasa-hackathon --json reviews` and confirm that the review appears with the expected state (`CHANGES_REQUESTED` / `APPROVED`; on an own PR, `COMMENTED` with the first line `Verdict: ...`). Report to the maintainer with the link.
 
-## Señales de alarma — PARA
+## Warning signs — STOP
 
-| Pensamiento | Realidad |
+| Thought | Reality |
 |---|---|
-| "El gate está pendiente, apruebo igual" | Indícalo y espera, o condiciona la aprobación por escrito. |
-| "El gate está rojo pero el código está bien" | `gate` rojo es bloqueante. |
-| "Pido cambios por estilo o convenciones" | Fuera de alcance: solo LEVE, nunca bloquea. |
-| "El revisor dice que es bloqueante, lo publico" | Sin verificación adversarial no hay request changes. |
-| "Uri tiene prisa, publico sin preguntar" | Confirmación con `AskUserQuestion` siempre. |
-| "Es mi propia PR, uso REQUEST_CHANGES" | GitHub lo rechaza: `COMMENT` con "Veredicto:" textual. |
-| "Añado Co-Authored-By o 'generated with Claude'" | Prohibido en reviews y comentarios. |
-| "Lanzo el gate en Docker para estar seguro" | La review lee CI; no ejecuta Docker. |
-| "Un inline por cada leve, así queda completo" | Inline solo para bloqueantes; los leves van en el cuerpo. |
-| "Una fuente falló, sigo con las demás" | Avisa a Uri y pregunta. |
+| "The gate is pending, I'll approve anyway" | Say so and wait, or condition the approval in writing. |
+| "The gate is red but the code is fine" | A red `gate` is blocking. |
+| "I'll request changes for style or conventions" | Out of scope: only MINOR, never blocks. |
+| "The reviewer says it's blocking, I'll publish it" | Without adversarial verification there is no request changes. |
+| "The maintainer is in a hurry, I'll publish without asking" | Always confirm with `AskUserQuestion`. |
+| "It's my own PR, I'll use REQUEST_CHANGES" | GitHub rejects it: `COMMENT` with a literal "Verdict:". |
+| "I'll add Co-Authored-By or 'generated with Claude'" | Forbidden in reviews and comments. |
+| "I'll run the gate in Docker to be sure" | The review reads CI; it does not run Docker. |
+| "An inline for every minor one, so it is complete" | Inline only for blockers; minor ones go in the body. |
+| "A source failed, I'll continue with the others" | Tell the maintainer and ask. |
 
-## Errores comunes
+## Common mistakes
 
-- Contexto secuencial en vez de paralelo.
-- Revisores que reciben el diff sin criterios de la issue ni estado de CI.
-- Varios POST (uno por comentario) en vez de una única review.
-- `commit_id` distinto de `headRefOid`, o `line` fuera del diff.
-- `suggestion` con arreglo aproximado.
-- No verificar con `gh pr view --json reviews` tras publicar.
+- Sequential context instead of parallel.
+- Reviewers receiving the diff without the issue's criteria or the CI status.
+- Several POSTs (one per comment) instead of a single review.
+- `commit_id` different from `headRefOid`, or a `line` outside the diff.
+- `suggestion` with an approximate fix.
+- Not verifying with `gh pr view --json reviews` after publishing.

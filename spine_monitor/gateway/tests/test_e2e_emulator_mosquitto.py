@@ -1,16 +1,17 @@
-"""E2E sin placa: emulador del Arduino -> ``SerialLineSource`` (``socket://``) -> ``app.main`` -> Mosquitto real -> observador.
+"""E2E without a board: Arduino emulator -> ``SerialLineSource`` (``socket://``) -> ``app.main`` -> real Mosquitto -> observer.
 
-Cadena completa y a ritmo real (nada de relojes de mentira): el emulador es un servidor TCP (``spine_gateway.emulator``), el
-gateway lee su puerto serie por ``socket://127.0.0.1:<puerto>`` y publica en el broker real de 127.0.0.1:1883; un observador
-aiomqtt suscrito a ``asclepius/v1/crew/<astronauta>/device/<dispositivo>/#`` (QoS 1) acumula lo que llega. Los comandos los
-publica el propio observador como lo haría el backend: modelos de ``spine_contracts``, JSON compacto, QoS 1, sin retain.
+Full chain at real pace (no fake clocks): the emulator is a TCP server (``spine_gateway.emulator``), the
+gateway reads its serial port via ``socket://127.0.0.1:<port>`` and publishes to the real broker at 127.0.0.1:1883; an aiomqtt
+observer subscribed to ``asclepius/v1/crew/<astronaut>/device/<device>/#`` (QoS 1) accumulates what arrives. Commands are
+published by the observer itself as the backend would: ``spine_contracts`` models, compact JSON, QoS 1, no retain.
 
-Todo lo recibido se valida con el schema completo de ``spine_contracts.validation``; los ids del payload deben casar con los del
-topic (regla del ingest del backend) y el QoS es 1. El flag retain de un mensaje en vivo no sirve para comprobar si un topic es
-retained (MQTT 3.1.1 lo pone a 0 a quien ya estaba suscrito): para eso un suscriptor tardío ve qué entrega el broker retained.
+Everything received is validated with the full ``spine_contracts.validation`` schema; the payload ids must match those of the
+topic (backend ingest rule) and QoS is 1. The retain flag of a live message is useless to check whether a topic is
+retained (MQTT 3.1.1 sets it to 0 for those already subscribed): for that, a late subscriber sees what the broker delivers as retained.
 
-Se salta si no hay broker, salvo con SPINE_REQUIRE_BROKER=1 (el gate de Docker), donde falla. Cada test usa un dispositivo propio
-(``itest-e2e-*``) bajo el astronauta ``AST-98`` y borra al final sus retained. Se espera con eventos y ``asyncio.wait_for``, nunca con sleeps fijos.
+Skipped if there is no broker, except with SPINE_REQUIRE_BROKER=1 (the Docker gate), where it fails. Each test uses its own device
+(``itest-e2e-*``) under astronaut ``AST-98`` and deletes its retained messages at the end.
+Waiting is done with events and ``asyncio.wait_for``, never fixed sleeps.
 """
 
 import asyncio
@@ -49,7 +50,7 @@ OBSERVER_AUTH = {"username": "spine-gwtest", "password": os.environ["SPINE_TEST_
 DEVICE_PASSWORD = os.getenv("SPINE_TEST_MQTT_DEVICE_PASSWORD")
 STRETCH, EMG, IMU = "stretch_spine", "emg_lat_left", "imu_t9"
 ASTRONAUT = "AST-98"
-"""Astronauta propio de estos tests: no se mezclan con los datos de AST-01 del broker compartido."""
+"""Astronaut specific to these tests: they do not mix with the AST-01 data of the shared broker."""
 SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"
 SCHEMAS = {
     "stream": "telemetry/stream-chunk",
@@ -71,7 +72,7 @@ def _broker_up() -> bool:
 
 
 def _require_broker() -> None:
-    """Sin broker: salta, salvo con SPINE_REQUIRE_BROKER=1 (el gate de Docker), donde falla."""
+    """No broker: skip, except with SPINE_REQUIRE_BROKER=1 (the Docker gate), where it fails."""
     if _broker_up():
         return
     reason = f"no MQTT broker on {HOST}:{PORT}"
@@ -81,13 +82,13 @@ def _require_broker() -> None:
 
 
 def channel(topic: str) -> str:
-    """Tipo de topic: stream, calibration, status, clock, ack o cmd."""
+    """Topic type: stream, calibration, status, clock, ack or cmd."""
     parts = topic.split("/")
     return parts[-2] if parts[-2] in ("stream", "calibration") else parts[-1]
 
 
 def expected_topic(kind: str, payload: dict[str, Any]) -> str:
-    """El topic que le corresponde a un payload según sus propios ids (``topics`` valida los ids)."""
+    """The topic that corresponds to a payload according to its own ids (``topics`` validates the ids)."""
     a, d = payload["astronaut_id"], payload["device_id"]
     match kind:
         case "stream":
@@ -117,7 +118,7 @@ class Seen:
 
 
 class Bench:
-    """Emulador + gateway + observador de un dispositivo ``itest-e2e-*``; ``async with`` lo arranca y al salir lo limpia."""
+    """Emulator + gateway + observer of an ``itest-e2e-*`` device; ``async with`` starts it and cleans it up on exit."""
 
     def __init__(self, settings: GatewaySettings, **emulator_options: Any) -> None:
         self.device_id = "itest-e2e"
@@ -146,7 +147,7 @@ class Bench:
         self.gateway: asyncio.Task[None] | None = None
         self._emulator: asyncio.Task[None] | None = None
 
-    # --- ciclo de vida ---
+    # --- life cycle ---
 
     async def __aenter__(self) -> Bench:
         self._observer = await self._stack.enter_async_context(aiomqtt.Client(HOST, PORT, identifier=f"itest-observer-{uuid.uuid4().hex[:8]}", **OBSERVER_AUTH))
@@ -174,7 +175,7 @@ class Bench:
             await self._stack.aclose()
 
     async def stop_gateway(self) -> None:
-        """Cancela el gateway (como SIGTERM) y espera a que acabe: ``serve`` publica ``offline`` retained antes de salir."""
+        """Cancels the gateway (like SIGTERM) and waits for it to finish: ``serve`` publishes retained ``offline`` before exiting."""
         task = self.gateway
         if task is None:
             return
@@ -185,13 +186,13 @@ class Bench:
             raise AssertionError("the gateway died on its own") from task.exception()
 
     async def _clear_retained(self) -> None:
-        """Deja el broker como estaba: vacía los retained (status, clock, calibration) que dejó este dispositivo."""
+        """Leaves the broker as it was: clears the retained messages (status, clock, calibration) this device left."""
         client = self._observer
         assert client is not None
         for topic in sorted({s.topic for s in self.received if s.kind in RETAINED}):
             await client.publish(topic, payload=b"", qos=1, retain=True)
 
-    # --- observador ---
+    # --- observer ---
 
     async def _consume(self, client: aiomqtt.Client) -> None:
         async for message in client.messages:
@@ -202,9 +203,9 @@ class Bench:
             self._changed.set()
 
     def _check(self, seen: Seen) -> list[str]:
-        """Contrato de un mensaje recibido: schema completo, ids del payload = ids del topic, QoS 1 y retain solo donde toca."""
+        """Contract of a received message: full schema, payload ids = topic ids, QoS 1 and retain only where expected."""
         if not seen.payload:
-            return []  # el vaciado de retained de la limpieza
+            return []  # the retained clearing from the cleanup
         problems = [f"{seen.topic}: {e}" for e in validation.errors(SCHEMAS[seen.kind], seen.payload)]
         if seen.topic != expected_topic(seen.kind, seen.payload):
             problems.append(f"{seen.topic}: ids of the payload do not match the topic")
@@ -233,10 +234,10 @@ class Bench:
             raise AssertionError(f"timed out after {timeout} s waiting for {what}; received {summary}") from None
 
     async def retained_snapshot(self, expected: set[str]) -> dict[str, Seen]:
-        """Qué entrega el broker retained a un suscriptor tardío (el flag retain solo vale en la primera entrega).
+        """What the broker delivers as retained to a late subscriber (the retain flag only holds on the first delivery).
 
-        Un mensaje marcador, publicado tras suscribirse (fuera de ``root``: el observador no lo ve), llega después de todos los
-        retained que el broker entrega al suscribir: al verlo ya se sabe cuáles son, sin esperar tiempo.
+        A marker message, published after subscribing (outside ``root``: the observer does not see it), arrives after all the
+        retained messages the broker delivers on subscribe: on seeing it, they are known, without waiting.
         """
         late: dict[str, Seen] = {}
         marker = f"{topics.ROOT}/itest-marker/{uuid.uuid4().hex}"
@@ -255,11 +256,11 @@ class Bench:
 
             await asyncio.wait_for(collect(), TIMEOUT_S)
         assert expected <= set(late), f"the broker did not deliver as retained: {sorted(expected - set(late))}"
-        assert {s.kind for s in late.values()} <= RETAINED  # ningún stream, ack ni cmd se queda retained
+        assert {s.kind for s in late.values()} <= RETAINED  # no stream, ack or cmd stays retained
         assert all(s.qos == 1 for s in late.values())
         return late
 
-    # --- vistas de lo recibido ---
+    # --- views of what was received ---
 
     def of(self, kind: str) -> list[dict[str, Any]]:
         return [s.payload for s in self.received if s.kind == kind and s.payload]
@@ -276,10 +277,10 @@ class Bench:
     def index_of(self, predicate: Callable[[Seen], bool]) -> int:
         return next(i for i, s in enumerate(self.received) if predicate(s))
 
-    # --- comandos (como el backend) ---
+    # --- commands (like the backend) ---
 
     async def send(self, model: type[Any], **fields: Any) -> str:
-        """Publica un comando por ``topics.cmd`` (JSON compacto, QoS 1, sin retain) y devuelve su ``command_id``."""
+        """Publishes a command via ``topics.cmd`` (compact JSON, QoS 1, no retain) and returns its ``command_id``."""
         command_id = str(uuid.uuid4())
         command = model(
             schema_version=SCHEMA_VERSION,
@@ -307,7 +308,7 @@ class Bench:
 
 def run(scenario: Callable[[], Any]) -> None:
     _require_broker()
-    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho necesita add_reader
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None  # paho needs add_reader
     asyncio.run(scenario(), loop_factory=loop_factory)
 
 
@@ -316,7 +317,7 @@ def consecutive(chunks: list[dict[str, Any]]) -> bool:
     return seqs == list(range(seqs[0], seqs[0] + len(seqs)))
 
 
-# --- 1. arranque ---
+# --- 1. startup ---
 
 
 def test_startup_publishes_status_clock_and_background_chunks(settings: GatewaySettings) -> None:
@@ -335,9 +336,9 @@ def test_startup_publishes_status_clock_and_background_chunks(settings: GatewayS
                 assert consecutive(chunks) and chunks[0]["seq"] == 0
                 for chunk in chunks:
                     day = datetime.fromisoformat(chunk["received_at"])
-                    assert chunk["session_id"] == status.background_session_id(bench.settings, day)  # el session_id de fondo
+                    assert chunk["session_id"] == status.background_session_id(bench.settings, day)  # the background session_id
                     assert (chunk["sample_rate_hz"], chunk["n_samples"], chunk["source"], chunk["boot_id"]) == (10.0, n_samples, "device", bench.boot_id)
-            assert bench.chunks(EMG) == []  # sin sesión no hay EMG
+            assert bench.chunks(EMG) == []  # no session means no EMG
             retained = await bench.retained_snapshot({topics.status(bench.astronaut_id, bench.device_id), topics.clock(bench.astronaut_id, bench.device_id)})
             assert retained[topics.status(bench.astronaut_id, bench.device_id)].payload["status"] == "ok"
             bench.assert_contract()
@@ -345,7 +346,7 @@ def test_startup_publishes_status_clock_and_background_chunks(settings: GatewayS
     run(scenario)
 
 
-# --- 2. sesión ---
+# --- 2. session ---
 
 
 def test_session_lifecycle_streams_chunks_and_acks_in_order(settings: GatewaySettings) -> None:
@@ -376,7 +377,7 @@ def test_session_lifecycle_streams_chunks_and_acks_in_order(settings: GatewaySet
     run(scenario)
 
 
-# --- 3. calibraciones ---
+# --- 3. calibrations ---
 
 
 def test_calibrations_are_retained_before_their_completed_ack_and_stamp_the_cord_chunks(settings: GatewaySettings) -> None:
@@ -400,7 +401,7 @@ def test_calibrations_are_retained_before_their_completed_ack_and_stamp_the_cord
                 results[stream_id] = calibration_id
                 topic = topics.calibration(bench.astronaut_id, bench.device_id, stream_id)
                 retained = bench.index_of(lambda s, t=topic, c=calibration_id: s.topic == t and s.payload["calibration_id"] == c)
-                assert retained < bench.received.index(completed)  # la calibración sale antes que el ack que la cita
+                assert retained < bench.received.index(completed)  # the calibration goes out before the ack that cites it
                 assert bench.received[retained].payload["calibration_type"] == calibration_type
 
             await bench.until(lambda: any("calibration_id" in c for c in bench.chunks(STRETCH)), "a cord chunk with the calibration")
@@ -414,11 +415,11 @@ def test_calibrations_are_retained_before_their_completed_ack_and_stamp_the_cord
     run(scenario)
 
 
-# --- 4. fallos ---
+# --- 4. failures ---
 
 
 def gap_index(chunks: list[dict[str, Any]]) -> int | None:
-    """Primer chunk (no el primero de la lista) que declara muestras perdidas."""
+    """First chunk (not the first of the list) that declares lost samples."""
     return next((i for i, c in enumerate(chunks) if i > 0 and "dropped_samples" in c), None)
 
 
@@ -432,8 +433,8 @@ def test_dropped_batches_show_up_as_a_gap_with_dropped_samples(settings: Gateway
                 chunks = bench.chunks(stream_id, SESSION)
                 i = gap_index(chunks)
                 assert i is not None
-                assert chunks[i]["dropped_samples"] == lost  # un lote perdido
-                assert chunks[i]["seq"] == chunks[i - 1]["seq"] + 2  # su seq salta el hueco
+                assert chunks[i]["dropped_samples"] == lost  # one lost batch
+                assert chunks[i]["seq"] == chunks[i - 1]["seq"] + 2  # its seq skips the gap
                 assert "packet_gap" in {flag for q in chunks[i]["quality"].values() for flag in q["flags"]}
             bench.assert_contract()
 
@@ -450,7 +451,7 @@ def test_a_device_reboot_changes_boot_id_restarts_seq_and_anchors_a_new_clock(se
             for stream_id in (IMU, STRETCH):
                 after = [c for c in bench.chunks(stream_id) if c["boot_id"] == second]
                 assert after[0]["seq"] == 0 and consecutive(after)
-                assert after[0]["t0_device_ms"] == 0  # el reloj del dispositivo vuelve a contar desde cero
+                assert after[0]["t0_device_ms"] == 0  # the device clock starts counting from zero again
             assert any(s["status"] == "ok" and s["boot_id"] == second for s in bench.statuses())
             retained = await bench.retained_snapshot({topics.clock(bench.astronaut_id, bench.device_id)})
             assert retained[topics.clock(bench.astronaut_id, bench.device_id)].payload["boot_id"] == second
@@ -478,7 +479,7 @@ def test_a_device_without_imu_is_degraded_with_the_imu_stream_stalled(settings: 
     run(scenario)
 
 
-# --- 5. cierre ---
+# --- 5. shutdown ---
 
 
 def test_stopping_the_gateway_leaves_a_retained_offline_status(settings: GatewaySettings) -> None:

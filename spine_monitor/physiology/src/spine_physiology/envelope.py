@@ -1,7 +1,7 @@
-"""Sobre común de todo lo que produce el núcleo: un mensaje de contrato listo para un sink.
+"""Common envelope for everything the core produces: a contract message ready for a sink.
 
-El núcleo (generator, gateway) solo produce `Envelope`s; los sinks deciden qué hacer con ellos:
-JSONL escribe todos, MQTT publica solo los que llevan `topic` (los demás objetos de dominio nunca van al bus).
+The core (generator, gateway) only produces `Envelope`s; the sinks decide what to do with them:
+JSONL writes all of them, MQTT publishes only those carrying a `topic` (the other domain objects never go on the bus).
 """
 
 from dataclasses import dataclass
@@ -26,24 +26,24 @@ class EnvelopeKind(StrEnum):
     GROUND_TRUTH = "ground_truth"
 
 
-# Tipos que viajan por MQTT; el resto son objetos de dominio (solo JSONL). Las calibraciones van retained
-# (la vigente de cada stream); ver `RETAINED_KINDS`.
+# Kinds that travel over MQTT; the rest are domain objects (JSONL only). Calibrations go retained
+# (the current one of each stream); see `RETAINED_KINDS`.
 MQTT_KINDS = frozenset({EnvelopeKind.STREAM_CHUNK, EnvelopeKind.DEVICE_STATUS, EnvelopeKind.CLOCK_SYNC, EnvelopeKind.COMMAND_ACK, EnvelopeKind.CALIBRATION})
 
-# Tipos que siempre se publican retained.
+# Kinds that are always published retained.
 RETAINED_KINDS = frozenset({EnvelopeKind.CALIBRATION})
 
 
 @dataclass(frozen=True, slots=True)
 class Envelope:
-    """Un mensaje emitido.
+    """An emitted message.
 
-    - `payload`: dict JSON-ready, ya pasado por `spine_contracts.messages.dump` (o dict libre para
-      ground truth, que no tiene schema). No se modifica después de crear el sobre.
-    - `topic`: topic MQTT para los tipos de `MQTT_KINDS`; None para los objetos de dominio.
-    - `at`: instante UTC (aware) en que el mensaje existe/se publicaría; ordena la salida y el ritmo.
-    - `retained`: publicar como retained (DeviceStatus, ClockSync y siempre las calibraciones).
-    - `day`: índice de día de misión (0 = primer día simulado); None para el perfil.
+    - `payload`: JSON-ready dict, already passed through `spine_contracts.messages.dump` (or a free dict for
+      ground truth, which has no schema). Not modified after the envelope is created.
+    - `topic`: MQTT topic for the `MQTT_KINDS` kinds; None for domain objects.
+    - `at`: UTC instant (aware) at which the message exists/would be published; orders the output and the pacing.
+    - `retained`: publish as retained (DeviceStatus, ClockSync and always the calibrations).
+    - `day`: mission day index (0 = first simulated day); None for the profile.
     """
 
     kind: EnvelopeKind
@@ -74,5 +74,5 @@ class Envelope:
         topic: str | None = None,
         retained: bool = False,
     ) -> Envelope:
-        """Sobre a partir de un modelo de contrato (se serializa con `dump`)."""
+        """Envelope from a contract model (serialized with `dump`)."""
         return cls(kind=kind, topic=topic, payload=dump(model), at=at, retained=retained, astronaut_id=astronaut_id, day=day)

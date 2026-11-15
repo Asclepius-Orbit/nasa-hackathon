@@ -65,7 +65,7 @@ export const REPORT_FORM: ReportFormData = {
   ],
 };
 
-/** Provisional reduced Oswestry item set (pending validation by Aguado), statements scored 0-5. Item ids follow the contract ODI sections. A UI choice like the report form, served in both modes. */
+/** Provisional reduced Oswestry item set (pending clinical validation), statements scored 0-5. Item ids follow the contract ODI sections. A UI choice like the report form, served in both modes. */
 export const ODI: OswestryData = {
   items: [
     {

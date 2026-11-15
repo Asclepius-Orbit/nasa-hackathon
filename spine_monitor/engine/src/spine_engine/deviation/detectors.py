@@ -1,4 +1,4 @@
-"""Detectores de cambio sostenido sobre series de desviaciones (z). No saben qué métrica es."""
+"""Detectors of sustained change over series of deviations (z). They do not know which metric it is."""
 
 from collections.abc import Sequence
 
@@ -6,12 +6,12 @@ from spine_engine.interfaces import ChangeDetector, ChangeSignal, Direction, Vot
 
 
 def _clipped(series: Sequence[float], clip: float) -> list[float]:
-    """Acota cada punto para que un único valor extremo no baste para declarar un cambio."""
+    """Clip each point so that a single extreme value is not enough to declare a change."""
     return [max(-clip, min(clip, z)) for z in series]
 
 
 class CusumDetector:
-    """CUSUM bilateral: acumula lo que excede de `k` y avisa al pasar `h`."""
+    """Two-sided CUSUM: accumulates what exceeds `k` and signals when `h` is crossed."""
 
     def __init__(self, k: float = 0.5, h: float = 4.0, clip: float = 3.0, min_points: int = 3) -> None:
         self._k, self._h, self._clip, self._min_points = k, h, clip, min_points
@@ -31,10 +31,10 @@ class CusumDetector:
 
 
 class KalmanDetector:
-    """Filtro de Kalman de nivel local: sostenido si el nivel estimado se queda fuera de `threshold`.
+    """Local-level Kalman filter: sustained if the estimated level stays outside `threshold`.
 
-    El nivel parte de 0 (la baseline) y debe superar el umbral, con el mismo signo, en los últimos
-    `persist` pasos.
+    The level starts at 0 (the baseline) and must exceed the threshold, with the same sign, in the last
+    `persist` steps.
     """
 
     def __init__(
@@ -70,7 +70,7 @@ class KalmanDetector:
 
 
 class AllAgreeVote:
-    """AND: sostenido solo si todos los detectores lo ven y en el mismo sentido."""
+    """AND: sustained only if all detectors see it and in the same direction."""
 
     def decide(self, signals: Sequence[ChangeSignal]) -> ChangeSignal:
         if not signals or not all(s.sustained for s in signals):
@@ -82,7 +82,7 @@ class AllAgreeVote:
 
 
 class CompositeDetector:
-    """Ejecuta varios detectores y deja que una `VotePolicy` combine sus veredictos."""
+    """Run several detectors and let a `VotePolicy` combine their verdicts."""
 
     def __init__(self, detectors: Sequence[ChangeDetector], vote: VotePolicy) -> None:
         self._detectors = list(detectors)

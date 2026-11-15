@@ -1,8 +1,8 @@
-"""Generador de datos sintéticos de misión: publica exactamente lo que publicaría el hardware.
+"""Synthetic mission data generator: publishes exactly what the hardware would publish.
 
-Núcleo puro (`MissionGenerator` produce `Envelope`s con objetos de contrato) + sinks (JSONL, MQTT) +
-gateway falso interactivo. Toda la configuración sale de un YAML (`load_config`), sin valores
-numéricos por defecto en el código.
+Pure core (`MissionGenerator` produces `Envelope`s with contract objects) + sinks (JSONL, MQTT) +
+interactive fake gateway. All configuration comes from a YAML (`load_config`), with no default
+numeric values in the code.
 """
 
 from spine_physiology.config import MissionConfig, load_config

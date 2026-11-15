@@ -24,8 +24,8 @@ A = "AST-01"
 
 def make_config(clean: bool = False) -> MissionConfig:
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
-    # La dispersion entre lecturas repetidas es un offset por sesion que la verdad no puede conocer: se apaga para
-    # comparar con la verdad (el resto del realismo del cordon sigue encendido).
+    # The dispersion between repeated readings is a per-session offset that the truth cannot know: it is turned off to
+    # compare with the truth (the rest of the cord realism stays on).
     raw["signals"]["stretch"]["repeat_dispersion_ohm"] = 0.0
     if clean:
         for fault in raw["faults"]["quality"].values():
@@ -87,10 +87,10 @@ def test_exercise_features_use_catalog_ids_and_units(config, model):
     assert ids["imu.t9.sagittal.rom_deg"]["value"] == pytest.approx(expected_rom)
     peak = emg_signal.effective_pct_mvc(protocol.pct_mvc, state.muscle_deconditioning, config.signals.emg)
     assert ids["emg.latissimus_dorsi.left.peak_pct_mvc"]["value"] > peak
-    # Campana seno² hasta el pico desde el reposo: RMS entre el reposo y el pico.
+    # sin² bell up to the peak from rest: RMS between rest and peak.
     assert config.signals.emg.rest_pct_mvc < ids["emg.latissimus_dorsi.left.rms_pct_mvc"]["value"] < ids["emg.latissimus_dorsi.left.peak_pct_mvc"]["value"]
     assert ids["emg.latissimus_dorsi.symmetry_index_pct"]["value"] == 0.0
-    # La fatiga baja la frecuencia mediana rep a rep.
+    # Fatigue lowers the median frequency rep by rep.
     assert ids["emg.latissimus_dorsi.left.median_freq_slope_hz_per_rep"]["value"] < 0
 
 
@@ -115,9 +115,9 @@ def test_spine_check_elongation_matches_the_published_length(config, model):
     stretch = synthesis.stream("stretch_spine")
     rest = config.member(A).baseline.cord_rest_length_mm
     measured = float(np.mean(stretch.channels["length_mm"])) - rest
-    # Error: calibración medida (ruido de 0.5 mm por punto) + cuantización del ADC.
+    # Error: measured calibration (0.5 mm noise per point) + ADC quantization.
     assert measured == pytest.approx(ids["stretch.full_spine.elongation_mm"]["value"], abs=2.0)
-    assert ids["stretch.full_spine.elongation_mm"]["value"] == pytest.approx(state.spine_elongation_mm, abs=1.0)  # micro: sin pérdida diurna
+    assert ids["stretch.full_spine.elongation_mm"]["value"] == pytest.approx(state.spine_elongation_mm, abs=1.0)  # micro: no diurnal loss
     assert ids["stretch.full_spine.elongation_pct"]["value"] == pytest.approx(100 * ids["stretch.full_spine.elongation_mm"]["value"] / rest)
     assert "imu.t9.sagittal.rom_deg" not in ids and "exercise.rep_count" not in ids
 
@@ -132,7 +132,7 @@ def test_gravity_changes_only_gravity_dependent_features(config, model):
             assert a[feature_id]["value"] != b[feature_id]["value"] or feature_id.endswith("range_mm")
         else:
             assert a[feature_id] == b[feature_id]
-    # La pérdida diurna (solo con gravedad) acorta el cordón.
+    # The diurnal loss (only with gravity) shortens the cord.
     assert b["stretch.full_spine.peak_elongation_mm"]["value"] < a["stretch.full_spine.peak_elongation_mm"]["value"]
 
 

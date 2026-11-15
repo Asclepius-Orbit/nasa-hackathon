@@ -1,4 +1,4 @@
-"""Propiedades del protocolo de línea: ida y vuelta, parse_line nunca lanza y detección de corrupción de un carácter."""
+"""Line protocol properties: round trip, parse_line never raises and single-character corruption detection."""
 
 import pytest
 from hypothesis import given
@@ -62,7 +62,7 @@ def test_roundtrip(message: Hello | Tick | Frame, terminator: str) -> None:
 
 @given(messages)
 def test_encoded_line_is_canonical(message: Hello | Tick | Frame) -> None:
-    # parse -> encode devuelve la misma línea: el encoder es la forma canónica que emite el firmware.
+    # parse -> encode returns the same line: the encoder is the canonical form the firmware emits.
     text = encode(message)
     parsed = parse_line(text)
     assert not isinstance(parsed, BadLine)
@@ -86,7 +86,7 @@ def test_parse_bytes_never_raises(raw: bytes) -> None:
 
 @given(st.data())
 def test_body_with_valid_crc_never_raises(data: st.DataObject) -> None:
-    # Cuerpos arbitrarios con CRC correcto: ejercita el análisis de campos más allá del filtro de CRC.
+    # Arbitrary bodies with a correct CRC: exercises field parsing beyond the CRC filter.
     alphabet = st.sampled_from(list("HTDEIS,0123456789+/=-AZaz.* \t"))
     body = data.draw(st.text(alphabet, max_size=80))
     result = parse_line(f"{body}*{crc8(body.encode('ascii')):02X}")
@@ -95,8 +95,8 @@ def test_body_with_valid_crc_never_raises(data: st.DataObject) -> None:
 
 @given(messages, st.data())
 def test_single_char_corruption_is_never_accepted_as_the_original(message: Hello | Tick | Frame, data: st.DataObject) -> None:
-    # CRC-8 detecta toda ráfaga de error de hasta 8 bits, así que alterar un byte del cuerpo siempre cambia el CRC.
-    # En el campo CRC solo se excluye el cambio de mayúscula/minúscula de un dígito hex, que es el mismo valor.
+    # CRC-8 detects every error burst of up to 8 bits, so altering a body byte always changes the CRC.
+    # In the CRC field only the upper/lower case change of a hex digit is excluded, since it is the same value.
     text = encode(message)
     index = data.draw(st.integers(0, len(text) - 1))
     original = text[index]

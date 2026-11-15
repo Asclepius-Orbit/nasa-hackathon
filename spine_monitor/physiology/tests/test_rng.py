@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from spine_physiology.rng import RngTree, derive_boot_id, derive_uuid, generator, seed_sequence
 
-# Patrón `uuid` de common.schema.json.
+# `uuid` pattern from common.schema.json.
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
@@ -19,7 +19,7 @@ def test_same_branch_is_bit_exact():
 
 
 def test_branch_does_not_depend_on_other_draws():
-    # Pedir otras ramas antes (en cualquier orden y cantidad) no cambia una rama.
+    # Requesting other branches first (in any order and number) does not change a branch.
     alone = draw(7, "AST-02", 9, "device")
     for day in range(5):
         draw(7, "AST-02", day, "device")
@@ -30,14 +30,14 @@ def test_branch_does_not_depend_on_other_draws():
 @pytest.mark.parametrize(
     "other",
     [
-        (8, "AST-01", 3, "signal"),  # otra semilla
-        (7, "AST-02", 3, "signal"),  # otro astronauta
-        (7, "AST-01", 4, "signal"),  # otro día
-        (7, "AST-01", 3, "faults"),  # otro propósito
-        (7, "AST-01", 3),  # prefijo
-        (7, "AST-01", 3, "signal", "x"),  # extensión
-        (7, "AST-01", "3", "signal"),  # "3" no es 3
-        (7, 3, "AST-01", "signal"),  # el orden importa
+        (8, "AST-01", 3, "signal"),  # another seed
+        (7, "AST-02", 3, "signal"),  # another astronaut
+        (7, "AST-01", 4, "signal"),  # another day
+        (7, "AST-01", 3, "faults"),  # another purpose
+        (7, "AST-01", 3),  # prefix
+        (7, "AST-01", 3, "signal", "x"),  # extension
+        (7, "AST-01", "3", "signal"),  # "3" is not 3
+        (7, 3, "AST-01", "signal"),  # order matters
     ],
 )
 def test_different_branches_differ(other):
@@ -63,8 +63,8 @@ def test_bad_key_is_rejected(key):
 def test_uuid_format_and_determinism():
     value = derive_uuid(42, "AST-01", 0, "pre_spine_check")
     assert UUID.fullmatch(value)
-    assert value[14] == "4"  # versión 4
-    assert value[19] in "89ab"  # variante RFC 4122
+    assert value[14] == "4"  # version 4
+    assert value[19] in "89ab"  # RFC 4122 variant
     assert value == derive_uuid(42, "AST-01", 0, "pre_spine_check")
     assert value != derive_uuid(42, "AST-01", 1, "pre_spine_check")
     assert value != derive_uuid(43, "AST-01", 0, "pre_spine_check")
@@ -85,7 +85,7 @@ def test_boot_id_range_and_determinism():
 
 
 def test_ids_are_independent_of_generators():
-    # Derivar ids no consume ni coincide con el generador de la misma rama.
+    # Deriving ids neither consumes nor matches the generator of the same branch.
     keys = ("AST-01", 2, "boot")
     first = draw(3, *keys)
     derive_uuid(3, *keys)

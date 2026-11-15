@@ -1,4 +1,4 @@
-"""Fuente serie del gateway: troceo por líneas, marcas de tiempo, cortes y reconexión con backoff, sin puerto real."""
+"""Gateway serial source: line splitting, timestamps, drops and reconnection with backoff, without a real port."""
 
 import asyncio
 import itertools
@@ -16,7 +16,7 @@ T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 class FakePort:
-    """Puerto de mentira: reparte una lista de lecturas programadas (bytes, o excepción que se lanza)."""
+    """Fake port: hands out a list of scripted reads (bytes, or an exception to raise)."""
 
     def __init__(self, script: list[bytes | Exception], read_delay: float = 0.0) -> None:
         self._script = list(script)
@@ -38,7 +38,7 @@ class FakePort:
         self.read_threads.add(threading.get_ident())
         self.reading = True
         try:
-            time.sleep(self._read_delay or 0.001)  # el timeout corto del puerto real; evita girar en caliente al agotar el guion
+            time.sleep(self._read_delay or 0.001)  # the short timeout of the real port; avoids busy-spinning when the script runs out
             if not self._script:
                 return b""
             item = self._script.pop(0)
@@ -56,7 +56,7 @@ class FakePort:
 
 
 class FakeOpener:
-    """Opener inyectable: cada apertura consume un resultado programado (puerto o excepción); sin guion, falla."""
+    """Injectable opener: each open consumes a scripted result (port or exception); with no script, it fails."""
 
     def __init__(self, outcomes: list[SerialPort | Exception]) -> None:
         self._outcomes = list(outcomes)
@@ -65,7 +65,7 @@ class FakeOpener:
     def __call__(self, url: str, baud: int) -> SerialPort:
         self.calls.append((url, baud))
         if not self._outcomes:
-            raise OSError("sin más salidas programadas")
+            raise OSError("no more scripted outcomes")
         outcome = self._outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
@@ -73,7 +73,7 @@ class FakeOpener:
 
 
 class Clock:
-    """Reloj determinista: cada llamada avanza un segundo."""
+    """Deterministic clock: each call advances one second."""
 
     def __init__(self) -> None:
         self._ticks = itertools.count()
@@ -83,7 +83,7 @@ class Clock:
 
 
 class Sleeps:
-    """`sleep` inyectado: registra las esperas pedidas y no duerme."""
+    """Injected `sleep`: records the requested waits and does not sleep."""
 
     def __init__(self) -> None:
         self.requested: list[float] = []
@@ -179,7 +179,7 @@ def test_only_one_trailing_carriage_return_is_removed() -> None:
 
 
 def test_received_at_is_taken_when_bytes_are_read_not_when_consumed() -> None:
-    # LinkUp consume la marca 0; cada lectura (incluida la que devuelve b"") toma una marca al leer.
+    # LinkUp consumes timestamp 0; each read (including the one returning b"") takes a timestamp when reading.
     source, _ = make_source(FakeOpener([FakePort([b"A\nB\n", b"", b"C\n"])]))
     events = collect(source, 4)
     assert events[1:] == [
@@ -203,7 +203,7 @@ def test_unsynchronised_noise_beyond_limit_is_dropped_without_closing_port() -> 
     source, sleeps = make_source(opener)
     assert lines(collect(source, 2)) == [b"OK"]
     assert len(opener.calls) == 1
-    assert port.closed == 1  # solo el cierre final al parar el consumidor
+    assert port.closed == 1  # only the final close when the consumer stops
     assert sleeps.requested == []
 
 
@@ -290,7 +290,7 @@ def test_cancelling_while_waiting_for_a_retry_stops_at_once() -> None:
         async def blocked_sleep(seconds: float) -> None:
             requested.append(seconds)
             waiting.set()
-            await asyncio.Event().wait()  # no vuelve nunca: solo la cancelación lo saca
+            await asyncio.Event().wait()  # never returns: only cancellation gets it out
 
         source, _ = make_source(FakeOpener([OSError("down")]), blocked_sleep)
 
@@ -332,7 +332,7 @@ def test_cancelling_during_a_read_waits_for_it_then_closes_the_port() -> None:
 
     asyncio.run(scenario())
     assert port.closed == 1
-    assert port.reading_at_close is False  # el hilo ya había terminado de leer cuando se cerró
+    assert port.reading_at_close is False  # the thread had already finished reading when it was closed
 
 
 def test_open_serial_port_defaults_use_short_timeout_loopback() -> None:
@@ -341,7 +341,7 @@ def test_open_serial_port_defaults_use_short_timeout_loopback() -> None:
         assert port.in_waiting == 0
         assert isinstance(port, serial.SerialBase)
         assert (port.baudrate, port.timeout) == (9600, READ_TIMEOUT_S)
-        assert port.read(1) == b""  # el timeout corto devuelve vacío, no cuelga
+        assert port.read(1) == b""  # the short timeout returns empty, it does not hang
     finally:
         port.close()
 

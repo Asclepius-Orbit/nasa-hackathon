@@ -1,1 +1,1 @@
-"""Gateway falso interactivo: se comporta como el gateway real del wearable sobre MQTT (`spine-sim-gateway`)."""
+"""Interactive fake gateway: behaves like the real wearable gateway over MQTT (`spine-sim-gateway`)."""

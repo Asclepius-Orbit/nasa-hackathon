@@ -2,7 +2,7 @@
 
 Pure: no I/O, no clock, and it never receives the astronaut profile (the mission day arrives already computed). Codes and
 numbers only: the free text of the reports (notes) and of the rules (descriptions) is never copied. PROVISIONAL content,
-pending validation by Aguado. Without an assessment the level is 'nodata' and the assessment fields are null or empty.
+pending clinical validation. Without an assessment the level is 'nodata' and the assessment fields are null or empty.
 """
 
 from collections.abc import Mapping, Sequence

@@ -1,59 +1,59 @@
-# Workflow TDD y puertas de calidad — Plan de implementación
+# TDD workflow and quality gates — Implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Todo cambio de código del workspace `spine_monitor` pasa por TDD y por un gate de calidad (lint, tipos, tests, cobertura, contratos, mutación) idéntico en local y en CI.
+**Goal:** Every code change in the `spine_monitor` workspace goes through TDD and a quality gate (lint, types, tests, coverage, contracts, mutation) identical locally and in CI.
 
-**Architecture:** La configuración vive en `spine_monitor/pyproject.toml`. Un script `quality/gate.sh` ejecuta el gate; una imagen Docker `quality` (con mosquitto) lo corre igual en local y en GitHub Actions. Una skill de proyecto `tdd-workflow` describe el proceso y `implement-feature` la invoca.
+**Architecture:** The configuration lives in `spine_monitor/pyproject.toml`. A `quality/gate.sh` script runs the gate; a `quality` Docker image (with mosquitto) runs it the same way locally and in GitHub Actions. A project skill `tdd-workflow` describes the process and `implement-feature` invokes it.
 
-**Tech Stack:** Python 3.14, uv workspace, pytest, pytest-cov, pytest-randomly, pytest-timeout, Hypothesis, Schemathesis, ruff, pyright, mutmut o cosmic-ray (se decide en la Task 6), diff-cover, Docker Compose, GitHub Actions.
+**Tech Stack:** Python 3.14, uv workspace, pytest, pytest-cov, pytest-randomly, pytest-timeout, Hypothesis, Schemathesis, ruff, pyright, mutmut or cosmic-ray (decided in Task 6), diff-cover, Docker Compose, GitHub Actions.
 
 **Spec:** `docs/superpowers/specs/2026-11-02-tdd-workflow-design.md`
 
 ## Global Constraints
 
-- Comandos desde `C:\code\AsclepiusOrbit\nasa-hackathon\spine_monitor` salvo que se indique otra cosa; shell Git Bash.
-- Python `>=3.14.8,<3.15`. La imagen `python:3.14-slim` trae 3.14.10 y `.python-version` fija 3.14.9: los Dockerfiles NO copian `.python-version` (patrón de `engine/Dockerfile`).
-- uv se instala en imágenes con `COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /bin/uv`. Nunca `pip install uv`.
-- Gates bloqueantes: ruff sin errores; pyright sin errores; todos los tests verdes en orden aleatorio y con timeout; cobertura de líneas y ramas ≥ 90 %; diff coverage ≥ 90 % en PRs; mutación incremental ≥ 80 % en ficheros modificados en PRs; tests de contrato verdes. La mutación completa nocturna no bloquea.
-- Dobles de test solo en fronteras (HTTP, MQTT, reloj, aleatoriedad); fakes antes que `unittest.mock`; nunca mockear lógica propia; integración con mosquitto real.
-- Cada test lleva exactamente uno de los markers `unit`, `integration`, `contract`, `property`, `golden`; `mosquitto` es adicional.
-- Sin líneas `Co-Authored-By` ni "generated with Claude" en commits ni PRs. Pedir confirmación a Uri antes de cada commit. Trabajar en la rama actual.
-- En texto dirigido al equipo, llamar al usuario "Uri".
-- READMEs: `README.md`, `README.es.md` y `README.ca.md` siempre sincronizados con enlace de cambio de idioma; nunca apuntar al vault de Obsidian.
-- No se bajan umbrales por cuenta propia: si un número no se alcanza, se informa a Uri.
+- Commands run from `C:\code\AsclepiusOrbit\nasa-hackathon\spine_monitor` unless stated otherwise; Git Bash shell.
+- Python `>=3.14.8,<3.15`. The `python:3.14-slim` image ships 3.14.10 and `.python-version` pins 3.14.9: the Dockerfiles do NOT copy `.python-version` (pattern from `engine/Dockerfile`).
+- uv is installed in images with `COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /bin/uv`. Never `pip install uv`.
+- Blocking gates: ruff with no errors; pyright with no errors; all tests green in random order and with a timeout; line and branch coverage ≥ 90 %; diff coverage ≥ 90 % on PRs; incremental mutation ≥ 80 % on modified files on PRs; contract tests green. The full nightly mutation run does not block.
+- Test doubles only at the boundaries (HTTP, MQTT, clock, randomness); fakes before `unittest.mock`; never mock our own logic; integration with a real mosquitto.
+- Each test carries exactly one of the markers `unit`, `integration`, `contract`, `property`, `golden`; `mosquitto` is additional.
+- No `Co-Authored-By` lines or "generated with Claude" in commits or PRs. Ask the maintainer for confirmation before each commit. Work on the current branch.
+- In text addressed to the team, refer to the user as "the maintainer".
+- READMEs: `README.md`, `README.es.md` and `README.ca.md` always in sync with a language-switch link; never point to the Obsidian vault.
+- Thresholds are not lowered unilaterally: if a number is not reached, report it to the maintainer.
 
-## Línea base medida (2026-11-02)
+## Measured baseline (2026-11-02)
 
-- `uv run --with pytest-cov pytest` sobre contracts, engine y physiology: 781 passed, 1 skipped (mosquitto), cobertura 96 % (4470 líneas, 888 ramas).
-- Ruff con la config global del usuario (no está en el repo): 66 errores. Hay que fijar config en el repo.
-- Type checkers sobre contracts, engine y physiology: mypy 237 errores, pyright 204, ty 198. Se elige pyright.
-- `backend/src/monitor/{api,db,ingest,models}.py` están vacíos; `mcp_server` y `agent` solo tienen un `main()` de ejemplo.
-- Ya existen tests de sincronía asyncapi↔topics (`contracts/tests/test_interface_docs.py`) y de deriva OpenAPI (`openapi_drift`); generator y gateway ya validan sus payloads contra los schemas. El trabajo nuevo de contratos es Schemathesis sobre el engine y etiquetar lo existente.
-- La cobertura de fault injection del gateway ya es amplia (`test_hostile_payloads_never_bring_the_gateway_down`, `test_redelivered_commands_get_the_same_acks_without_re_executing`, `test_broker_drop_mid_run_reconnects_...`): los huecos nuevos se descubren con mutación (Task 11), no se inventan.
+- `uv run --with pytest-cov pytest` over contracts, engine and physiology: 781 passed, 1 skipped (mosquitto), coverage 96 % (4470 lines, 888 branches).
+- Ruff with the user's global config (not in the repo): 66 errors. A config must be pinned in the repo.
+- Type checkers over contracts, engine and physiology: mypy 237 errors, pyright 204, ty 198. Pyright is chosen.
+- `backend/src/monitor/{api,db,ingest,models}.py` are empty; `mcp_server` and `agent` only have an example `main()`.
+- Tests for asyncapi↔topics sync (`contracts/tests/test_interface_docs.py`) and OpenAPI drift (`openapi_drift`) already exist; generator and gateway already validate their payloads against the schemas. The new contract work is Schemathesis over the engine and labelling what exists.
+- The gateway's fault-injection coverage is already broad (`test_hostile_payloads_never_bring_the_gateway_down`, `test_redelivered_commands_get_the_same_acks_without_re_executing`, `test_broker_drop_mid_run_reconnects_...`): new gaps are discovered through mutation (Task 11), not invented.
 
-## Estructura de ficheros
+## File structure
 
-| Fichero | Responsabilidad |
+| File | Responsibility |
 |---|---|
-| `spine_monitor/pyproject.toml` (modificar) | testpaths, markers, coverage, ruff, pyright, dev deps |
-| `spine_monitor/conftest.py` (crear) | asigna el marker por defecto de cada test |
-| `spine_monitor/tests/test_markers.py` (crear) | tests del hook de markers |
-| `spine_monitor/backend/tests/test_health.py`, `mcp_server/tests/test_main.py`, `agent/tests/test_main.py` (crear) | humo de los paquetes sin tests |
-| `spine_monitor/quality/Dockerfile` (crear) | imagen con uv + dependencias de desarrollo |
-| `spine_monitor/quality/gate.sh` (crear) | ejecuta el gate |
-| `spine_monitor/quality/mutation.sh` (crear) | mutación incremental o completa |
-| `app/docker-compose.yml` (modificar) | servicio `quality` |
-| `.github/workflows/quality.yml`, `nightly-mutation.yml` (crear) | CI |
-| `.claude/skills/tdd-workflow/SKILL.md` (crear) | proceso TDD |
-| `.claude/skills/implement-feature/SKILL.md` (modificar) | integra la skill y el gate |
-| `engine/tests/test_properties_scoring.py`, `physiology/tests/test_properties_curves.py`, `physiology/tests/test_properties_rng.py` (crear) | Hypothesis |
-| `physiology/tests/test_golden_mission.py`, `physiology/tests/golden/tiny-mission.json` (crear) | golden |
-| `engine/tests/test_contract_openapi_fuzz.py` (crear) | Schemathesis |
+| `spine_monitor/pyproject.toml` (modify) | testpaths, markers, coverage, ruff, pyright, dev deps |
+| `spine_monitor/conftest.py` (create) | assigns the default marker to each test |
+| `spine_monitor/tests/test_markers.py` (create) | tests of the marker hook |
+| `spine_monitor/backend/tests/test_health.py`, `mcp_server/tests/test_main.py`, `agent/tests/test_main.py` (create) | smoke tests for the packages without tests |
+| `spine_monitor/quality/Dockerfile` (create) | image with uv + development dependencies |
+| `spine_monitor/quality/gate.sh` (create) | runs the gate |
+| `spine_monitor/quality/mutation.sh` (create) | incremental or full mutation |
+| `app/docker-compose.yml` (modify) | `quality` service |
+| `.github/workflows/quality.yml`, `nightly-mutation.yml` (create) | CI |
+| `.claude/skills/tdd-workflow/SKILL.md` (create) | TDD process |
+| `.claude/skills/implement-feature/SKILL.md` (modify) | integrates the skill and the gate |
+| `engine/tests/test_properties_scoring.py`, `physiology/tests/test_properties_curves.py`, `physiology/tests/test_properties_rng.py` (create) | Hypothesis |
+| `physiology/tests/test_golden_mission.py`, `physiology/tests/golden/tiny-mission.json` (create) | golden |
+| `engine/tests/test_contract_openapi_fuzz.py` (create) | Schemathesis |
 
 ---
 
-### Task 1: Configuración de pytest, markers, cobertura y herramientas
+### Task 1: pytest configuration, markers, coverage and tooling
 
 **Files:**
 - Create: `spine_monitor/conftest.py`
@@ -62,9 +62,9 @@
 - Modify: `spine_monitor/pyproject.toml`
 
 **Interfaces:**
-- Produces: markers `unit|integration|contract|property|golden|mosquitto`; hook `pytest_collection_modifyitems` que añade `integration` a los tests con `mosquitto`, `contract` a los de `contracts/tests`, y `unit` al resto si no llevan ya uno de los cinco; `[tool.coverage]` con `fail_under = 90`.
+- Produces: markers `unit|integration|contract|property|golden|mosquitto`; a `pytest_collection_modifyitems` hook that adds `integration` to tests with `mosquitto`, `contract` to those in `contracts/tests`, and `unit` to the rest if they do not already carry one of the five; `[tool.coverage]` with `fail_under = 90`.
 
-- [ ] **Step 1: Escribir el test del hook (rojo)**
+- [ ] **Step 1: Write the hook test (red)**
 
 `spine_monitor/tests/test_markers.py`:
 
@@ -104,23 +104,23 @@ def test_markers_are_registered(pytestconfig, marker):
     assert any(line.startswith(f"{marker}:") for line in pytestconfig.getini("markers"))
 ```
 
-- [ ] **Step 2: Ejecutar y ver el fallo**
+- [ ] **Step 2: Run and see the failure**
 
 Run: `uv run pytest tests/test_markers.py -q -p no:randomly`
-Expected: FAIL (no existe `conftest.py` y los markers no están registrados). Si el fallo es otro (p. ej. `FileNotFoundError` por el cwd de `pytester`), corregir el test hasta que falle por la razón correcta.
+Expected: FAIL (`conftest.py` does not exist and the markers are not registered). If the failure is something else (e.g. `FileNotFoundError` from `pytester`'s cwd), fix the test until it fails for the right reason.
 
-- [ ] **Step 3: Implementar `conftest.py`**
+- [ ] **Step 3: Implement `conftest.py`**
 
 `spine_monitor/conftest.py`:
 
 ```python
-"""Asigna a cada test exactamente un marker de tipo (unit, integration, contract, property, golden)."""
+"""Assigns each test exactly one kind marker (unit, integration, contract, property, golden)."""
 
 from pathlib import PurePath
 
 import pytest
 
-pytest_plugins = ["pytester"]  # lo necesita tests/test_markers.py; debe declararse en el conftest raíz
+pytest_plugins = ["pytester"]  # needed by tests/test_markers.py; must be declared in the root conftest
 
 KINDS = ("unit", "integration", "contract", "property", "golden")
 
@@ -139,9 +139,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         item.add_marker(getattr(pytest.mark, kind))
 ```
 
-- [ ] **Step 4: Configurar `pyproject.toml`**
+- [ ] **Step 4: Configure `pyproject.toml`**
 
-Sustituir el bloque `[tool.pytest.ini_options]` y añadir el resto (mantener `[tool.uv.workspace]`):
+Replace the `[tool.pytest.ini_options]` block and add the rest (keep `[tool.uv.workspace]`):
 
 ```toml
 [dependency-groups]
@@ -194,10 +194,10 @@ exclude = ["contracts/src/spine_contracts/models"]
 typeCheckingMode = "standard"
 ```
 
-Run: `uv sync --all-packages` (resuelve y fija las dependencias de desarrollo en `uv.lock`).
-Expected: termina sin error y `uv.lock` cambia.
+Run: `uv sync --all-packages` (resolves and pins the development dependencies in `uv.lock`).
+Expected: finishes without error and `uv.lock` changes.
 
-- [ ] **Step 5: Tests de humo de los paquetes sin tests (rojo, luego verde)**
+- [ ] **Step 5: Smoke tests for the packages without tests (red, then green)**
 
 `backend/tests/test_health.py`:
 
@@ -233,22 +233,22 @@ def test_main_prints_its_greeting(capsys):
 ```
 
 Run: `uv run pytest tests backend/tests mcp_server/tests agent/tests -q`
-Expected: PASS (el código ya existe; estos tests documentan su comportamiento actual y dan al gate algo que medir).
+Expected: PASS (the code already exists; these tests document its current behaviour and give the gate something to measure).
 
-- [ ] **Step 6: Suite completa con marker por defecto**
+- [ ] **Step 6: Full suite with the default marker**
 
 Run: `uv run pytest -q`
-Expected: 781+ passed, 1 skipped, sin `PytestUnknownMarkWarning`.
+Expected: 781+ passed, 1 skipped, no `PytestUnknownMarkWarning`.
 
 Run: `uv run pytest -m "not unit and not integration and not contract and not property and not golden" --collect-only -q`
-Expected: `no tests collected` (ningún test sin tipo).
+Expected: `no tests collected` (no untyped test).
 
-- [ ] **Step 7: Cobertura medida con la config**
+- [ ] **Step 7: Coverage measured with the config**
 
 Run: `uv run pytest -q --cov --cov-report=term | tail -5`
-Expected: línea `TOTAL` ≥ 90 % y `Required test coverage of 90% reached`. Si no llega, parar e informar a Uri con el número.
+Expected: `TOTAL` line ≥ 90 % and `Required test coverage of 90% reached`. If it does not get there, stop and report the number to the maintainer.
 
-- [ ] **Step 8: Commit (pedir confirmación a Uri)**
+- [ ] **Step 8: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/pyproject.toml spine_monitor/uv.lock spine_monitor/conftest.py spine_monitor/tests spine_monitor/backend/tests spine_monitor/mcp_server/tests spine_monitor/agent/tests
@@ -257,32 +257,32 @@ git commit -m "Add test markers, coverage threshold, tooling config and smoke te
 
 ---
 
-### Task 2: Ruff verde
+### Task 2: Green ruff
 
 **Files:**
-- Modify: ficheros que señale ruff.
+- Modify: files that ruff flags.
 
 **Interfaces:**
-- Consumes: `[tool.ruff]` de la Task 1.
-- Produces: `uv run ruff check .` sin errores.
+- Consumes: `[tool.ruff]` from Task 1.
+- Produces: `uv run ruff check .` with no errors.
 
-- [ ] **Step 1: Medir**
+- [ ] **Step 1: Measure**
 
 Run: `uv run ruff check . --statistics`
-Expected: lista de reglas con recuentos (la config del repo sustituye a la global del usuario).
+Expected: list of rules with counts (the repo config replaces the user's global one).
 
-- [ ] **Step 2: Aplicar arreglos seguros**
+- [ ] **Step 2: Apply safe fixes**
 
 Run: `uv run ruff check . --fix && uv run pytest -q`
-Expected: suite verde tras los arreglos automáticos.
+Expected: suite green after the automatic fixes.
 
-- [ ] **Step 3: Arreglar a mano lo restante**
+- [ ] **Step 3: Fix the rest by hand**
 
 Run: `uv run ruff check .`
-Para cada error restante: si es un error real (p. ej. nombre no definido), escribir primero un test que lo exponga (rojo), arreglar, ver verde. Si es de estilo, arreglar directamente.
-Expected al final: `All checks passed!` y `uv run pytest -q` verde.
+For each remaining error: if it is a real error (e.g. undefined name), first write a test that exposes it (red), fix, see green. If it is style, fix directly.
+Expected at the end: `All checks passed!` and `uv run pytest -q` green.
 
-- [ ] **Step 4: Commit (pedir confirmación a Uri)**
+- [ ] **Step 4: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add -A spine_monitor
@@ -291,35 +291,35 @@ git commit -m "Fix ruff findings under the repository lint configuration"
 
 ---
 
-### Task 3: Pyright verde (con subagentes)
+### Task 3: Green pyright (with subagents)
 
 **Files:**
-- Modify: ficheros de `contracts/src`, `engine/src`, `physiology/src` que señale pyright (excepto `contracts/src/spine_contracts/models`, generado).
+- Modify: files in `contracts/src`, `engine/src`, `physiology/src` that pyright flags (except `contracts/src/spine_contracts/models`, generated).
 
 **Interfaces:**
-- Consumes: `[tool.pyright]` de la Task 1.
-- Produces: `uv run pyright` con `0 errors`.
+- Consumes: `[tool.pyright]` from Task 1.
+- Produces: `uv run pyright` with `0 errors`.
 
-- [ ] **Step 1: Medir y repartir**
+- [ ] **Step 1: Measure and split**
 
 Run: `uv run pyright --outputjson > /tmp/pyright.json; uv run pyright 2>&1 | tail -3`
-Agrupar los errores por paquete (`contracts`, `engine`, `physiology`, el resto). Línea base previa: 204 errores sobre los tres paquetes, muchos de numpy/scipy (`Array` incompatible con `_SupportsArray`).
+Group the errors by package (`contracts`, `engine`, `physiology`, the rest). Previous baseline: 204 errors over the three packages, many from numpy/scipy (`Array` incompatible with `_SupportsArray`).
 
-- [ ] **Step 2: Un subagente por paquete, en paralelo (un solo mensaje)**
+- [ ] **Step 2: One subagent per package, in parallel (a single message)**
 
-Modelo `sonnet`, esfuerzo medio. Prompt de cada uno: «Corrige todos los errores de pyright de `<paquete>/src` ejecutando `uv run pyright <paquete>/src` desde `spine_monitor`. Reglas: (1) no cambiar comportamiento; la suite del paquete debe seguir verde (`uv run pytest <paquete>/tests -q`); (2) si un error revela un bug real, escribe primero un test que falle, muéstralo en rojo, arregla y muéstralo en verde, y repórtalo; (3) prohibido `# type: ignore` y `Any` para silenciar sin motivo; si un ignore es inevitable (stub de numpy incorrecto), usa `# pyright: ignore[regla]` con un comentario de una línea con el motivo; (4) no toques otros paquetes. Devuelve: errores antes/después, lista de ficheros tocados, bugs reales encontrados.»
+Model `sonnet`, medium effort. Prompt for each: "Fix all pyright errors in `<package>/src` by running `uv run pyright <package>/src` from `spine_monitor`. Rules: (1) do not change behaviour; the package's suite must stay green (`uv run pytest <package>/tests -q`); (2) if an error reveals a real bug, first write a failing test, show it red, fix and show it green, and report it; (3) `# type: ignore` and `Any` to silence without a reason are forbidden; if an ignore is unavoidable (incorrect numpy stub), use `# pyright: ignore[rule]` with a one-line comment giving the reason; (4) do not touch other packages. Return: errors before/after, list of files touched, real bugs found."
 
-- [ ] **Step 3: Revisar el diff real de cada subagente**
+- [ ] **Step 3: Review each subagent's real diff**
 
 Run: `git diff --stat && git diff -- '*.py' | head -400`
-Comprobar que no hay `# type: ignore` sueltos ni cambios de comportamiento no justificados. Cada bug real tiene su test.
+Check that there are no stray `# type: ignore` and no unjustified behaviour changes. Every real bug has its test.
 
-- [ ] **Step 4: Verificar**
+- [ ] **Step 4: Verify**
 
 Run: `uv run pyright && uv run ruff check . && uv run pytest -q`
-Expected: `0 errors`, ruff limpio, suite verde.
+Expected: `0 errors`, ruff clean, suite green.
 
-- [ ] **Step 5: Commit (pedir confirmación a Uri; un commit por paquete si el diff es grande)**
+- [ ] **Step 5: Commit (ask the maintainer for confirmation; one commit per package if the diff is large)**
 
 ```bash
 git add -A spine_monitor
@@ -328,95 +328,95 @@ git commit -m "Fix pyright findings in contracts, engine and physiology"
 
 ---
 
-### Task 4: Skill `tdd-workflow`
+### Task 4: `tdd-workflow` skill
 
 **Files:**
 - Create: `.claude/skills/tdd-workflow/SKILL.md`
 
 **Interfaces:**
-- Produces: skill invocable como `tdd-workflow`; cita el comando `docker compose -f app/docker-compose.yml run --rm quality` (se crea en la Task 5) y el atajo local `cd spine_monitor && uv run pytest`.
+- Produces: a skill invocable as `tdd-workflow`; it cites the command `docker compose -f app/docker-compose.yml run --rm quality` (created in Task 5) and the local shortcut `cd spine_monitor && uv run pytest`.
 
-- [ ] **Step 1: Escribir la skill**
+- [ ] **Step 1: Write the skill**
 
 ````markdown
 ---
 name: tdd-workflow
-description: Use when se va a escribir o cambiar código de producción (feature, bugfix, refactor) en este repo, antes de escribir la primera línea de código.
+description: Use when production code is about to be written or changed (feature, bugfix, refactor) in this repo, before writing the first line of code.
 ---
 
 # tdd-workflow
 
-Todo cambio de código sigue TDD y pasa el gate de calidad. **Violar la letra del ciclo es violar su espíritu.**
+Every code change follows TDD and passes the quality gate. **Violating the letter of the cycle is violating its spirit.**
 
-## Ciclo (obligatorio)
+## Cycle (mandatory)
 
-1. **Rojo.** Escribe un test que describa el comportamiento. Ejecútalo y **muestra el fallo**; comprueba que falla por la razón correcta (assertion o import esperado, no un error de sintaxis o de fixture). Sin rojo visible no hay código.
-2. **Verde.** Escribe el cambio mínimo. Ejecuta y **muestra el verde**.
-3. **Refactor.** Solo con la suite en verde; vuelve a ejecutar tras cada paso.
-4. **Bugfix.** Primero un test de regresión que reproduce el fallo, visto en rojo; luego el arreglo.
+1. **Red.** Write a test that describes the behaviour. Run it and **show the failure**; check that it fails for the right reason (an assertion or an expected import, not a syntax or fixture error). No visible red, no code.
+2. **Green.** Write the minimal change. Run it and **show the green**.
+3. **Refactor.** Only with the suite green; re-run after each step.
+4. **Bugfix.** First a regression test that reproduces the failure, seen red; then the fix.
 
-## Exentos (solo estos)
+## Exempt (only these)
 
-- Docs y README.
-- Config/infra sin lógica (Dockerfile, compose, pyproject, CI): se verifica ejecutándola.
-- Spikes etiquetados como throwaway; no se mergean tal cual.
+- Docs and README.
+- Config/infra without logic (Dockerfile, compose, pyproject, CI): verified by running it.
+- Spikes labelled as throwaway; they are not merged as they are.
 
-Cualquier otro cambio de código sigue el ciclo.
+Any other code change follows the cycle.
 
-## Qué test escribir
+## Which test to write
 
-| Marker | Cuándo |
+| Marker | When |
 |---|---|
-| `unit` | lógica aislada, sin I/O |
-| `integration` | varios componentes juntos o broker real (`mosquitto`) |
-| `contract` | payloads/APIs contra JSON Schema, OpenAPI, AsyncAPI |
-| `property` | invariantes con Hypothesis (scoring, curvas, rng) |
-| `golden` | salida determinista comparada con snapshot versionado |
+| `unit` | isolated logic, no I/O |
+| `integration` | several components together or a real broker (`mosquitto`) |
+| `contract` | payloads/APIs against JSON Schema, OpenAPI, AsyncAPI |
+| `property` | invariants with Hypothesis (scoring, curves, rng) |
+| `golden` | deterministic output compared with a versioned snapshot |
 
-Cada test lleva exactamente un marker de esta tabla; `conftest.py` pone `unit` por defecto, `integration` a los `mosquitto` y `contract` a los de `contracts/tests`. `mosquitto` es adicional.
+Each test carries exactly one marker from this table; `conftest.py` sets `unit` by default, `integration` on the `mosquitto` ones and `contract` on those in `contracts/tests`. `mosquitto` is additional.
 
-## Dobles de test
+## Test doubles
 
-- Solo en las fronteras: HTTP, MQTT, reloj, aleatoriedad.
-- Fakes escritos a mano o inyección de dependencias antes que `unittest.mock`. Modelo: `FakeClient` y `Harness` de `physiology/tests/test_gateway.py`.
-- Nunca mockees lógica propia.
-- La integración MQTT usa mosquitto real.
+- Only at the boundaries: HTTP, MQTT, clock, randomness.
+- Hand-written fakes or dependency injection before `unittest.mock`. Model: `FakeClient` and `Harness` from `physiology/tests/test_gateway.py`.
+- Never mock our own logic.
+- MQTT integration uses a real mosquitto.
 
-## Gate (todo bloqueante)
+## Gate (everything blocking)
 
-Comando único, igual en local y CI:
+A single command, the same locally and in CI:
 
 ```bash
 docker compose -f app/docker-compose.yml run --rm quality
 ```
 
-Ejecuta, en orden: `ruff check`, `pyright`, `pytest` con cobertura (líneas y ramas ≥ 90 %, orden aleatorio, timeout), y mutación incremental (≥ 80 % en ficheros modificados). En PRs, CI añade diff coverage ≥ 90 %. Un nightly corre la mutación completa sin bloquear.
+It runs, in order: `ruff check`, `pyright`, `pytest` with coverage (lines and branches ≥ 90 %, random order, timeout), and incremental mutation (≥ 80 % on modified files). On PRs, CI adds diff coverage ≥ 90 %. A nightly runs the full mutation without blocking.
 
-Bucle rápido mientras desarrollas: `cd spine_monitor && uv run pytest <ruta> -q -p no:randomly`.
+Fast loop while developing: `cd spine_monitor && uv run pytest <path> -q -p no:randomly`.
 
-## Mutación: qué hacer con un superviviente
+## Mutation: what to do with a survivor
 
-Un mutante vivo es un test que falta. Escribe el test que lo mata (rojo con el mutante, verde sin él). No añadas `# pragma: no mutate` para esquivarlo sin consultar a Uri.
+A live mutant is a missing test. Write the test that kills it (red with the mutant, green without it). Do not add `# pragma: no mutate` to dodge it without consulting the maintainer.
 
-## Señales de alarma — PARA
+## Warning signs — STOP
 
-| Pensamiento | Realidad |
+| Thought | Reality |
 |---|---|
-| «Escribo el código y luego los tests» | Sin rojo visible no hay TDD. Borra y empieza por el test. |
-| «Es un cambio trivial» | Trivial sigue el ciclo; solo los exentos de arriba se saltan. |
-| «El test pasa a la primera» | Un test que nunca falló no prueba nada. Rómpelo a propósito. |
-| «Mockeo esta función mía para aislar» | Solo fronteras. Mockear lógica propia oculta bugs. |
-| «La cobertura es 90 %, suficiente» | Cobertura mide ejecución, no verificación. Mira la mutación. |
-| «Bajo el umbral solo esta vez» | No se bajan umbrales sin Uri. |
-| «Pongo `# type: ignore` y sigo» | Solo `# pyright: ignore[regla]` con motivo. |
+| "I'll write the code and then the tests" | No visible red, no TDD. Delete and start with the test. |
+| "It's a trivial change" | Trivial follows the cycle; only the exemptions above skip it. |
+| "The test passes first time" | A test that never failed proves nothing. Break it on purpose. |
+| "I'll mock this function of mine to isolate it" | Boundaries only. Mocking our own logic hides bugs. |
+| "Coverage is 90 %, that's enough" | Coverage measures execution, not verification. Look at mutation. |
+| "I'll lower the threshold just this once" | Thresholds are not lowered without the maintainer. |
+| "I'll put `# type: ignore` and move on" | Only `# pyright: ignore[rule]` with a reason. |
 ````
 
-- [ ] **Step 2: Verificar que la skill se lista**
+- [ ] **Step 2: Verify the skill is listed**
 
 Run: `ls .claude/skills/tdd-workflow/SKILL.md && head -4 .claude/skills/tdd-workflow/SKILL.md`
-Expected: el fichero existe y el frontmatter tiene `name` y `description`. (Probar en una sesión nueva que `tdd-workflow` aparece en la lista de skills.)
+Expected: the file exists and the frontmatter has `name` and `description`. (Test in a fresh session that `tdd-workflow` appears in the skills list.)
 
-- [ ] **Step 3: Commit (pedir confirmación a Uri)**
+- [ ] **Step 3: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add .claude/skills/tdd-workflow
@@ -425,7 +425,7 @@ git commit -m "Add tdd-workflow skill"
 
 ---
 
-### Task 5: Imagen Docker `quality`, `gate.sh` y servicio en compose
+### Task 5: `quality` Docker image, `gate.sh` and compose service
 
 **Files:**
 - Create: `spine_monitor/quality/Dockerfile`
@@ -433,11 +433,11 @@ git commit -m "Add tdd-workflow skill"
 - Modify: `app/docker-compose.yml`
 
 **Interfaces:**
-- Produces: `docker compose -f app/docker-compose.yml run --rm quality` ejecuta el gate completo contra mosquitto real (el contenedor comparte la red de mosquitto, así `127.0.0.1:1883` funciona sin cambiar los tests). Variable `GATE_MUTATION` (`off` por defecto en esta task; la Task 6 le da valor).
+- Produces: `docker compose -f app/docker-compose.yml run --rm quality` runs the full gate against a real mosquitto (the container shares mosquitto's network, so `127.0.0.1:1883` works without changing the tests). Variable `GATE_MUTATION` (`off` by default in this task; Task 6 gives it a value).
 
 - [ ] **Step 1: Dockerfile**
 
-`spine_monitor/quality/Dockerfile` (contexto: raíz del repo):
+`spine_monitor/quality/Dockerfile` (context: repo root):
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -475,7 +475,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 CMD ["sh", "quality/gate.sh"]
 ```
 
-- [ ] **Step 2: Script del gate**
+- [ ] **Step 2: Gate script**
 
 `spine_monitor/quality/gate.sh`:
 
@@ -501,9 +501,9 @@ fi
 echo "==> gate passed"
 ```
 
-- [ ] **Step 3: Servicio en compose**
+- [ ] **Step 3: Compose service**
 
-Añadir a `app/docker-compose.yml`, bajo `services:`:
+Add to `app/docker-compose.yml`, under `services:`:
 
 ```yaml
   quality:
@@ -523,20 +523,20 @@ Añadir a `app/docker-compose.yml`, bajo `services:`:
     profiles: ["quality"]
 ```
 
-- [ ] **Step 4: Construir y ejecutar**
+- [ ] **Step 4: Build and run**
 
 Run: `docker compose -f app/docker-compose.yml --profile quality build quality`
-Expected: build correcto.
+Expected: successful build.
 
 Run: `docker compose -f app/docker-compose.yml run --rm quality`
-Expected: `==> gate passed`, y en la salida de pytest `1 skipped` pasa a `0 skipped` (el test `mosquitto` ahora corre contra el broker real). Si `127.0.0.1:1883` del host ya está ocupado por otro mosquitto, el servicio `mosquitto` no arranca: parar el otro y reintentar.
+Expected: `==> gate passed`, and in pytest's output `1 skipped` becomes `0 skipped` (the `mosquitto` test now runs against the real broker). If `127.0.0.1:1883` on the host is already taken by another mosquitto, the `mosquitto` service does not start: stop the other one and retry.
 
-- [ ] **Step 5: Comprobar que el gate falla de verdad**
+- [ ] **Step 5: Check that the gate really fails**
 
-Introducir un error de lint (`import os` sin usar en un fichero de `engine/src`), ejecutar el comando anterior y ver `ruff` fallar; revertir.
-Expected: el contenedor sale con código distinto de 0 en el paso `ruff`.
+Introduce a lint error (an unused `import os` in a file under `engine/src`), run the command above and see `ruff` fail; revert.
+Expected: the container exits with a non-zero code at the `ruff` step.
 
-- [ ] **Step 6: Commit (pedir confirmación a Uri)**
+- [ ] **Step 6: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/quality app/docker-compose.yml
@@ -545,29 +545,29 @@ git commit -m "Add the quality gate image, script and compose service with a rea
 
 ---
 
-### Task 6: Mutación (spike acotado y decisión mutmut/cosmic-ray)
+### Task 6: Mutation (bounded spike and mutmut/cosmic-ray decision)
 
 **Files:**
 - Create: `spine_monitor/quality/mutation.sh`
-- Modify: `spine_monitor/pyproject.toml` (config de la herramienta elegida)
+- Modify: `spine_monitor/pyproject.toml` (config of the chosen tool)
 
 **Interfaces:**
-- Consumes: imagen `quality` de la Task 5.
-- Produces: `sh quality/mutation.sh changed|full`, que sale con código ≠ 0 si el mutation score de los ficheros modificados (`changed`) es < 80 %; `full` imprime el score por paquete y siempre sale con 0.
+- Consumes: `quality` image from Task 5.
+- Produces: `sh quality/mutation.sh changed|full`, which exits non-zero if the mutation score of the modified files (`changed`) is < 80 %; `full` prints the score per package and always exits 0.
 
-**Contexto del spike:** mutmut 3 corre en Docker con Python 3.14 y genera los mutantes, pero con el layout `src/` del workspace dice «could not find any test case for any mutant»: los tests importan el paquete instalado en editable, no la copia de `mutants/`. Probado sin éxito: `also_copy = ["engine/tests","contracts","pyproject.toml"]` y `PYTHONPATH=/tmp/sm/mutants/engine/src`.
+**Spike context:** mutmut 3 runs in Docker with Python 3.14 and generates the mutants, but with the workspace's `src/` layout it says "could not find any test case for any mutant": the tests import the package installed in editable mode, not the copy in `mutants/`. Tried without success: `also_copy = ["engine/tests","contracts","pyproject.toml"]` and `PYTHONPATH=/tmp/sm/mutants/engine/src`.
 
-- [ ] **Step 1: Spike mutmut con límite de 45 minutos**
+- [ ] **Step 1: mutmut spike with a 45-minute limit**
 
-Dentro de la imagen `quality` (`docker compose -f app/docker-compose.yml run --rm --entrypoint sh quality`), sobre `engine/src/spine_engine/deviation/scoring.py` (13 mutantes, 63 tests). Probar, en este orden, hasta que `mutmut results` muestre mutantes `killed` o `survived` (no `not checked`):
-1. Instalar los miembros no editables: `uv sync --frozen --all-packages --no-editable` y relanzar.
-2. Quitar el paquete instalado del import (`uv pip uninstall spine-engine`) y poner `mutants/engine/src` y `mutants/contracts/src` en `PYTHONPATH`.
-3. Activar `debug = true` en `[tool.mutmut]` y leer qué tests se ejecutan.
-Si pasados 45 minutos no hay resultado, ir al Step 2. Si funciona, escribir `[tool.mutmut]` definitivo en `pyproject.toml` (`source_paths`, `also_copy`, `pytest_add_cli_args_test_selection`) y saltar al Step 4 con mutmut.
+Inside the `quality` image (`docker compose -f app/docker-compose.yml run --rm --entrypoint sh quality`), on `engine/src/spine_engine/deviation/scoring.py` (13 mutants, 63 tests). Try, in this order, until `mutmut results` shows `killed` or `survived` mutants (not `not checked`):
+1. Install the members non-editable: `uv sync --frozen --all-packages --no-editable` and relaunch.
+2. Remove the installed package from the import (`uv pip uninstall spine-engine`) and put `mutants/engine/src` and `mutants/contracts/src` in `PYTHONPATH`.
+3. Enable `debug = true` in `[tool.mutmut]` and read which tests run.
+If after 45 minutes there is no result, go to Step 2. If it works, write the final `[tool.mutmut]` in `pyproject.toml` (`source_paths`, `also_copy`, `pytest_add_cli_args_test_selection`) and skip to Step 4 with mutmut.
 
-- [ ] **Step 2: Spike cosmic-ray**
+- [ ] **Step 2: cosmic-ray spike**
 
-`uv add --dev cosmic-ray`. Config de prueba `quality/cosmic-ray.toml`:
+`uv add --dev cosmic-ray`. Trial config `quality/cosmic-ray.toml`:
 
 ```toml
 [cosmic-ray]
@@ -581,22 +581,22 @@ name = "local"
 ```
 
 Run: `cosmic-ray init quality/cosmic-ray.toml /tmp/session.sqlite && cosmic-ray exec quality/cosmic-ray.toml /tmp/session.sqlite && cr-report /tmp/session.sqlite`
-Expected: informe con mutantes matados y supervivientes. Si funciona, esta es la herramienta; documentar la config final en `quality/cosmic-ray.toml`.
+Expected: a report with killed and surviving mutants. If it works, this is the tool; document the final config in `quality/cosmic-ray.toml`.
 
-- [ ] **Step 3: Si ninguna funciona**
+- [ ] **Step 3: If neither works**
 
-Parar e informar a Uri con la salida exacta de ambas; decidir con él (p. ej. reestructurar la instalación). No inventar una tercera vía sin consultar.
+Stop and report to the maintainer with the exact output of both; decide with them (e.g. restructure the installation). Do not invent a third route without consulting.
 
-- [ ] **Step 4: Escribir `mutation.sh` (con la herramienta que funcionó)**
+- [ ] **Step 4: Write `mutation.sh` (with the tool that worked)**
 
-El script recibe `changed` o `full`. En `changed`, calcula los ficheros `*.py` de `*/src/**` modificados respecto a `origin/develop` (`git diff --name-only origin/develop...HEAD -- '*/src/*.py'`), ejecuta la mutación solo sobre ellos y compara el score con 80 %; sin ficheros modificados, sale con 0. En `full`, recorre todos los paquetes con código y sale con 0. Escribir primero el caso `changed` con un fichero cuyo score se conozca (el spike de `scoring.py`), verlo salir 0, y luego forzar un fallo borrando una aserción de `engine/tests/test_scoring.py` y ver que sale ≠ 0; restaurar.
+The script receives `changed` or `full`. In `changed`, it computes the modified `*.py` files in `*/src/**` relative to `origin/develop` (`git diff --name-only origin/develop...HEAD -- '*/src/*.py'`), runs mutation only on them and compares the score with 80 %; with no modified files, it exits 0. In `full`, it goes through all packages with code and exits 0. Write the `changed` case first with a file whose score is known (the `scoring.py` spike), see it exit 0, then force a failure by deleting an assertion in `engine/tests/test_scoring.py` and see it exit non-zero; restore.
 
-- [ ] **Step 5: Medir la línea base**
+- [ ] **Step 5: Measure the baseline**
 
 Run: `GATE_MUTATION=full docker compose -f app/docker-compose.yml run --rm quality`
-Expected: score por paquete. **Parar y dar a Uri los números**: si algún paquete queda por debajo de 80 %, se decide con él (la Task 11 mata supervivientes), no se baja el umbral.
+Expected: score per package. **Stop and give the maintainer the numbers**: if any package is below 80 %, decide with them (Task 11 kills survivors); do not lower the threshold.
 
-- [ ] **Step 6: Commit (pedir confirmación a Uri)**
+- [ ] **Step 6: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/quality spine_monitor/pyproject.toml spine_monitor/uv.lock
@@ -612,9 +612,9 @@ git commit -m "Add incremental and full mutation testing to the quality gate"
 - Create: `.github/workflows/nightly-mutation.yml`
 
 **Interfaces:**
-- Consumes: servicio `quality` y `GATE_MUTATION`.
+- Consumes: the `quality` service and `GATE_MUTATION`.
 
-- [ ] **Step 1: Workflow de PR**
+- [ ] **Step 1: PR workflow**
 
 `.github/workflows/quality.yml`:
 
@@ -642,7 +642,7 @@ jobs:
           diff-cover spine_monitor/coverage.xml --compare-branch=origin/develop --fail-under=90
 ```
 
-- [ ] **Step 2: Workflow nocturno**
+- [ ] **Step 2: Nightly workflow**
 
 `.github/workflows/nightly-mutation.yml`:
 
@@ -665,12 +665,12 @@ jobs:
         run: docker compose -f app/docker-compose.yml run --rm quality
 ```
 
-- [ ] **Step 3: Validar sintaxis**
+- [ ] **Step 3: Validate syntax**
 
-Run: `uv run --with pyyaml python -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ('.github/workflows/quality.yml','.github/workflows/nightly-mutation.yml')]; print('ok')"` (desde la raíz del repo)
-Expected: `ok`. La ejecución real solo se comprueba al abrir el PR; avisar a Uri de que la primera ejecución en GitHub es la verificación definitiva.
+Run: `uv run --with pyyaml python -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ('.github/workflows/quality.yml','.github/workflows/nightly-mutation.yml')]; print('ok')"` (from the repo root)
+Expected: `ok`. The real execution is only checked when the PR is opened; tell the maintainer that the first run on GitHub is the definitive verification.
 
-- [ ] **Step 4: Commit (pedir confirmación a Uri)**
+- [ ] **Step 4: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add .github
@@ -679,7 +679,7 @@ git commit -m "Add the pull request quality workflow and the nightly mutation re
 
 ---
 
-### Task 8: Tests property-based (Hypothesis)
+### Task 8: Property-based tests (Hypothesis)
 
 **Files:**
 - Create: `spine_monitor/engine/tests/test_properties_scoring.py`
@@ -687,9 +687,9 @@ git commit -m "Add the pull request quality workflow and the nightly mutation re
 - Create: `spine_monitor/physiology/tests/test_properties_rng.py`
 
 **Interfaces:**
-- Consumes: `RobustZScorer.score(value: float, entry: BaselineEntry) -> float` (`entry` solo se lee por `median`, `mad`, `std`); `PiecewiseLinear(points)`, `.values(xs)`, `.__call__(x)`; `dose_drift(dose_ratios, drift_per_day)`; `rng.generator(seed, *keys)`, `rng.derive_uuid(seed, *keys)`.
+- Consumes: `RobustZScorer.score(value: float, entry: BaselineEntry) -> float` (`entry` is only read for `median`, `mad`, `std`); `PiecewiseLinear(points)`, `.values(xs)`, `.__call__(x)`; `dose_drift(dose_ratios, drift_per_day)`; `rng.generator(seed, *keys)`, `rng.derive_uuid(seed, *keys)`.
 
-- [ ] **Step 1: Scoring (rojo, luego verde)**
+- [ ] **Step 1: Scoring (red, then green)**
 
 `engine/tests/test_properties_scoring.py`:
 
@@ -737,9 +737,9 @@ def test_score_uses_the_mad_when_it_is_not_degenerate(value, median, mad, std):
 ```
 
 Run: `uv run pytest engine/tests/test_properties_scoring.py -q -p no:randomly`
-Expected: PASS. Para cada propiedad, comprobar que **puede** fallar: cambiar temporalmente `MAD_TO_SIGMA` a `1.0` en `scoring.py` y ver rojo en `test_score_uses_the_mad...`; restaurar. (Es la comprobación de «rojo» de un test que cubre código ya existente.)
+Expected: PASS. For each property, check that it **can** fail: temporarily change `MAD_TO_SIGMA` to `1.0` in `scoring.py` and see red in `test_score_uses_the_mad...`; restore. (This is the "red" check for a test that covers already existing code.)
 
-- [ ] **Step 2: Curvas**
+- [ ] **Step 2: Curves**
 
 `physiology/tests/test_properties_curves.py`:
 
@@ -793,7 +793,7 @@ def test_dose_drift_is_the_running_sum_of_the_daily_shortfall(ratios, drift):
 ```
 
 Run: `uv run pytest physiology/tests/test_properties_curves.py -q -p no:randomly`
-Expected: PASS. Comprobación de rojo: cambiar `1.0 - ratios` por `ratios - 1.0` en `dose_drift` y ver fallar la última propiedad; restaurar.
+Expected: PASS. Red check: change `1.0 - ratios` to `ratios - 1.0` in `dose_drift` and see the last property fail; restore.
 
 - [ ] **Step 3: Rng**
 
@@ -838,14 +838,14 @@ def test_boot_id_fits_32_bits(seed, ks):
 ```
 
 Run: `uv run pytest physiology/tests/test_properties_rng.py -q -p no:randomly`
-Expected: PASS. Si `test_different_branches...` falla por colisión entre claves `1` y `True`-like o `"1"` e `1`, es un hallazgo real: `_key_word` etiqueta `i:`/`s:`, así que no debería; si ocurre, reportar a Uri.
+Expected: PASS. If `test_different_branches...` fails because of a collision between keys `1` and `True`-like or `"1"` and `1`, it is a real finding: `_key_word` tags `i:`/`s:`, so it should not happen; if it does, report to the maintainer.
 
-- [ ] **Step 4: Suite y cobertura**
+- [ ] **Step 4: Suite and coverage**
 
 Run: `uv run pytest -q --cov | tail -4`
-Expected: verde y cobertura ≥ 90 %.
+Expected: green and coverage ≥ 90 %.
 
-- [ ] **Step 5: Commit (pedir confirmación a Uri)**
+- [ ] **Step 5: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/engine/tests/test_properties_scoring.py spine_monitor/physiology/tests/test_properties_curves.py spine_monitor/physiology/tests/test_properties_rng.py
@@ -854,7 +854,7 @@ git commit -m "Add Hypothesis property tests for scoring, curves and the rng tre
 
 ---
 
-### Task 9: Test golden de physiology
+### Task 9: Golden test for physiology
 
 **Files:**
 - Create: `spine_monitor/physiology/tests/test_golden_mission.py`
@@ -863,12 +863,12 @@ git commit -m "Add Hypothesis property tests for scoring, curves and the rng tre
 **Interfaces:**
 - Consumes: `MissionGenerator(config, seed=None)`, `.iter_messages() -> Iterator[Envelope]`; `Envelope(kind, topic, payload, at, retained, astronaut_id, day)`; `MissionConfig.model_validate(raw)`; `physiology/configs/example-mission.yaml`.
 
-- [ ] **Step 1: Escribir el test (rojo: no existe el snapshot)**
+- [ ] **Step 1: Write the test (red: the snapshot does not exist)**
 
 `physiology/tests/test_golden_mission.py`:
 
 ```python
-"""La misión mini con semilla fija reproduce un snapshot versionado (recuentos por tipo + hash de los mensajes)."""
+"""The tiny mission with a fixed seed reproduces a versioned snapshot (counts per kind + hash of the messages)."""
 
 import hashlib
 import json
@@ -939,29 +939,29 @@ def test_tiny_mission_matches_the_golden_snapshot():
 ```
 
 Run: `uv run pytest physiology/tests/test_golden_mission.py -q -p no:randomly`
-Expected: FAIL con `golden snapshot missing`.
+Expected: FAIL with `golden snapshot missing`.
 
-- [ ] **Step 2: Generar el snapshot y revisarlo**
+- [ ] **Step 2: Generate the snapshot and review it**
 
 Run: `UPDATE_GOLDEN=1 uv run pytest physiology/tests/test_golden_mission.py -q -p no:randomly && cat physiology/tests/golden/tiny-mission.json`
-Expected: PASS y un JSON con `messages` > 0, `by_kind` con `stream_chunk`, `device_status`, `session`, etc. Comprobar que los recuentos son razonables.
+Expected: PASS and a JSON with `messages` > 0, `by_kind` with `stream_chunk`, `device_status`, `session`, etc. Check that the counts are reasonable.
 
-- [ ] **Step 3: Verde sin actualizar, y estable entre ejecuciones**
+- [ ] **Step 3: Green without updating, and stable between runs**
 
-Run: `uv run pytest physiology/tests/test_golden_mission.py -q -p no:randomly` dos veces.
-Expected: PASS ambas.
+Run: `uv run pytest physiology/tests/test_golden_mission.py -q -p no:randomly` twice.
+Expected: PASS both times.
 
-- [ ] **Step 4: Comprobar que detecta una regresión**
+- [ ] **Step 4: Check that it detects a regression**
 
-Cambiar temporalmente `sigma` (o cualquier constante de ruido) en `physiology/src/spine_physiology/signals/emg.py`, ejecutar el test y ver fallar por `sha256`; restaurar.
-Expected: FAIL con el hash distinto, y PASS tras restaurar.
+Temporarily change `sigma` (or any noise constant) in `physiology/src/spine_physiology/signals/emg.py`, run the test and see it fail on `sha256`; restore.
+Expected: FAIL with a different hash, and PASS after restoring.
 
-- [ ] **Step 5: Estable entre plataformas**
+- [ ] **Step 5: Stable across platforms**
 
 Run: `docker compose -f app/docker-compose.yml run --rm quality pytest physiology/tests/test_golden_mission.py -q`
-Expected: PASS en Linux con el snapshot generado en Windows. Si falla (diferencias de punto flotante entre plataformas), reducir `_rounded(..., digits=4)` a 3 y regenerar; si persiste, parar e informar a Uri antes de decidir (p. ej. generar el snapshot solo en Docker).
+Expected: PASS on Linux with the snapshot generated on Windows. If it fails (floating-point differences between platforms), reduce `_rounded(..., digits=4)` to 3 and regenerate; if it persists, stop and report to the maintainer before deciding (e.g. generate the snapshot only in Docker).
 
-- [ ] **Step 6: Commit (pedir confirmación a Uri)**
+- [ ] **Step 6: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/physiology/tests/test_golden_mission.py spine_monitor/physiology/tests/golden
@@ -970,23 +970,23 @@ git commit -m "Add a golden snapshot test for the seeded tiny mission"
 
 ---
 
-### Task 10: Schemathesis sobre el engine
+### Task 10: Schemathesis over the engine
 
 **Files:**
 - Create: `spine_monitor/engine/tests/test_contract_openapi_fuzz.py`
 
 **Interfaces:**
-- Consumes: `create_default_app()` de `spine_engine.api`; contrato `spine_monitor/contracts/openapi.yaml`. Nota: los handlers del engine leen el cuerpo a mano, así que el OpenAPI generado por FastAPI no lleva schemas de petición; el oráculo es el YAML del contrato.
+- Consumes: `create_default_app()` from `spine_engine.api`; contract `spine_monitor/contracts/openapi.yaml`. Note: the engine's handlers read the body by hand, so the OpenAPI generated by FastAPI carries no request schemas; the oracle is the contract YAML.
 
-- [ ] **Step 1: Comprobar la API de la versión instalada**
+- [ ] **Step 1: Check the installed version's API**
 
 Run: `uv run python -c "import schemathesis as s; print(s.__version__); print([n for n in dir(s.openapi) if not n.startswith('_')])"`
-Expected: versión y funciones del namespace `openapi` (en la serie 4.x: `from_path`, `from_dict`, `from_asgi`, `from_url`...). Usar los nombres que imprima; si difieren de los del Step 2, adaptar el test.
+Expected: version and functions of the `openapi` namespace (in the 4.x series: `from_path`, `from_dict`, `from_asgi`, `from_url`...). Use the names it prints; if they differ from those in Step 2, adapt the test.
 
-- [ ] **Step 2: Escribir el test (rojo si la API del engine incumple el contrato)**
+- [ ] **Step 2: Write the test (red if the engine API breaks the contract)**
 
 ```python
-"""Fuzz de la API real del engine contra el contrato OpenAPI (contracts/openapi.yaml)."""
+"""Fuzz of the engine's real API against the OpenAPI contract (contracts/openapi.yaml)."""
 
 from pathlib import Path
 
@@ -1009,18 +1009,18 @@ def test_engine_answers_what_the_contract_promises(case):
 ```
 
 Run: `uv run pytest engine/tests/test_contract_openapi_fuzz.py -q -p no:randomly`
-Expected: o PASS, o fallos reales de contrato (p. ej. un 500 con cuerpo inválido, un `Content-Type` distinto del contrato). Cada fallo es un hallazgo: escribir un test de regresión concreto en `engine/tests/test_api.py` que lo reproduzca (rojo), arreglar el engine (verde), y repetir hasta que el fuzz pase. Si `case.call(session=...)` no admite un `TestClient`, usar el mecanismo ASGI/WSGI de la versión instalada (Step 1) en vez de inventar uno.
+Expected: either PASS, or real contract failures (e.g. a 500 with an invalid body, a `Content-Type` different from the contract). Each failure is a finding: write a concrete regression test in `engine/tests/test_api.py` that reproduces it (red), fix the engine (green), and repeat until the fuzz passes. If `case.call(session=...)` does not accept a `TestClient`, use the ASGI/WSGI mechanism of the installed version (Step 1) instead of inventing one.
 
-- [ ] **Step 3: Verificar que el fuzz detecta una desviación**
+- [ ] **Step 3: Verify the fuzz detects a deviation**
 
-Cambiar temporalmente el `Content-Type` de errores de `application/problem+json` a `application/json` en `engine/src/spine_engine/api/problems.py`, ejecutar y ver fallar; restaurar.
-Expected: FAIL y luego PASS.
+Temporarily change the error `Content-Type` from `application/problem+json` to `application/json` in `engine/src/spine_engine/api/problems.py`, run and see it fail; restore.
+Expected: FAIL and then PASS.
 
-- [ ] **Step 4: Alcance honesto**
+- [ ] **Step 4: Honest scope**
 
-backend y app aún no tienen API implementada (`backend/src/monitor/api.py` está vacío; `app-openapi.yaml` lo implementa otra issue). Dejar en la skill/README una línea: «añadir el mismo test de Schemathesis al implementar esas APIs».
+backend and app do not have an implemented API yet (`backend/src/monitor/api.py` is empty; `app-openapi.yaml` is implemented by another issue). Leave one line in the skill/README: "add the same Schemathesis test when implementing those APIs".
 
-- [ ] **Step 5: Commit (pedir confirmación a Uri)**
+- [ ] **Step 5: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/engine
@@ -1029,25 +1029,25 @@ git commit -m "Fuzz the engine API against its OpenAPI contract with Schemathesi
 
 ---
 
-### Task 11: Matar supervivientes de mutación (guiado por datos)
+### Task 11: Kill mutation survivors (data-driven)
 
 **Files:**
-- Modify: tests de `contracts/tests`, `engine/tests`, `physiology/tests` según el informe.
+- Modify: tests in `contracts/tests`, `engine/tests`, `physiology/tests` according to the report.
 
 **Interfaces:**
-- Consumes: `GATE_MUTATION=full` de la Task 6.
+- Consumes: `GATE_MUTATION=full` from Task 6.
 
-Esta tarea no puede llevar el código de los tests por adelantado: los supervivientes salen del informe. El procedimiento es fijo y cada ciclo cumple el TDD.
+This task cannot carry the test code in advance: the survivors come from the report. The procedure is fixed and each cycle follows TDD.
 
-- [ ] **Step 1: Informe**
+- [ ] **Step 1: Report**
 
 Run: `GATE_MUTATION=full docker compose -f app/docker-compose.yml run --rm quality`
-Expected: lista de mutantes supervivientes por fichero. Ordenar por paquete y empezar por los de menor score.
+Expected: list of surviving mutants per file. Sort by package and start with those with the lowest score.
 
-- [ ] **Step 2: Por cada superviviente, un ciclo**
+- [ ] **Step 2: One cycle per survivor**
 
-1. Leer el mutante (la línea y el cambio, p. ej. `<` → `<=`).
-2. Escribir un test que pase con el código original y falle con el mutante. Ejemplo para `scoring.py`: si sobrevive el cambio de `_ABSOLUTE_FLOOR = 1e-6` a `1e-5`, añadir en `engine/tests/test_scoring.py`:
+1. Read the mutant (the line and the change, e.g. `<` → `<=`).
+2. Write a test that passes with the original code and fails with the mutant. Example for `scoring.py`: if the change of `_ABSOLUTE_FLOOR = 1e-6` to `1e-5` survives, add in `engine/tests/test_scoring.py`:
 
 ```python
 def test_a_scale_just_above_the_floor_is_used_as_is():
@@ -1055,64 +1055,64 @@ def test_a_scale_just_above_the_floor_is_used_as_is():
     assert RobustZScorer().score(1.0, entry) == pytest.approx(1.0 / 5e-6)
 ```
 
-3. Ver el test pasar con el original y fallar con el mutante (`mutmut`/`cosmic-ray` lo confirman al re-ejecutar ese fichero).
-4. Si el mutante es equivalente (no cambia el comportamiento observable), documentarlo en una línea en el informe a Uri; no añadir exclusiones sin su visto bueno.
+3. See the test pass with the original and fail with the mutant (`mutmut`/`cosmic-ray` confirm it when re-running that file).
+4. If the mutant is equivalent (does not change observable behaviour), document it in one line in the report to the maintainer; do not add exclusions without their approval.
 
-- [ ] **Step 3: Paralelizar por paquete**
+- [ ] **Step 3: Parallelise by package**
 
-Lanzar subagentes `sonnet` (esfuerzo medio), uno por paquete (`contracts`, `engine`, `physiology`), con este prompt: «Mata los mutantes supervivientes de `<paquete>` siguiendo el ciclo del Step 2 de la Task 11 del plan. Un test por superviviente o grupo coherente, en el fichero de tests existente del módulo. Devuelve el score antes/después y los mutantes equivalentes.» Revisar el diff real de cada uno.
+Launch `sonnet` subagents (medium effort), one per package (`contracts`, `engine`, `physiology`), with this prompt: "Kill the surviving mutants of `<package>` following the cycle of Step 2 of Task 11 of the plan. One test per survivor or coherent group, in the module's existing test file. Return the score before/after and the equivalent mutants." Review each one's real diff.
 
-- [ ] **Step 4: Verificar el umbral**
+- [ ] **Step 4: Verify the threshold**
 
 Run: `GATE_MUTATION=full docker compose -f app/docker-compose.yml run --rm quality`
-Expected: score ≥ 80 % por paquete. Si un paquete no llega tras razonar los equivalentes, informar a Uri con los números; no bajar el umbral.
+Expected: score ≥ 80 % per package. If a package does not get there after accounting for the equivalents, report the numbers to the maintainer; do not lower the threshold.
 
-- [ ] **Step 5: Commit por paquete (pedir confirmación a Uri)**
+- [ ] **Step 5: Commit per package (ask the maintainer for confirmation)**
 
 ```bash
-git add spine_monitor/<paquete>/tests
-git commit -m "Kill surviving mutants in <paquete>"
+git add spine_monitor/<package>/tests
+git commit -m "Kill surviving mutants in <package>"
 ```
 
 ---
 
-### Task 12: Integrar `implement-feature` con `tdd-workflow`
+### Task 12: Integrate `implement-feature` with `tdd-workflow`
 
 **Files:**
 - Modify: `.claude/skills/implement-feature/SKILL.md`
 
 **Interfaces:**
-- Consumes: skill `tdd-workflow` (Task 4), servicio `quality` (Task 5).
+- Consumes: skill `tdd-workflow` (Task 4), `quality` service (Task 5).
 
-- [ ] **Step 1: Fase 4**
+- [ ] **Step 1: Phase 4**
 
-En la sección «Fase 4 — Implementación», sustituir la frase «Usa las skills/agentes identificados en Fase 1 (p. ej. `superpowers:test-driven-development`, `superpowers:subagent-driven-development`).» por:
-
-```
-Usa las skills/agentes identificados en Fase 1 (p. ej. `superpowers:subagent-driven-development`). **Toda implementación y bugfix de código sigue `tdd-workflow`**: cada subagente recibe su ciclo (rojo visible, verde, refactor) y debe devolver la salida del test en rojo y en verde, no solo el resumen. Sin rojo visible, la parte se rechaza.
-```
-
-- [ ] **Step 2: Fase 5**
-
-En «Fase 5 — Verificación», sustituir el primer punto («Ejecuta tests, lint y build del repo; si no hay, ejecuta la feature realmente (skill `run` si aplica).») por:
+In the "Phase 4 — Implementation" section, replace the sentence "Use the skills/agents identified in Phase 1 (e.g. `superpowers:test-driven-development`, `superpowers:subagent-driven-development`)." with:
 
 ```
-- Ejecuta el gate completo: `docker compose -f app/docker-compose.yml run --rm quality` (ruff, pyright, tests con cobertura ≥ 90 %, mutación incremental ≥ 80 %). Si Docker no está disponible, para y díselo a Uri; no lo sustituyas por una ejecución parcial sin decirlo. Para código fuera de `spine_monitor` (build/tests propios), ejecuta además los comandos que descubras en el repo.
-- Comprueba que cada parte tiene su test visto en rojo y que ningún umbral se ha bajado.
+Use the skills/agents identified in Phase 1 (e.g. `superpowers:subagent-driven-development`). **Every code implementation and bugfix follows `tdd-workflow`**: each subagent receives its cycle (visible red, green, refactor) and must return the test output in red and in green, not just the summary. Without a visible red, the part is rejected.
 ```
 
-Y añadir a la tabla «Señales de alarma — PARA» la fila:
+- [ ] **Step 2: Phase 5**
+
+In "Phase 5 — Verification", replace the first point ("Run the repo's tests, lint and build; if there are none, actually run the feature (skill `run` if applicable).") with:
 
 ```
-| "Los tests pasan en local, no corro el gate" | El gate de Docker es el criterio; local no basta. |
+- Run the full gate: `docker compose -f app/docker-compose.yml run --rm quality` (ruff, pyright, tests with coverage ≥ 90 %, incremental mutation ≥ 80 %). If Docker is not available, stop and tell the maintainer; do not replace it with a partial run without saying so. For code outside `spine_monitor` (its own build/tests), also run the commands you discover in the repo.
+- Check that each part has its test seen in red and that no threshold has been lowered.
 ```
 
-- [ ] **Step 3: Comprobar coherencia**
+And add to the "Warning signs — STOP" table the row:
+
+```
+| "Tests pass locally, I'm not running the gate" | The Docker gate is the criterion; local is not enough. |
+```
+
+- [ ] **Step 3: Check coherence**
 
 Run: `grep -n "tdd-workflow\|run --rm quality" .claude/skills/implement-feature/SKILL.md`
-Expected: aparecen en Fase 4, Fase 5 y la tabla.
+Expected: they appear in Phase 4, Phase 5 and the table.
 
-- [ ] **Step 4: Commit (pedir confirmación a Uri)**
+- [ ] **Step 4: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add .claude/skills/implement-feature/SKILL.md
@@ -1121,44 +1121,44 @@ git commit -m "Make implement-feature use tdd-workflow and the quality gate"
 
 ---
 
-### Task 13: Documentación y vault
+### Task 13: Documentation and vault
 
 **Files:**
 - Modify: `spine_monitor/README.md`, `spine_monitor/README.es.md`, `spine_monitor/README.ca.md`
 
-- [ ] **Step 1: Sección de calidad en los tres READMEs, sincronizados**
+- [ ] **Step 1: Quality section in the three READMEs, in sync**
 
-Añadir a cada uno una sección (en su idioma; conservar el enlace de cambio de idioma existente) con: el comando del gate, el bucle rápido `uv run pytest <ruta> -q -p no:randomly`, los umbrales (cobertura ≥ 90 %, mutación ≥ 80 % en ficheros modificados), los markers, y el aviso de que en CI el diff coverage también exige ≥ 90 %. Sin referencias al vault.
+Add to each one a section (in its language; keep the existing language-switch link) with: the gate command, the fast loop `uv run pytest <path> -q -p no:randomly`, the thresholds (coverage ≥ 90 %, mutation ≥ 80 % on modified files), the markers, and the note that in CI diff coverage also requires ≥ 90 %. No references to the vault.
 
-Texto en español (`README.es.md`); traducir fielmente a `README.md` (inglés) y `README.ca.md` (catalán):
+Text in English (`README.md`); translate faithfully to `README.es.md` (Spanish) and `README.ca.md` (Catalan):
 
 ```markdown
-## Calidad y TDD
+## Quality and TDD
 
-Todo cambio de código sigue TDD (ver la skill `tdd-workflow`) y pasa el gate de calidad:
+Every code change follows TDD (see the `tdd-workflow` skill) and passes the quality gate:
 
     docker compose -f app/docker-compose.yml run --rm quality
 
-Ejecuta ruff, pyright, los tests con cobertura (líneas y ramas ≥ 90 %, orden aleatorio, mosquitto real) y la mutación incremental (≥ 80 % en los ficheros modificados). En los PR, CI exige además diff coverage ≥ 90 %; un nightly genera el informe de mutación completo.
+It runs ruff, pyright, the tests with coverage (lines and branches ≥ 90 %, random order, real mosquitto) and incremental mutation (≥ 80 % on the modified files). On PRs, CI also requires diff coverage ≥ 90 %; a nightly generates the full mutation report.
 
-Bucle rápido: `cd spine_monitor && uv run pytest <ruta> -q -p no:randomly`.
+Fast loop: `cd spine_monitor && uv run pytest <path> -q -p no:randomly`.
 
-Cada test lleva un marker: `unit`, `integration`, `contract`, `property` o `golden` (`mosquitto` es adicional).
+Each test carries a marker: `unit`, `integration`, `contract`, `property` or `golden` (`mosquitto` is additional).
 ```
 
-- [ ] **Step 2: Vault (leer antes, escribir después)**
+- [ ] **Step 2: Vault (read first, write after)**
 
-Con las herramientas MCP del vault: `search_vault` por «testing» en `projects/Asclepius Orbit` para no duplicar; `log_decision` con la decisión (TDD con rojo visible; gate en Docker; umbrales; pyright; herramienta de mutación elegida y por qué; excepciones) y `create_note` con la nota de estrategia de testing en `projects/Asclepius Orbit/`. Si se actualiza una nota existente, `update_note` **sobrescribe toda la nota**: leerla y reenviar el contenido completo. Pedir confirmación a Uri antes de escribir.
+With the vault's MCP tools: `search_vault` for "testing" in `projects/Asclepius Orbit` to avoid duplicating; `log_decision` with the decision (TDD with visible red; gate in Docker; thresholds; pyright; chosen mutation tool and why; exceptions) and `create_note` with the testing strategy note in `projects/Asclepius Orbit/`. If an existing note is updated, `update_note` **overwrites the whole note**: read it and resend the complete content. Ask the maintainer for confirmation before writing.
 
-- [ ] **Step 3: Verificación final**
+- [ ] **Step 3: Final verification**
 
 Run: `docker compose -f app/docker-compose.yml run --rm quality`
 Expected: `==> gate passed`.
 
 Run: `git status --short && git log --oneline -15`
-Expected: árbol limpio salvo lo que Uri decida; commits sin líneas `Co-Authored-By`.
+Expected: clean tree except what the maintainer decides; commits without `Co-Authored-By` lines.
 
-- [ ] **Step 4: Commit de docs (pedir confirmación a Uri)**
+- [ ] **Step 4: Docs commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/README.md spine_monitor/README.es.md spine_monitor/README.ca.md
@@ -1167,69 +1167,69 @@ git commit -m "Document the TDD workflow and the quality gate in the READMEs"
 
 ---
 
-### Task 14: Mutación más rápida en re-ejecuciones (spike acotado, pedido por Uri)
+### Task 14: Faster mutation on re-runs (bounded spike, requested by the maintainer)
 
 **Files:**
-- Modify: `spine_monitor/quality/mutation.sh`, `app/docker-compose.yml`, `.github/workflows/quality.yml`, `.github/workflows/nightly-mutation.yml` (solo lo que la medición justifique)
+- Modify: `spine_monitor/quality/mutation.sh`, `app/docker-compose.yml`, `.github/workflows/quality.yml`, `.github/workflows/nightly-mutation.yml` (only what the measurement justifies)
 
 **Interfaces:**
-- Consumes: `sh quality/mutation.sh changed|full` y `MUTATION_STAGE`, `MUTATION_PACKAGES`, `MUTATION_BASE` de la Task 6.
-- Produces: tiempos medidos antes y después; opcionalmente `MUTATION_JOBS` (procesos hijos de mutmut), un volumen Docker con nombre para el directorio de trabajo de mutmut, y caché de CI.
+- Consumes: `sh quality/mutation.sh changed|full` and `MUTATION_STAGE`, `MUTATION_PACKAGES`, `MUTATION_BASE` from Task 6.
+- Produces: times measured before and after; optionally `MUTATION_JOBS` (mutmut child processes), a named Docker volume for mutmut's working directory, and a CI cache.
 
-**Contexto medido:** la corrida completa de physiology tarda 108 min en un contenedor inactivo; `mutation.sh` prepara su copia en `/tmp/mutation` y la descarta con `--rm`, así que cada corrida empieza de cero. Lanzar unos 5 contenedores de mutación en paralelo hace que la fase de tests limpios agote el timeout y aborte la corrida. Restricciones: no recortar mutantes ni código, no bajar el umbral del 80 %, el mutation score de cada fichero no debe cambiar por la optimización.
+**Measured context:** the full physiology run takes 108 min on an idle container; `mutation.sh` prepares its copy in `/tmp/mutation` and discards it with `--rm`, so every run starts from scratch. Launching about 5 mutation containers in parallel makes the clean-tests phase hit the timeout and abort the run. Constraints: do not trim mutants or code, do not lower the 80 % threshold, each file's mutation score must not change because of the optimisation.
 
-- [ ] **Step 1: Línea base de tiempos.** En un contenedor inactivo, con `nproc` anotado, medir `sh quality/mutation.sh changed physiology/src/spine_physiology/signals/stretch.py` (385 mutantes) y `full` del paquete `engine`. Registrar segundos, mutantes y mutantes por segundo.
-- [ ] **Step 2: Paralelismo.** Leer cómo `mutation.sh` invoca `mutmut run` y qué admite mutmut 3.8.1 (`mutmut run --help`, procesos hijos). Probar valores crecientes sobre el mismo fichero; registrar tiempo y confirmar que el score no cambia y que la fase de tests limpios no hace timeout.
-- [ ] **Step 3: Estado persistente.** Montar un volumen Docker con nombre en `MUTATION_STAGE`. Ejecutar el mismo fichero tres veces: sin cambios, cambiando el cuerpo de una función de `src`, y cambiando solo un test. Registrar cuánto tarda cada una y si mutmut reutiliza los resultados de los mutantes ya evaluados. Si no reutiliza, decirlo con la evidencia y no seguir con la caché.
-- [ ] **Step 4: Perfil de physiology.** Medir mutantes por segundo por módulo de `physiology/src` para saber qué módulos dominan y proponer grupos para una matriz de CI.
-- [ ] **Step 5: Implementar solo lo que se haya medido como útil.** `MUTATION_JOBS` en `mutation.sh` con un valor por defecto seguro; volumen con nombre en el servicio `quality` si el Step 3 lo justifica; `actions/cache` (acción fijada a una versión mayor) con clave por hash de `src` y `tests` de cada paquete, y matriz por paquete en el nightly, si los Steps 3 y 4 lo justifican.
-- [ ] **Step 6: Verificación.** Repetir las mediciones del Step 1 con los cambios y mostrar la mejora con números. Comprobar que el score por fichero es el mismo y que la prueba de pasa/falla de `changed` sigue funcionando (un test debilitado hace salir ≠ 0). Validar el YAML.
-- [ ] **Step 7: Commit (pedir confirmación a Uri)**
+- [ ] **Step 1: Timing baseline.** On an idle container, noting `nproc`, measure `sh quality/mutation.sh changed physiology/src/spine_physiology/signals/stretch.py` (385 mutants) and `full` of the `engine` package. Record seconds, mutants and mutants per second.
+- [ ] **Step 2: Parallelism.** Read how `mutation.sh` invokes `mutmut run` and what mutmut 3.8.1 supports (`mutmut run --help`, child processes). Try increasing values on the same file; record time and confirm that the score does not change and that the clean-tests phase does not time out.
+- [ ] **Step 3: Persistent state.** Mount a named Docker volume at `MUTATION_STAGE`. Run the same file three times: unchanged, changing the body of a `src` function, and changing only a test. Record how long each takes and whether mutmut reuses the results of the mutants already evaluated. If it does not reuse them, say so with the evidence and do not continue with the cache.
+- [ ] **Step 4: Physiology profile.** Measure mutants per second per module of `physiology/src` to know which modules dominate and propose groups for a CI matrix.
+- [ ] **Step 5: Implement only what was measured as useful.** `MUTATION_JOBS` in `mutation.sh` with a safe default; named volume in the `quality` service if Step 3 justifies it; `actions/cache` (action pinned to a major version) keyed by the hash of each package's `src` and `tests`, and a per-package matrix in the nightly, if Steps 3 and 4 justify them.
+- [ ] **Step 6: Verification.** Repeat the Step 1 measurements with the changes and show the improvement with numbers. Check that the per-file score is the same and that the pass/fail check of `changed` still works (a weakened test makes it exit non-zero). Validate the YAML.
+- [ ] **Step 7: Commit (ask the maintainer for confirmation)**
 
 ```bash
 git add spine_monitor/quality app/docker-compose.yml .github
 git commit -m "Speed up repeated mutation runs with parallel mutmut jobs and a persistent state"
 ```
 
-**Resultado (2026-11-04, medido, no adoptado):** no hay commit de código. mutmut 3.8.1 ya usa por defecto todos los núcleos (`max_children` = 22): con 8, 11 y 33 procesos `stretch.py` (385 mutantes) tarda 438, 466 y 449 s frente a 367-381 s por defecto. Dos corridas idénticas cambian el veredicto de unos 3 mutantes (92,5 % frente a 91,7 %). Una caché de `mutants/` en un volumen reutiliza resultados (re-ejecución sin cambios 136 s, un cambio de función 186 s), pero mutmut no invalida el estado al cambiar solo los tests: con todos los tests de `stretch` desactivados la caché seguía dando 92,5 % cuando el resultado real era 83,1 %, así que dejaría pasar `changed` con tests debilitados. Opción segura no construida ni medida: `actions/cache` con clave del hash exacto de src, tests, `pyproject.toml` y `uv.lock`, sin restore-keys (solo acelera re-ejecuciones idénticas). El tiempo de la corrida completa solo baja repartiendo physiology por módulos en una matriz de CI (physiology son unas 6051 de unas 7480 líneas de código fuente); ese reparto no está medido.
+**Result (2026-11-04, measured, not adopted):** there is no code commit. mutmut 3.8.1 already uses all cores by default (`max_children` = 22): with 8, 11 and 33 processes `stretch.py` (385 mutants) takes 438, 466 and 449 s versus 367-381 s by default. Two identical runs change the verdict of about 3 mutants (92.5 % versus 91.7 %). A cache of `mutants/` in a volume reuses results (unchanged re-run 136 s, a function change 186 s), but mutmut does not invalidate the state when only the tests change: with all the `stretch` tests disabled the cache still gave 92.5 % when the real result was 83.1 %, so it would let `changed` pass with weakened tests. Safe option not built or measured: `actions/cache` keyed by the exact hash of src, tests, `pyproject.toml` and `uv.lock`, without restore-keys (it only speeds up identical re-runs). The time of the full run only drops by splitting physiology by modules in a CI matrix (physiology is about 6051 of about 7480 lines of source code); that split is not measured.
 
 ---
 
-### Tasks 15 a 17: decisiones de Uri tras la revisión final (2026-11-04)
+### Tasks 15 to 17: maintainer decisions after the final review (2026-11-04)
 
-- **Task 17 — Contrato 422.** Documentar en `contracts/openapi.yaml` que `POST /baseline` y `POST /assess` pueden devolver 422 `insufficient_data` con una petición válida, y quitar la exclusión del check ST202 del fuzz de Schemathesis (`engine/tests/test_contract_openapi_fuzz.py`). Uri avisa al equipo del cambio de contrato.
-- **Task 15 — Mutación solo de las funciones tocadas.** Motivo: los tiempos de mutación están medidos en 22 CPUs y un runner de GitHub para repo privado tiene 2 vCPU; `changed` muta ficheros enteros y el primer PR de esta rama (10 ficheros de physiology) excedería el timeout de 120 min. `changed` debe mutar solo las funciones del diff (con mutmut 3.8.1, que identifica mutantes por función), con medición antes y después, sin bajar el umbral del 80 % ni recortar mutantes. El nightly completo en un runner de 2 vCPU sigue sin resolverse.
-- **Task 16 — Mutantes de argumentos de log.** Excluir por configuración de mutmut, sin `pragma: no mutate` en el código, solo si existe un mecanismo limpio y medido; si no, informar y no hacer nada.
-- Decisión sobre protección de rama (I1): aceptar sin protección; el check de CI informa pero no bloquea.
+- **Task 17 — 422 contract.** Document in `contracts/openapi.yaml` that `POST /baseline` and `POST /assess` can return 422 `insufficient_data` with a valid request, and remove the exclusion of the ST202 check from the Schemathesis fuzz (`engine/tests/test_contract_openapi_fuzz.py`). The maintainer notifies the team of the contract change.
+- **Task 15 — Mutation only of the touched functions.** Reason: mutation times are measured on 22 CPUs and a GitHub runner for a private repo has 2 vCPU; `changed` mutates whole files and the first PR of this branch (10 physiology files) would exceed the 120 min timeout. `changed` must mutate only the functions in the diff (with mutmut 3.8.1, which identifies mutants by function), with measurement before and after, without lowering the 80 % threshold or trimming mutants. The full nightly on a 2 vCPU runner remains unresolved.
+- **Task 16 — Log-argument mutants.** Exclude through mutmut configuration, without `pragma: no mutate` in the code, only if a clean, measured mechanism exists; otherwise report and do nothing.
+- Decision on branch protection (I1): accept without protection; the CI check reports but does not block.
 
-**Resultados (2026-11-04):**
-- **Task 17:** solo `POST /baseline` puede devolver 422 `insufficient_data` (único `raise` en `baseline/builder.py`); se documentó en `openapi.yaml` sin subir versión. La exclusión del check ST202 del fuzz se mantiene porque Schemathesis 4.33 no lee las respuestas documentadas en ese check.
-- **Task 15:** `changed` muta solo las funciones y métodos tocados por el diff. Un diff de una función (`resistance_to_adc`): 34 mutantes en 171 s frente a 385 mutantes y ~395 s de todo `stretch.py`. Todo el diff de esta rama: 1541 mutantes en lugar de 7840, 796-880 s y 92 % en 22 CPUs; en un runner de 2 vCPU se estima (extrapolado, no medido) en unas 2 h, al límite del timeout de 120 min. Se corrigieron falsos "matados" del paquete engine (pytest no puede seleccionar por id los tests de Schemathesis y salía con 4, que mutmut cuenta como matado): el score real de engine es 83,4 % (546/655), no el 94,8 % que daba. No se añadió regla de muestra mínima: un mutante que cambia de veredicto mueve la puntuación 100/N puntos.
-- **Task 16:** `do_not_mutate_patterns` de mutmut 3.8.1 salta los argumentos de las llamadas de log (`log`/`_log`/`logger`/`_logger`/`logging` más `debug|info|warning|warn|error|exception|critical|log`) sin `pragma` en el código: 125 de los 8993 mutantes de physiology (todos de `gateway/app.py`), no ~150. Verificado comparando las listas completas antes y después. Excluye también 7 mutantes de log que hoy se matan.
-- **Decisiones posteriores de Uri (Task 18):** el job del PR sube a 240 min; el workflow de mutación completa pasa a manual (`workflow_dispatch`, con entrada opcional `packages`) porque una corrida completa de physiology (~108 min en 22 CPUs) no cabe en un runner de 2 vCPU ni en el máximo de 360 min, y se ejecuta en local con `GATE_MUTATION=full`; `changed` imprime la puntuación pero no falla cuando la selección tiene menos de 10 mutantes (`MUTATION_MIN_SAMPLE`, 0 la desactiva), regla consciente que deja pasar cambios pequeños sin que sus tests maten los mutantes; `MUTATION_MIN_SAMPLE` y `MUTATION_THRESHOLD` se validan al principio (salida 2 si no son numéricos). Sin protección de rama en el repo (plan gratuito): el check informa pero no bloquea.
+**Results (2026-11-04):**
+- **Task 17:** only `POST /baseline` can return 422 `insufficient_data` (the only `raise` in `baseline/builder.py`); it was documented in `openapi.yaml` without bumping the version. The exclusion of the ST202 check from the fuzz is kept because Schemathesis 4.33 does not read the documented responses in that check.
+- **Task 15:** `changed` mutates only the functions and methods touched by the diff. A one-function diff (`resistance_to_adc`): 34 mutants in 171 s versus 385 mutants and ~395 s for the whole of `stretch.py`. The whole diff of this branch: 1541 mutants instead of 7840, 796-880 s and 92 % on 22 CPUs; on a 2 vCPU runner it is estimated (extrapolated, not measured) at about 2 h, at the edge of the 120 min timeout. False "killed" results in the engine package were fixed (pytest cannot select Schemathesis tests by id and exited with 4, which mutmut counts as killed): engine's real score is 83.4 % (546/655), not the 94.8 % it gave. No minimum-sample rule was added: a mutant that changes verdict moves the score by 100/N points.
+- **Task 16:** mutmut 3.8.1's `do_not_mutate_patterns` skips the arguments of log calls (`log`/`_log`/`logger`/`_logger`/`logging` plus `debug|info|warning|warn|error|exception|critical|log`) without a `pragma` in the code: 125 of the 8993 physiology mutants (all from `gateway/app.py`), not ~150. Verified by comparing the full lists before and after. It also excludes 7 log mutants that are killed today.
+- **Later maintainer decisions (Task 18):** the PR job goes up to 240 min; the full mutation workflow becomes manual (`workflow_dispatch`, with an optional `packages` input) because a full physiology run (~108 min on 22 CPUs) fits neither on a 2 vCPU runner nor in the 360 min maximum, and it is run locally with `GATE_MUTATION=full`; `changed` prints the score but does not fail when the selection has fewer than 10 mutants (`MUTATION_MIN_SAMPLE`, 0 disables it), a deliberate rule that lets small changes through without their tests killing the mutants; `MUTATION_MIN_SAMPLE` and `MUTATION_THRESHOLD` are validated at the start (exit 2 if non-numeric). No branch protection in the repo (free plan): the check reports but does not block.
 
 ---
 
-## Autorrevisión frente al spec
+## Self-review against the spec
 
-| Requisito del spec | Task |
+| Spec requirement | Task |
 |---|---|
-| Skill `tdd-workflow` | 4 |
-| Integración con `implement-feature` | 12 |
-| Config en pyproject (testpaths, markers, coverage, ruff, tipos) | 1, 2, 3 |
-| Puertas bloqueantes | 5 (gate), 6 (mutación), 7 (diff coverage) |
-| Docker `quality` con mosquitto | 5 |
-| GitHub Actions (PR y nightly) | 7 |
-| Contratos: Schemathesis | 10 |
-| Contratos: payloads MQTT/AsyncAPI y sincronía spec↔modelos | ya existen (línea base); se etiquetan `contract` por `conftest.py` en la Task 1 |
+| `tdd-workflow` skill | 4 |
+| Integration with `implement-feature` | 12 |
+| Config in pyproject (testpaths, markers, coverage, ruff, types) | 1, 2, 3 |
+| Blocking gates | 5 (gate), 6 (mutation), 7 (diff coverage) |
+| Docker `quality` with mosquitto | 5 |
+| GitHub Actions (PR and nightly) | 7 |
+| Contracts: Schemathesis | 10 |
+| Contracts: MQTT/AsyncAPI payloads and spec↔model sync | already exist (baseline); labelled `contract` by `conftest.py` in Task 1 |
 | Property-based | 8 |
 | Golden | 9 |
-| Fault injection | cubierto en gran parte por tests existentes; huecos nuevos vía mutación en la Task 11 |
-| Verificaciones previas (mutación, tipos, Schemathesis) | 3 (pyright elegido), 6 (spike), 10 (Step 1) |
-| Línea base y umbrales sin bajarlos | 1 (Step 7), 6 (Step 5), 11 |
-| Documentación y vault | 13 |
+| Fault injection | largely covered by existing tests; new gaps via mutation in Task 11 |
+| Prior checks (mutation, types, Schemathesis) | 3 (pyright chosen), 6 (spike), 10 (Step 1) |
+| Baseline and thresholds without lowering them | 1 (Step 7), 6 (Step 5), 11 |
+| Documentation and vault | 13 |
 
-**Desviaciones del spec, por decisión de Uri o por evidencia:**
-- Type checker: pyright, y los ~200 errores se corrigen ahora con subagentes (decisión de Uri).
-- Schemathesis solo sobre el engine hasta que backend y app tengan API.
-- Fault injection: no se inventan tests nuevos; la mutación indica los huecos reales.
+**Deviations from the spec, by maintainer decision or by evidence:**
+- Type checker: pyright, and the ~200 errors are fixed now with subagents (maintainer's decision).
+- Schemathesis only over the engine until backend and app have an API.
+- Fault injection: no new tests are invented; mutation indicates the real gaps.

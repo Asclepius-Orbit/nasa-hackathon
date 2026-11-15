@@ -1,0 +1,11 @@
+.md { max-width: 80ch; line-height: 1.55; overflow-wrap: anywhere; }
+.md > * { margin: 0 0 10px; }
+.md > :last-child { margin-bottom: 0; }
+/* Single line breaks inside a paragraph are kept, as the model wrote them. */
+.md p { white-space: pre-wrap; }
+.md h3, .md h4, .md h5, .md h6 { font-size: 1.1rem; line-height: 1.3; }
+.md ul, .md ol { padding-left: 1.5em; }
+.md li + li { margin-top: 4px; }
+.md code { padding: 1px 5px; border-radius: 4px; background: var(--surface); font-family: ui-monospace, Consolas, monospace; font-size: 0.95em; }
+.md pre { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); overflow-x: auto; }
+.md pre code { padding: 0; background: none; white-space: pre; }

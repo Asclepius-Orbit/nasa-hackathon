@@ -36,7 +36,7 @@ def test_simulate_projection_metadata_contract(validator_for):
 def test_measured_threshold_evidence_carries_units_and_source(validator_for):
     assessment = load_json(EXAMPLES_DIR / "valid/domain/assessment.amber.json")
     evidence = assessment["fired_rules"][0]["evidence"]
-    evidence.update(unit="%", source="Polfer and Aguado")
+    evidence.update(unit="%", source="Device report")
     validator = validator_for("domain/assessment")
     assert validator.is_valid(assessment)
     evidence["unit"] = ""
@@ -724,8 +724,8 @@ def test_catalog_placeholders_resolve_and_expand_to_valid_ids(catalog, common):
             assert fullmatch(pattern, expanded), expanded
 
 
-# Until Aguado validates (#38), ranges may exist only if they say so in their source.
-PROVISIONAL_MARKER = "provisional, pendiente de Aguado"
+# Until the clinical owner validates (#38), ranges may exist only if they say so in their source.
+PROVISIONAL_MARKER = "provisional, pending clinical validation"
 NO_RANGES_DIRECTIONS = {"none", "unspecified"}
 SYMMETRY_ID = "emg.{muscle}.symmetry_index_pct"
 
@@ -769,7 +769,7 @@ def test_catalog_ranges_are_ordered_and_consistent_with_risk_direction(entry):
 def test_provisional_catalog_entries_stay_proposed(entry):
     if entry["ranges"]["source"].startswith(PROVISIONAL_MARKER):
         assert entry["status"] == "proposed", entry["feature_id"]
-        assert "Aguado" in entry["ranges"]["source"] and len(entry["ranges"]["source"]) > len(PROVISIONAL_MARKER) + 2
+        assert "clinical validation" in entry["ranges"]["source"] and len(entry["ranges"]["source"]) > len(PROVISIONAL_MARKER) + 2
 
 
 @pytest.mark.parametrize("entry", _catalog_entries(), ids=_entry_ids(_catalog_entries()))
@@ -789,7 +789,7 @@ def test_catalog_carries_directions_for_the_risk_layer():
     assert next(e for e in _catalog_entries() if e["feature_id"] == "imu.{spine_level}.{anatomical_plane}.rom_deg")["ranges"] is None
 
 
-def test_symmetry_index_waits_for_aguado():
+def test_symmetry_index_waits_for_clinical_validation():
     entry = next(entry for entry in _catalog_entries() if entry["feature_id"] == SYMMETRY_ID)
     assert (entry["risk_direction"], entry["ranges"], entry["status"]) == ("unspecified", None, "proposed")
 

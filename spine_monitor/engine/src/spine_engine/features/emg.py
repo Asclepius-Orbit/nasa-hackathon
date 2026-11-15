@@ -1,29 +1,29 @@
-"""Familia ``emg`` de amplitud (#42): RMS activo y de reposo, %MVC, pico en ventana y simetría entre lados.
+"""``emg`` amplitude family (#42): active and rest RMS, %MVC, windowed peak and left/right symmetry.
 
-Por cada stream EMG declarado con ``placement.muscle`` y ``side``:
+For each EMG stream declared with ``placement.muscle`` and ``side``:
 
-- ``emg.{muscle}.{side}.rms_mv``: RMS de las muestras de la fase activa de todas las repeticiones.
-- ``emg.{muscle}.{side}.rest_rms_mv``: RMS de las muestras de los reposos de las repeticiones.
-- ``emg.{muscle}.{side}.rms_pct_mvc``: ``rms_mv`` como % de ``mvc_rms_mv`` de ``calibration.emg-mvc``.
-- ``emg.{muscle}.{side}.peak_pct_mvc``: el RMS en ventana más alto (``window_ms`` de la calibración) como % de la MVC.
-  Las ventanas no cruzan de una repetición a otra ni de un ``boot_id`` a otro; si una repetición tiene menos muestras
-  que la ventana, todas sus muestras forman una sola ventana.
+- ``emg.{muscle}.{side}.rms_mv``: RMS of the samples of the active phase of all repetitions.
+- ``emg.{muscle}.{side}.rest_rms_mv``: RMS of the samples of the rests of the repetitions.
+- ``emg.{muscle}.{side}.rms_pct_mvc``: ``rms_mv`` as a % of ``mvc_rms_mv`` from ``calibration.emg-mvc``.
+- ``emg.{muscle}.{side}.peak_pct_mvc``: the highest windowed RMS (``window_ms`` of the calibration) as a % of the MVC.
+  Windows do not cross from one repetition to another nor from one ``boot_id`` to another; if a repetition has fewer samples
+  than the window, all its samples form a single window.
 
-Y por músculo, ``emg.{muscle}.symmetry_index_pct`` = 100·|L-R| / ((L+R)/2) sobre los ``rms_pct_mvc`` de los dos lados.
+And per muscle, ``emg.{muscle}.symmetry_index_pct`` = 100·|L-R| / ((L+R)/2) over the ``rms_pct_mvc`` of the two sides.
 
-La amplitud no necesita señal cruda: el cálculo es el mismo sobre cruda, rectificada o envolvente; el valor coincide
-para cruda y rectificada, no para la envolvente. Por eso la MVC solo se usa si es del mismo músculo y lado que el
-stream y se midió en un tipo de señal compatible con el de todos sus chunks (cruda y rectificada entre sí; envolvente
-solo con envolvente); si no, lo que lleva %MVC sale ``no_calibration`` y ``rms_mv``/``rest_rms_mv`` se calculan igual.
-Dos streams declarados con el mismo músculo y lado (caso de borde no tratado): cada uno emite sus features con el mismo
-id (el compuesto se queda con la primera calculada) y la simetría usa siempre el primero. Las muestras de
-cada ventana salen de ``segment_samples`` (ventana UTC semiabierta ``inicio <= t < fin``). ``n`` es el número de
-repeticiones que aportaron muestras. Nunca lanza.
+Amplitude does not need raw signal: the computation is the same on raw, rectified or envelope; the value is the same
+for raw and rectified, not for the envelope. That is why the MVC is only used if it is for the same muscle and side as the
+stream and was measured on a signal type compatible with that of all its chunks (raw and rectified with each other; envelope
+only with envelope); otherwise, whatever carries %MVC comes out ``no_calibration`` and ``rms_mv``/``rest_rms_mv`` are computed anyway.
+Two streams declared with the same muscle and side (unhandled edge case): each emits its features with the same
+id (the composite keeps the first one computed) and the symmetry always uses the first. The samples of
+each window come from ``segment_samples`` (half-open UTC window ``start <= t < end``). ``n`` is the number of
+repetitions that contributed samples. Never raises.
 
-Motivos de ``skipped``: sin calibración ``no_calibration`` y caducada ``calibration_expired`` (solo afectan a lo que
-lleva %MVC); sin repeticiones ``too_few_repetitions``; sin muestras en las ventanas ``no_data``; stream declarado sin
-chunks ``stream_missing``. La simetría hace falta con la MVC de ambos lados: si falta alguna, ``no_calibration``
-(aunque la otra esté caducada); un músculo con un solo lado declarado, ``stream_missing``; ``(L+R)/2`` nulo, ``no_data``.
+``skipped`` reasons: no calibration ``no_calibration`` and expired ``calibration_expired`` (only affect whatever
+carries %MVC); no repetitions ``too_few_repetitions``; no samples in the windows ``no_data``; declared stream without
+chunks ``stream_missing``. Symmetry needs the MVC of both sides: if either is missing, ``no_calibration``
+(even if the other is expired); a muscle with only one side declared, ``stream_missing``; null ``(L+R)/2``, ``no_data``.
 """
 
 from collections.abc import Sequence
@@ -48,7 +48,7 @@ PEAK_PCT_MVC = "emg.{muscle}.{side}.peak_pct_mvc"
 SYMMETRY_INDEX_PCT = "emg.{muscle}.symmetry_index_pct"
 
 _CHANNEL = "emg"
-# Tipos de señal con el mismo RMS: cruda y rectificada (el cuadrado borra el signo); la envolvente va aparte.
+# Signal types with the same RMS: raw and rectified (squaring erases the sign); the envelope is separate.
 _SIGNAL_GROUP = {"raw": "rms", "rectified": "rms", "envelope": "envelope"}
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _MICROSECOND = timedelta(microseconds=1)
@@ -57,7 +57,7 @@ _TEMPLATES = {"rms_mv": RMS_MV, "rest_rms_mv": REST_RMS_MV, "rms_pct_mvc": RMS_P
 
 @dataclass(frozen=True, slots=True)
 class _Piece:
-    """Muestras de una repetición (``window``) dentro de un segmento, con su frecuencia de muestreo."""
+    """Samples of a repetition (``window``) within a segment, with its sampling rate."""
 
     window: int
     values: NDArray[np.float64]
@@ -73,7 +73,7 @@ class _EmgStream:
 
 @dataclass(frozen=True, slots=True)
 class _Pct:
-    """``rms_pct_mvc`` de un lado y las repeticiones que lo respaldan."""
+    """``rms_pct_mvc`` of one side and the repetitions that back it."""
 
     value: float
     n: int
@@ -91,7 +91,7 @@ def _emg_streams(context: ExtractionContext) -> tuple[_EmgStream, ...]:
 
 @dataclass(frozen=True, slots=True)
 class _Read:
-    """Muestras de un segmento leídas una sola vez: instante UTC en microsegundos enteros y valor."""
+    """Samples of a segment read once: UTC instant in integer microseconds and value."""
 
     micros: NDArray[np.int64]
     values: NDArray[np.float64]
@@ -99,12 +99,12 @@ class _Read:
 
 
 def _micros(instant: datetime) -> int:
-    """Microsegundos UTC desde la época, enteros: compara igual que los ``datetime`` (sin redondeo de float)."""
+    """UTC microseconds since the epoch, as integers: compares the same as ``datetime`` (no float rounding)."""
     return (instant - _EPOCH) // _MICROSECOND
 
 
 def _read(context: ExtractionContext, stream_id: str) -> tuple[_Read, ...]:
-    """Lee cada segmento del stream una vez: el coste es lineal en las muestras, no en muestras por repeticiones."""
+    """Read each segment of the stream once: the cost is linear in the samples, not in samples times repetitions."""
     reads: list[_Read] = []
     for segment in context.segments(stream_id):
         samples = segment_samples(context.clock, segment, (_CHANNEL,))
@@ -114,7 +114,7 @@ def _read(context: ExtractionContext, stream_id: str) -> tuple[_Read, ...]:
 
 
 def _pieces(reads: Sequence[_Read], spans: Sequence[tuple[datetime, datetime]]) -> tuple[_Piece, ...]:
-    """Muestras de cada tramo UTC (``inicio <= t < fin``), un trozo por (tramo, segmento) que tenga muestras."""
+    """Samples of each UTC span (``start <= t < end``), one piece per (span, segment) that has samples."""
     pieces: list[_Piece] = []
     for index, (start, end) in enumerate(spans):
         for read in reads:
@@ -129,7 +129,7 @@ def _rms(pieces: Sequence[_Piece]) -> float:
 
 
 def _peak_rms(pieces: Sequence[_Piece], window_ms: float) -> float:
-    """RMS en ventana más alto de todos los trozos; la ventana nunca cruza de un trozo a otro."""
+    """Highest windowed RMS across all pieces; the window never crosses from one piece to another."""
     best = 0.0
     for piece in pieces:
         length = min(piece.values.size, max(1, round(window_ms / 1000.0 * piece.rate_hz)))
@@ -143,7 +143,7 @@ def _n(pieces: Sequence[_Piece]) -> int:
 
 
 def _mvc(context: ExtractionContext, stream: _EmgStream) -> EmgMvcCalibration | Reason:
-    """MVC utilizable del stream: resuelta, del mismo músculo y lado, y medida en un tipo de señal compatible."""
+    """Usable MVC of the stream: resolved, for the same muscle and side, and measured on a compatible signal type."""
     resolution = context.calibration(stream.stream_id)
     if resolution.reason is not None:
         return resolution.reason
@@ -156,10 +156,10 @@ def _mvc(context: ExtractionContext, stream: _EmgStream) -> EmgMvcCalibration | 
 
 
 class EmgFamily:
-    """Features de amplitud del EMG a partir de las ventanas del servicio de repeticiones inyectado.
+    """EMG amplitude features from the windows of the injected repetitions service.
 
-    ``feature_ids`` son todos los ids concretos del catálogo (plantillas expandidas con músculos y lados); en cada
-    petición solo se emiten los de los streams EMG declarados en la sesión.
+    ``feature_ids`` are all the concrete catalog ids (templates expanded with muscles and sides); in each
+    request only those of the EMG streams declared in the session are emitted.
     """
 
     family = "emg"
@@ -190,7 +190,7 @@ class EmgFamily:
         computed: list[ComputedFeature],
         skipped: list[SkippedFeature],
     ) -> _Pct | Reason:
-        """Calcula las cuatro features de un stream y devuelve su ``rms_pct_mvc`` (o por qué no hay)."""
+        """Compute the four features of a stream and return its ``rms_pct_mvc`` (or why there is none)."""
         ids = {name: template.format(muscle=stream.muscle, side=stream.side) for name, template in _TEMPLATES.items()}
         used = (stream.stream_id,)
 

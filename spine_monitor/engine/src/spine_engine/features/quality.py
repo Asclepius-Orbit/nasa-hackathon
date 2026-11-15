@@ -1,15 +1,15 @@
-"""Calidad común de los datos que alimentan una feature. Sin umbrales clínicos.
+"""Common quality of the data feeding a feature. No clinical thresholds.
 
-- ``coverage`` = muestras presentes / esperadas (huecos de seq + ``dropped_samples``, ver ``ordering``).
-- ``saturated_fraction`` solo donde hay con qué juzgarla: stretch con ``circuit.adc_bits`` (cuentas en
-  0 o en el máximo del ADC) e IMU con ``config.accel_range_g`` / ``gyro_range_dps`` (|valor| ≥ rango).
-  EMG llega en mV y no trae el fondo de escala explícito: no se juzga. Sin datos -> ``None``, nunca 0 inventado.
-- ``score = coverage · (1 − saturated_fraction)`` (fracción ausente = 0), acotado a [0, 1].
-- Flags del enum del contrato, en su orden: ``clipping`` (IMU), ``packet_gap`` (huecos, muestras
-  perdidas o reinicio), ``out_of_calibration`` (calibración caducada), ``saturated_adc`` (stretch),
-  ``clock_uncertain``. Las dos de calibración y reloj las decide quien llama.
+- ``coverage`` = present / expected samples (seq gaps + ``dropped_samples``, see ``ordering``).
+- ``saturated_fraction`` only where there is something to judge it by: stretch with ``circuit.adc_bits`` (counts at
+  0 or at the ADC maximum) and IMU with ``config.accel_range_g`` / ``gyro_range_dps`` (|value| ≥ range).
+  EMG arrives in mV and does not carry the explicit full scale: it is not judged. Without data -> ``None``, never an invented 0.
+- ``score = coverage · (1 − saturated_fraction)`` (absent fraction = 0), clamped to [0, 1].
+- Contract enum flags, in its order: ``clipping`` (IMU), ``packet_gap`` (gaps, lost
+  samples or restart), ``out_of_calibration`` (expired calibration), ``saturated_adc`` (stretch),
+  ``clock_uncertain``. The calibration and clock ones are decided by the caller.
 
-Cobertura 0 significa que no hay datos: quien llama emite ``no_data``.
+Coverage 0 means there is no data: the caller emits ``no_data``.
 """
 
 from collections.abc import Sequence
@@ -49,7 +49,7 @@ def _imu_saturation(chunk: ImuChunk) -> tuple[int, int] | None:
 
 
 def saturation_counts(chunk: StreamChunk) -> tuple[int, int] | None:
-    """``(muestras saturadas, muestras juzgadas)`` del chunk, o ``None`` si no hay con qué juzgarlo."""
+    """``(saturated samples, judged samples)`` of the chunk, or ``None`` if there is nothing to judge it by."""
     match chunk:
         case StretchChunk():
             return _stretch_saturation(chunk)
@@ -64,7 +64,7 @@ _SATURATION_FLAG = {"stretch": QualityFlag.SATURATED_ADC, "imu": QualityFlag.CLI
 
 @dataclass(frozen=True, slots=True)
 class QualityAssessment:
-    """Calidad calculada por el engine para un conjunto de segmentos."""
+    """Quality computed by the engine for a set of segments."""
 
     coverage: float
     saturated_fraction: float | None
@@ -72,7 +72,7 @@ class QualityAssessment:
     flags: tuple[QualityFlag, ...]
 
     def to_quality(self) -> Quality:
-        """Objeto ``quality`` del contrato, con ``assessed_by="engine"``."""
+        """Contract ``quality`` object, with ``assessed_by="engine"``."""
         return Quality(score=self.score, flags=list(self.flags), assessed_by=AssessedBy.ENGINE)
 
 
@@ -81,7 +81,7 @@ def _clamp(value: float) -> float:
 
 
 def assess_quality(segments: Sequence[Segment], *, calibration_expired: bool = False, clock_uncertain: bool = False) -> QualityAssessment:
-    """Evalúa cobertura, saturación, score y flags de los segmentos de una feature."""
+    """Evaluate coverage, saturation, score and flags of the segments of a feature."""
     present = sum(s.present_samples for s in segments)
     expected = sum(s.expected_samples for s in segments)
     coverage = _clamp(present / expected) if expected > 0 else 0.0

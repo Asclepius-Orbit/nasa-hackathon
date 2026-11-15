@@ -1,4 +1,4 @@
-"""Conversión del cordón (#45): ADC -> resistencia -> longitud -> elongación."""
+"""Cord conversion (#45): ADC -> resistance -> length -> elongation."""
 
 import math
 from typing import NamedTuple
@@ -98,11 +98,11 @@ def test_out_of_curve_range_flags_only_outside_samples() -> None:
 @pytest.mark.parametrize("fn", [resistance_to_length, out_of_curve_range])
 def test_degenerate_curve_raises_domain_error(curve: list[Point], fn: object) -> None:
     with pytest.raises(StretchCurveError):
-        fn(150.0, curve)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn es una de las dos funciones
+        fn(150.0, curve)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn is one of the two functions
 
 
 class _RawPoint(NamedTuple):
-    """Punto sin validar (el ``Point`` del contrato ya rechaza NaN/inf): el motor no debe fiarse de ello."""
+    """Unvalidated point (the contract's ``Point`` already rejects NaN/inf): the engine must not trust it."""
 
     resistance_ohm: float
     length_mm: float
@@ -117,7 +117,7 @@ class _RawPoint(NamedTuple):
 def test_non_finite_curve_point_raises_domain_error(bad_point: tuple[float, float], fn: object) -> None:
     curve = [_RawPoint(100.0, 200.0), _RawPoint(*bad_point), _RawPoint(400.0, 230.0)]
     with pytest.raises(StretchCurveError, match="finite"):
-        fn(150.0, curve)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn es una de las dos funciones
+        fn(150.0, curve)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn is one of the two functions
 
 
 def test_stretch_curve_error_is_value_error() -> None:
@@ -136,4 +136,4 @@ def test_elongation_pct_relative_to_rest_length() -> None:
 @pytest.mark.parametrize("fn", [elongation_mm, elongation_pct])
 def test_elongation_rejects_non_positive_rest_length(rest: float, fn: object) -> None:
     with pytest.raises(StretchCurveError):
-        fn(np.array([200.0]), rest)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn es una de las dos funciones
+        fn(np.array([200.0]), rest)  # pyright: ignore[reportCallIssue, reportOperatorIssue]  # fn is one of the two functions

@@ -1,7 +1,7 @@
-"""Ventanas de repetición (#41): de los eventos del protocolo o, sin ellos, de un detector IMU inyectable.
+"""Repetition windows (#41): from the protocol events or, without them, from an injectable IMU detector.
 
-Los eventos ``rep_start``/``rep_end`` de la sesión mandan; el detector IMU (otro módulo) solo es el respaldo.
-Nada aquí lanza por datos incoherentes: lo que no cuadra se descarta.
+The session's ``rep_start``/``rep_end`` events take precedence; the IMU detector (another module) is only the fallback.
+Nothing here raises on incoherent data: what does not fit is discarded.
 """
 
 from collections.abc import Callable, Iterable
@@ -18,7 +18,7 @@ type ImuDetector = Callable[[ExtractionContext], tuple["RepWindow", ...]]
 
 @dataclass(frozen=True, slots=True)
 class RepWindow:
-    """Una repetición: fase activa (``start``→``end``) y reposo posterior si se conoce."""
+    """A repetition: active phase (``start``→``end``) and subsequent rest if known."""
 
     index: int
     start: datetime
@@ -43,7 +43,7 @@ class RepWindow:
 
 @dataclass(frozen=True, slots=True)
 class RepWindows:
-    """Ventanas en orden temporal y de dónde salen."""
+    """Windows in temporal order and where they come from."""
 
     windows: tuple[RepWindow, ...]
     source: Literal["events", "imu", "none"]
@@ -60,18 +60,18 @@ _SET_BOUNDARY = frozenset({EventType.SET_START, EventType.SET_END, EventType.RES
 
 
 def _sort_key(event: Event) -> tuple[datetime, int, bool]:
-    # el tiempo manda; rep_index solo desempata y, en empate total, el inicio va antes que el fin
+    # time takes precedence; rep_index only breaks ties and, in a total tie, the start goes before the end
     return (event.timestamp, event.rep_index or 0, event.event_type is EventType.REP_END)
 
 
 def detect_from_events(events: Iterable[Event]) -> tuple[RepWindow, ...]:
-    """Empareja cada ``rep_start`` con el siguiente ``rep_end``; descarta huérfanos, duplicados y fin <= inicio."""
+    """Pair each ``rep_start`` with the next ``rep_end``; discard orphans, duplicates and end <= start."""
     ordered = sorted(events, key=_sort_key)
     pairs: list[tuple[datetime, datetime]] = []
     open_start: datetime | None = None
     for event in ordered:
         if event.event_type is EventType.REP_START:
-            if open_start is None:  # un segundo inicio seguido es un duplicado
+            if open_start is None:  # a second consecutive start is a duplicate
                 open_start = event.timestamp
         elif event.event_type is EventType.REP_END and open_start is not None:
             if event.timestamp > open_start:
@@ -83,7 +83,7 @@ def detect_from_events(events: Iterable[Event]) -> tuple[RepWindow, ...]:
     for i, (start, end) in enumerate(pairs, start=1):
         if i < len(pairs):
             following = pairs[i][0]
-            # el hueco entre series (set_end/set_start/rest_start por medio) no es un reposo entre repeticiones
+            # the gap between sets (set_end/set_start/rest_start in between) is not a rest between repetitions
             between_sets = any(end <= t <= following for t in boundaries)
             rest = (None, None) if between_sets else (end, following)
         else:
@@ -97,11 +97,11 @@ def _rest_end_after(ordered: list[Event], moment: datetime) -> datetime | None:
 
 
 class RepetitionService:
-    """Resuelve las ventanas de una petición: eventos, luego detector IMU, luego nada; memoizado por contexto."""
+    """Resolve the windows of a request: events, then IMU detector, then nothing; memoized per context."""
 
     def __init__(self, imu_detector: ImuDetector | None = None) -> None:
         self._imu_detector = imu_detector
-        # referencia fuerte al contexto: evita que un id() liberado se reutilice con otro contexto
+        # strong reference to the context: prevents a freed id() from being reused by another context
         self._last: tuple[ExtractionContext, RepWindows] | None = None
 
     def windows(self, context: ExtractionContext) -> RepWindows:

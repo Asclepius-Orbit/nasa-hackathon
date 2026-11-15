@@ -1,4 +1,4 @@
-"""`uv run spine-engine`: arranca la API en 127.0.0.1:8001 (SPINE_ENGINE_HOST / SPINE_ENGINE_PORT)."""
+"""`uv run spine-engine`: starts the API on 127.0.0.1:8001 (SPINE_ENGINE_HOST / SPINE_ENGINE_PORT)."""
 
 import uvicorn
 

@@ -1,11 +1,11 @@
-"""Valores exactos del simulador de demo: la referencia es la valoración de `now` y el escenario mueve el riesgo de forma lineal.
+"""Exact values of the demo simulator: the reference is the assessment at `now` and the scenario moves the risk linearly.
 
-Fórmula (calculada a mano en cada caso, no llamando al código): referencia = riesgo 0,62, elongación 9,1 mm, dominios
-spine_length 0,70, muscle 0,55, kinematics 0,20, symptoms 0,47. Con `extra` mm de más:
-    z = round((9,1 + extra - 6,5) / 1,083, 1)
-    spine_length = round(clamp(0,1 + 0,25 z), 2);  contribución = round(clamp(0,13 z, 0,02, 0,35), 2)
-    riesgo = round(clamp(0,62 + 0,052 extra, 0, 0,99), 2)
-    nivel = el peor entre el nivel del riesgo (<0,4 green, <0,8 amber, resto red) y el de los dominios (muscle 0,55 es siempre amber).
+Formula (computed by hand in each case, not by calling the code): reference = risk 0.62, elongation 9.1 mm, domains
+spine_length 0.70, muscle 0.55, kinematics 0.20, symptoms 0.47. With `extra` mm more:
+    z = round((9.1 + extra - 6.5) / 1.083, 1)
+    spine_length = round(clamp(0, 1 + 0.25 z), 2);  contribution = round(clamp(0.13 z, 0.02, 0.35), 2)
+    risk = round(clamp(0.62 + 0.052 extra, 0, 0.99), 2)
+    level = the worst of the risk level (<0.4 green, <0.8 amber, rest red) and that of the domains (muscle 0.55 is always amber).
 """
 
 from datetime import UTC, datetime
@@ -73,11 +73,11 @@ def test_overrides_that_do_not_move_the_stretch_leave_the_scenario_equal_to_the_
     assert response["schema_version"] == "1.0.0"
 
 
-# (overrides, nuevo stretch, z, score spine_length, contribución, riesgo, nivel)
+# (overrides, new stretch, z, spine_length score, contribution, risk, level)
 AMBER_CASES = [
-    pytest.param([_ov("add", -2)], 7.1, 0.6, 0.25, 0.08, 0.52, "amber", id="add-2-down"),  # 0,62-0,104 = 0,516
+    pytest.param([_ov("add", -2)], 7.1, 0.6, 0.25, 0.08, 0.52, "amber", id="add-2-down"),  # 0.62-0.104 = 0.516
     pytest.param([_ov("set", 7.1)], 7.1, 0.6, 0.25, 0.08, 0.52, "amber", id="set-7.1"),  # extra = 7,1-9,1 = -2
-    pytest.param([_ov("scale", 0.5)], 4.55, -1.8, 0.0, 0.02, 0.38, "amber", id="scale-half"),  # extra -4,55: riesgo green pero muscle amber
+    pytest.param([_ov("scale", 0.5)], 4.55, -1.8, 0.0, 0.02, 0.38, "amber", id="scale-half"),  # extra -4.55: risk green but muscle amber
     pytest.param([_ov("add", 0.4)], 9.5, 2.8, 0.8, 0.36, 0.64, "amber", id="add-0.4"),  # riesgo 0,62+0,0208
     pytest.param([_ov("add", 1), _ov("set", 7.1)], 8.1, 1.5, 0.47, 0.2, 0.57, "amber", id="mixed-add-then-set-uses-reference"),
 ]
@@ -106,14 +106,14 @@ def test_amber_scenario_keeps_everything_else_of_the_reference():
 
 
 def test_the_level_flips_to_red_exactly_between_0_48_and_0_49_mm_of_extra_stretch():
-    # extra 0,48: z = round(3,08 / 1,083, 1) = 2,8 -> 0,1 + 0,25 * 2,8 queda en 0,7999... (< 0,8): amber, y el riesgo es 0,64496 -> 0,64
+    # extra 0.48: z = round(3.08 / 1.083, 1) = 2.8 -> 0.1 + 0.25 * 2.8 ends at 0.7999... (< 0.8): amber, and the risk is 0.64496 -> 0.64
     below = _simulate([_ov("add", 0.48)])["scenario"]
     assert (_driver(below)["deviation_z"], below["risk_score"], below["level"]) == (2.8, 0.64, "amber")
     assert _domain(below)["score"] == 0.8
     assert _domain(below)["level"] == "amber"
     assert below["escalation"]["required"] is False
     assert SURGEON not in below["recommendations"]
-    # extra 0,49: z = round(3,09 / 1,083, 1) = 2,9 -> spine_length 0,825 -> red (el riesgo, 0,64548 -> 0,65, seguiría en amber)
+    # extra 0.49: z = round(3.09 / 1.083, 1) = 2.9 -> spine_length 0.825 -> red (the risk, 0.64548 -> 0.65, would stay amber)
     above = _simulate([_ov("add", 0.49)])["scenario"]
     assert (_driver(above)["deviation_z"], above["risk_score"], above["level"]) == (2.9, 0.65, "red")
     assert _domain(above)["score"] == pytest.approx(0.82, abs=0.011)
@@ -122,7 +122,7 @@ def test_the_level_flips_to_red_exactly_between_0_48_and_0_49_mm_of_extra_stretc
 
 def test_red_scenario_escalates_and_recommends_the_flight_surgeon():
     scenario = _simulate([_ov("add", 5)])["scenario"]
-    # extra 5: 14,1 mm, z = round(7,6 / 1,083, 1) = 7,0, spine 1,0 (tope), contribución 0,35 (tope), riesgo 0,62 + 0,26 = 0,88
+    # extra 5: 14.1 mm, z = round(7.6 / 1.083, 1) = 7.0, spine 1.0 (cap), contribution 0.35 (cap), risk 0.62 + 0.26 = 0.88
     assert (_driver(scenario)["value"], _driver(scenario)["deviation_z"], _driver(scenario)["contribution"]) == (14.1, 7.0, 0.35)
     assert _domain(scenario)["score"] == 1.0
     assert (scenario["risk_score"], scenario["level"]) == (0.88, "red")

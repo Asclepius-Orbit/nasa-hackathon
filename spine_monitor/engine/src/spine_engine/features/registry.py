@@ -1,8 +1,8 @@
-"""Registro de extractores por familia de features (#40).
+"""Registry of extractors per feature family (#40).
 
-Cada familia (EMG, IMU, stretch...) implementa :class:`FeatureFamilyExtractor` y se registra aquí; el
-extractor compuesto las ejecuta en orden de registro. El registro por defecto está vacío: las métricas
-llegan en #41-#45 y esta infraestructura no inventa ninguna.
+Each family (EMG, IMU, stretch...) implements :class:`FeatureFamilyExtractor` and registers here; the
+composite extractor runs them in registration order. The default registry is empty: the metrics
+arrive in #41-#45 and this infrastructure does not invent any.
 """
 
 from collections.abc import Iterator, Sequence
@@ -19,10 +19,10 @@ from spine_engine.settings import EngineSettings
 
 @dataclass(frozen=True, slots=True)
 class ComputedFeature:
-    """Feature calculada por una familia.
+    """Feature computed by a family.
 
-    ``streams`` indica los streams que usó: la calidad común se evalúa sobre sus segmentos. ``quality``
-    solo se rellena si la familia necesita sustituir la calidad común. La unidad la pone el catálogo.
+    ``streams`` lists the streams it used: the common quality is evaluated over their segments. ``quality``
+    is only filled in if the family needs to replace the common quality. The unit is set by the catalog.
     """
 
     feature_id: str
@@ -35,7 +35,7 @@ class ComputedFeature:
 
 @dataclass(frozen=True, slots=True)
 class SkippedFeature:
-    """Feature que la familia no pudo calcular y el motivo."""
+    """Feature the family could not compute, and the reason."""
 
     feature_id: str
     reason: Reason
@@ -43,14 +43,14 @@ class SkippedFeature:
 
 @dataclass(frozen=True, slots=True)
 class FamilyResult:
-    """Salida de una familia: lo calculado y lo omitido con motivo."""
+    """Output of a family: what was computed and what was omitted with a reason."""
 
     computed: tuple[ComputedFeature, ...] = ()
     skipped: tuple[SkippedFeature, ...] = ()
 
 
 class FeatureFamilyExtractor(Protocol):
-    """Una familia de features. ``feature_ids`` son los ids concretos del catálogo que declara producir."""
+    """A feature family. ``feature_ids`` are the concrete catalog ids it declares it produces."""
 
     family: str
     feature_ids: Sequence[str]
@@ -59,7 +59,7 @@ class FeatureFamilyExtractor(Protocol):
 
 
 class ExtractorRegistry:
-    """Familias en orden de registro (determinista)."""
+    """Families in registration order (deterministic)."""
 
     def __init__(self) -> None:
         self._families: list[FeatureFamilyExtractor] = []
@@ -72,8 +72,8 @@ class ExtractorRegistry:
 
 
 def default_registry(settings: EngineSettings | None = None) -> ExtractorRegistry:
-    """Registro de familias de ejercicio, EMG, IMU, espectral y cordón."""
-    # import local: exercise importa los tipos de este módulo (evita el ciclo)
+    """Registry of the exercise, EMG, IMU, spectral and cord families."""
+    # local import: exercise imports the types of this module (avoids the cycle)
     from spine_engine.features.emg import EmgFamily
     from spine_engine.features.emg_spectral import EmgSpectralFamily
     from spine_engine.features.exercise import ExerciseFamily
@@ -85,7 +85,7 @@ def default_registry(settings: EngineSettings | None = None) -> ExtractorRegistr
 
     settings = settings or EngineSettings()
 
-    # un único servicio de repeticiones (con respaldo IMU) para compartir con las familias de #42-#45
+    # a single repetitions service (with IMU fallback) to share with the families of #42-#45
     repetitions = RepetitionService(detect_imu_windows)
     registry = ExtractorRegistry()
     registry.register(ExerciseFamily(repetitions))

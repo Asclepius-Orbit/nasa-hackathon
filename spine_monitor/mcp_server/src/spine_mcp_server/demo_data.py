@@ -1,14 +1,14 @@
-"""Dataset de demo: los últimos 14 días de AST-01 generados relativos a un reloj inyectable.
+"""Demo dataset: the last 14 days of AST-01, generated relative to an injectable clock.
 
-Los ejemplos de los contratos (`mocks.py`) son una única foto con uno o dos elementos por lista y se comparten con los tests de
-contrato, así que no cambian. Aquí se construye, a partir de ellos como plantilla (mismos campos, unidades, ids de feature, de
-regla y de recomendación, y mismo baseline), una trayectoria con historia para que el agente pueda explicar el nivel, comparar
-periodos y listar sesiones y autoinformes.
+The contract examples (`mocks.py`) are a single snapshot with one or two items per list and are shared with the contract
+tests, so they do not change. Here, using them as a template (same fields, units, feature, rule and recommendation ids, and the
+same baseline), a trajectory with history is built so the agent can explain the level, compare periods and list sessions and
+self-reports.
 
-Todo es función pura de `now` (redondeado a la hora hacia abajo): los ids son uuid5 sobre astronauta, tipo y marca de tiempo, así
-que el mismo `now` da siempre los mismos datos. Nada es diagnóstico: solo evidencia (features, z-scores) y reglas.
+Everything is a pure function of `now` (rounded down to the hour): ids are uuid5 over astronaut, type and timestamp, so
+the same `now` always gives the same data. Nothing is diagnostic: only evidence (features, z-scores) and rules.
 
-Trayectoria (t = 0 hace 13 días, t = 13 ahora): verde de t = 0 a 7, ámbar de t = 8 a 13 con riesgo creciente, hasta 0,62 en `now`.
+Trajectory (t = 0 is 13 days ago, t = 13 is now): green from t = 0 to 7, amber from t = 8 to 13 with growing risk, up to 0.62 at `now`.
 """
 
 import uuid
@@ -35,13 +35,13 @@ ASTRONAUT = "AST-01"
 DAYS = 14
 _NAMESPACE = uuid.UUID("a5c1e910-0000-4000-8000-0d3e0da7a000")
 _MISSION_DAY_NOW = 87
-_AMBER_FROM = 8  # primer día ámbar (t)
+_AMBER_FROM = 8  # first amber day (t)
 _PROTOCOL = "lat_pulldown_standing_v1"
 _BASELINE_STRETCH_MEAN = 6.5
 _STRETCH_Z_SCALE = 1.083
 _PAIN_BASELINE = 2.0
 _PAIN_Z_SCALE = 1.2
-# Dolor NRS del autoinforme diario por día t (sube de ~2 a 5).
+# NRS pain of the daily self-report per day t (rises from ~2 to 5).
 _PAIN = [2, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5]
 _RISK_PER_STRETCH_MM = 0.052
 _STRETCH_ID = "stretch.full_spine.peak_elongation_mm"
@@ -49,7 +49,7 @@ _PAIN_ID = "symptoms.pain_nrs_7d_mean"
 
 
 def _template(relative: str) -> Any:
-    """Copia fresca (JSON recién leído) de un ejemplo, para modificarla sin tocar nada compartido."""
+    """Fresh copy (JSON just read) of an example, to modify it without touching anything shared."""
     return _load(relative)
 
 
@@ -99,7 +99,7 @@ def _risk(t: int) -> float:
 
 
 class _Timeline:
-    """Marcas de tiempo de cada elemento, todas relativas a `now`; `k` son los días hacia atrás (t = 13 - k)."""
+    """Timestamps of each item, all relative to `now`; `k` is the number of days back (t = 13 - k)."""
 
     def __init__(self, now: datetime) -> None:
         self.now = _hour(now)
@@ -118,7 +118,7 @@ class _Timeline:
         return self.assessment_at(k) - timedelta(minutes=30)
 
     def exercise_ks(self) -> list[int]:
-        return list(range(DAYS - 1, 0, -2))  # 13, 11, ..., 1: una cada 2 días
+        return list(range(DAYS - 1, 0, -2))  # 13, 11, ..., 1: one every 2 days
 
     def exercise_start(self, k: int) -> datetime:
         return self.assessment_at(k) - timedelta(minutes=90)
@@ -136,7 +136,7 @@ class _Timeline:
         return self.assessment_at(2) - timedelta(minutes=45)
 
     def session_k(self, k: int) -> int:
-        """Día de la última sesión de ejercicio ya procesada en la valoración de `k` (la de `k` si es impar, si no la anterior)."""
+        """Day of the last exercise session already processed in the assessment of `k` (that of `k` if odd, otherwise the previous one)."""
         return k if k % 2 == 1 else k + 1
 
 
@@ -275,7 +275,7 @@ def _stretch_baseline_entry() -> dict[str, Any]:
 
 
 class DemoAppReader(ExampleAppReader):
-    """`ExampleAppReader` (mismo filtrado y límites) con una explicación por cada valoración del historial."""
+    """`ExampleAppReader` (same filtering and limits) with one explanation per assessment in the history."""
 
     def __init__(self, explanations: dict[str, Explanation], **data: Any) -> None:
         super().__init__(explanation=next(reversed(explanations.values())), **data)
@@ -299,9 +299,9 @@ def _freshness(now: datetime, items: list[tuple[str, datetime, float, str | None
 
 
 def build_demo_app_reader(now: datetime) -> ExampleAppReader:
-    """Lector de la app sobre los 14 días de AST-01 que terminan en `now` (redondeado a la hora hacia abajo)."""
+    """App reader over the 14 days of AST-01 ending at `now` (rounded down to the hour)."""
     tl = _Timeline(now)
-    ks = list(range(DAYS - 1, -1, -1))  # de más antiguo a más reciente
+    ks = list(range(DAYS - 1, -1, -1))  # from oldest to most recent
     assessments = {k: _assessment(tl, k) for k in ks}
     feature_sets = {k: _feature_set(tl, k) for k in tl.exercise_ks()}
     reports = {k: _self_report(tl, k) for k in ks}
@@ -379,10 +379,11 @@ def build_demo_app_reader(now: datetime) -> ExampleAppReader:
 
 
 class _DemoSimulator:
-    """`Simulator` de demo: la referencia es la última valoración y el escenario mueve el riesgo según los overrides de `stretch.full_spine.peak_elongation_mm`.
+    """Demo `Simulator`: the reference is the latest assessment and the scenario moves the risk
+    according to the overrides of `stretch.full_spine.peak_elongation_mm`.
 
-    No es el motor: es una aproximación lineal (`_RISK_PER_STRETCH_MM` por mm de elongación extra) para que la demo responda a «¿y si...?».
-    Los overrides de otras features no cambian el escenario.
+    It is not the engine: it is a linear approximation (`_RISK_PER_STRETCH_MM` per mm of extra elongation) so the demo answers "what if...?".
+    Overrides of other features do not change the scenario.
     """
 
     def __init__(self, reference: Assessment) -> None:
@@ -425,14 +426,14 @@ class _DemoSimulator:
 
 
 def build_demo_simulator(now: datetime) -> _DemoSimulator:
-    """Simulador de demo cuya referencia es la valoración de AST-01 en `now`."""
+    """Demo simulator whose reference is the AST-01 assessment at `now`."""
     latest = build_demo_app_reader(now).get_status(ASTRONAUT).latest_assessment
-    assert latest is not None  # el estado de demo siempre trae valoración
+    assert latest is not None  # the demo state always carries an assessment
     return _DemoSimulator(latest)
 
 
 class _DemoAssessBase:
-    """`AssessBaseSource` de demo: la petición de valoración de AST-01 en `now`."""
+    """Demo `AssessBaseSource`: the AST-01 assessment request at `now`."""
 
     def __init__(self, base: AssessRequest) -> None:
         self._base = base
@@ -444,7 +445,7 @@ class _DemoAssessBase:
 
 
 def build_demo_assess_base(now: datetime) -> _DemoAssessBase:
-    """Base de simulación de AST-01 en `now`: sus últimos feature sets y autoinformes diarios, con el perfil y el baseline de los ejemplos."""
+    """Simulation base of AST-01 at `now`: its latest feature sets and daily self-reports, with the profile and baseline of the examples."""
     tl = _Timeline(now)
     template = _template("engine/assess-request.json")
     template["as_of"] = _iso(tl.now)

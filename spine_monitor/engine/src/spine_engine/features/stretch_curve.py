@@ -1,20 +1,20 @@
-"""Conversión pura del cordón de estiramiento (#45): cuentas ADC -> resistencia -> longitud -> elongación.
+"""Pure conversion of the stretch cord (#45): ADC counts -> resistance -> length -> elongation.
 
-Sin I/O, reloj ni azar. Todas las funciones aceptan escalar o ``ndarray`` y devuelven ``ndarray`` float64
-(0-d para escalar).
+No I/O, clock or randomness. All functions accept a scalar or ``ndarray`` and return float64 ``ndarray``
+(0-d for a scalar).
 
-- ``adc_to_resistance``: inversa del divisor del simulador (``Vout = vref·R/(R+Rs)``,
-  ``counts = round(Vout/vref·full)``, ``full = 2^bits − 1``): ``R = Rs·c/(full − c)``. ``vref`` se cancela.
-  Las cuentas fuera de ``(0, full)`` no son invertibles (``c <= 0`` da R = 0 o negativa; ``c >= full`` es el ADC
-  saturado, R infinita): salen ``NaN``, sin excepción; el llamador las descarta.
-- ``resistance_to_length``: curva ``piecewise_linear`` de ``StretchCalibration`` (resistencia -> longitud),
-  interpolación lineal por tramos. Fuera del rango de resistencias de los puntos SATURA a la longitud del extremo;
-  ``out_of_curve_range`` dice qué muestras quedaron fuera para que la familia marque calidad. ``NaN`` entra y sale
-  ``NaN`` (y no cuenta como fuera de rango). Los puntos se ordenan por resistencia; menos de dos puntos,
-  resistencias repetidas o valores no finitos en los puntos lanzan ``StretchCurveError`` (un ``ValueError``), que la
-  familia convierte en skip.
-- ``elongation_mm = length − rest_length_mm`` y ``elongation_pct = 100·elongation_mm/rest_length_mm``;
-  ``rest_length_mm <= 0`` (o no finito) lanza ``StretchCurveError``.
+- ``adc_to_resistance``: inverse of the simulator's divider (``Vout = vref·R/(R+Rs)``,
+  ``counts = round(Vout/vref·full)``, ``full = 2^bits − 1``): ``R = Rs·c/(full − c)``. ``vref`` cancels out.
+  Counts outside ``(0, full)`` are not invertible (``c <= 0`` gives R = 0 or negative; ``c >= full`` is the saturated
+  ADC, infinite R): they come out ``NaN``, without an exception; the caller discards them.
+- ``resistance_to_length``: ``piecewise_linear`` curve of ``StretchCalibration`` (resistance -> length),
+  piecewise linear interpolation. Outside the resistance range of the points it SATURATES to the length of the end point;
+  ``out_of_curve_range`` says which samples fell outside so the family can flag quality. ``NaN`` goes in and comes out
+  ``NaN`` (and does not count as out of range). Points are sorted by resistance; fewer than two points,
+  repeated resistances or non-finite values in the points raise ``StretchCurveError`` (a ``ValueError``), which the
+  family turns into a skip.
+- ``elongation_mm = length − rest_length_mm`` and ``elongation_pct = 100·elongation_mm/rest_length_mm``;
+  ``rest_length_mm <= 0`` (or non-finite) raises ``StretchCurveError``.
 """
 
 from collections.abc import Sequence
@@ -27,11 +27,11 @@ type FloatArray = NDArray[np.float64]
 
 
 class StretchCurveError(ValueError):
-    """Calibración del cordón inutilizable (curva degenerada o longitud de reposo no positiva)."""
+    """Unusable cord calibration (degenerate curve or non-positive rest length)."""
 
 
 class CurvePoint(Protocol):
-    """Punto de ``curve.points`` del contrato (``spine_contracts`` ``Point``)."""
+    """Point of the contract's ``curve.points`` (``spine_contracts`` ``Point``)."""
 
     @property
     def resistance_ohm(self) -> float: ...
@@ -41,10 +41,10 @@ class CurvePoint(Protocol):
 
 
 def adc_to_resistance(counts: ArrayLike, *, adc_bits: int, series_resistor_ohm: float) -> FloatArray:
-    """Resistencia del cordón (Ω) por muestra; ``NaN`` donde las cuentas caen fuera de ``(0, 2^bits − 1)``.
+    """Cord resistance (Ω) per sample; ``NaN`` where the counts fall outside ``(0, 2^bits − 1)``.
 
-    Nota: el simulador recorta las cuentas a ``[0.5, full − 0.5]`` y devuelve R finita; aquí las cuentas en 0 o
-    ``full`` son no invertibles y salen ``NaN`` (se descartan). Divergencia deliberada, pendiente de confirmar con Uri.
+    Note: the simulator clips the counts to ``[0.5, full − 0.5]`` and returns a finite R; here counts at 0 or
+    ``full`` are not invertible and come out ``NaN`` (they are discarded). Deliberate divergence, pending confirmation.
     """
     c = np.asarray(counts, dtype=np.float64)
     full = float(2**adc_bits - 1)
@@ -54,7 +54,7 @@ def adc_to_resistance(counts: ArrayLike, *, adc_bits: int, series_resistor_ohm: 
 
 
 def _knots(points: Sequence[CurvePoint]) -> tuple[FloatArray, FloatArray]:
-    """(resistencias, longitudes) ordenadas por resistencia; error si hay < 2 puntos, valores no finitos o repetidos."""
+    """(resistances, lengths) sorted by resistance; error if there are < 2 points, non-finite or repeated values."""
     if len(points) < 2:
         raise StretchCurveError(f"stretch curve needs at least 2 points, got {len(points)}")
     ordered = sorted(points, key=lambda p: p.resistance_ohm)
@@ -68,13 +68,13 @@ def _knots(points: Sequence[CurvePoint]) -> tuple[FloatArray, FloatArray]:
 
 
 def resistance_to_length(resistance_ohm: ArrayLike, points: Sequence[CurvePoint]) -> FloatArray:
-    """Longitud del cordón (mm) por muestra; satura al extremo fuera de la curva y conserva ``NaN``."""
+    """Cord length (mm) per sample; saturates to the end point outside the curve and preserves ``NaN``."""
     r_knots, l_knots = _knots(points)
     return np.interp(np.asarray(resistance_ohm, dtype=np.float64), r_knots, l_knots)
 
 
 def out_of_curve_range(resistance_ohm: ArrayLike, points: Sequence[CurvePoint]) -> NDArray[np.bool_]:
-    """``True`` donde la resistencia queda fuera de ``[R_min, R_max]`` de la curva (``NaN`` da ``False``)."""
+    """``True`` where the resistance falls outside the curve's ``[R_min, R_max]`` (``NaN`` gives ``False``)."""
     r_knots, _ = _knots(points)
     r = np.asarray(resistance_ohm, dtype=np.float64)
     return (r < r_knots[0]) | (r > r_knots[-1])
@@ -86,11 +86,11 @@ def _check_rest(rest_length_mm: float) -> None:
 
 
 def elongation_mm(length_mm: ArrayLike, rest_length_mm: float) -> FloatArray:
-    """Elongación (mm) = longitud − longitud de reposo."""
+    """Elongation (mm) = length − rest length."""
     _check_rest(rest_length_mm)
     return np.asarray(length_mm, dtype=np.float64) - rest_length_mm
 
 
 def elongation_pct(length_mm: ArrayLike, rest_length_mm: float) -> FloatArray:
-    """Elongación (%) = 100 · (longitud − reposo) / reposo."""
+    """Elongation (%) = 100 · (length − rest) / rest."""
     return 100.0 * elongation_mm(length_mm, rest_length_mm) / rest_length_mm

@@ -1,10 +1,10 @@
-"""Emulador del Arduino -> protocolo -> ensamblador de chunks, sin sockets ni reloj de pared (#131).
+"""Arduino emulator -> protocol -> chunk assembler, without sockets or wall clock (#131).
 
-Recorre el camino que hace el gateway real con el emulador: ``EmulatedArduino.lines_until`` -> ``parse_line`` ->
-``ChunkAssembler.session_chunk`` / ``background_chunk``. Comprueba que los chunks son válidos contra su schema, que los tamaños y
-frecuencias son los del firmware (100/10/2 muestras a 1000/100/20 Hz en lotes de 100 ms; 10 Hz en 1 s para el fondo) y que las
-repeticiones que se cuentan en gyro_x ya convertido a °/s y el EMG y el cordón comparten fase. Los umbrales de fase son del
-modelo del emulador (señal sintética de ``spine_physiology``, sin EMG real con el que compararla).
+Follows the path of the real gateway with the emulator: ``EmulatedArduino.lines_until`` -> ``parse_line`` ->
+``ChunkAssembler.session_chunk`` / ``background_chunk``. Checks that the chunks are valid against their schema, that the sizes and
+frequencies are the firmware's (100/10/2 samples at 1000/100/20 Hz in 100 ms batches; 10 Hz in 1 s for the background) and that the
+repetitions counted on gyro_x already converted to deg/s and the EMG and the cord share phase. The phase thresholds belong to the
+emulator model (synthetic ``spine_physiology`` signal, with no real EMG to compare it with).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -21,7 +21,7 @@ from spine_gateway.settings import GatewaySettings
 SESSION = "3f2b8c1e-6d4a-4b7e-9a10-2c5d8e7f1a01"
 CAL_ID = "7a1c0d52-8b3e-4f6a-a1d4-5e9b2c7d3f11"
 AT = datetime(2026, 11, 13, 10, 0, tzinfo=UTC)
-SECONDS = 24  # 6 repeticiones de 3 s cada 4 s (la primera a 0,5 s)
+SECONDS = 24  # 6 repetitions of 3 s every 4 s (the first at 0.5 s)
 REP_PERIOD_S = 4.0
 RATES = {FrameKind.EMG: 1000.0, FrameKind.IMU: 100.0, FrameKind.CORD: 20.0}
 SAMPLES = {FrameKind.EMG: 100, FrameKind.IMU: 10, FrameKind.CORD: 2}
@@ -85,15 +85,15 @@ def test_every_assembled_chunk_is_schema_valid_with_the_firmware_rates_and_sizes
 @pytest.mark.integration
 def test_the_rep_count_in_gyro_x_matches_the_emulated_rep_period_and_the_emg_and_cord_share_its_phase(settings: GatewaySettings) -> None:
     chunks = session_chunks(settings, seed=5)
-    # Mapeo del montaje del ejemplo: el giro de flexión sale por gyro_x del Arduino. Picos positivos > 15 dps (el pico del
-    # modelo es 1,25 x ROM = 37-56 dps) con una separación mínima de 2 s dentro de un periodo de 4 s: una por repetición.
+    # Mapping of the example setup: the flexion rotation comes out on the Arduino gyro_x. Positive peaks > 15 dps (the model
+    # peak is 1.25 x ROM = 37-56 dps) with a minimum separation of 2 s within a 4 s period: one per repetition.
     gyro_x = np.concatenate([dump(c)["data"]["gyro_x"] for c in of(chunks, "imu")])
     peaks, _ = find_peaks(gyro_x, height=15.0, distance=200)
     assert len(peaks) == SECONDS // int(REP_PERIOD_S)
     assert np.all(np.diff(peaks) / RATES[FrameKind.IMU] == pytest.approx(REP_PERIOD_S, abs=0.2))
-    # Fase compartida por chunk de 100 ms: nivel medio del EMG (envolvente, mV), |gyro_x| medio y longitud del cordón (mm,
-    # con la curva por defecto). Observado en 4 semillas: EMG-cordón 0,986-0,989 (umbral 0,9), EMG-gyro suavizado 1 s
-    # 0,54-0,55 (umbral 0,4: el gyro es la derivada, nulo a mitad de rep), recorrido del cordón 86-105 mm (umbral 40).
+    # Shared phase per 100 ms chunk: mean EMG level (envelope, mV), mean |gyro_x| and cord length (mm,
+    # with the default curve). Observed over 4 seeds: EMG-cord 0.986-0.989 (threshold 0.9), EMG-gyro smoothed over 1 s
+    # 0.54-0.55 (threshold 0.4: the gyro is the derivative, zero mid-rep), cord travel 86-105 mm (threshold 40).
     emg = np.array([np.mean(dump(c)["data"]["emg"]) for c in of(chunks, "emg")])
     gyro = np.array([np.mean(np.abs(dump(c)["data"]["gyro_x"])) for c in of(chunks, "imu")])
     cord = np.array([np.mean(dump(c)["data"]["length_mm"]) for c in of(chunks, "stretch")])
@@ -101,7 +101,7 @@ def test_the_rep_count_in_gyro_x_matches_the_emulated_rep_period_and_the_emg_and
     edge = slice(10, -10)
     assert np.corrcoef(emg, cord)[0, 1] > 0.9
     assert np.corrcoef(np.convolve(emg, smooth, "same")[edge], np.convolve(gyro, smooth, "same")[edge])[0, 1] > 0.4
-    assert cord.max() - cord.min() > 40.0  # mm: el cordón se estira con la flexión
+    assert cord.max() - cord.min() > 40.0  # mm: the cord stretches with the flexion
 
 
 @pytest.mark.integration
@@ -120,7 +120,7 @@ def test_the_background_is_one_second_windows_at_10_hz_for_imu_and_cord_and_neve
             assert validation.errors("telemetry/stream-chunk", dump(result)) == []
             assert result.sample_rate_hz == 10.0 and result.n_samples == 10
             emitted[frame.kind].append(result)  # type: ignore[union-attr]
-    assert discarded == 120  # los 120 lotes de EMG de 12 s
+    assert discarded == 120  # the 120 EMG batches of 12 s
     for kind in (FrameKind.IMU, FrameKind.CORD):
         chunks = emitted[kind]
         assert len(chunks) == 12

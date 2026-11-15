@@ -1,7 +1,7 @@
-"""Bucle del gateway real (``app.Gateway``): conexión, enlace serie, chunks, reloj, estado, reconexión y parada.
+"""Real gateway loop (``app.Gateway``): connection, serial link, chunks, clock, status, reconnection and shutdown.
 
-Sin broker ni puerto: cliente MQTT, fuente de líneas, reloj y ``sleep`` de mentira (``conftest.Harness``). Todo lo que se
-publica se valida en el arnés contra su schema, topic, QoS y retain.
+No broker or port: fake MQTT client, line source, clock and ``sleep`` (``conftest.Harness``). Everything that is
+published is validated in the harness against its schema, topic, QoS and retain.
 """
 
 import asyncio
@@ -21,7 +21,7 @@ def go(coro) -> None:
     asyncio.run(coro)
 
 
-# --- conexión, Last Will y anuncio ---
+# --- connection, Last Will and announcement ---
 
 
 def test_connects_with_its_last_will_subscribes_and_announces_offline_until_the_device_speaks(harness) -> None:
@@ -35,7 +35,7 @@ def test_connects_with_its_last_will_subscribes_and_announces_offline_until_the_
             assert payload["status"] == "offline" and payload["source"] == "device"
             assert validation.errors("telemetry/device-status", payload) == []
             assert h.client.subscriptions == [(topics.cmd(AST, DEV), 1)]
-            # Sin enlace serie todavía: estado offline (retained) y ningún ancla de reloj inventada.
+            # No serial link yet: offline status (retained) and no made-up clock anchor.
             assert h.client.statuses() == ["offline"]
             assert h.client.on("clock") == []
 
@@ -46,12 +46,12 @@ def test_the_first_hello_and_tick_bring_the_device_online_with_its_clock_anchor(
     async def scenario() -> None:
         async with harness() as h:
             await h.link_up()
-            assert h.client.statuses() == ["offline"]  # puerto abierto, pero el dispositivo aún no ha hablado
+            assert h.client.statuses() == ["offline"]  # port open, but the device has not spoken yet
             await h.hello(firmware="fw-2.1.0")
             status = h.client.payloads("status")[-1]
             assert status["status"] == "ok" and status["boot_id"] == 7 and status["firmware_version"] == "fw-2.1.0"
             assert status["link"] == {"type": "usb_serial"} and "battery_pct" not in status and "temperature_c" not in status
-            assert h.client.on("clock") == []  # el hello no es ancla
+            assert h.client.on("clock") == []  # the hello is not an anchor
             h.device_ms = 1000
             await h.time.advance(0.25)
             await h.tick()
@@ -73,7 +73,7 @@ def test_shutdown_publishes_a_retained_offline_status(harness) -> None:
             assert h.client.statuses()[-1] == "ok"
         last = h.client.on("status")[-1]
         assert last.retain and last.payload["status"] == "offline"
-        # Nada después del offline.
+        # Nothing after the offline.
         assert h.client.published[-1] is last
 
     go(scenario())
@@ -85,7 +85,7 @@ def test_frames_become_chunks_on_their_stream_topics(harness) -> None:
             await h.boot()
             await h.run_device(1.0)
             chunks = h.client.payloads("stream")
-            # Sin sesión: fondo de IMU y cordón (1 chunk de 1 s a 10 Hz cada 10 lotes); el EMG no se publica.
+            # No session: IMU and cord background (1 chunk of 1 s at 10 Hz every 10 batches); EMG is not published.
             assert sorted(c["stream_id"] for c in chunks) == ["imu_t9", "stretch_spine"]
             assert all(c["sample_rate_hz"] == 10.0 and c["seq"] == 0 and c["boot_id"] == 7 for c in chunks)
             assert all(not p.retain for p in h.client.on("stream"))
@@ -96,7 +96,7 @@ def test_frames_become_chunks_on_their_stream_topics(harness) -> None:
 def test_background_session_id_comes_from_the_utc_day(harness) -> None:
     async def scenario() -> None:
         async with harness() as h:
-            # 23:59:57.5 UTC: los chunks de fondo se cierran a las 23:59:58.5, 23:59:59.5 y 00:00:00.5.
+            # 23:59:57.5 UTC: the background chunks close at 23:59:58.5, 23:59:59.5 and 00:00:00.5.
             h.time.now += timedelta(hours=14, minutes=59, seconds=57.5)
             await h.boot()
             await h.run_device(3.0)
@@ -106,7 +106,7 @@ def test_background_session_id_comes_from_the_utc_day(harness) -> None:
     go(scenario())
 
 
-# --- entrada serie ---
+# --- serial input ---
 
 
 def test_bad_lines_are_counted_by_reason_and_never_stop_the_loop(harness) -> None:
@@ -127,20 +127,20 @@ def test_frames_wait_for_the_device_to_speak_after_the_port_opens_and_a_new_boot
     async def scenario() -> None:
         async with harness() as h:
             await h.link_up()
-            await h.frames(*FrameKind)  # antes de ningún hello: nadie sabe de qué arranque son
+            await h.frames(*FrameKind)  # before any hello: nobody knows which boot they belong to
             await h.boot()
             await h.run_device(2.0)
             first = [c for c in h.client.payloads("stream") if c["stream_id"] == "imu_t9"]
             assert [(c["boot_id"], c["seq"]) for c in first] == [(7, 0), (7, 1)]
             await h.link_down()
             await h.link_up()
-            await h.run_device(1.0)  # el arranque anterior ya no vale hasta que el dispositivo hable
+            await h.run_device(1.0)  # the previous boot is no longer valid until the device speaks
             assert len(h.client.payloads("stream")) == 4
             await h.hello(boot_id=8)
             await h.run_device(1.0)
             last = h.client.payloads("stream")[-1]
             assert (last["boot_id"], last["seq"]) == (8, 0)
-            # Ancla del arranque nuevo con su primer tick.
+            # Anchor of the new boot with its first tick.
             assert [c["boot_id"] for c in h.client.payloads("clock")] == [7, 8]
             assert h.gateway.discarded[DiscardReason.NO_BOOT] == 3 + 30
 
@@ -151,7 +151,7 @@ def test_a_tick_of_an_unknown_boot_is_a_new_boot_and_its_own_anchor(harness) -> 
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            h.reboot(9)  # el gateway arrancó a mitad: no ve el hello, solo ticks
+            h.reboot(9)  # the gateway started midway: it does not see the hello, only ticks
             h.device_ms = 5000
             await h.tick()
             assert h.client.payloads("clock")[-1]["boot_id"] == 9 and h.client.payloads("clock")[-1]["device_ms"] == 5000
@@ -182,7 +182,7 @@ def test_status_last_seq_is_the_last_published_seq_of_the_current_boot(harness) 
     go(scenario())
 
 
-# --- estado del dispositivo ---
+# --- device status ---
 
 
 def states(status: dict) -> dict[str, str]:
@@ -194,15 +194,15 @@ def test_a_missing_imu_degrades_the_device_until_its_frames_come_back(harness) -
         async with harness() as h:
             await h.boot()
             booted = h.client.payloads("status")[-1]
-            # Recién arrancado nadie ha mandado lotes aún: margen de stall_timeout_s (disabled), estado ok.
+            # Just started, nobody has sent batches yet: stall_timeout_s grace period (disabled), status ok.
             assert booted["status"] == "ok" and set(states(booted).values()) == {"disabled"}
             await h.run_device(1.0, kinds=(FrameKind.EMG, FrameKind.CORD))
             assert h.client.statuses()[-1] == "ok"
-            await h.run_device(1.1, kinds=(FrameKind.EMG, FrameKind.CORD))  # pasan los 2 s sin un solo lote I
+            await h.run_device(1.1, kinds=(FrameKind.EMG, FrameKind.CORD))  # 2 s pass without a single I batch
             degraded = h.client.on("status")[-1].payload
             assert degraded["status"] == "degraded"
             assert states(degraded) == {"emg_lat_left": "disabled", "imu_t9": "stalled", "stretch_spine": "active"}
-            assert degraded["timestamp"] == "2026-11-02T09:00:02Z"  # en cuanto vence el plazo, no en el periódico
+            assert degraded["timestamp"] == "2026-11-02T09:00:02Z"  # as soon as the deadline expires, not in the periodic one
             await h.run_device(0.1)
             back = h.client.payloads("status")[-1]
             assert back["status"] == "ok" and states(back)["imu_t9"] == "active"
@@ -214,10 +214,10 @@ def test_a_stream_that_stops_is_stalled_after_the_timeout(harness) -> None:
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            await h.run_device(3.0)  # pasado el margen de arranque
+            await h.run_device(3.0)  # past the startup grace period
             published = len(h.client.payloads("status"))
             await h.run_device(1.9, kinds=(FrameKind.EMG, FrameKind.IMU))
-            assert len(h.client.payloads("status")) == published  # aún dentro del plazo
+            assert len(h.client.payloads("status")) == published  # still within the deadline
             await h.run_device(0.2, kinds=(FrameKind.EMG, FrameKind.IMU))
             last = h.client.payloads("status")[-1]
             assert last["status"] == "degraded" and states(last)["stretch_spine"] == "stalled" and states(last)["imu_t9"] == "active"
@@ -229,8 +229,8 @@ def test_a_silent_device_is_noticed_by_the_timer(harness) -> None:
     async def scenario() -> None:
         async with harness() as h:
             await h.boot()
-            await h.run_device(3.0)  # último lote a las 09:00:03
-            await h.time.advance(5.0)  # ni lotes ni ticks: solo el temporizador puede verlo
+            await h.run_device(3.0)  # last batch at 09:00:03
+            await h.time.advance(5.0)  # no batches or ticks: only the timer can see it
             last = h.client.payloads("status")[-1]
             assert last["status"] == "degraded" and last["timestamp"] == "2026-11-02T09:00:05Z"
             assert states(last) == {"emg_lat_left": "disabled", "imu_t9": "stalled", "stretch_spine": "stalled"}
@@ -248,7 +248,7 @@ def test_link_down_is_published_offline_at_once_and_the_next_hello_brings_it_bac
             assert offline.retain and offline.payload["status"] == "offline" and "streams" not in offline.payload
             published = len(h.client.published)
             await h.link_up()
-            await h.time.advance(5.0)  # sin hello: sigue offline y no hay nada nuevo que contar
+            await h.time.advance(5.0)  # no hello: still offline and nothing new to report
             assert len(h.client.published) == published
             await h.hello(boot_id=8)
             assert h.client.statuses()[-1] == "ok"
@@ -262,7 +262,7 @@ def test_status_and_clock_follow_their_intervals(harness) -> None:
             await h.boot()
             await h.run_device(125.0)
             statuses = h.client.payloads("status")
-            # Anuncio (offline), hello (ok, streams aún sin datos), fin del margen de arranque (active) y cada 30 s.
+            # Announcement (offline), hello (ok, streams without data yet), end of the startup grace period (active) and every 30 s.
             assert h.client.statuses() == ["offline", "ok", "ok", "ok", "ok", "ok", "ok"]
             assert [s["timestamp"] for s in statuses] == [
                 "2026-11-02T09:00:00Z", "2026-11-02T09:00:00Z", "2026-11-02T09:00:02Z",
@@ -271,7 +271,7 @@ def test_status_and_clock_follow_their_intervals(harness) -> None:
             assert states(statuses[1]) == dict.fromkeys(["emg_lat_left", "imu_t9", "stretch_spine"], "disabled")
             assert states(statuses[2]) == {"emg_lat_left": "disabled", "imu_t9": "active", "stretch_spine": "active"}
             assert all(s["sample_rate_hz"] == 10.0 for s in statuses[2]["streams"] if s["state"] == "active")
-            # El periódico ancla con el último tick conocido (a los 60 s aún no ha llegado el de 60 000 ms).
+            # The periodic one anchors with the last known tick (at 60 s the 60 000 ms one has not arrived yet).
             clocks = h.client.payloads("clock")
             assert [(c["device_ms"], c["utc"]) for c in clocks] == [
                 (0, "2026-11-02T09:00:00Z"), (59_000, "2026-11-02T09:00:59Z"), (119_000, "2026-11-02T09:01:59Z"),
@@ -310,7 +310,7 @@ def test_firmware_debug_lines_are_logged_and_are_not_bad_lines(harness, caplog) 
                 (logging.INFO, "arduino: #overrun E: lote descartado"),
                 (logging.INFO, "arduino: #�"),
             ]
-            await h.run_device(1.0)  # el bucle sigue y los datos siguen saliendo
+            await h.run_device(1.0)  # the loop continues and data keeps flowing
             assert [c["stream_id"] for c in h.client.payloads("stream")] == ["imu_t9", "stretch_spine"]
 
     go(scenario())

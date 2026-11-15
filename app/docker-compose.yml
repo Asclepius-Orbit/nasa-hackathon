@@ -74,6 +74,23 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  seed:
+    # One-shot demo seeder (profile "seed"): AST-01 and AST-02 with ~60 days of history built with the real engine. Idempotent: an
+    # astronaut that already has sessions or a complete profile is skipped. Run it before the backend starts:
+    #   docker compose -f app/docker-compose.yml --profile seed run --rm seed
+    build:
+      context: ..
+      dockerfile: spine_monitor/backend/Dockerfile
+    image: spine-backend:dev
+    command: ["python", "-m", "monitor.demo_seed", "--engine-url", "http://engine:8001"]
+    volumes:
+      - backend_data:/data
+    depends_on:
+      engine:
+        condition: service_healthy
+    profiles: ["seed"]
+    restart: "no"
+
   read-api:
     # Read-only API of the app for the MCP server (contracts/app-openapi.yaml). Same image as the backend,
     # its own process and port, reading the same SQLite with a query-only connection.

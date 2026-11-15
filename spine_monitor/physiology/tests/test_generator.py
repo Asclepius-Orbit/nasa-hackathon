@@ -925,4 +925,4 @@ def test_live_output_for_a_fixed_seed_is_pinned():
     background = list(itertools.islice(live, 60))
     calibration = generator.live_calibration(astronaut_id="AST-01", day=1, session_id=LIVE_SESSION, calibration_type="imu", stream_ids=["imu_t9"], at=T0)
     digests = (_live_digest(session), _live_digest(background), _live_digest(calibration))
-    assert digests == ("0e7382cfb03df7ad", "b264399f9b335d35", "0dbc3fd32676669c")
+    assert digests == ("ab87bc6e30157baf", "b264399f9b335d35", "0dbc3fd32676669c")

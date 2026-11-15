@@ -70,6 +70,8 @@ MIN_SAMPLE="${MUTATION_MIN_SAMPLE:-10}"
 STAGE="${MUTATION_STAGE:-/tmp/mutation}"
 # physiology last: it has by far the most mutants and the slowest tests.
 PACKAGES="${MUTATION_PACKAGES:-contracts engine backend mcp_server agent physiology gateway}"
+SHARD="${MUTATION_SHARD:-}"
+RESULT="${MUTATION_RESULT:-}"
 ROOT="$(pwd)"
 NAMES=""
 # TOML literal string (single quotes): the backslashes reach mutmut untouched.
@@ -141,8 +143,16 @@ run_package() {
     (
         cd "$dir" || exit 1
         set -f # $NAMES holds mutant-name globs for mutmut, not for the shell
+        # Keep the detailed log for failure diagnosis while exposing live progress in CI.
+        : > mutants-run.log
+        tail -n 0 -f mutants-run.log &
+        log_pid=$!
         # shellcheck disable=SC2086 # one name per word
-        if mutmut run $NAMES > mutants-run.log 2>&1; then
+        status=0
+        mutmut run $NAMES > mutants-run.log 2>&1 || status=$?
+        kill "$log_pid" 2>/dev/null || :
+        wait "$log_pid" 2>/dev/null || :
+        if [ "$status" -eq 0 ]; then
             [ -n "$NAMES" ] || mutmut export-cicd-stats > /dev/null || exit 1
         elif [ -n "$NAMES" ] && grep -q "could not find any test case for any mutant" mutants-run.log; then
             : > mutants-no-tests
@@ -210,10 +220,20 @@ else
     python quality/mutation_select.py select "$sel" "$PACKAGES" --base "$base" ||
         infra_error "could not select the functions changed in $base...HEAD"
 fi
-[ -n "$(ls "$sel" 2> /dev/null)" ] || exit 0 # the selection step printed why
+if [ -n "$SHARD" ]; then
+    case " $PACKAGES " in *" $SHARD "*) ;; *) infra_error "unknown shard $SHARD" ;; esac
+    [ -n "$RESULT" ] || infra_error "MUTATION_RESULT is required for a shard"
+    # Never let a result from an earlier run masquerade as this shard's result.
+    rm -f "$RESULT" || infra_error "could not clear shard result"
+fi
+if [ -z "$(ls "$sel" 2> /dev/null)" ] || { [ -n "$SHARD" ] && [ ! -s "$sel/$SHARD" ]; }; then
+    if [ -n "$SHARD" ]; then printf '0 0\n' > "$RESULT" || infra_error "could not write shard result"; fi
+    exit 0
+fi
 
 stage || infra_error "could not stage $ROOT into $STAGE"
 for pkg in $PACKAGES; do
+    [ -z "$SHARD" ] || [ "$pkg" = "$SHARD" ] || continue
     [ -s "$sel/$pkg" ] || continue
     files="$(cut -f1 "$sel/$pkg" | sort -u)"
     # <module>.<mangled>__mutmut_* per unit (<module>.x*__mutmut_* for a whole file). Every name contains __mutmut_, so
@@ -233,6 +253,11 @@ for pkg in $PACKAGES; do
     python quality/mutation_select.py score "$pkg" "$sel/$pkg" "$dir/mutants-results.txt" "$STAGE/totals" $no_tests ||
         infra_error "could not score the mutants of $pkg"
 done
+
+if [ -n "$SHARD" ]; then
+    cp "$STAGE/totals" "$RESULT" || infra_error "could not write shard result"
+    exit 0
+fi
 
 python - "$STAGE/totals" "$THRESHOLD" "$MIN_SAMPLE" <<'EOF' || exit $?
 import sys

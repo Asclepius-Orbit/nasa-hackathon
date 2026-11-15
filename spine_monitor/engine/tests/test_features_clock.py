@@ -1,4 +1,4 @@
-"""device_ms -> UTC por boot_id con anclas ClockSync (#40)."""
+"""device_ms -> UTC per boot_id with ClockSync anchors (#40)."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -51,7 +51,7 @@ def test_single_anchor_is_a_fixed_offset():
 
 
 def test_two_anchors_fit_the_drift_exactly():
-    # El dispositivo atrasa: 10 000 ms de dispositivo son 10 010 ms UTC.
+    # The device runs slow: 10 000 device ms are 10 010 UTC ms.
     clock = DeviceClock.from_syncs([anchor(10_000, T0 + ms(10_010)), anchor(0, T0)])
 
     fit = clock.fit(7)
@@ -69,7 +69,7 @@ def test_least_squares_over_noisy_anchors_and_residual():
 
     assert fit is not None
     assert fit.slope == pytest.approx(0.9996)
-    # offset_ms se mide desde `reference` (la ancla UTC más temprana, T0 + 1 ms): 0,6 - 1 = -0,4.
+    # offset_ms is measured from `reference` (the earliest UTC anchor, T0 + 1 ms): 0.6 - 1 = -0.4.
     assert fit.reference == T0 + ms(1)
     assert fit.offset_ms == pytest.approx(-0.4)
     assert fit.max_residual_ms == pytest.approx(1.2)
@@ -93,7 +93,7 @@ def test_anchors_with_the_same_device_ms_fall_back_to_a_mean_offset():
 
 
 def test_non_positive_slope_falls_back_to_a_mean_offset():
-    # Anclas incoherentes (más device_ms, UTC anterior): no se acepta un reloj que va hacia atrás.
+    # Incoherent anchors (more device_ms, earlier UTC): a clock that runs backwards is not accepted.
     clock = DeviceClock.from_syncs([anchor(0, T0 + ms(1000)), anchor(1000, T0)])
 
     fit = clock.fit(7)
@@ -164,7 +164,7 @@ def test_fit_does_not_depend_on_anchor_order(specs, rnd):
 @pytest.mark.property
 @given(_device_ms, st.integers(-(10**9), 10**9), st.integers(1, 10**7), st.integers(0, 10**4))
 def test_exact_at_both_anchors_when_there_are_two(d, u, span, extra_ms):
-    # Deriva positiva acotada: la recta pasa por las dos anclas (a resolución de microsegundo).
+    # Bounded positive drift: the line passes through both anchors (at microsecond resolution).
     first, second = anchor(d, T0 + ms(u)), anchor(d + span, T0 + ms(u + span + extra_ms))
     clock = DeviceClock.from_syncs([second, first])
 

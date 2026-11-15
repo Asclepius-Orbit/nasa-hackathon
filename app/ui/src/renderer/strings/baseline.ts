@@ -12,7 +12,11 @@ export const baseline = {
   error: 'The preflight reference could not be loaded.',
 } as const;
 
-export const recordedHeading = (recorded: number, required: number): string => `${String(recorded)} of ${String(required)} sessions recorded`;
+/** Below the required count: `2 of 3`. At or above it the baseline is complete, so no `N of M` with N above M. */
+export const recordedHeading = (recorded: number, required: number): string =>
+  recorded >= required
+    ? `Baseline complete: ${String(recorded)} ${recorded === 1 ? 'session' : 'sessions'} recorded`
+    : `${String(recorded)} of ${String(required)} sessions recorded`;
 
 /** Days relative to launch: -30 is `L-30`, 0 is launch day. */
 export const launchOffset = (days: number): string => (days === 0 ? 'Launch day' : days < 0 ? `L${String(days)}` : `L+${String(days)}`);

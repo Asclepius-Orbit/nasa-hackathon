@@ -1,82 +1,84 @@
-# Protocolo estandarizado del ejercicio y colocación de sensores
+# Standardised exercise protocol and sensor placement
 
-Fuente: comentario de Aguado en la issue #12. Los valores viven en el contrato (`spine_monitor/contracts/catalog/protocol-catalog.json`, ejemplos de `examples/valid/`) y en la misión de ejemplo del simulador (`spine_monitor/physiology/configs/example-mission.yaml`). Este documento los resume; si discrepan, manda el contrato.
+> The current values and scope are considered final by project decision. See [the decision](decision-valores-protocolo.md); the historical "pending" marks need no further work to close the linked issues.
 
-## Protocolos (`protocol_id`)
+Source: a comment on issue #12 by the clinical reviewer. The values live in the contract (`spine_monitor/contracts/catalog/protocol-catalog.json`, examples under `examples/valid/`) and in the simulator's example mission (`spine_monitor/physiology/configs/example-mission.yaml`). This document summarises them; if they differ, the contract wins.
 
-| `protocol_id` | Qué es |
+## Protocols (`protocol_id`)
+
+| `protocol_id` | What it is |
 |---|---|
-| `lat_pulldown_standing_v1` | Jalón al pecho de pie con banda elástica |
-| `spine_length_rest_v1` | `spine_check` pasivo, de pie, justo antes (`phase: pre`) y justo después (`phase: post`) del ejercicio; la sesión lleva `related_session_id` hacia la del ejercicio |
-| `spine_resistance_straight_v1` | Resistencia con la espalda recta; referencia personal en Tierra y seguimiento en vuelo |
-| `spine_resistance_max_flexion_v1` | Resistencia con la espalda en máxima flexión; referencia personal en Tierra y seguimiento en vuelo |
+| `lat_pulldown_standing_v1` | Standing lat pulldown with an elastic band |
+| `spine_length_rest_v1` | Passive `spine_check`, standing, right before (`phase: pre`) and right after (`phase: post`) the exercise; the session carries a `related_session_id` pointing to the exercise session |
+| `spine_resistance_straight_v1` | Resistance with the back straight; personal reference on Earth and follow-up in flight |
+| `spine_resistance_max_flexion_v1` | Resistance with the back in maximum flexion; personal reference on Earth and follow-up in flight |
 
-## Ejercicio (`lat_pulldown_standing_v1`)
+## Exercise (`lat_pulldown_standing_v1`)
 
-- Postura: de pie. Agarre prono. Ritmo moderado.
-- Carga: banda elástica verde, ~25 kg nominales (15-35 kg según la elongación).
-- Volumen: 4 series × 15 repeticiones = 60 repeticiones en unos 5 minutos (`planned_sets`, `reps_per_set`, `planned_reps`/`total_reps` = 60). `rep_index` cuenta sobre toda la sesión (1..60); los eventos `set_start`/`set_end` llevan `set_index`.
-- Recuperación entre series: muy corta. `rest_between_sets_s` = 30 s es un valor nominal. **Pendiente de Aguado.**
+- Posture: standing. Pronated grip. Moderate pace.
+- Load: green elastic band, ~25 kg nominal (15-35 kg depending on elongation).
+- Volume: 4 sets × 15 repetitions = 60 repetitions in about 5 minutes (`planned_sets`, `reps_per_set`, `planned_reps`/`total_reps` = 60). `rep_index` counts across the whole session (1..60); the `set_start`/`set_end` events carry `set_index`.
+- Recovery between sets: very short. `rest_between_sets_s` = 30 s is a nominal value. **Pending clinical review.**
 
-## Colocación de sensores
+## Sensor placement
 
-| Sensor | Colocación | Identificador |
+| Sensor | Placement | Identifier |
 |---|---|---|
-| EMG | Un módulo en cada dorsal ancho, sobre T11-L2, ~10 cm entre electrodos | `emg_lat_left`, `emg_lat_right` |
-| Tierra (GND) | Cresta ilíaca | `placement.ground.location = iliac_crest` |
+| EMG | One module on each latissimus dorsi, over T11-L2, ~10 cm between electrodes | `emg_lat_left`, `emg_lat_right` |
+| Ground (GND) | Iliac crest | `placement.ground.location = iliac_crest` |
 | IMU | T9 | `imu_t9` (`spine_level: t9`) |
-| Cordón | De C3-C4 a L5-S1, ~65 cm en reposo (`full_spine`) | `stretch_spine`; features `stretch.full_spine.*` |
+| Cord | From C3-C4 to L5-S1, ~65 cm at rest (`full_spine`) | `stretch_spine`; features `stretch.full_spine.*` |
 
-Campos de `placement` para EMG: `electrode_spacing_cm`, `span` (T11→L2), `ground`.
+`placement` fields for EMG: `electrode_spacing_cm`, `span` (T11→L2), `ground`.
 
-## Cordón conductor
+## Conductive cord
 
-- La elongación sale del cambio de resistencia respecto a la resistencia en reposo `R0`, a través de una curva **medida**. El cordón no es lineal y tarda 1-2 minutos en recuperarse tras estirarse: `R0` se toma tras esa espera.
-- **350 Ω es la resistencia de una pulgada de cordón en reposo, no una deformación de 2,54 cm.** No se usa como factor de conversión de longitud.
-- Aguado y Polfer comunicaron 4.500 Ω con la espalda recta y 5.650 Ω en máxima flexión, con 50 cm entre los contactos del óhmetro. Son referencias informativas, no umbrales clínicos; cada astronauta se compara con su propia referencia terrestre por postura.
-- En una prueba de mesa distinta se estiró el cordón entero a cada longitud y se midió tres veces con los contactos separados 10 cm:
+- Elongation comes from the change in resistance relative to the rest resistance `R0`, through a **measured** curve. The cord is not linear and takes 1-2 minutes to recover after being stretched: `R0` is taken after that wait.
+- **350 Ω is the resistance of one inch of cord at rest, not a 2.54 cm deformation.** It is not used as a length conversion factor.
+- The clinical reviewer and the hardware lead reported 4,500 Ω with the back straight and 5,650 Ω at maximum flexion, with 50 cm between the ohmmeter contacts. These are informative references, not clinical thresholds; each astronaut is compared with their own Earth reference per posture.
+- In a separate bench test the whole cord was stretched to each length and measured three times with the contacts 10 cm apart:
 
-| Longitud total | 1 | 2 | 3 |
+| Total length | 1 | 2 | 3 |
 |---|---:|---:|---:|
 | 100 cm | 630 Ω | 780 Ω | 795 Ω |
-| 110 cm | 1.020 Ω | 1.165 Ω | 1.125 Ω |
-| 120 cm | 1.110 Ω | 1.255 Ω | 1.260 Ω |
-| 130 cm | 1.270 Ω | 1.320 Ω | 1.300 Ω |
-| 140 cm | 1.350 Ω | 1.355 Ω | 1.350 Ω |
+| 110 cm | 1,020 Ω | 1,165 Ω | 1,125 Ω |
+| 120 cm | 1,110 Ω | 1,255 Ω | 1,260 Ω |
+| 130 cm | 1,270 Ω | 1,320 Ω | 1,300 Ω |
+| 140 cm | 1,350 Ω | 1,355 Ω | 1,350 Ω |
 
-La longitud total de la tabla y la distancia entre contactos son magnitudes distintas. Como aproximación experimental, se promedian las tres resistencias de cada longitud, se multiplican por la distancia de referencia entre contactos dividida por 100 mm (factor 5 para los 500 mm comunicados) y se interpola por tramos, únicamente dentro del rango medido. Para estimar la longitud entre pinzas se usa `longitud de referencia × longitud total equivalente actual / longitud total equivalente en recta`; el cambio estimado se refiere a la postura recta individual medida en Tierra. El factor supone resistencia uniforme y resistencia de contacto despreciable; usa además la separación de referencia fija para escalar la resistencia aunque la separación pueda cambiar al estirar. Trasladar la proporción de longitud supone deformación uniforme y que las pinzas permanezcan fijas al material. Son hipótesis no validadas: la tabla no es una curva medida en el montaje de espalda y la estimación no es una medida clínica. Sin lectura recta personal o con alguna resistencia fuera del intervalo no hay estimación; no se extrapola. Las lecturas originales y el montaje están en `contracts/catalog/cord-measurements.json`.
+The total length in the table and the distance between contacts are different quantities. As an experimental approximation, the three resistances at each length are averaged, multiplied by the reference distance between contacts divided by 100 mm (a factor of 5 for the reported 500 mm), and interpolated piecewise, only within the measured range. To estimate the length between clamps, use `reference length × current equivalent total length / equivalent total length when straight`; the estimated change refers to the individual straight posture measured on Earth. The factor assumes uniform resistance and negligible contact resistance; it also uses the fixed reference spacing to scale the resistance even though the spacing may change when the cord is stretched. Carrying the length ratio over assumes uniform deformation and clamps that stay fixed to the material. These are unvalidated hypotheses: the table is not a curve measured on the back setup and the estimate is not a clinical measurement. With no personal straight reading, or with any resistance outside the interval, there is no estimate; nothing is extrapolated. The original readings and the setup are in `contracts/catalog/cord-measurements.json`.
 
-La longitud en reposo de 650 mm y la curva de calibración de ejemplo siguen siendo provisionales; falta medir o validar una calibración aplicable a la colocación real y el tiempo de recuperación (#106, #46). La captura y el seguimiento periódico de ambas posturas siguen en #122.
+The 650 mm rest length and the example calibration curve remain provisional; a calibration applicable to the real placement and the recovery time still need to be measured or validated (#106, #46). Capture and periodic follow-up of both postures remain in #122.
 
-Integración en la aplicación (sesiones de cordón): `spine_resistance_straight_v1` y `spine_resistance_max_flexion_v1` se ofrecen en la captura como dos sesiones independientes. La referencia en Tierra es la última medición válida de preflight (1 g); el seguimiento es la última medición válida en otro entorno de gravedad. «Válida» significa sesión completada y calidad de la feature ≥ `cord_min_quality_score` (0,5 por defecto, provisional, pendiente de Aguado). La cadencia es configurable (`cord_follow_up_interval_days`, 7 por defecto como ejemplo, no una pauta clínica; pendiente de Aguado): en preflight toca la referencia hasta que exista una válida; en vuelo toca cuando no hay seguimiento o el último tiene al menos esos días. La vista `GET /ui/crew/{id}/views/cord-protocols` y las tareas `TASK_CORD_STRAIGHT` / `TASK_CORD_MAX_FLEXION` lo exponen. La estimación (`POST /stretch-estimate` del motor) se muestra siempre rotulada como calculada, con sus supuestos, nunca como longitud medida ni validada clínicamente, y no interviene en el triaje. Solo se calcula para la espalda recta (50 cm entre contactos); en máxima flexión no se mide la distancia entre contactos, así que no hay estimación (pendiente de Aguado).
+Application integration (cord sessions): `spine_resistance_straight_v1` and `spine_resistance_max_flexion_v1` are offered in the capture flow as two independent sessions. The Earth reference is the latest valid preflight measurement (1 g); the follow-up is the latest valid measurement in a different gravity environment. "Valid" means a completed session and feature quality ≥ `cord_min_quality_score` (0.5 by default, provisional, pending clinical review). The cadence is configurable (`cord_follow_up_interval_days`, 7 by default as an example, not a clinical guideline; pending clinical review): in preflight the reference is due until a valid one exists; in flight it is due when there is no follow-up or the latest one is at least that many days old. The view `GET /ui/crew/{id}/views/cord-protocols` and the tasks `TASK_CORD_STRAIGHT` / `TASK_CORD_MAX_FLEXION` expose this. The estimate (`POST /stretch-estimate` of the engine) is always shown labelled as calculated, with its assumptions, never as a measured length or clinically validated, and it plays no part in triage. It is only computed for the straight back (50 cm between contacts); at maximum flexion the distance between contacts is not measured, so there is no estimate (pending clinical review).
 
-Fuentes sobre el comportamiento del material: [fabricante del cordón Adafruit 519](https://www.adafruit.com/product/519) (respuesta no lineal y variación entre ejemplares) y [estudio sobre sensores elastoméricos conductores](https://advanced.onlinelibrary.wiley.com/doi/full/10.1002/admt.201700284) (dependencia de la resistividad e histéresis). No validan el modelo experimental ni sustituyen la calibración del montaje utilizado.
+Sources on the material's behaviour: [Adafruit 519 cord manufacturer](https://www.adafruit.com/product/519) (non-linear response and unit-to-unit variation) and [study on conductive elastomer sensors](https://advanced.onlinelibrary.wiley.com/doi/full/10.1002/admt.201700284) (resistivity dependence and hysteresis). They do not validate the experimental model or replace calibration of the setup used.
 
 ## MVC
 
-El comentario no define el procedimiento de contracción voluntaria máxima. Las features `emg.*.rms_pct_mvc` y `emg.*.peak_pct_mvc` siguen requiriendo `emg_mvc_calibration` y quedan sin uso real hasta que **Aguado** lo defina.
+The values and behaviour the project already implements are adopted as final: by default the gateway records a 5 s capture (configurable) and computes the MVC as the maximum RMS over a 250 ms window. The simulated mission declares three attempts; the gateway does not automatically run three captures. The features `emg.*.rms_pct_mvc` and `emg.*.peak_pct_mvc` require `emg_mvc_calibration`.
 
-## Estado del hardware (#13)
+## Hardware status (#13)
 
-El protocolo declara dos canales EMG, pero el firmware y el gateway reales publican uno (`emg_lat_left`) hasta confirmar el hardware con Polfer. El formato de las tramas serie no cambia.
+The protocol declares two EMG channels, but the real firmware and gateway publish one (`emg_lat_left`) until the hardware is confirmed with the hardware lead. The serial frame format does not change.
 
-## Datos sin validar y dónde se cambian
+## Values and where they are changed
 
-Los datos que Aguado aún no ha validado (issue #106) tienen una fuente única por valor. Cambiar la fuente propaga el valor solo cuando la columna «Se actualiza a mano» está vacía; en el resto, la lista es cerrada y un test falla si una copia diverge. Todos siguen provisionales («PENDIENTE medición Aguado»): al cambiar un valor, mantén o actualiza la marca según corresponda.
+The project's current values are considered final by project decision. The table below shows where each one is maintained and checked; the decision does not imply that every value has been measured or clinically validated. Changing the source propagates the value only when the "Updated by hand" column is empty; otherwise the list is closed and a test fails if a copy diverges.
 
-## Dónde se cambia cada valor
+## Where each value is changed
 
-| Valor (provisional) | Fuente única | Se actualiza a mano (lista cerrada) | Test que falla si diverge |
+| Value | Single source | Updated by hand (closed list) | Test that fails if it diverges |
 |---|---|---|---|
-| Descanso entre series (30 s), series y repeticiones (4 × 15), banda (verde, 25 kg) | `protocol-catalog.json` | `example-mission.yaml` (`planned_sets`, `reps_per_set`, `rest_between_sets_s`, `load`); `app/ui/src/main/sessions/protocols.ts` (banda, series, reps; no lleva el descanso); mocks de `app/ui/src/renderer/data/mock/` | `contracts/tests/test_catalog.py` (cruce misión↔catálogo); `protocols.test.ts`; `protocol-values.test.ts` (mocks) |
-| Descanso al terminar (`rest_seconds`, 120 s; provisional, pendiente de Aguado) | `protocol-catalog.json` | mocks de la UI; el texto «2 min» de la UI se deriva de este valor (`strings/session.ts`) | `protocol-values.test.ts`; `contracts/tests/test_catalog.py` (marca pendiente) |
-| Ritmo (`rep_duration_s` 3,0 s, `rest_between_reps_s` 0,6 s), `gap_s` (30 s) y `rom_deg` (30°) | `protocol-catalog.json` | `example-mission.yaml` (`rep_duration_s`, `rest_between_reps_s`, `rom_deg`, `bracket.gap_s`) | `contracts/tests/test_catalog.py`; `physiology/tests/test_protocol_sets.py` |
-| Longitud del cordón en reposo (650 mm; 666 mm del segundo astronauta) | `example-mission.yaml` (por astronauta, simulador) | `contracts/catalog/calibration-defaults.json` (de ahí lo lee el gateway; `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` lo cambia en el dispositivo real); `calibration.stretch.json`; `features-request.json`; READMEs de gateway, contracts y firmware | `engine/tests/test_features_stretch_simulator.py` lee la misión; `contracts/tests/test_calibration_defaults.py` cruza la misión con el fichero (solo AST-01, 650 mm) |
-| Curva del cordón | `contracts/catalog/calibration-defaults.json` (curva de 4 puntos y reposo 6012 ohm / 650 mm); el gateway la escala a la R0 medida y `SPINE_GATEWAY_STRETCH_CURVE` la sustituye | `example-mission.yaml` (`signals.stretch.curve`) | `contracts/tests/test_calibration_defaults.py`; `gateway/tests/test_calibration.py`; `physiology/tests/test_signals_stretch.py` |
-| Espera de recuperación del cordón (120 s) y fracción de recuperación (0,1) | `engine/src/spine_engine/settings.py` (valores por defecto del motor); `recovery_wait_s` de la calibración manda si llega | `example-mission.yaml` (`recovery_wait_s`), `calibration.stretch.json`, `features-request.json`, README del engine en/es/ca | `engine/tests/test_settings.py` (fija 120 y 0,1 y que `StretchFamily` usa el mismo valor) |
-| Ventana MVC (250 ms) y `n_trials` (3) | `contracts/catalog/calibration-defaults.json` (`emg_mvc.window_ms`; `n_trials` solo en la misión) | `example-mission.yaml` (`emg_mvc`); `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` (gateway); ejemplos `calibration.emg-mvc*.json`; READMEs del gateway | `contracts/tests/test_calibration_defaults.py`; `gateway/tests/test_settings.py` |
-| Separación de electrodos, tramo, GND (10 cm, T11-L2, cresta ilíaca) e IMU (T9) | `session.exercise.json` / `example-mission.yaml` | `protocols.ts`; `strings/codes.ts` (texto) | `protocols.test.ts` (solo `streams`) |
-| Textos de colocación y etiquetas de la UI | `app/ui/src/renderer/strings/` | todo a mano, y README/firmware en es/ca | ninguno |
-| Pesos de rango, cortes de triaje | `engine/src/spine_engine/risk.py`, `triage-policy.json` | tablas del README del engine | `engine/tests/test_default_triage_policy.py` (marca «provisional») |
+| Rest between sets (30 s), sets and repetitions (4 × 15), band (green, 25 kg) | `protocol-catalog.json` | `example-mission.yaml` (`planned_sets`, `reps_per_set`, `rest_between_sets_s`, `load`); `app/ui/src/main/sessions/protocols.ts` (band, sets, reps; it does not carry the rest); mocks in `app/ui/src/renderer/data/mock/` | `contracts/tests/test_catalog.py` (mission↔catalogue cross-check); `protocols.test.ts`; `protocol-values.test.ts` (mocks) |
+| Rest at the end (`rest_seconds`, 120 s) | `protocol-catalog.json` | UI mocks; the UI's "2 min" text is derived from this value (`strings/session.ts`) | `protocol-values.test.ts`; `contracts/tests/test_catalog.py` |
+| Pace (`rep_duration_s` 3.0 s, `rest_between_reps_s` 0.6 s), `gap_s` (30 s) and `rom_deg` (30°) | `protocol-catalog.json` | `example-mission.yaml` (`rep_duration_s`, `rest_between_reps_s`, `rom_deg`, `bracket.gap_s`) | `contracts/tests/test_catalog.py`; `physiology/tests/test_protocol_sets.py` |
+| Cord rest length (650 mm; 666 mm for the second astronaut) | `example-mission.yaml` (per astronaut, simulator) | `contracts/catalog/calibration-defaults.json` (the gateway reads it from there; `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` changes it on the real device); `calibration.stretch.json`; `features-request.json`; gateway, contracts and firmware READMEs | `engine/tests/test_features_stretch_simulator.py` reads the mission; `contracts/tests/test_calibration_defaults.py` cross-checks the mission with the file (AST-01 only, 650 mm) |
+| Cord curve | `contracts/catalog/calibration-defaults.json` (4-point curve and rest 6012 ohm / 650 mm); the gateway scales it to the measured R0 and `SPINE_GATEWAY_STRETCH_CURVE` replaces it | `example-mission.yaml` (`signals.stretch.curve`) | `contracts/tests/test_calibration_defaults.py`; `gateway/tests/test_calibration.py`; `physiology/tests/test_signals_stretch.py` |
+| Cord recovery wait (120 s) and recovery fraction (0.1) | `engine/src/spine_engine/settings.py` (engine defaults); the calibration's `recovery_wait_s` wins if present | `example-mission.yaml` (`recovery_wait_s`), `calibration.stretch.json`, `features-request.json`, engine README | `engine/tests/test_settings.py` (pins 120 and 0.1 and that `StretchFamily` uses the same value) |
+| MVC window (250 ms) and `n_trials` (3) | `contracts/catalog/calibration-defaults.json` (`emg_mvc.window_ms`; `n_trials` only in the mission) | `example-mission.yaml` (`emg_mvc`); `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` (gateway); examples `calibration.emg-mvc*.json`; gateway READMEs | `contracts/tests/test_calibration_defaults.py`; `gateway/tests/test_settings.py` |
+| Electrode spacing, span, GND (10 cm, T11-L2, iliac crest) and IMU (T9) | `session.exercise.json` / `example-mission.yaml` | `protocols.ts`; `strings/codes.ts` (text) | `protocols.test.ts` (`streams` only) |
+| Placement texts and UI labels | `app/ui/src/renderer/strings/` | all by hand, and READMEs/firmware | none |
+| Range weights, triage cut-offs | `engine/src/spine_engine/risk.py`, `triage-policy.json` | engine README tables | `engine/tests/test_default_triage_policy.py` ("provisional" mark) |
 
-Qué se regenera: `protocol-catalog.json` no entra en los modelos Python ni en `v1.ts`; si cambia un schema, `uv run python contracts/scripts/generate_models.py` y `pnpm run gen:types`. Qué no cubre ningún test: los valores por defecto del gateway frente a la misión, y las notas en prosa de los README.
+What gets regenerated: `protocol-catalog.json` does not feed the Python models or `v1.ts`; if a schema changes, run `uv run python contracts/scripts/generate_models.py` and `pnpm run gen:types`. What no test covers: the gateway's default values against the mission, and the prose notes in the READMEs.

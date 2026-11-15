@@ -163,7 +163,14 @@ export function registerIpc(
   withoutInput(IPC_CHANNELS.settingsGet, () => settings.get());
   withInput(IPC_CHANNELS.settingsUpdate, settingsPatchSchema, (patch) => settings.update(patch));
 
-  withoutInput(IPC_CHANNELS.viewsStrip, () => views.strip());
+  // The strip is polled by every screen, the login and lock screens included: locked is the normal answer there, so it
+  // resolves to null (the preload turns it back into a `locked` rejection) instead of an error Electron logs each time.
+  withoutInput(IPC_CHANNELS.viewsStrip, () =>
+    views.strip().catch((error: unknown) => {
+      if (error instanceof ViewsError && error.code === 'locked') return null;
+      throw error;
+    }),
+  );
   withoutInput(IPC_CHANNELS.viewsToday, () => views.today());
   withInput(IPC_CHANNELS.viewsHistory, historyInputSchema, (range) => views.history(range));
   withoutInput(IPC_CHANNELS.viewsBaseline, () => views.baseline());

@@ -1,1 +1,1 @@
-"""Bloques puros de preparación de datos para el extractor de features (#40)."""
+"""Pure data-preparation blocks for the feature extractor (#40)."""

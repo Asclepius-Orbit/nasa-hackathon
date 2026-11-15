@@ -2,6 +2,16 @@
 
 # nasa-hackathon
 
+## Arquitectura del chat
+
+```text
+UI de escritorio -- HTTP POST /chat + SSE --> Servidor HTTP del agente -- MCP --> Servidor MCP --> API de lectura del backend
+                                                        |
+                                                        +--> Ollama (LLM local)
+```
+
+La UI llama directamente al agente con un token y `X-Astronaut-Id`. Cerrar la conexión cancela la respuesta. El agente puede ofrecer una respuesta alternativa determinista si el LLM no está disponible. Consulta la [guía de la API del agente](spine_monitor/agent/README.es.md) y el [contrato OpenAPI](spine_monitor/contracts/agent-openapi.yaml).
+
 ## Antropometría y evidencia offline
 
 El [inventario de fuentes](docs/anthropometry-sources.md) recoge guías de diseño de NASA y un estudio relacionado, con población, método, páginas, limitaciones y condiciones de reutilización. Los valores de NASA de aproximadamente el 3 % de la estatura de pie y el 6 % de la altura sentada son márgenes de diseño de naves, no umbrales clínicos. Una predicción del motor es experimental: depende de la referencia terrestre individual en la misma postura, la incertidumbre del sensor y las hipótesis indicadas; estatura, altura sentada y longitud estimada del cordón son magnitudes distintas.
@@ -41,6 +51,45 @@ docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-em
 
 El contexto de build es la raíz del repo: si Docker no puede leerlo por carpetas ilegibles (restos de directorios temporales en Windows), elimínalas o construye desde un clon limpio. Aún no se ha probado con una placa real. Ver [`spine_monitor/gateway/README.es.md`](spine_monitor/gateway/README.es.md) (ejecución, configuración, cableado y prueba con la placa) y [`firmware/README.es.md`](firmware/README.es.md) (sketch y protocolo serie).
 
+## Fuente de telemetría: simulador o dispositivo
+
+`SPINE_APP_TELEMETRY_SOURCE` (en `app/.env` o en el entorno) elige el único productor de telemetría de toda la app: `simulator` (por defecto) o `device`. El backend solo acepta esa `source`; cualquier otro valor impide arrancar con `SPINE_APP_TELEMETRY_SOURCE must be one of: simulator, device (got 'x')`. `SPINE_GATEWAY_DEMO=1` (por defecto `0`) hace que `device` use el emulador serie en vez de una placa; exige `device` y `start-demo.ps1` lo rechaza con `simulator`.
+
+| Fuente | Productor (perfil de compose) | Dónde |
+|---|---|---|
+| `simulator` | simulador de fisiología (`sim`) | cualquier SO |
+| `device` | gateway real + Arduino por USB (`hardware`) | Linux |
+| `device` + `SPINE_GATEWAY_DEMO=1` | gateway + emulador de Arduino (`gateway-demo`), sin placa | cualquier SO, también Windows |
+
+Regla: un solo productor a la vez, nunca simulador y gateway juntos. Solo `app/start-demo.ps1` lo impone; componer los perfiles a mano todavía permite mezclarlos.
+
+Para reproducirlo (desde la raíz del repo, con Docker):
+
+```bash
+sh app/mosquitto/setup.sh                                  # una vez: credenciales en app/.env
+powershell -File app/start-demo.ps1                        # simulador (por defecto)
+SPINE_APP_TELEMETRY_SOURCE=device SPINE_GATEWAY_DEMO=1 powershell -File app/start-demo.ps1   # dispositivo con emulador
+```
+
+En PowerShell define las variables con `$env:NOMBRE='valor'` o escríbelas en `app/.env`; `-NoUi` omite la app de escritorio.
+
+El backend descarta (aviso en el log, contador `wrong_source`) todo mensaje de stream, status o calibración cuya `source` difiera de la configurada, incluido `replay`. `ack` y `clock` no llevan `source`, así que no se filtran. En modo dispositivo el Last Will offline del gateway siempre gana en el estado del dispositivo.
+
+Para verificarlo (para antes el stack de desarrollo: ambos necesitan libres los puertos 1883, 8000 y 8001):
+
+```bash
+cd spine_monitor && SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetry_source.py   # Mosquitto real, ambos modos
+cd app/ui && pnpm run e2e:real          # UI contra el simulador
+cd app/ui && pnpm run e2e:real:device   # UI contra gateway + emulador
+```
+
+Límites conocidos:
+
+- La verificación con un Arduino físico está **pendiente**: no se ha probado con placa. En una sesión real el EMG está roto y la señal del IMU no es fiable.
+- El modo dispositivo con emulador solo cubre el emparejamiento y el inicio y la parada de sesión.
+- El protocolo de lat pulldown declara `emg_lat_left` y `emg_lat_right`, pero el gateway tiene un único stream de EMG, así que se rechaza. `calibrate` y la inyección de artefactos solo funcionan con el simulador en los e2e. Una issue de seguimiento lo recogerá.
+- El realismo de la señal simulada se sigue por separado (#131).
+
 ## Skills de Claude Code para pull requests
 
 Dos skills del proyecto en `.claude/skills/` llevan la revisión de PRs con subagentes:
@@ -68,6 +117,10 @@ Skills de proyecto para el dominio: `physiology-engine`, `contract-first`, `agen
 El tooling de Node usa solo pnpm (`pnpm install`, `pnpm run`, `pnpm dlx`); nunca npm ni npx. El lockfile es `app/ui/pnpm-lock.yaml`.
 
 Dependencias nuevas: `pint` (unidades, en `physiology`), `pydantic-evals` (dev, para evals del agente), y `vitest` y `uplot` (dev, en `app/ui`).
+
+## Logo
+
+El logo de Asclepius Orbit (`app/ui/build/icon.png` y `app/ui/src/renderer/assets/logo.png`) ha sido generado con IA por OpenAI.
 
 ## Licencia
 

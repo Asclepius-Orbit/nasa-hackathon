@@ -1,12 +1,12 @@
-"""Baseline real de extremo a extremo (#49): sesiones normales del simulador -> ``POST /features`` -> ``POST /baseline`` ->
-``POST /assess`` de una sesión normal más: no debe desviarse.
+"""End-to-end real baseline (#49): normal simulator sessions -> ``POST /features`` -> ``POST /baseline`` ->
+``POST /assess`` of one more normal session: it must not deviate.
 
-Nada se toca a mano entre pasos: el feature set de cada sesión es la respuesta de ``/features`` tal cual, la baseline es la
-respuesta de ``/baseline`` construida con esos feature sets y ``/assess`` recibe esa baseline. Es la prueba de que las
-features extraídas de señal simulada son comparables entre sesiones del mismo protocolo y entorno de gravedad.
+Nothing is touched by hand between steps: each session's feature set is the ``/features`` response as is, the baseline is the
+``/baseline`` response built from those feature sets, and ``/assess`` receives that baseline. It proves that the
+features extracted from simulated signal are comparable across sessions of the same protocol and gravity environment.
 
-Los ayudantes de sesión se cargan por ruta desde ``test_features_stretch_simulator.py``: con ``--import-mode=importlib``
-los tests no se importan entre sí por nombre.
+The session helpers are loaded by path from ``test_features_stretch_simulator.py``: with ``--import-mode=importlib``
+tests do not import each other by name.
 """
 
 import copy
@@ -28,38 +28,38 @@ _SIM: Any = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_SIM)
 
 Scenario = _SIM.Scenario
-# Una semilla y la gravedad de la Tierra: la otra semilla y la microgravedad ya las cubren los tests de cada familia, y cada
-# sesión de ejercicio pasa por HTTP (~8 s con chunks de 1 s; el global ``--timeout=120`` cubre la primera llamada).
+# One seed and Earth gravity: the other seed and microgravity are already covered by each family's tests, and each
+# exercise session goes over HTTP (~8 s with 1 s chunks; the global ``--timeout=120`` covers the first call).
 SEED = 7
 GRAVITY = "earth_1g"
 CHUNK_MS = 1000
 _SIM_EXERCISE_PROTOCOL = "lat_pulldown_standing_v1"
 SLOTS = (_SIM.EXERCISE, _SIM.SPINE_CHECK)
-# IMU y cordón: sin EMG a 1 kHz la petición de cada sesión pesa varias veces menos (validar y extraer 5 sesiones completas con
-# las dos EMG tardaba minutos por combinación). Los dominios cinemática y longitud del cordón son los que se evalúan.
+# IMU and cord: without EMG at 1 kHz each session's request weighs several times less (validating and extracting 5 full sessions with
+# both EMGs took minutes per combination). The kinematics and cord length domains are the ones evaluated.
 BASELINE_STREAMS = ("imu_t9", _SIM.STRETCH)
 ASSESS_EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "assess-request.json"
 
-# Juicio: cuántas sesiones normales forman la baseline. 3 es el mínimo con el que los detectores de cambio sostenido tienen
-# puntos (``cusum_min_points`` y ``kalman_min_points`` valen 3); más alarga la simulación sin cambiar lo que se prueba
-# (cada día son una sesión de ejercicio con 60 repeticiones y un spine_check, ~15 s de extracción por vía HTTP).
+# Judgement: how many normal sessions make up the baseline. 3 is the minimum with which the sustained-change detectors have
+# points (``cusum_min_points`` and ``kalman_min_points`` are 3); more lengthens the simulation without changing what is tested
+# (each day is an exercise session with 60 repetitions and a spine_check, ~15 s of extraction over HTTP).
 BASELINE_SESSIONS = 3
-# La sesión que se evalúa es la siguiente, también normal: un día más de la misma misión.
+# The session under evaluation is the next one, also normal: one more day of the same mission.
 HELD_OUT_DAY = BASELINE_SESSIONS
 DAYS = BASELINE_SESSIONS + 1
 INCOMPLETE_DATA_RULE = "RULE_INCOMPLETE_DATA"
-# Control: todas las sesiones de ejercicio del historial (la nueva incluida) desplazan por un factor SHIFT_FACTOR la ROM
-# sagital y las features del cordón, en el sentido malo que declara el catálogo (``lower_is_worse`` divide, el resto
-# multiplica): el riesgo ignora el sentido bueno. Se desplazan todas porque una sesión sin desplazar al inicio de la serie
-# (z alto y de signo contrario) impide que el detector marque el cambio como sostenido. Un factor 3 sale de la dispersión
-# normal de la baseline (observado antes de #51: riesgo saturado a 1,0 en la semilla 7).
+# Control: all exercise sessions in the history (the new one included) shift the sagittal ROM and the cord features by a
+# SHIFT_FACTOR, in the bad direction declared by the catalogue (``lower_is_worse`` divides, the rest
+# multiplies): the risk ignores the good direction. All are shifted because an unshifted session at the start of the series
+# (high z with opposite sign) stops the detector from flagging the change as sustained. A factor of 3 comes from the dispersion
+# normal baseline spread (observed before #51: risk saturated at 1.0 on seed 7).
 SHIFT_FACTOR = 3.0
 SHIFTED_PREFIXES = ("imu.t9.sagittal", "stretch.")
 
 
 @cache
 def _feature_sets() -> tuple[str, ...]:
-    """Feature sets (JSON) de cada sesión, día a día y en orden, tal como los devuelve ``POST /features``."""
+    """Feature sets (JSON) of each session, day by day and in order, as returned by ``POST /features``."""
     client = TestClient(create_default_app())
     scenario = Scenario(streams=BASELINE_STREAMS, days=DAYS, gravity=GRAVITY, chunk_ms=CHUNK_MS)
     out: list[str] = []
@@ -72,7 +72,7 @@ def _feature_sets() -> tuple[str, ...]:
 
 
 def _split() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """(feature sets de la baseline, feature sets de la sesión que se evalúa)."""
+    """(baseline feature sets, feature sets of the session under evaluation)."""
     sets = [json.loads(s) for s in _feature_sets()]
     cut = BASELINE_SESSIONS * len(SLOTS)
     return sets[:cut], sets[cut:]
@@ -151,7 +151,7 @@ def test_the_baseline_is_built_from_the_extracted_features_of_the_normal_session
     assert {e["feature_id"] for e in baseline["entries"]} == extracted
     assert {e["gravity_environment"] for e in baseline["entries"]} == {GRAVITY}
     assert len(baseline["built_from_session_ids"]) == BASELINE_SESSIONS * len(SLOTS)
-    # una feature puede omitirse en alguna sesión (p. ej. recovery_time_s): n nunca supera las sesiones de la baseline
+    # a feature may be omitted in some session (e.g. recovery_time_s): n never exceeds the baseline sessions
     assert all(1 <= e["n"] <= BASELINE_SESSIONS for e in baseline["entries"])
     counts = {e["feature_id"]: e["n"] for e in baseline["entries"] if e["protocol_id"] == _SIM_EXERCISE_PROTOCOL}
     assert counts["exercise.rep_count"] == BASELINE_SESSIONS
@@ -163,31 +163,32 @@ def _missing(assessment: dict[str, Any]) -> list[str]:
 
 
 @pytest.mark.integration
-def test_a_further_normal_session_with_normal_self_reports_is_green_and_misses_nothing_computed_elsewhere() -> None:
+def test_normal_session_is_incomplete_without_current_measured_windows() -> None:
     client = TestClient(create_default_app())
     reference, held_out = _split()
     reports, context, as_of = _normal_context([*reference, *held_out])
     baseline = _baseline(client, reference, reports)
 
-    # como en el uso real, /assess recibe el histórico reciente, la sesión nueva y los autoinformes
+    # as in real use, /assess receives the recent history, the new session and the self-reports
     assessment = _assess(client, baseline, [*reference, *held_out], self_reports=reports, daily_context=context, as_of=as_of)
 
     assert assessment["risk_score"] == 0.0
     assert assessment["drivers"] == []
     assert assessment["based_on"]["baseline_id"] == baseline["baseline_id"]
-    assert assessment["level"] == Level.GREEN.value
-    assert assessment["fired_rules"] == []
+    assert assessment["level"] == Level.AMBER.value
+    assert {r["rule_id"] for r in assessment["fired_rules"]} == {INCOMPLETE_DATA_RULE}
     evaluated = {d["domain"] for d in assessment["domains"] if d["evaluated"]}
     assert {"kinematics", "spine_length"} <= evaluated
     missing = _missing(assessment)
-    assert not [what for what in missing if what.startswith(("exercise.", "imu."))]
+    assert "imu.lumbar.sensor_x.orientation_deg" in missing
     # a feature one set skipped but another computed is not missing
     computed = {f["feature_id"] for fs in [*reference, *held_out] for f in fs["features"]}
-    assert computed.isdisjoint(missing)
+    measured = {"imu.lumbar.sensor_x.orientation_deg", "stretch.full_spine.resistance_change_pct", "emg.reference.normalized_amplitude"}
+    assert (computed - measured).isdisjoint(missing)
 
 
 @pytest.mark.integration
-def test_without_self_reports_only_the_symptom_features_are_missing() -> None:
+def test_without_self_reports_symptoms_and_current_measured_windows_are_missing() -> None:
     client = TestClient(create_default_app())
     reference, held_out = _split()
     baseline = _baseline(client, reference)
@@ -198,7 +199,9 @@ def test_without_self_reports_only_the_symptom_features_are_missing() -> None:
     assert assessment["drivers"] == []
     missing = _missing(assessment)
     assert missing
-    assert all(what.startswith("symptoms.") for what in missing)
+    assert all(what.startswith("symptoms.") or what in {
+        "imu.lumbar.sensor_x.orientation_deg", "stretch.full_spine.resistance_change_pct", "emg.reference.normalized_amplitude"
+    } for what in missing)
     assert {r["rule_id"] for r in assessment["fired_rules"]} <= {INCOMPLETE_DATA_RULE}
 
 

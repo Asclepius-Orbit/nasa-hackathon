@@ -31,7 +31,7 @@ _BASE = StretchChunk.model_validate(
 
 
 def chunk(seq: int, *, stream: str = "stretch_spine", boot: int = 7, n: int = 4, dropped: int = 0, tag: int = 0, received_s: int = 0) -> StretchChunk:
-    # `tag` distingue copias con el mismo (stream, boot, seq) para ver cuál gana.
+    # `tag` distinguishes copies with the same (stream, boot, seq) to see which one wins.
     return _BASE.model_copy(
         update={
             "seq": seq,
@@ -114,7 +114,7 @@ def test_null_dropped_samples_counts_as_zero():
 
 
 def test_each_boot_is_an_independent_segment_and_the_restart_is_reported():
-    # El boot 99 arranca después (received_at) aunque su boot_id sea mayor o menor: manda la llegada.
+    # Boot 99 starts later (received_at) even if its boot_id is larger or smaller: arrival decides.
     old = [chunk(5, boot=99, received_s=1), chunk(6, boot=99, received_s=2)]
     new = [chunk(0, boot=3, received_s=10), chunk(1, boot=3, received_s=11)]
 
@@ -155,7 +155,7 @@ _chunk_specs = st.lists(
 
 
 def build(specs) -> list[StretchChunk]:
-    # Mismo (stream, boot, seq) => contenido idéntico, para que «gana el primero» no dependa del orden.
+    # Same (stream, boot, seq) => identical content, so that "the first wins" does not depend on the order.
     return [chunk(seq, stream=s, boot=b, n=n, dropped=d, received_s=b) for s, b, seq, n, d in specs]
 
 

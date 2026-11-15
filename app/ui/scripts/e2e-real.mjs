@@ -7,6 +7,11 @@
  * runs the `real` Playwright project against it and always takes the stack down. Plain Node, so it runs the same on
  * Windows (Git Bash for `sh`) and Linux. Needs Docker, `sh`, and ports 1883, 8000 and 8001 free.
  *
+ * The telemetry producer is one per run, chosen with SPINE_APP_TELEMETRY_SOURCE (the same variable the compose backend reads):
+ * `simulator` (default, profile `sim`, harness sim-01) or `device` (profile `gateway-demo`: the real gateway reading the
+ * Arduino emulator over a socket, harness gw-demo; `pnpm e2e:real:device`). Never both profiles together. A physical board
+ * is not covered: that needs the `hardware` profile on Linux or the gateway natively on Windows.
+ *
  * Set E2E_REAL_KEEP=1 to leave the stack running afterwards (to look at it with `pnpm start`).
  */
 import { spawn } from 'node:child_process';
@@ -22,6 +27,17 @@ const BACKEND = 'http://127.0.0.1:8000';
 const ASTRONAUT = 'AST-01';
 const READY_TIMEOUT_MS = 180_000;
 
+const MODES = {
+  simulator: { profile: 'sim', harness: 'sim-01', other: 'gw-demo' },
+  device: { profile: 'gateway-demo', harness: 'gw-demo', other: 'sim-01' },
+};
+const source = process.argv.includes('--device') ? 'device' : (process.env.SPINE_APP_TELEMETRY_SOURCE ?? 'simulator');
+const mode = MODES[source];
+if (mode === undefined) {
+  console.error(`SPINE_APP_TELEMETRY_SOURCE must be simulator or device, got ${source}`);
+  process.exit(2);
+}
+
 const token = randomBytes(24).toString('hex');
 const tokenDir = await mkdtemp(path.join(os.tmpdir(), 'asclepius-e2e-'));
 const tokenFile = path.join(tokenDir, 'backend-token');
@@ -33,8 +49,13 @@ const env = {
   ASCLEPIUS_BACKEND_TOKEN_FILE: tokenFile,
   // One preflight baseline session is enough for the demo (the default plan asks for three).
   SPINE_APP_BASELINE_REQUIRED: '1',
+  // Backend (ingest guard) and producer must agree: compose reads this for the backend, the profile picks the producer.
+  SPINE_APP_TELEMETRY_SOURCE: source,
+  // For the spec: which harness the producer publishes as, and which source the API must report for it.
+  E2E_REAL_SOURCE: source,
+  E2E_REAL_HARNESS: mode.harness,
 };
-const composeArgs = ['compose', '-p', 'asclepius-e2e', '-f', compose, '--profile', 'sim'];
+const composeArgs = ['compose', '-p', 'asclepius-e2e', '-f', compose, '--profile', mode.profile];
 
 function run(command, args, { cwd = uiDir, shell = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -66,10 +87,22 @@ async function waitForStack() {
     const res = await fetch(`${BACKEND}/health`);
     return res.ok && (await res.json()).mqtt_connected === true;
   });
-  await until('the simulated harness to report its status', async () => {
+  await until(`the ${source} harness ${mode.harness} to report its status`, async () => {
     const res = await fetch(`${BACKEND}/ui/crew/${ASTRONAUT}/devices`, { headers });
-    return res.ok && (await res.json()).length > 0;
+    return res.ok && (await res.json()).some((d) => d.device_id === mode.harness);
   });
+}
+
+/** Producer provenance from the API: every device the backend holds is the chosen producer's, with the chosen `source`. */
+async function assertProvenance(when) {
+  const res = await fetch(`${BACKEND}/ui/crew/${ASTRONAUT}/devices`, { headers });
+  const devices = await res.json();
+  const summary = devices.map((d) => `${d.device_id}:${d.source}`).join(', ');
+  const wrong = devices.filter((d) => d.source !== source || d.device_id === mode.other);
+  if (!res.ok || wrong.length > 0 || !devices.some((d) => d.device_id === mode.harness)) {
+    throw new Error(`provenance check failed ${when}: expected only ${source} data from ${mode.harness}, got [${summary}]`);
+  }
+  console.log(`provenance ok ${when}: [${summary}]`);
 }
 
 let failure = null;
@@ -79,7 +112,9 @@ try {
   await run('docker', [...composeArgs, 'up', '-d', '--build']);
   await waitForStack();
   await pnpm(['build:e2e-real']);
+  await assertProvenance('before the UI run');
   await pnpm(['exec', 'playwright', 'test', '--project=real']);
+  await assertProvenance('after the UI run');
 } catch (error) {
   failure = error;
 } finally {

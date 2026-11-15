@@ -1,44 +1,44 @@
-"""Sesiones: agenda del día, registro Session, calibraciones y síntesis de los streams de una sesión.
+"""Sessions: day schedule, Session record, calibrations and synthesis of a session's streams.
 
-- `plan_day`: sesiones planificadas del día (las de `schedule.sessions` cuya fase y `every_n_days`
-  tocan) con jitter de inicio (RNG `(astronaut_id, day.index, slot, "plan")`, redondeado a ms) y sin
-  solaparse (una que empezaría antes de que acabe la anterior se retrasa hasta su fin). Si
-  `schedule.background.enabled`, la sesión de fondo `spine_check` (IMU + cordón a las frecuencias
-  reducidas) cubre la ventana `start_time_utc..end_time_utc` con `pauses` donde hay sesiones
-  planificadas. Ids: `derive_uuid(seed, astronaut_id, day.index, slot)`. Toda sesión dura un número
-  entero de chunks, así que todos sus streams comparten la rejilla de chunks. El chunk de las sesiones
-  es `signals.chunk_ms`; el del fondo es el suyo, `schedule.background.chunk_ms` (cada `SessionPlan` y
-  cada `SynthSpec` llevan su `chunk_ms`: no hay un tamaño de chunk global).
-  Los spine_check con `bracket` (pre/post) no tienen hora ni jitter: se colocan a `gap_s` justo antes o
-  después del ejercicio `of` ya planificado, con `phase` y `related_session_id`; si el ejercicio no se
-  hace ese día, o el spine_check no cabe en la ventana de encendido o choca con otra sesión, se omiten.
-- `active_chunks`: tramos de chunks que de verdad se emiten (el fondo pierde los chunks que tocan una
-  pausa: reanuda en el primer chunk de su rejilla de fondo que empieza tras el fin de la sesión).
-- `synthesize`: arrays publicables de cada stream (señal + fallos de calidad + derivados del cordón),
-  más los intermedios deterministas que usa el ground truth. RNG por `spec.keys` (en misión
-  `(astronaut_id, day.index, slot)`): `(..., stream_id, "signal")`, `(..., stream_id, "faults")` y
-  `(..., "motion")` para las flexiones del fondo (compartidas por IMU y cordón: es el mismo tronco).
-  Nada se arrastra entre sesiones: el cordón empieza cada sesión recuperado (residuo 0) salvo en los
-  bloques en vivo, que encadenan el residuo del bloque anterior.
-- Calibraciones: stretch e imu se registran los días con índice % `every_n_days` == 0 y el primer día
-  de cada tramo, en la primera sesión del día que usa ese stream (o al encender el dispositivo si
-  ninguna lo usa) y valen hasta la siguiente; emg_mvc al inicio de cada sesión `exercise`. El
-  `calibration_id` vigente va en `Session.streams` y en los chunks del cordón (length_mm lo exige).
-  Cada calibración se emite también por MQTT (retained, `topics.calibration`): ver `generator.calibration_envelope`.
-- `build_session`: registro Session (mission_context, streams con colocación y calibración,
-  load_declared, planned_reps (total), planned_sets y reps_per_set en `exercise`, eventos
-  set_start/set_end (set_index), rep_start/rep_end (rep_index contado a lo largo de la sesión, más
-  set_index) y rest_start/rest_end entre series, todos con device_ms y boot_id; phase y
-  related_session_id en los spine_check pre/post; en el fondo notas de pausa/reanudación).
-- `resimulate`: la misma sesión con otra gravedad (par A/B exacto).
+- `plan_day`: planned sessions of the day (those of `schedule.sessions` whose phase and `every_n_days`
+  apply) with start jitter (RNG `(astronaut_id, day.index, slot, "plan")`, rounded to ms) and without
+  overlapping (one that would start before the previous one ends is delayed until its end). If
+  `schedule.background.enabled`, the background session `spine_check` (IMU + cord at the reduced
+  frequencies) covers the window `start_time_utc..end_time_utc` with `pauses` where there are
+  planned sessions. Ids: `derive_uuid(seed, astronaut_id, day.index, slot)`. Every session lasts a whole
+  number of chunks, so all its streams share the chunk grid. The chunk of sessions
+  is `signals.chunk_ms`; the background one is its own, `schedule.background.chunk_ms` (each `SessionPlan` and
+  each `SynthSpec` carries its `chunk_ms`: there is no global chunk size).
+  The spine_checks with `bracket` (pre/post) have no time or jitter: they are placed `gap_s` right before or
+  after the already planned exercise `of`, with `phase` and `related_session_id`; if the exercise is not
+  done that day, or the spine_check does not fit in the power-on window or clashes with another session, they are omitted.
+- `active_chunks`: spans of chunks that are actually emitted (the background loses the chunks touching a
+  pause: it resumes at the first chunk of its background grid that starts after the session ends).
+- `synthesize`: publishable arrays of each stream (signal + quality faults + cord derivatives),
+  plus the deterministic intermediates used by the ground truth. RNG per `spec.keys` (in mission
+  `(astronaut_id, day.index, slot)`): `(..., stream_id, "signal")`, `(..., stream_id, "faults")` and
+  `(..., "motion")` for the background flexions (shared by IMU and cord: it is the same trunk).
+  Nothing is carried between sessions: the cord starts each session recovered (residual 0) except in the
+  live blocks, which chain the residual of the previous block.
+- Calibrations: stretch and imu are registered on days with index % `every_n_days` == 0 and the first day
+  of each segment, in the first session of the day that uses that stream (or at device power-on if
+  none uses it) and hold until the next one; emg_mvc at the start of each `exercise` session. The
+  `calibration_id` in force goes in `Session.streams` and in the cord chunks (length_mm requires it).
+  Each calibration is also emitted over MQTT (retained, `topics.calibration`): see `generator.calibration_envelope`.
+- `build_session`: Session record (mission_context, streams with placement and calibration,
+  load_declared, planned_reps (total), planned_sets and reps_per_set in `exercise`, events
+  set_start/set_end (set_index), rep_start/rep_end (rep_index counted across the session, plus
+  set_index) and rest_start/rest_end between sets, all with device_ms and boot_id; phase and
+  related_session_id in the pre/post spine_checks; in the background pause/resume notes).
+- `resimulate`: the same session with another gravity (exact A/B pair).
 
-Decisiones de modelado (documentadas porque el config no las fija):
-- La referencia de la histéresis del cordón es su longitud estática al inicio de la sesión (reposo +
-  elongación latente − pérdida diurna, sin flexión): solo el estiramiento dinámico deja residuo y
-  marca `band_recovering`; una columna elongada en reposo no "recupera" eternamente.
-- No se emiten eventos mvc_start/mvc_end: el protocolo no tiene fase MVC en la señal y unos eventos
-  sin la contracción correspondiente en el EMG engañarían al motor. La MVC es la calibración emg_mvc.
-- En spine_check y fondo el plano del movimiento es el sagital (flexión del tronco); en reposo no influye.
+Modelling decisions (documented because the config does not fix them):
+- The reference for the cord hysteresis is its static length at the start of the session (rest +
+  latent elongation − diurnal loss, without flexion): only dynamic stretch leaves a residual and
+  marks `band_recovering`; a column elongated at rest does not "recover" forever.
+- No mvc_start/mvc_end events are emitted: the protocol has no MVC phase in the signal and events
+  without the matching contraction in the EMG would mislead the engine. The MVC is the emg_mvc calibration.
+- In spine_check and background the movement plane is the sagittal one (trunk flexion); at rest it does not matter.
 """
 
 import math
@@ -98,7 +98,7 @@ _US = timedelta(microseconds=1)
 
 @dataclass(frozen=True, slots=True)
 class SessionRef:
-    """Identifica una sesión de la misión de forma estable: `slot` es el `name` de la agenda (o del fondo)."""
+    """Identifies a mission session stably: `slot` is the schedule's (or the background's) `name`."""
 
     astronaut_id: str
     day: int
@@ -114,21 +114,21 @@ class SessionPlan:
     start: datetime
     end: datetime
     stream_ids: tuple[str, ...]
-    reps: tuple[Rep, ...]  # vacío en spine_check
+    reps: tuple[Rep, ...]  # empty in spine_check
     background: bool
-    chunk_ms: float  # duración de chunk de esta sesión: `signals.chunk_ms`, o `schedule.background.chunk_ms` en el fondo
-    # Solo en el fondo: intervalos [inicio, fin) ocupados por sesiones planificadas (sin chunks del fondo).
+    chunk_ms: float  # chunk duration of this session: `signals.chunk_ms`, or `schedule.background.chunk_ms` in the background
+    # Background only: intervals [start, end) occupied by planned sessions (no background chunks).
     pauses: tuple[tuple[datetime, datetime], ...]
-    # Solo en un spine_check que envuelve a un ejercicio (`schedule.sessions[].bracket`): pre/post y la sesión de ejercicio.
+    # Only in a spine_check that wraps an exercise (`schedule.sessions[].bracket`): pre/post and the exercise session.
     phase: Literal["pre", "post"] | None = None
     related_session_id: str | None = None
 
 
-# --- Agenda -----------------------------------------------------------------------------------------
+# --- Schedule ---------------------------------------------------------------------------------------
 
 
 def chunk_ms_for(config: MissionConfig, *, background: bool) -> float:
-    """Duración de chunk de una sesión: la de las sesiones, o la propia del fondo."""
+    """Chunk duration of a session: the sessions' one, or the background's own."""
     return config.schedule.background.chunk_ms if background else config.signals.chunk_ms
 
 
@@ -137,7 +137,7 @@ def chunk_delta(chunk_ms: float) -> timedelta:
 
 
 def chunks_for(duration_s: float, *, chunk_ms: float) -> int:
-    """Chunks enteros que cubren `duration_s` (al menos uno), igual que `signals.n_samples`."""
+    """Whole chunks covering `duration_s` (at least one), same as `signals.n_samples`."""
     return max(1, math.ceil(duration_s * 1000.0 / chunk_ms - 1e-9))
 
 
@@ -150,7 +150,7 @@ def n_chunks(plan: SessionPlan) -> int:
 
 
 def stream_rate(config: MissionConfig, stream_id: str, *, background: bool) -> float:
-    """Frecuencia de un stream: la de su tipo, o la reducida del fondo."""
+    """Rate of a stream: that of its type, or the reduced background one."""
     kind = config.device.stream(stream_id).stream_kind
     if not background:
         return config.signals.rate(kind)
@@ -163,14 +163,14 @@ def stream_rate(config: MissionConfig, stream_id: str, *, background: bool) -> f
 
 
 def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) -> tuple[SessionPlan, ...]:
-    """Sesiones del día ordenadas por inicio (el fondo, si existe, incluido)."""
+    """Sessions of the day ordered by start (the background, if any, included)."""
     tree = RngTree(seed)
     chunk_ms = chunk_ms_for(config, background=False)
     chunk = chunk_delta(chunk_ms)
     candidates: list[tuple[datetime, int, Any, ExerciseProtocol | SpineCheckProtocol]] = []
     for order, slot in enumerate(config.schedule.sessions):
         if slot.bracket is not None or slot.time_utc is None or slot.start_jitter_s is None:
-            continue  # los spine_check pre/post se colocan tras el ejercicio al que envuelven
+            continue  # the pre/post spine_checks are placed after the exercise they wrap
         if day.phase not in slot.phases or day.index % slot.every_n_days:
             continue
         rng = tree.rng(astronaut_id, day.index, slot.name, "plan")
@@ -182,17 +182,18 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
     previous_end: datetime | None = None
     power_on, power_off = day.at(config.device.power_on_time_utc), day.at(config.device.power_off_time_utc)
     for start, _, slot, protocol in candidates:
-        # El dispositivo solo existe dentro de su ventana de encendido del día: la sesión (con su duración
-        # en chunks enteros) se desplaza para caber entre el encendido, la sesión anterior y el apagado.
+        # The device only exists within its power-on window of the day: the session (with its duration
+        # in whole chunks) is shifted to fit between power-on, the previous session and power-off.
         earliest = power_on if previous_end is None else max(power_on, previous_end)
-        duration = chunks_for(protocol_duration_s(protocol), chunk_ms=chunk_ms) * chunk
+        reps = rep_schedule(protocol, rng=tree.rng(astronaut_id, day.index, slot.name, "exercise")) if isinstance(protocol, ExerciseProtocol) else ()
+        duration_s = exercise_duration_s(protocol, reps) if isinstance(protocol, ExerciseProtocol) else protocol_duration_s(protocol)
+        duration = chunks_for(duration_s, chunk_ms=chunk_ms) * chunk
         start = max(start, earliest)
         if start + duration > power_off:
             start = power_off - duration
         if start < earliest:
-            continue  # no cabe en la ventana de encendido: la sesión no se realiza ese día
+            continue  # does not fit in the power-on window: the session is not performed that day
         end = start + duration
-        exercise = isinstance(protocol, ExerciseProtocol)
         plans.append(
             SessionPlan(
                 ref=SessionRef(astronaut_id, day.index, slot.name),
@@ -202,7 +203,7 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
                 start=start,
                 end=end,
                 stream_ids=tuple(protocol.streams),
-                reps=rep_schedule(protocol) if exercise else (),
+                reps=reps,
                 background=False,
                 chunk_ms=chunk_ms,
                 pauses=(),
@@ -216,14 +217,14 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
             continue
         anchor = next((p for p in plans if p.ref.slot == bracket.of), None)
         if anchor is None:
-            continue  # el ejercicio no se hace ese día: tampoco su spine_check pre/post
+            continue  # the exercise is not done that day: neither is its pre/post spine_check
         protocol = config.protocol(slot.protocol_id)
         duration = chunks_for(protocol_duration_s(protocol), chunk_ms=chunk_ms) * chunk
         gap = timedelta(seconds=bracket.gap_s)
         start = anchor.start - gap - duration if bracket.phase == "pre" else anchor.end + gap
         end = start + duration
         if start < power_on or end > power_off or any(p.start < end and p.end > start for p in plans):
-            continue  # no cabe en la ventana de encendido ni entre las demás sesiones
+            continue  # does not fit in the power-on window or between the other sessions
         plans.append(
             SessionPlan(
                 ref=SessionRef(astronaut_id, day.index, slot.name),
@@ -268,8 +269,8 @@ def plan_day(config: MissionConfig, seed: int, astronaut_id: str, day: DayInfo) 
 
 
 def active_chunks(plan: SessionPlan) -> tuple[tuple[int, int], ...]:
-    """Tramos [k0, k1) de chunks emitidos, en la rejilla de `plan.chunk_ms`. Fondo: sin los chunks que
-    acaban después del inicio de una pausa y empiezan antes de su fin."""
+    """Spans [k0, k1) of emitted chunks, on the grid of `plan.chunk_ms`. Background: without the chunks that
+    end after the start of a pause and start before its end."""
     total = n_chunks(plan)
     if not plan.pauses:
         return ((0, total),)
@@ -291,25 +292,25 @@ def active_chunks(plan: SessionPlan) -> tuple[tuple[int, int], ...]:
     return tuple(ranges)
 
 
-# --- Calibraciones ----------------------------------------------------------------------------------
+# --- Calibrations -----------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class CalibrationRecord:
-    """Una calibración emitida (o vigente) y lo que hace falta para aplicarla."""
+    """An emitted (or in-force) calibration and what is needed to apply it."""
 
     calibration_id: str
     stream_id: str
     calibration_type: Literal["stretch", "emg_mvc", "imu"]
     created_at: datetime
-    session_id: str | None  # sesión en la que se registró (None: al encender, fuera de sesión)
-    day: int  # índice de día en que se registró
+    session_id: str | None  # session in which it was registered (None: at power-on, outside a session)
+    day: int  # day index on which it was registered
     model: StretchCalibration | EmgMvcCalibration | ImuCalibration
-    curve: tuple[tuple[float, float], ...] | None  # solo stretch: (resistance_ohm, length_mm)
+    curve: tuple[tuple[float, float], ...] | None  # stretch only: (resistance_ohm, length_mm)
 
 
 def calibration_day(timeline: MissionTimeline, every_n_days: int, day: int) -> int:
-    """Último día <= `day` con calibración programada (índice % every_n_days == 0 o primer día de tramo)."""
+    """Last day <= `day` with a scheduled calibration (index % every_n_days == 0 or first day of a segment)."""
     for k in range(day, -1, -1):
         info = timeline.day(k)
         if k % every_n_days == 0 or info.day_in_segment == 0:
@@ -332,6 +333,12 @@ def _base(config: MissionConfig, member: CrewMember, *, calibration_id: str, str
     return base
 
 
+def member_lot_gain(config: MissionConfig, seed: int, astronaut_id: str) -> float:
+    """Resistance gain of the astronaut's cord lot. RNG `(astronaut_id, "stretch_lot")`: its own branch,
+    once per astronaut, shared by the calibration curve and the signal."""
+    return stretch_signal.lot_gain(RngTree(seed).rng(astronaut_id, "stretch_lot"), config.signals.stretch)
+
+
 def stretch_calibration(
     config: MissionConfig,
     rng: np.random.Generator,
@@ -342,10 +349,11 @@ def stretch_calibration(
     session_id: str | None,
     created_at: datetime,
     day: int,
+    lot_gain: float = 1.0,
 ) -> CalibrationRecord:
-    """Curva medida (ruidosa) de la curva real del cordón; el primer punto es el reposo."""
+    """Measured (noisy) curve of the true cord curve (with the lot gain); the first point is the rest."""
     rest = member.baseline.cord_rest_length_mm
-    curve = stretch_signal.measured_curve(rng, config.signals.stretch, config.calibration.stretch, rest_length_mm=rest)
+    curve = stretch_signal.measured_curve(rng, config.signals.stretch, config.calibration.stretch, rest_length_mm=rest, lot_gain=lot_gain)
     cfg = config.calibration.stretch
     model = StretchCalibration.model_validate({
         **_base(config, member, calibration_id=calibration_id, stream_id=stream_id, session_id=session_id, created_at=created_at),
@@ -367,7 +375,7 @@ def imu_calibration(
     created_at: datetime,
     day: int,
 ) -> CalibrationRecord:
-    """Bias estimado = bias real de `signals.imu` + error de medida; rangos y montaje del config."""
+    """Estimated bias = true bias of `signals.imu` + measurement error; ranges and mounting from the config."""
     imu = config.signals.imu
     cfg = config.calibration.imu
     gyro = rng.normal(0.0, cfg.gyro_bias_noise_dps, 3)
@@ -397,7 +405,7 @@ def emg_mvc_calibration(
     created_at: datetime,
     day: int,
 ) -> CalibrationRecord:
-    """MVC medida = la real × (1 + N(0, measurement_noise_rel)); reposo = RMS del tono de reposo y el ruido."""
+    """Measured MVC = the true one × (1 + N(0, measurement_noise_rel)); rest = RMS of the rest tone and the noise."""
     cfg = config.calibration.emg_mvc
     emg = config.signals.emg
     true_mvc = member.baseline.emg_mvc_rms_mv[stream_id]
@@ -424,9 +432,9 @@ def scheduled_calibrations(
     astronaut_id: str,
     day: DayInfo,
 ) -> dict[str, CalibrationRecord]:
-    """Calibraciones stretch/imu vigentes el día `day`, por stream (registradas en su día de calibración).
+    """stretch/imu calibrations in force on day `day`, per stream (registered on their calibration day).
 
-    RNG `(astronaut_id, día_de_calibración, "calibration", tipo, stream_id)`; id con las mismas claves.
+    RNG `(astronaut_id, calibration_day, "calibration", type, stream_id)`; id with the same keys.
     """
     tree = RngTree(seed)
     member = config.member(astronaut_id)
@@ -440,16 +448,17 @@ def scheduled_calibrations(
         cal_day = timeline.day(cal_index)
         host = next((p for p in plan_day(config, seed, astronaut_id, cal_day) if stream.stream_id in p.stream_ids), None)
         keys: tuple[Key, ...] = (astronaut_id, cal_index, "calibration", cal_type, stream.stream_id)
+        extra = {"lot_gain": member_lot_gain(config, seed, astronaut_id)} if cal_type == "stretch" else {}
         out[stream.stream_id] = build(
             config, tree.rng(*keys), member, calibration_id=tree.uuid(*keys), stream_id=stream.stream_id,
             session_id=host.session_id if host is not None else None,
-            created_at=host.start if host is not None else cal_day.at(config.device.power_on_time_utc), day=cal_index,
+            created_at=host.start if host is not None else cal_day.at(config.device.power_on_time_utc), day=cal_index, **extra,
         )  # fmt: skip
     return out
 
 
 def session_mvc_calibrations(config: MissionConfig, seed: int, plan: SessionPlan) -> dict[str, CalibrationRecord]:
-    """emg_mvc de cada stream EMG de una sesión `exercise`, al inicio. RNG `(astronaut_id, día, slot, stream_id, "emg_mvc")`."""
+    """emg_mvc of each EMG stream of an `exercise` session, at the start. RNG `(astronaut_id, day, slot, stream_id, "emg_mvc")`."""
     if plan.session_type != "exercise":
         return {}
     tree = RngTree(seed)
@@ -466,7 +475,7 @@ def session_mvc_calibrations(config: MissionConfig, seed: int, plan: SessionPlan
     return out
 
 
-# --- Registro Session -------------------------------------------------------------------------------
+# --- Session record ---------------------------------------------------------------------------------
 
 
 def _event(event_type: str, at: datetime, device_plan: DevicePlan, **extra: Any) -> dict[str, Any]:
@@ -480,10 +489,10 @@ def _event(event_type: str, at: datetime, device_plan: DevicePlan, **extra: Any)
 
 
 def _exercise_events(plan: SessionPlan, protocol: ExerciseProtocol, device_plan: DevicePlan) -> list[dict[str, Any]]:
-    """set_start/set_end por serie, rep_start/rep_end de cada rep (rep_index de la sesión, set_index de su serie)
-    y rest_start/rest_end entre series; ordenados por instante (a igual instante: set_start, rep_start, rep_end, set_end)."""
+    """set_start/set_end per set, rep_start/rep_end of each rep (the session's rep_index, its set's set_index)
+    and rest_start/rest_end between sets; ordered by instant (at equal instant: set_start, rep_start, rep_end, set_end)."""
     at = lambda seconds: plan.start + timedelta(seconds=seconds)  # noqa: E731
-    sets = set_schedule(protocol)
+    sets = set_schedule(protocol, plan.reps)
     timed: list[tuple[float, int, dict[str, Any]]] = []
     for window in sets:
         timed.append((window.start_s, 0, _event("set_start", at(window.start_s), device_plan, set_index=window.index)))
@@ -507,7 +516,7 @@ def build_session(
     gravity_environment: GravityEnvironment,
     calibration_ids: Mapping[str, str],
 ) -> Session:
-    """Registro Session completo (con `ended_at`): se emite al empezar la sesión."""
+    """Complete Session record (with `ended_at`): emitted when the session starts."""
     member = config.member(plan.ref.astronaut_id)
     streams = []
     for stream_id in plan.stream_ids:
@@ -565,44 +574,44 @@ def build_session(
     return Session.model_validate(payload)
 
 
-# --- Síntesis ---------------------------------------------------------------------------------------
+# --- Synthesis --------------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class SynthSpec:
-    """Lo que hace falta para sintetizar los streams de una sesión (o de un bloque en vivo)."""
+    """What is needed to synthesize the streams of a session (or of a live block)."""
 
-    keys: tuple[Key, ...]  # prefijo de las ramas de RNG
-    start: datetime  # instante real de la muestra 0 de todos los streams
+    keys: tuple[Key, ...]  # prefix of the RNG branches
+    start: datetime  # real instant of sample 0 of all streams
     n_chunks: int
-    chunk_ms: float  # duración de cada chunk del tramo (sesiones: `signals.chunk_ms`; fondo: el suyo)
+    chunk_ms: float  # duration of each chunk of the span (sessions: `signals.chunk_ms`; background: its own)
     stream_ids: tuple[str, ...]
-    background: bool  # frecuencias reducidas y flexiones espontáneas
+    background: bool  # reduced frequencies and spontaneous flexions
     reps: tuple[Rep, ...]
-    protocol: ExerciseProtocol | None  # %MVC, ROM y plano de las reps (None: reposo)
+    protocol: ExerciseProtocol | None  # %MVC, ROM and plane of the reps (None: rest)
     gravity_environment: GravityEnvironment
-    awake_from: datetime  # ventana encendido -> apagado para la pérdida diurna del cordón
+    awake_from: datetime  # power-on -> power-off window for the cord's diurnal loss
     awake_to: datetime
-    initial_residual_mm: Mapping[str, float] = field(default_factory=dict)  # por stream de cordón (vivo)
+    initial_residual_mm: Mapping[str, float] = field(default_factory=dict)  # per cord stream (live)
 
 
 @dataclass(frozen=True, slots=True)
 class StreamSynthesis:
-    """Arrays publicables de un stream y sus intermedios deterministas (sin ruido) para el ground truth."""
+    """Publishable arrays of a stream and its deterministic (noise-free) intermediates for the ground truth."""
 
     stream_id: str
     kind: StreamKind
     rate_hz: float
     samples_per_chunk: int
     start: datetime
-    channels: dict[str, np.ndarray]  # claves que espera `SimDevice.chunks`
-    quality: list[ChunkQuality]  # una por chunk
+    channels: dict[str, np.ndarray]  # keys expected by `SimDevice.chunks`
+    quality: list[ChunkQuality]  # one per chunk
     calibration_id: str | None
     episodes: tuple[FaultEpisode, ...]
-    truth: dict[str, Any]  # emg: pct_mvc, fatigue, mvc_rms_mv | imu: angle_deg | stretch: length_mm, residual_mm, rest_length_mm, angle_deg
+    truth: dict[str, Any]  # emg: pct_mvc, fatigue, mvc_rms_mv | imu: angle_deg | stretch: length_mm, residual_mm, rest_length_mm, angle_deg, lot_gain
 
     def slice(self, k0: int, k1: int) -> tuple[dict[str, np.ndarray], list[ChunkQuality]]:
-        """Canales y quality de los chunks [k0, k1)."""
+        """Channels and quality of chunks [k0, k1)."""
         a, b = k0 * self.samples_per_chunk, k1 * self.samples_per_chunk
         return {name: arr[a:b] for name, arr in self.channels.items()}, self.quality[k0:k1]
 
@@ -623,7 +632,7 @@ class SessionSynthesis:
 
     @property
     def final_residual_mm(self) -> dict[str, float]:
-        """Residuo de histéresis al final de cada stream de cordón (continuidad entre bloques en vivo)."""
+        """Hysteresis residual at the end of each cord stream (continuity between live blocks)."""
         return {s.stream_id: float(s.truth["residual_mm"][-1]) for s in self.streams if s.kind is StreamKind.STRETCH and s.truth["residual_mm"].size}
 
 
@@ -636,7 +645,7 @@ def _angle(config: MissionConfig, tree: RngTree, spec: SynthSpec, state: LatentS
         )  # fmt: skip
     if spec.protocol is not None and spec.reps:
         rom = imu_signal.effective_rom_deg(spec.protocol.rom_deg, state, config.signals.imu)
-        return imu_signal.angle_profile(spec.reps, rom_deg=rom, n_samples=n, rate_hz=rate)
+        return imu_signal.angle_profile(spec.reps, rom_deg=[rom * r.amplitude_factor for r in spec.reps], n_samples=n, rate_hz=rate)
     return np.zeros(n, dtype=np.float64)
 
 
@@ -649,7 +658,7 @@ def synthesize(
     state: LatentState,
     calibrations: Mapping[str, CalibrationRecord],
 ) -> SessionSynthesis:
-    """Señal, fallos de calidad y derivados de cada stream de `spec` (sin trocear)."""
+    """Signal, quality faults and derivatives of each stream of `spec` (not chunked)."""
     tree = RngTree(seed)
     signals = config.signals
     gravity_g = GRAVITY_G[spec.gravity_environment]
@@ -668,13 +677,14 @@ def synthesize(
             params = signals.emg
             mvc = member.baseline.emg_mvc_rms_mv[stream_id]
             peak = (
-                emg_signal.effective_pct_mvc(spec.protocol.pct_mvc, state.muscle_deconditioning, params)
-                if spec.protocol is not None
-                else params.rest_pct_mvc
+                emg_signal.effective_pct_mvc(spec.protocol.pct_mvc, state.muscle_deconditioning, params) if spec.protocol is not None else params.rest_pct_mvc
             )
-            pct = emg_signal.activation_profile(reps, peak_pct_mvc=peak, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
-            per_rep = emg_signal.effective_fatigue_per_rep(state.muscle_deconditioning, params)
-            fatigue = emg_signal.fatigue_profile(reps, fatigue_per_rep=per_rep, n_samples=n, rate_hz=rate)
+            peaks = [peak * (1.0 + 0.4 * r.fatigue) for r in reps]
+            pct = emg_signal.activation_profile(reps, peak_pct_mvc=peaks, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
+            fatigue = emg_signal.exercise_fatigue_profile(
+                reps, n_samples=n, rate_hz=rate, recovery_per_s=spec.protocol.recovery_per_s if spec.protocol else 0.0,
+                fatigue_per_rep=emg_signal.effective_fatigue_per_rep(state.muscle_deconditioning, params),
+            )
             raw = {"emg": emg_signal.synth_emg(rng, params, mvc_rms_mv=mvc, pct_mvc=pct, fatigue=fatigue, rate_hz=rate)}
             truth = {"pct_mvc": pct, "fatigue": fatigue, "mvc_rms_mv": mvc}
         elif kind is StreamKind.IMU:
@@ -691,12 +701,14 @@ def synthesize(
             rest = member.baseline.cord_rest_length_mm
             length = stretch_signal.cord_length(params, rest_length_mm=rest, elongation_mm=state.spine_elongation_mm, angle_deg=angle, offset_mm=offset)
             static = float(length[0] - params.flexion_mm_per_deg * abs(angle[0])) if n else rest
+            lot = member_lot_gain(config, seed, member.astronaut_id)
             cord = stretch_signal.synth_stretch(
                 rng, params, length_mm=length, rest_length_mm=static, rate_hz=rate,
                 initial_residual_mm=spec.initial_residual_mm.get(stream_id, 0.0),
+                lot_gain=lot,
             )  # fmt: skip
             raw = {"adc_counts": cord.adc_counts}
-            truth = {"length_mm": length, "residual_mm": cord.residual_mm, "rest_length_mm": rest, "angle_deg": angle}
+            truth = {"length_mm": length, "residual_mm": cord.residual_mm, "rest_length_mm": rest, "angle_deg": angle, "lot_gain": lot}
 
         faults_rng = tree.rng(*spec.keys, stream_id, "faults")
         episodes = plan_quality_faults(faults_rng, config.faults.quality, stream_id=stream_id, kind=kind, n_samples=n, rate_hz=rate, samples_per_chunk=spc)
@@ -729,7 +741,7 @@ def mission_spec(
     day: DayInfo,
     gravity_environment: GravityEnvironment,
 ) -> SynthSpec:
-    """SynthSpec de una sesión de la misión (RNG `(astronaut_id, day.index, slot, ...)`)."""
+    """SynthSpec of a mission session (RNG `(astronaut_id, day.index, slot, ...)`)."""
     protocol = None
     if plan.session_type == "exercise" and not plan.background:
         candidate = config.protocol(plan.protocol_id)
@@ -755,7 +767,7 @@ def session_calibrations(
     plan: SessionPlan,
     scheduled: Mapping[str, CalibrationRecord],
 ) -> tuple[dict[str, CalibrationRecord], list[CalibrationRecord]]:
-    """(calibración vigente por stream de la sesión, calibraciones que se registran en esta sesión)."""
+    """(calibration in force per session stream, calibrations registered in this session)."""
     in_force: dict[str, CalibrationRecord] = {s: scheduled[s] for s in plan.stream_ids if s in scheduled}
     mvc = session_mvc_calibrations(config, seed, plan)
     in_force.update(mvc)
@@ -764,7 +776,7 @@ def session_calibrations(
 
 
 def resimulate(generator: MissionGenerator, ref: SessionRef, gravity_environment: GravityEnvironment) -> list[Envelope]:
-    """La sesión `ref` regenerada con otra gravedad (par A/B exacto con `generator.session_messages(ref)`)."""
+    """The session `ref` regenerated with another gravity (exact A/B pair with `generator.session_messages(ref)`)."""
     return list(generator.session_messages(ref, gravity_environment=gravity_environment))
 
 

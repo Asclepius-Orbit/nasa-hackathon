@@ -1,7 +1,7 @@
-"""Respaldo IMU de las repeticiones (#41): picos de |ω| del giróscopo, sin eventos del protocolo.
+"""IMU fallback of repetitions (#41): gyroscope |ω| peaks, without protocol events.
 
-Las señales sintéticas reproducen el modelo del simulador (flexión minimum-jerk ida y vuelta por rep):
-cada rep da un lóbulo de ω de un signo (ida) seguido de otro del signo contrario (vuelta).
+The synthetic signals reproduce the simulator model (minimum-jerk flexion out and back per rep):
+each rep gives one ω lobe of one sign (out) followed by another of the opposite sign (back).
 """
 
 import json
@@ -20,14 +20,14 @@ from hypothesis import strategies as st
 from spine_contracts import FeaturesRequest
 from spine_engine.features.context import ExtractionContext, build_context
 from spine_engine.features.repetitions import ImuDetector, RepetitionService
-from spine_engine.features.repetitions_imu import detect_imu_windows
+from spine_engine.features.repetitions_imu import _merge_touching, detect_imu_windows
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid" / "engine" / "features-request.json"
 T0 = datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC)
 BOOT = 2893746120
 RATE = 100.0
 CHUNK = 10
-# Bordes: el umbral bajo recorta el principio y el final de cada lóbulo (velocidad casi nula).
+# Edges: the low threshold trims the start and end of each lobe (almost zero velocity).
 EDGE_TOLERANCE_S = 0.25
 
 
@@ -58,7 +58,7 @@ def angle_profile(reps: Sequence[tuple[float, float]], n: int, *, rom_deg: float
 
 
 def gyro_from_angle(angle: Sequence[float]) -> list[float]:
-    """Derivada central (deg/s), como ``np.gradient`` del simulador."""
+    """Central derivative (deg/s), like the simulator's ``np.gradient``."""
     n = len(angle)
     out = [0.0] * n
     for i in range(n):
@@ -131,7 +131,7 @@ def sync(boot_id: int = BOOT, device_ms: int = 0, utc: datetime = T0) -> dict[st
 
 def make_context(chunks: list[dict[str, Any]], *, syncs: list[dict[str, Any]] | None = None, extra_streams: Sequence[str] = ()) -> ExtractionContext:
     raw = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
-    # se conservan los chunks EMG y stretch del ejemplo: la petición exige al menos uno
+    # the example's EMG and stretch chunks are kept: the request requires at least one
     raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] != "imu"] + chunks
     raw["clock_syncs"] = [sync()] if syncs is None else syncs
     raw["session"]["events"] = []
@@ -156,6 +156,11 @@ def test_the_signature_matches_the_imu_detector_alias():
     assert detector(make_context([])) == ()
 
 
+def test_extended_edges_preserve_adjacent_reps_with_a_short_gap():
+    spans = [(at(0), at(3)), (at(3.15), at(6)), (at(6.05), at(9))]
+    assert _merge_touching(spans) == [(at(0), at(3)), (at(3.15), at(9))]
+
+
 def test_three_clean_reps_give_three_windows_close_to_the_truth():
     reps = schedule(3)
     n = int(28 * RATE)
@@ -169,7 +174,7 @@ def test_three_clean_reps_give_three_windows_close_to_the_truth():
 
 
 def test_lobe_edges_extend_to_where_the_angular_velocity_stops_falling():
-    # sin alargar los bordes, el umbral bajo recorta ~4-5 % de cada rep (sus extremos casi quietos)
+    # without extending the edges, the low threshold trims ~4-5 % of each rep (their almost still ends)
     reps = schedule(3)
     windows = detect_imu_windows(make_context(imu_chunks({"gyro_y": rep_signal(reps, int(28 * RATE))})))
 
@@ -227,7 +232,7 @@ def _hump(n: int, start: float, end: float, height: float) -> list[float]:
 
 
 def test_same_sign_peaks_closer_than_the_minimum_separation_are_one_lobe():
-    # ida partida en dos jorobas (picos a 0,22 s) y una vuelta: una sola rep que empieza en la primera joroba
+    # out split into two humps (peaks at 0.22 s) and one back: a single rep that starts at the first hump
     n = int(6 * RATE)
     parts = (_hump(n, 2.0, 2.1, 20.0), _hump(n, 2.22, 2.32, 20.0), _hump(n, 2.5, 3.5, -20.0))
     signal = [sum(values) for values in zip(*parts, strict=True)]
@@ -286,7 +291,7 @@ def test_segments_of_different_boots_are_detected_apart_and_merged_in_time():
     other_boot = BOOT + 1
     n = int(20 * RATE)
     first = imu_chunks({"gyro_y": rep_signal(schedule(2), n)})
-    # el segundo arranque reinicia el reloj del dispositivo: device_ms vuelve a 0 con otra ancla
+    # the second boot restarts the device clock: device_ms goes back to 0 with another anchor
     second = imu_chunks({"gyro_y": rep_signal(schedule(1), int(10 * RATE))}, boot_id=other_boot)
     later = T0 + timedelta(minutes=5)
 
@@ -299,7 +304,7 @@ def test_segments_of_different_boots_are_detected_apart_and_merged_in_time():
 
 
 def test_a_rep_split_across_two_boots_is_not_stitched_together():
-    # la ida en un arranque y la vuelta en otro: no hay par dentro de ningún segmento
+    # out in one boot and back in another: there is no pair within any segment
     other_boot = BOOT + 1
     n = int(8 * RATE)
     signal = rep_signal([(2.0, 6.0)], n)
@@ -321,7 +326,7 @@ def test_with_several_imu_streams_the_first_by_stream_id_with_windows_wins():
 
 
 def test_a_long_pause_between_groups_of_reps_is_a_set_rest_not_a_rep_rest():
-    # 2 series de 3 reps: pausa habitual de 4 s entre reps y de 40 s entre series
+    # 2 series of 3 reps: usual 4 s pause between reps and 40 s between series
     first = schedule(3)
     shift = first[-1][1] + 40.0 - first[0][0]
     reps = first + [(a + shift, b + shift) for a, b in first]
@@ -406,16 +411,16 @@ def test_shifting_the_device_clock_and_its_anchor_shifts_nothing(reps: list[tupl
     assert [(w.start - delta, w.end - delta) for w in shifted] == [w.active for w in base]
 
 
-# --- Validación contra el simulador -----------------------------------------------------------------
+# --- Validation against the simulator -----------------------------------------------------------------
 
-# vía el paquete instalado, no vía parents[]: bajo mutmut los tests se copian a otro árbol sin physiology/
+# via the installed package, not via parents[]: under mutmut the tests are copied to another tree without physiology/
 _MISSION = Path(spine_physiology.__file__).resolve().parents[2] / "configs" / "example-mission.yaml"
-# Tolerancias frente a la verdad del simulador: nº de reps exacto; duración media dentro del 10 %
-# (el umbral de borde recorta algo los extremos, de velocidad casi nula); cada inicio a < 0,3 s.
+# Tolerances against the simulator truth: exact rep count; mean duration within 10 %
+# (the edge threshold trims the ends a little, of almost zero velocity); each start < 0.3 s.
 DURATION_REL_TOLERANCE = 0.10
 START_TOLERANCE_S = 0.3
-# Con 60 repeticiones el ruido deja alguna con el borde corrido (0,33 s observado, semilla 20261113): casi todas
-# entran en START_TOLERANCE_S y ninguna pasa de este máximo.
+# With 60 repetitions noise leaves some with a shifted edge (0.33 s observed, seed 20261113): almost all
+# fall within START_TOLERANCE_S and none exceeds this maximum.
 START_OUTLIER_MAX_S = 0.5
 START_WITHIN_FRACTION = 0.95
 
@@ -433,13 +438,13 @@ def _mission_config(noise_level: str) -> Any:
     raw["schedule"]["background"].update(enabled=False, start_time_utc="09:56", end_time_utc="09:57")
     imu = raw["signals"]["imu"]
     if noise_level == "clean":
-        imu.update(gyro_noise_dps=0.0, tremor_dps_per_unit=0.0)
+        imu.update(gyro_noise_density_dps_rthz=0.0, tremor_dps_per_unit=0.0)
         for fault in raw["faults"]["quality"].values():
             fault["probability"] = 0.0
         raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
         raw["faults"]["device"]["reboot"]["probability_per_hour"] = 0.0
     elif noise_level == "noisy":
-        imu.update(gyro_noise_dps=2.0, tremor_dps_per_unit=10.0)
+        imu.update(gyro_noise_density_dps_rthz=0.3, tremor_dps_per_unit=10.0)
     return MissionConfig.model_validate(raw)
 
 
@@ -458,7 +463,7 @@ def _simulated(noise_level: str, seed: int, gravity: str) -> tuple[ExtractionCon
     request = FeaturesRequest.model_validate(
         {
             "schema_version": "1.0.0",
-            "session": {**session, "events": []},  # sin eventos: fuerza el respaldo IMU
+            "session": {**session, "events": []},  # no events: forces the IMU fallback
             "chunks": [m.payload for m in messages if m.kind is EnvelopeKind.STREAM_CHUNK],
             "clock_syncs": syncs,
         }

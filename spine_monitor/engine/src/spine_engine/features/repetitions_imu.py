@@ -1,27 +1,27 @@
-"""Respaldo IMU de las repeticiones (#41): ventanas desde el giróscopo cuando no hay eventos válidos.
+"""IMU fallback for repetitions (#41): windows from the gyroscope when there are no valid events.
 
-Solo giróscopo (``gyro_x/y/z`` en deg/s): en microgravedad el acelerómetro no ve la gravedad y no sirve
-para ver la flexión. Cada repetición es una flexión de ida y vuelta, así que en el eje dominante deja dos
-lóbulos de velocidad angular de signo contrario (ida, vuelta). El algoritmo, por segmento (``boot_id``):
+Gyroscope only (``gyro_x/y/z`` in deg/s): in microgravity the accelerometer does not see gravity and is useless
+to see the flexion. Each repetition is a back-and-forth flexion, so on the dominant axis it leaves two
+lobes of angular velocity of opposite sign (out, back). The algorithm, per segment (``boot_id``):
 
-1. Muestras del segmento en orden de ``seq``; el instante de cada una es ``t0_device_ms + i/sample_rate_hz``
-   de su chunk. Las no finitas se sustituyen por la mediana del eje (sin movimiento).
-2. Se resta a cada eje su mediana (sesgo del giróscopo; el reposo domina) y se elige el eje con más
-   energía (empate: x, luego y, luego z).
-3. Media móvil centrada de ``SMOOTH_S`` y ruido estimado con la MAD de las primeras diferencias (robusto
-   frente al propio movimiento, que es suave).
-4. Lóbulos: tramos contiguos de mismo signo con ``|ω|`` sobre el umbral bajo y pico sobre el alto. Umbrales
-   relativos al máximo del segmento (``PEAK_FRACTION`` y ``EDGE_FRACTION``) con suelo de ruido
-   (``NOISE_K_PEAK`` y ``NOISE_K_EDGE`` sigmas). Lóbulos del mismo signo con picos a menos de
-   ``MIN_PEAK_SEPARATION_S`` se funden (un lóbulo partido por el ruido).
-5. Emparejado ida→vuelta: lóbulo de signo ``s`` seguido inmediatamente de uno de signo ``-s``. Se prueban
-   ``s = +1`` y ``s = -1`` y gana el que más pares da (empate: menor hueco total dentro de los pares; luego
-   ``+1``). Un lóbulo sin pareja (p. ej. un único pico) se descarta.
+1. Samples of the segment in ``seq`` order; the instant of each one is ``t0_device_ms + i/sample_rate_hz``
+      of its chunk. Non-finite ones are replaced by the axis median (no movement).
+2. Each axis has its median subtracted (gyroscope bias; rest dominates) and the axis with the most
+      energy is chosen (tie: x, then y, then z).
+3. Centered moving average of ``SMOOTH_S`` and noise estimated with the MAD of the first differences (robust
+      against the movement itself, which is smooth).
+4. Lobes: contiguous runs of the same sign with ``|ω|`` above the low threshold and a peak above the high one. Thresholds
+      relative to the segment maximum (``PEAK_FRACTION`` and ``EDGE_FRACTION``) with a noise floor
+      (``NOISE_K_PEAK`` and ``NOISE_K_EDGE`` sigmas). Lobes of the same sign with peaks closer than
+      ``MIN_PEAK_SEPARATION_S`` are merged (a lobe split by noise).
+5. Out->back pairing: a lobe of sign ``s`` immediately followed by one of sign ``-s``. Both
+      ``s = +1`` and ``s = -1`` are tried and the one with more pairs wins (tie: smaller total gap inside the pairs; then
+      ``+1``). A lobe without a partner (e.g. a single peak) is discarded.
 
-Varios arranques: cada segmento se detecta por separado (nunca se unen muestras de dos ``boot_id``) y las
-ventanas se ordenan por tiempo con índices consecutivos; el reposo va de cada fin al inicio siguiente.
-Varios streams IMU: se usa el primero por ``stream_id`` que dé alguna ventana. Determinista y sin lanzar:
-lo incoherente (sin IMU, sin ancla de reloj, sin señal) da ``()``.
+Several boots: each segment is detected separately (samples of two ``boot_id`` are never joined) and the
+windows are sorted by time with consecutive indices; rest goes from each end to the next start.
+Several IMU streams: the first by ``stream_id`` that yields any window is used. Deterministic and non-raising:
+whatever is incoherent (no IMU, no clock anchor, no signal) gives ``()``.
 """
 
 import math
@@ -37,20 +37,23 @@ from spine_engine.features.ordering import Segment
 from spine_engine.features.repetitions import RepWindow
 from spine_engine.features.signals import segment_samples
 
-# Media móvil: atenúa el ruido sin desdibujar lóbulos de ~1 s o más.
+# Moving average: attenuates noise without blurring lobes of ~1 s or more.
 SMOOTH_S = 0.1
-# Un lóbulo cuenta si su pico llega a esta fracción del máximo del segmento...
+# A lobe counts if its peak reaches this fraction of the segment maximum...
 PEAK_FRACTION = 0.25
-# ...y sus bordes llegan hasta donde |ω| cae bajo esta fracción (cuanto más baja, menos se recorta la rep).
+# ...and its edges reach where |ω| drops below this fraction (the lower, the less the rep is trimmed).
 EDGE_FRACTION = 0.03
-# Suelos de ruido, en sigmas del ruido suavizado: ni el pico ni el borde se confunden con ruido.
+# Noise floors, in sigmas of the smoothed noise: neither the peak nor the edge is mistaken for noise.
 NOISE_K_PEAK = 8.0
 NOISE_K_EDGE = 3.0
-# Dos picos del mismo signo más cercanos que esto son el mismo lóbulo.
+# Two peaks of the same sign closer than this are the same lobe.
 MIN_PEAK_SEPARATION_S = 0.25
-# Una pausa entre repeticiones más larga que esta vez la mediana de las pausas es un descanso entre series.
+# Lobe edges already extend toward rest: do not merge neighboring
+# repetitions with a short pause just because the edges end up close.
+MIN_REP_GAP_S = 0.1
+# A pause between repetitions longer than this times the median of the pauses is a rest between sets.
 SET_GAP_FACTOR = 5.0
-# MAD -> sigma para ruido gaussiano; las diferencias de ruido blanco tienen sigma·√2.
+# MAD -> sigma for Gaussian noise; differences of white noise have sigma·√2.
 _MAD_TO_SIGMA = 1.4826
 _GYRO_AXES = ("gyro_x", "gyro_y", "gyro_z")
 
@@ -65,7 +68,7 @@ class _Lobe:
 
 
 def detect_imu_windows(context: ExtractionContext) -> tuple[RepWindow, ...]:
-    """Ventanas de repetición desde el giróscopo del primer stream IMU (por ``stream_id``) que las dé."""
+    """Repetition windows from the gyroscope of the first IMU stream (by ``stream_id``) that yields them."""
     imu_streams = sorted(s.stream_id for s in context.session.streams if s.stream_kind is StreamKind.IMU)
     for stream_id in imu_streams:
         if context.stream_missing(stream_id):
@@ -79,7 +82,7 @@ def detect_imu_windows(context: ExtractionContext) -> tuple[RepWindow, ...]:
 def _windows(spans: Sequence[tuple[datetime, datetime]]) -> tuple[RepWindow, ...]:
     last = len(spans) - 1
     gaps = [(spans[i + 1][0] - spans[i][1]).total_seconds() for i in range(last)]
-    # sin eventos no hay set_*: una pausa mucho mayor que la habitual entre repeticiones es el descanso entre series
+    # without events there is no set_*: a pause much longer than the usual one between repetitions is the rest between sets
     typical = statistics.median(gaps) if gaps else 0.0
     between_sets = [typical > 0.0 and gap > SET_GAP_FACTOR * typical for gap in gaps]
     return tuple(
@@ -112,10 +115,10 @@ def _segment_spans(context: ExtractionContext, segment: Segment) -> list[tuple[d
 
 
 def _merge_touching(spans: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
-    """Una repetición que el ruido parte en dos pares ida/vuelta pegados es una sola: sin reposo entre ellos no hay dos."""
+    """A repetition that noise splits into two back-and-forth pairs stuck together is a single one: without rest between them there are not two."""
     merged: list[tuple[datetime, datetime]] = []
     for start, end in spans:
-        if merged and (start - merged[-1][1]).total_seconds() < MIN_PEAK_SEPARATION_S:
+        if merged and (start - merged[-1][1]).total_seconds() < MIN_REP_GAP_S:
             merged[-1] = (merged[-1][0], end)
         else:
             merged.append((start, end))
@@ -184,7 +187,7 @@ def _lobes(signal: Sequence[float], rate: float) -> list[_Lobe]:
 
 
 def _descend(smoothed: Sequence[float], k: int, step: int, sign: int) -> int:
-    """Alarga el borde mientras |ω| siga bajando sin cambiar de signo: recupera la cola casi quieta del lóbulo."""
+    """Extends the edge while |ω| keeps decreasing without changing sign: recovers the almost still tail of the lobe."""
     n = len(smoothed)
     while 0 <= k + step < n and sign * smoothed[k + step] > 0 and abs(smoothed[k + step]) < abs(smoothed[k]):
         k += step

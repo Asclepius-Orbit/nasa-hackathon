@@ -1,4 +1,4 @@
-"""Fixtures compartidas de los tests del gateway."""
+"""Shared fixtures for the gateway tests."""
 
 import asyncio
 import contextlib
@@ -22,11 +22,11 @@ from spine_gateway.settings import GatewaySettings
 
 @pytest.fixture(scope="session")
 def settings() -> GatewaySettings:
-    """Ajustes del hardware de referencia (Arduino Uno, 10 bits a 5 V, Rs 10 kΩ, MPU-6050 a ±4 g / ±500 °/s).
+    """Reference hardware settings (Arduino Uno, 10 bits at 5 V, Rs 10 kΩ, MPU-6050 at ±4 g / ±500 °/s).
 
-    Todos los campos que usa la lógica pura van explícitos: los argumentos de inicialización ganan a las variables
-    SPINE_GATEWAY_* del entorno y ``_env_file=None`` ignora el ``.env`` del directorio actual. De sesión para poder
-    usarla en tests de Hypothesis; quien necesite otro valor hace ``settings.model_copy(update=...)``.
+    All the fields used by the pure logic are explicit: init arguments win over the
+    SPINE_GATEWAY_* environment variables and ``_env_file=None`` ignores the ``.env`` of the current directory. Session-scoped so it can be
+    used in Hypothesis tests; whoever needs another value does ``settings.model_copy(update=...)``.
     """
     return GatewaySettings(
         _env_file=None,
@@ -51,11 +51,11 @@ def settings() -> GatewaySettings:
     )
 
 
-# --- arnés del bucle async del gateway (app.py): MQTT, puerto serie y tiempo de mentira ---
+# --- harness for the gateway async loop (app.py): fake MQTT, serial port and time ---
 
 T0 = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)
 AST, DEV = "AST-01", "wb-01"
-# canal -> (schema, retained) según asyncapi.yaml; QoS 1 en todos.
+# channel -> (schema, retained) per asyncapi.yaml; QoS 1 for all.
 CHANNELS = {
     "stream": ("telemetry/stream-chunk", False),
     "status": ("telemetry/device-status", True),
@@ -68,13 +68,13 @@ _WAIT_S = 5.0
 
 
 async def settle() -> None:
-    """Deja correr a todas las tareas listas hasta que se bloqueen (cede el bucle sin esperar tiempo real)."""
+    """Lets all ready tasks run until they block (yields the loop without waiting real time)."""
     for _ in range(_SETTLE_YIELDS):
         await asyncio.sleep(0)
 
 
 class VirtualTime:
-    """Reloj y ``sleep`` inyectables: el tiempo solo avanza con ``advance``, que despierta en orden a quien duerme."""
+    """Injectable clock and ``sleep``: time only advances with ``advance``, which wakes sleepers in order."""
 
     def __init__(self, now: datetime = T0) -> None:
         self.now = now
@@ -92,7 +92,7 @@ class VirtualTime:
         await future
 
     def pending(self) -> int:
-        """Cuántos ``sleep`` siguen esperando (los de tareas canceladas no cuentan)."""
+        """How many ``sleep`` calls are still waiting (those of cancelled tasks do not count)."""
         return sum(1 for _, _, future in self._waiters if not future.done())
 
     async def advance(self, seconds: float) -> None:
@@ -111,7 +111,7 @@ class VirtualTime:
 
 
 class Idle:
-    """Cola que avisa cuando su consumidor la ha vaciado y vuelve a esperar (lo anterior ya está procesado)."""
+    """Queue that signals when its consumer has drained it and waits again (everything before is already processed)."""
 
     def __init__(self) -> None:
         self.queue: asyncio.Queue[Any] = asyncio.Queue()
@@ -131,14 +131,14 @@ class Idle:
 
 
 class FakeLineSource:
-    """``LineSource`` que reparte los eventos que le da el test."""
+    """``LineSource`` that hands out the events the test gives it."""
 
     def __init__(self) -> None:
         self.feed = Idle()
         self.closed = False
 
     def events(self) -> AsyncIterator[SerialEvent]:
-        # Se guarda una referencia: así el recolector no lo cierra por su cuenta y solo cuenta el cierre explícito.
+        # A reference is kept: this way the garbage collector does not close it on its own and only the explicit close counts.
         self.generator = self._events()
         return self.generator
 
@@ -147,7 +147,7 @@ class FakeLineSource:
             while True:
                 yield await self.feed.get()
         finally:
-            self.closed = True  # como el puerto real, que se cierra al cerrar el generador
+            self.closed = True  # like the real port, which closes when the generator closes
 
 
 @dataclass
@@ -171,8 +171,8 @@ class Message:
 
 @dataclass
 class FakeClient:
-    """Cliente MQTT de mentira. Cada publish se comprueba contra el contrato (schema, topic, QoS, retain, JSON compacto)
-    y los fallos se acumulan en ``problems`` (el gateway se traga las excepciones: un assert dentro no se vería)."""
+    """Fake MQTT client. Each publish is checked against the contract (schema, topic, QoS, retain, compact JSON)
+    and failures accumulate in ``problems`` (the gateway swallows exceptions: an assert inside would go unseen)."""
 
     published: list[Published] = field(default_factory=list)
     subscriptions: list[tuple[str, int]] = field(default_factory=list)
@@ -180,7 +180,7 @@ class FakeClient:
     inbox: Idle = field(default_factory=Idle)
     fail_publish: bool = False
     drop_messages: bool = False
-    # Fallos a medida: topic -> excepción a lanzar en ese publish (o None para publicar con normalidad).
+    # Custom failures: topic -> exception to raise on that publish (or None to publish normally).
     fault: Callable[[str], BaseException | None] | None = None
 
     async def publish(self, topic: str, payload: bytes, qos: int, retain: bool) -> None:
@@ -213,9 +213,9 @@ class FakeClient:
             if self.drop_messages:
                 raise aiomqtt.MqttError("Disconnected during message iteration")
             message = await self.inbox.get()
-            if message is None:  # corte de la conexión pedido por el test
+            if message is None:  # connection drop requested by the test
                 raise aiomqtt.MqttError("Disconnected during message iteration")
-            if message == "end":  # el iterador de mensajes termina sin error
+            if message == "end":  # the message iterator ends without error
                 return
             yield message
 
@@ -248,7 +248,7 @@ def _expected_topic(p: Published) -> str:
 
 
 class FakeConnection:
-    """Un intento de conexión: entrar da el cliente, o MqttError si es None (el broker la rechaza)."""
+    """A connection attempt: entering yields the client, or MqttError if None (the broker rejects it)."""
 
     def __init__(self, client: FakeClient | None) -> None:
         self.client = client
@@ -263,13 +263,13 @@ class FakeConnection:
 
 
 class Connections:
-    """``client_factory``: anota cada intento (kwargs) y da el cliente que diga ``plan(intento)`` (None = rechazo)."""
+    """``client_factory``: records each attempt (kwargs) and returns the client that ``plan(attempt)`` says (None = rejection)."""
 
     def __init__(self, plan: Callable[[int], FakeClient | None] | None = None) -> None:
         self.plan = plan or (lambda n: FakeClient())
         self.attempts: list[dict[str, Any]] = []
         self.clients: list[FakeClient] = []
-        self.clock: Callable[[], datetime] | None = None  # lo pone el arnés: cada intento anota su hora en "at"
+        self.clock: Callable[[], datetime] | None = None  # set by the harness: each attempt records its time in "at"
 
     def __call__(self, **kw: Any) -> FakeConnection:
         self.attempts.append({**kw, "at": self.clock() if self.clock is not None else None})
@@ -285,11 +285,11 @@ def calibration_ids() -> Callable[[], str]:
 
 
 class Harness:
-    """Gateway con todo inyectado. ``async with`` lo arranca (``Gateway.run``) y al salir lo cancela y comprueba que
-    todo lo publicado cumple el contrato. El dispositivo emite un lote de cada kind cada 100 ms (``run_device``)."""
+    """Gateway with everything injected. ``async with`` starts it (``Gateway.run``) and on exit cancels it and checks that
+    everything published meets the contract. The device emits one batch of each kind every 100 ms (``run_device``)."""
 
     def __init__(self, settings: GatewaySettings, connections: Connections | None = None) -> None:
-        from spine_gateway.app import Gateway  # import tardío: el resto de tests no depende de app.py
+        from spine_gateway.app import Gateway  # late import: the rest of the tests do not depend on app.py
 
         self.settings = settings
         self.time = VirtualTime()
@@ -322,11 +322,11 @@ class Harness:
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.wait_for(task, _WAIT_S)
         if task is not None and task.done() and not task.cancelled():
-            task.result()  # un fallo del bucle no debe pasar desapercibido
+            task.result()  # a loop failure must not go unnoticed
         for client in self.connections.clients:
             assert client.problems == []
 
-    # --- dispositivo ---
+    # --- device ---
 
     def line(self, text: str | bytes) -> SerialLine:
         return SerialLine(text.encode("ascii") if isinstance(text, str) else text, self.time.now)
@@ -364,13 +364,13 @@ class Harness:
         await self.feed(*(self.frame_line(k) for k in kinds))
 
     async def boot(self, boot_id: int | None = None) -> None:
-        """Enlace arriba, hello y primer tick, como al abrir el puerto de un Uno."""
+        """Link up, hello and first tick, as when opening the port of an Uno."""
         await self.link_up()
         await self.hello(boot_id)
         await self.tick()
 
     async def run_device(self, seconds: float, kinds: tuple[FrameKind, ...] = tuple(FrameKind)) -> None:
-        """Lotes de ``kinds`` cada 100 ms y un tick cada segundo de dispositivo, con el tiempo avanzando a la par."""
+        """Batches of ``kinds`` every 100 ms and a tick every device second, with time advancing in step."""
         for _ in range(round(seconds * 10)):
             await self.time.advance(0.1)
             self.device_ms += 100
@@ -386,14 +386,14 @@ class Harness:
         await (client or self.client).inbox.put(Message(topics.cmd(AST, DEV), raw))
 
     async def disconnect(self) -> None:
-        """El broker corta la conexión en curso (la recepción de mensajes falla)."""
+        """The broker drops the current connection (message reception fails)."""
         self.client.inbox.queue.put_nowait(None)
         await settle()
 
 
 @pytest.fixture
 def app_settings(settings: GatewaySettings) -> GatewaySettings:
-    """``settings`` con los tiempos del bucle explícitos (que ninguna variable de entorno los cambie)."""
+    """``settings`` with explicit loop timings (so no environment variable changes them)."""
     return settings.model_copy(
         update={
             "mqtt_host": "broker.test", "mqtt_port": 1884, "mqtt_client_id": "spine-gateway",
@@ -406,7 +406,7 @@ def app_settings(settings: GatewaySettings) -> GatewaySettings:
 
 @pytest.fixture
 def fakes() -> SimpleNamespace:
-    """Las clases de mentira del arnés, para los tests que montan sus propias conexiones o mensajes."""
+    """The harness fake classes, for tests that build their own connections or messages."""
     return SimpleNamespace(Connections=Connections, FakeClient=FakeClient, Message=Message, FakeLineSource=FakeLineSource)
 
 

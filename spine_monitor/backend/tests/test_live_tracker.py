@@ -9,10 +9,16 @@ from monitor.ingest import Ingest
 from monitor.live.reps import RepDetector, RepDetectorParams
 from monitor.live.tracker import RepHub, RepMessage, RepTracker, Subscription, has_live_reps, rep_sets, rep_total, set_position
 from monitor.settings import AppSettings
-from monitor.views.protocol_catalog import reps_per_set_for
 from spine_contracts import topics, validation
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
+
+
+@pytest.fixture
+def harness_settings() -> dict[str, Any]:
+    """These tests feed the real simulator chunks, so the installation takes simulator data."""
+    return {"telemetry_source": "simulator"}
+
 
 STATE_SCHEMA = "app/ui-rep-state"
 LAT = "lat_pulldown_standing_v1"
@@ -205,7 +211,7 @@ async def test_a_failing_tracker_never_breaks_ingestion_nor_loses_the_chunk(harn
     ingest = Ingest(harness.store, harness.runtime.control, live=Broken())
     ingest.handle(topics.stream(chunk["astronaut_id"], chunk["device_id"], "imu_t9"), json.dumps(chunk).encode())
 
-    assert ingest.counts == {"accepted": 1, "duplicate": 0, "rejected": 0, "dropped": 0}
+    assert ingest.counts == {"accepted": 1, "duplicate": 0, "rejected": 0, "dropped": 0, "wrong_source": 0}
     assert harness.store.rejected_count() == 0
     assert len(harness.store.session_chunks(chunk["astronaut_id"], session_id)) == 1
     assert "live repetition" in caplog.text
@@ -332,10 +338,13 @@ async def test_rebuild_follows_the_real_order_of_the_boots_whatever_their_random
     for chunk in second[resume:]:
         restarted.on_chunk(row, chunk)
     assert restarted.tracker_view(session_id) == live.tracker_view(session_id)
-    # The sensor came back inside a set, where the pause between reps is too short for the still second of the first bias
-    # estimate: the rest of that set is lost and the count goes on with the next one.
-    per_set = reps_per_set_for(LAT) or 0
-    assert restarted.tracker_view(session_id)["rep"] == harness.simulated_reps() - (per_set - 5)
+    # The slower, variable motion changes when bias settles after the reboot.
+    # Compare with the detector fed the two boots in their actual order.
+    detector = RepDetector(RepDetectorParams.default())
+    for chunk in [*first, *second]:
+        detector.feed(chunk)
+    assert restarted.tracker_view(session_id)["rep"] == detector.snapshot()["rep"]
+    assert detector.snapshot()["rep"] > 5
 
 
 async def test_stream_chunks_only_returns_that_stream_of_that_session_of_that_device(harness) -> None:

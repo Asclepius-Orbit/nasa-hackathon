@@ -1,98 +1,98 @@
-# Workflow TDD y puertas de calidad
+# TDD workflow and quality gates
 
-Fecha: 2026-11-02. Estado: aprobado por Uri en el chat, pendiente de revisión del documento.
+Date: 2026-11-02. Status: approved in chat, pending document review.
 
-## Objetivo
+## Goal
 
-Todo lo que se implemente en el proyecto sigue TDD y pasa un conjunto de puertas de calidad automáticas, idénticas en local y en CI. Una skill de proyecto describe el proceso; la configuración y el CI lo hacen cumplir.
+Everything implemented in the project follows TDD and passes a set of automatic quality gates, identical locally and in CI. A project skill describes the process; the configuration and CI enforce it.
 
-## Alcance
+## Scope
 
-Los seis miembros del workspace uv de `spine_monitor`: `contracts`, `physiology`, `engine`, `mcp_server`, `agent`, `backend`. Todo en una sola entrega, en la rama actual.
+The six members of the `spine_monitor` uv workspace: `contracts`, `physiology`, `engine`, `mcp_server`, `agent`, `backend`. All in a single delivery, on the current branch.
 
-## Entregables
+## Deliverables
 
-### 1. Skill `.claude/skills/tdd-workflow/SKILL.md` (español, versionada)
+### 1. Skill `.claude/skills/tdd-workflow/SKILL.md` (versioned)
 
-Contenido:
+Content:
 
-- **Ciclo obligatorio.** Red, green, refactor.
-  - Red visible: se ejecuta el test y se muestra que falla por la razón correcta antes de escribir código de producción.
-  - Green con el cambio mínimo; se muestra el verde.
-  - Refactor solo con la suite en verde.
-- **Bugfix.** Test de regresión que reproduce el fallo, visto en rojo, antes del arreglo.
-- **Excepciones.** Solo: docs y README; config/infra sin lógica (Dockerfile, compose, pyproject, CI), que se verifica ejecutándola; spikes etiquetados como throwaway y no mergeables tal cual. Todo cambio de código fuera de eso sigue el ciclo.
-- **Política de dobles de test.** Dobles solo en las fronteras: HTTP, MQTT, reloj y aleatoriedad. Se prefieren fakes escritos a mano o inyección de dependencias a `unittest.mock`. Nunca se mockea lógica propia. La integración MQTT usa mosquitto real.
-- **Markers.** `unit`, `integration`, `contract`, `property`, `golden` y el `mosquitto` existente. Cada test lleva exactamente uno de los cinco primeros.
-- **Qué ejecutar y cuándo.** Comandos exactos del servicio `quality`.
-- **Señales de alarma.** Tabla de racionalizaciones frente a la realidad, al estilo de `implement-feature`.
+- **Mandatory cycle.** Red, green, refactor.
+  - Visible red: the test is run and shown failing for the right reason before any production code is written.
+  - Green with the minimal change; the green run is shown.
+  - Refactor only with the suite green.
+- **Bugfix.** A regression test that reproduces the failure, seen red, before the fix.
+- **Exceptions.** Only: docs and README; config/infra without logic (Dockerfile, compose, pyproject, CI), which is verified by running it; spikes labelled as throwaway and not mergeable as they are. Every code change outside that follows the cycle.
+- **Test double policy.** Doubles only at the boundaries: HTTP, MQTT, clock and randomness. Hand-written fakes or dependency injection are preferred over `unittest.mock`. Our own logic is never mocked. MQTT integration uses a real mosquitto.
+- **Markers.** `unit`, `integration`, `contract`, `property`, `golden` and the existing `mosquitto`. Each test carries exactly one of the first five.
+- **What to run and when.** Exact commands of the `quality` service.
+- **Warning signs.** A table of rationalisations versus reality, in the style of `implement-feature`.
 
-### 2. Integración con `implement-feature`
+### 2. Integration with `implement-feature`
 
-- Fase 4: invocar `tdd-workflow` para toda implementación.
-- Fase 5: ejecutar el gate completo (`docker compose run quality`) como evidencia de verificación; el criterio de éxito son las puertas de la sección 4.
+- Phase 4: invoke `tdd-workflow` for every implementation.
+- Phase 5: run the full gate (`docker compose run quality`) as verification evidence; the success criterion is the gates in section 4.
 
-### 3. Configuración en `spine_monitor/pyproject.toml`
+### 3. Configuration in `spine_monitor/pyproject.toml`
 
-- `testpaths` con los seis miembros.
-- Markers registrados y `--strict-markers`.
-- Dependencias de desarrollo: `pytest-cov`, `pytest-randomly`, `pytest-timeout`, `hypothesis`, `schemathesis`, `diff-cover`, ruff, type checker, herramienta de mutación.
-- Coverage con ramas activadas y `fail_under = 90`.
-- Ruff y type checker configurados.
+- `testpaths` with the six members.
+- Registered markers and `--strict-markers`.
+- Development dependencies: `pytest-cov`, `pytest-randomly`, `pytest-timeout`, `hypothesis`, `schemathesis`, `diff-cover`, ruff, type checker, mutation tool.
+- Coverage with branches enabled and `fail_under = 90`.
+- Ruff and type checker configured.
 
-### 4. Puertas bloqueantes
+### 4. Blocking gates
 
-| Puerta | Umbral |
+| Gate | Threshold |
 |---|---|
-| Ruff | sin errores |
-| Type checker | sin errores |
-| Tests | todos verdes, en orden aleatorio, con timeout |
-| Cobertura (líneas y ramas) | ≥ 90 % |
-| Diff coverage en PRs | ≥ 90 % en líneas cambiadas |
-| Mutación incremental en PRs | ≥ 80 % en ficheros modificados |
-| Tests de contrato | todos verdes |
+| Ruff | no errors |
+| Type checker | no errors |
+| Tests | all green, in random order, with timeout |
+| Coverage (lines and branches) | ≥ 90 % |
+| Diff coverage on PRs | ≥ 90 % on changed lines |
+| Incremental mutation on PRs | ≥ 80 % on modified files |
+| Contract tests | all green |
 
-La mutación completa nocturna genera informe y no bloquea.
+The full nightly mutation run produces a report and does not block.
 
 ### 5. Docker
 
-Servicio `quality` en compose, junto a mosquitto (con su healthcheck). Un único comando ejecuta lint, tipos, tests con cobertura, contratos y mutación. Local y CI usan el mismo comando y la misma imagen. Imagen Linux, de modo que la herramienta de mutación funciona aunque el host sea Windows.
+A `quality` service in compose, next to mosquitto (with its healthcheck). A single command runs lint, types, tests with coverage, contracts and mutation. Local and CI use the same command and the same image. Linux image, so the mutation tool works even if the host is Windows.
 
 ### 6. GitHub Actions
 
-- PR a `develop`: lint, tipos, tests con cobertura, diff-cover, contratos, mutación incremental.
-- Nightly: mutación completa sobre todo el repo, con informe y sin bloquear.
+- PR to `develop`: lint, types, tests with coverage, diff-cover, contracts, incremental mutation.
+- Nightly: full mutation over the whole repo, with a report and without blocking.
 
-### 7. Tests sobre el código existente
+### 7. Tests on the existing code
 
-- **Contrato:** Schemathesis contra los OpenAPI (engine, backend, app); payloads MQTT validados contra `asyncapi.yaml` y los topics; tests de sincronía entre schemas, modelos Pydantic y specs, ampliando el test de deriva existente.
-- **Property-based (Hypothesis):** engine (scoring, detectores) y physiology (generadores, curvas).
-- **Golden:** salida de physiology con semilla fija comparada con un snapshot versionado.
-- **Fault injection:** caída de broker, mensajes duplicados o desordenados, payloads corruptos y timeouts en gateway, backend y mcp_server.
+- **Contract:** Schemathesis against the OpenAPI specs (engine, backend, app); MQTT payloads validated against `asyncapi.yaml` and the topics; sync tests between schemas, Pydantic models and specs, extending the existing drift test.
+- **Property-based (Hypothesis):** engine (scoring, detectors) and physiology (generators, curves).
+- **Golden:** physiology output with a fixed seed compared with a versioned snapshot.
+- **Fault injection:** broker down, duplicated or out-of-order messages, corrupt payloads and timeouts in gateway, backend and mcp_server.
 
-## Verificaciones previas obligatorias
+## Mandatory prior checks
 
-No se fija nada sin evidencia ejecutada en el repo con Python 3.14:
+Nothing is fixed without evidence executed in the repo with Python 3.14:
 
-1. Herramienta de mutación: probar mutmut dentro de Docker y cosmic-ray; elegir la que funcione.
-2. Type checker: probar pyright, mypy y ty; elegir el que funcione mejor.
-3. Schemathesis contra las apps FastAPI actuales.
+1. Mutation tool: try mutmut inside Docker and cosmic-ray; pick the one that works.
+2. Type checker: try pyright, mypy and ty; pick the one that works best.
+3. Schemathesis against the current FastAPI apps.
 
-## Línea base y umbrales
+## Baseline and thresholds
 
-Antes de activar los umbrales se mide la cobertura y la mutación actuales. Si el código existente no alcanza 90 % o 80 %, se informa de los números a Uri y se decide con él; no se bajan umbrales por cuenta propia. Los paquetes sin código real (`agent`, `mcp_server`) tienen el umbral desde su primer código.
+Before enabling the thresholds, the current coverage and mutation score are measured. If the existing code does not reach 90 % or 80 %, the numbers are reported to the maintainer and decided with them; thresholds are not lowered unilaterally. Packages without real code (`agent`, `mcp_server`) get the threshold from their first code.
 
-## Orden de ejecución
+## Execution order
 
-1. Verificaciones previas y línea base.
-2. Skill y configuración.
-3. Docker `quality` y mosquitto.
+1. Prior checks and baseline.
+2. Skill and configuration.
+3. Docker `quality` and mosquitto.
 4. GitHub Actions.
-5. Tests de contrato, property-based, golden y fault injection, paquete a paquete.
-6. Integración con `implement-feature`.
+5. Contract, property-based, golden and fault-injection tests, package by package.
+6. Integration with `implement-feature`.
 
-## Fuera de alcance
+## Out of scope
 
-- Tests end-to-end con hardware real.
-- Pact (consumer-driven), tests de arquitectura, pre-commit local y commits separados red/green: descartados explícitamente.
-- Subdirectorios por tipo de test: los tests siguen planos y se distinguen por marker.
+- End-to-end tests with real hardware.
+- Pact (consumer-driven), architecture tests, local pre-commit and separate red/green commits: explicitly discarded.
+- Subdirectories per test type: tests stay flat and are distinguished by marker.

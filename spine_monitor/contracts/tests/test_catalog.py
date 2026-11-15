@@ -1,4 +1,4 @@
-"""Catálogo de features como módulo de runtime: carga, expansión de plantillas, unidades e ids conocidos."""
+"""Feature catalog as a runtime module: loading, template expansion, units and known ids."""
 
 import json
 from pathlib import Path
@@ -68,7 +68,7 @@ def test_unknown_id_raises_clear_key_error():
 
 def test_is_known():
     assert is_known(expand_template("emg.{muscle}.{side}.rms_mv")[0])
-    assert not is_known("emg.{muscle}.{side}.rms_mv")  # la plantilla sin expandir no es un id concreto
+    assert not is_known("emg.{muscle}.{side}.rms_mv")  # the unexpanded template is not a concrete id
     assert not is_known("nope.nothing")
 
 
@@ -82,7 +82,7 @@ def test_posture_resistance_features_and_protocols_are_separate():
 
 
 def test_features_removed_by_clinical_decision_stay_out_of_the_catalog():
-    # Aguado retiró estas features; no deben volver al catálogo (ni como plantilla ni como id concreto)
+    # The clinical owner withdrew these features; they must not return to the catalog (neither as template nor as concrete id)
     removed = {
         "imu.l3.sagittal.smoothness_sparc",
         "imu.t9.sagittal.smoothness_sparc",
@@ -94,7 +94,7 @@ def test_features_removed_by_clinical_decision_stay_out_of_the_catalog():
 
 
 def test_risk_direction_and_ranges_of_a_concrete_id_come_from_its_entry():
-    entry = next(e for e in load_catalog()["entries"] if e["ranges"] is not None)
+    entry = next(e for e in load_catalog()["entries"] if e["risk_direction"] == "higher_is_worse")
     concrete = expand_ids(entry)[0]
     assert risk_direction(concrete) == entry["risk_direction"]
     assert ranges(concrete) == entry["ranges"]
@@ -220,7 +220,7 @@ def test_ui_session_example_quotes_its_protocol_entry():
     assert session["fit_items"] == [item["id"] for item in entry["fit_items"]]
 
 
-# ---- the standardised exercise protocol (issue #12, Aguado) ------------------------------------
+# ---- the standardised exercise protocol (issue #12) ------------------------------------
 # Standing lat pulldown, green elastic band (nominal 25 kg), 4 sets of 15 repetitions, pronated grip,
 # moderate tempo. The spine_check that brackets it is also done standing.
 
@@ -233,7 +233,7 @@ def test_lat_pulldown_protocol_states_the_standardised_facts():
     assert entry["tempo"] == "moderate"
     assert entry["posture"] == "standing"
     assert isinstance(entry["rest_between_sets_s"], int) and entry["rest_between_sets_s"] > 0
-    assert "Aguado" in entry["notes"], "the nominal rest between sets is a placeholder until Aguado fixes it"
+    assert "pending clinical validation" in entry["notes"], "the nominal rest between sets is a placeholder until the clinical owner fixes it"
 
 
 def test_protocol_total_reps_is_sets_times_reps_per_set_or_all_null():
@@ -277,7 +277,7 @@ def _feature_notes(feature_id: str) -> str:
 
 def test_mvc_features_say_the_mvc_procedure_is_pending():
     for feature_id in ("emg.{muscle}.{side}.rms_pct_mvc", "emg.{muscle}.{side}.peak_pct_mvc"):
-        assert "PENDIENTE Aguado" in _feature_notes(feature_id), feature_id
+        assert "PENDING clinical validation" in _feature_notes(feature_id), feature_id
 
 
 def test_stretch_notes_state_what_350_ohm_means():
@@ -292,7 +292,7 @@ def test_symmetry_and_imu_notes_reflect_the_standard_protocol():
 
 def test_example_mission_protocol_matches_the_protocol_catalog():
     # The simulator mission repeats the catalog's protocol facts; changing one without the other must fail here
-    # (docs/protocolo-ejercicio.md lists every place to edit when Aguado validates a value).
+    # (docs/protocolo-ejercicio.md lists every place to edit when a value is clinically validated).
     import spine_physiology
     import yaml
 
@@ -323,9 +323,9 @@ def test_lat_pulldown_protocol_states_the_provisional_rhythm_values():
     assert "#106" in entry["notes"] and "provisional" in entry["notes"]
 
 
-def test_rest_seconds_is_marked_as_provisional_pending_aguado():
+def test_rest_seconds_is_marked_as_provisional_pending_clinical_validation():
     notes = _protocols()["lat_pulldown_standing_v1"]["notes"]
-    assert "rest_seconds" in notes and "PENDIENTE medición Aguado" in notes and "#106" in notes
+    assert "rest_seconds" in notes and "PENDING measurement" in notes and "#106" in notes
 
 
 def test_spine_check_protocol_has_null_rhythm_values():

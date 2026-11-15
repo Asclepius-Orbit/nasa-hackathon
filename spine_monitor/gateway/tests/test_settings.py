@@ -1,4 +1,4 @@
-"""Ajustes del gateway real: defaults, override por entorno y validación."""
+"""Real gateway settings: defaults, environment override and validation."""
 
 import os
 from pathlib import Path
@@ -12,7 +12,7 @@ from spine_gateway.settings import GatewaySettings
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # Sin .env del directorio actual ni variables heredadas.
+    # No .env from the current directory nor inherited variables.
     monkeypatch.chdir(tmp_path)
     for name in [n for n in os.environ if n.startswith("SPINE_GATEWAY_")]:
         monkeypatch.delenv(name)
@@ -20,7 +20,7 @@ def _isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def test_defaults() -> None:
     s = GatewaySettings()
-    assert (s.serial_url, s.serial_baud) == ("COM3", 250000)
+    assert (s.serial_url, s.serial_baud) == ("COM3", 9600)
     assert (s.astronaut_id, s.device_id) == ("AST-01", "wb-01")
     assert (s.mqtt_host, s.mqtt_port, s.mqtt_client_id) == ("127.0.0.1", 1883, "spine-gateway")
     assert (s.mqtt_reconnect_initial_s, s.mqtt_reconnect_factor, s.mqtt_reconnect_max_s) == (1.0, 2.0, 30.0)

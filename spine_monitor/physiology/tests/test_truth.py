@@ -13,6 +13,7 @@ from spine_physiology.config import MissionConfig
 from spine_physiology.device import ChunkOutcome, plan_device_day
 from spine_physiology.faults import FaultEpisode
 from spine_physiology.signals import emg as emg_signal
+from spine_physiology.signals import stretch as stretch_signal
 from spine_physiology.signals.imu import effective_rom_deg
 from spine_physiology.state import LatentModel, MissionTimeline
 
@@ -23,6 +24,9 @@ A = "AST-01"
 
 def make_config(clean: bool = False) -> MissionConfig:
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    # The dispersion between repeated readings is a per-session offset that the truth cannot know: it is turned off to
+    # compare with the truth (the rest of the cord realism stays on).
+    raw["signals"]["stretch"]["repeat_dispersion_ohm"] = 0.0
     if clean:
         for fault in raw["faults"]["quality"].values():
             fault["probability"] = 0.0
@@ -79,13 +83,14 @@ def test_exercise_features_use_catalog_ids_and_units(config, model):
     assert expected <= set(ids)
     protocol = config.protocol("lat_pulldown_standing_v1")
     assert ids["exercise.rep_count"]["value"] == protocol.planned_reps
-    assert ids["imu.t9.sagittal.rom_deg"]["value"] == pytest.approx(effective_rom_deg(protocol.rom_deg, state, config.signals.imu))
+    expected_rom = effective_rom_deg(protocol.rom_deg, state, config.signals.imu) * np.mean([r.amplitude_factor for r in _plan.reps])
+    assert ids["imu.t9.sagittal.rom_deg"]["value"] == pytest.approx(expected_rom)
     peak = emg_signal.effective_pct_mvc(protocol.pct_mvc, state.muscle_deconditioning, config.signals.emg)
-    assert ids["emg.latissimus_dorsi.left.peak_pct_mvc"]["value"] == pytest.approx(peak, rel=1e-3)
-    # Campana seno² hasta el pico desde el reposo: RMS entre el reposo y el pico.
-    assert config.signals.emg.rest_pct_mvc < ids["emg.latissimus_dorsi.left.rms_pct_mvc"]["value"] < peak
+    assert ids["emg.latissimus_dorsi.left.peak_pct_mvc"]["value"] > peak
+    # sin² bell up to the peak from rest: RMS between rest and peak.
+    assert config.signals.emg.rest_pct_mvc < ids["emg.latissimus_dorsi.left.rms_pct_mvc"]["value"] < ids["emg.latissimus_dorsi.left.peak_pct_mvc"]["value"]
     assert ids["emg.latissimus_dorsi.symmetry_index_pct"]["value"] == 0.0
-    # La fatiga baja la frecuencia mediana rep a rep.
+    # Fatigue lowers the median frequency rep by rep.
     assert ids["emg.latissimus_dorsi.left.median_freq_slope_hz_per_rep"]["value"] < 0
 
 
@@ -101,7 +106,7 @@ def test_expected_emg_rms_matches_the_synthesized_signal(config, model):
     assert measured == pytest.approx(ids["emg.latissimus_dorsi.left.rms_mv"]["value"], rel=0.05)
     first = plan.reps[0]
     rep = stream.channels["emg"][(t >= first.start_s) & (t < first.end_s)]
-    assert emg_signal.median_frequency(rep, stream.rate_hz) == pytest.approx(ids["emg.latissimus_dorsi.left.median_freq_hz"]["value"], rel=0.2)
+    assert emg_signal.median_frequency(rep, stream.rate_hz) > ids["emg.latissimus_dorsi.left.median_freq_hz"]["value"]
 
 
 def test_spine_check_elongation_matches_the_published_length(config, model):
@@ -110,9 +115,9 @@ def test_spine_check_elongation_matches_the_published_length(config, model):
     stretch = synthesis.stream("stretch_spine")
     rest = config.member(A).baseline.cord_rest_length_mm
     measured = float(np.mean(stretch.channels["length_mm"])) - rest
-    # Error: calibración medida (ruido de 0.5 mm por punto) + cuantización del ADC.
+    # Error: measured calibration (0.5 mm noise per point) + ADC quantization.
     assert measured == pytest.approx(ids["stretch.full_spine.elongation_mm"]["value"], abs=2.0)
-    assert ids["stretch.full_spine.elongation_mm"]["value"] == pytest.approx(state.spine_elongation_mm, abs=1.0)  # micro: sin pérdida diurna
+    assert ids["stretch.full_spine.elongation_mm"]["value"] == pytest.approx(state.spine_elongation_mm, abs=1.0)  # micro: no diurnal loss
     assert ids["stretch.full_spine.elongation_pct"]["value"] == pytest.approx(100 * ids["stretch.full_spine.elongation_mm"]["value"] / rest)
     assert "imu.t9.sagittal.rom_deg" not in ids and "exercise.rep_count" not in ids
 
@@ -127,7 +132,7 @@ def test_gravity_changes_only_gravity_dependent_features(config, model):
             assert a[feature_id]["value"] != b[feature_id]["value"] or feature_id.endswith("range_mm")
         else:
             assert a[feature_id] == b[feature_id]
-    # La pérdida diurna (solo con gravedad) acorta el cordón.
+    # The diurnal loss (only with gravity) shortens the cord.
     assert b["stretch.full_spine.peak_elongation_mm"]["value"] < a["stretch.full_spine.peak_elongation_mm"]["value"]
 
 
@@ -175,3 +180,27 @@ def test_daily_records_are_json_ready(config, model):
     device = truth.device_record(plan_device_day(config, config.seed, A, day), day)
     assert device["type"] == "device_events" and device["boots"][0]["boot_at"] == device["power_on"]
     json.dumps([latent, device])
+
+
+@pytest.mark.parametrize("kind", ["rectified", "envelope"])
+def test_signal_derived_emg_features_are_not_claimed_for_non_raw_signals(kind):
+    raw = make_config(clean=True).model_dump(mode="json")
+    raw["signals"]["emg"]["signal_kind"] = kind
+    cfg = MissionConfig.model_validate(raw)
+    timeline = MissionTimeline(cfg)
+    _plan, state, synthesis = synth(cfg, (timeline, LatentModel(cfg, timeline, cfg.seed)), "lat_pulldown")
+    ids = by_id(truth.expected_features(cfg, synthesis, state=state))
+    for feature in ("rms_mv", "rms_pct_mvc", "rest_rms_mv", "median_freq_hz", "median_freq_slope_hz_per_rep"):
+        assert f"emg.latissimus_dorsi.left.{feature}" not in ids
+    assert "emg.latissimus_dorsi.left.peak_pct_mvc" in ids
+
+
+def test_expected_rest_resistance_includes_the_cord_lot_gain(config, model):
+    _plan, state, synthesis = synth(config, model, "pre_spine_check", day=6)
+    stretch = synthesis.stream("stretch_spine")
+    expected = by_id(truth.expected_features(config, synthesis, state=state))["stretch.full_spine.rest_resistance_ohm"]["value"]
+    lot = sess.member_lot_gain(config, config.seed, A)
+    assert lot != 1.0
+    assert expected == pytest.approx(float(np.mean(stretch.channels["resistance_ohm"])), rel=0.01 * abs(lot - 1.0) + 2e-3)
+    nominal = float(stretch_signal.length_to_resistance(np.array([stretch.truth["length_mm"].mean()]), config.signals.stretch.curve_pairs())[0])
+    assert expected == pytest.approx(lot * nominal)

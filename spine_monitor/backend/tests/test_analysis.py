@@ -107,6 +107,57 @@ def ready_for_assessment(store: Store) -> None:
     store.put_feature_set(feature_set, phase="preflight", anchor_at="2026-11-13T10:02:31Z")
 
 
+async def test_session_result_persists_latest_measured_window_for_assessment(store, engine, analysis):
+    session_id = ended_session(store, phase="inflight")
+    ready_for_assessment(store)
+    feature_set = example("domain/feature-set.preflight")
+    feature_set.update(session_id=session_id, window={"start": "2026-11-13T10:29:50Z", "end": "2026-11-13T10:30:00Z"})
+    feature_set["features"] = [{
+        "feature_id": "stretch.full_spine.resistance_change_pct", "value": 4, "unit": "%",
+        "quality": {"score": 1, "flags": [], "assessed_by": "engine"},
+        "window": {"start": "2026-11-13T10:29:55Z", "end": "2026-11-13T10:30:00Z"},
+    }]
+    engine.override["features"] = feature_set
+    await analysis.process_session(session_id)
+    windows = store.measured_windows("AST-01", NOW - timedelta(seconds=5), NOW)
+    assert len(windows) == 1 and windows[0]["features"] == feature_set["features"]
+    request = next(body for name, body in engine.calls if name == "assess")
+    assert windows[0] in request["feature_sets"]
+
+
+async def test_incomplete_window_is_stored_but_stale_window_is_not_sent(store, engine, analysis):
+    session_id = ended_session(store, phase="inflight")
+    ready_for_assessment(store)
+    feature_set = example("domain/feature-set.preflight")
+    feature_set.update(session_id=session_id, window={"start": "2026-11-13T10:29:40Z", "end": "2026-11-13T10:29:50Z"}, features=[])
+    feature_set["skipped"] = [{"feature_id": "imu.lumbar.sensor_x.orientation_deg", "reason": "no_calibration"}]
+    engine.override["features"] = feature_set
+    await analysis.process_session(session_id)
+    windows = store.measured_windows("AST-01", NOW - timedelta(seconds=20), NOW)
+    assert len(windows) == 1 and windows[0]["features"] == [] and windows[0]["skipped"] == feature_set["skipped"]
+    request = next(body for name, body in engine.calls if name == "assess")
+    assert windows[0] not in request["feature_sets"]
+
+
+async def test_explicit_outage_window_is_assessed_once_and_late_replay_is_not_backdated(store, engine, analysis):
+    session_id = ended_session(store, phase="inflight")
+    ready_for_assessment(store)
+    start, end = NOW - timedelta(seconds=5), NOW
+    feature_set = example("domain/feature-set.preflight")
+    feature_set.update(session_id=session_id, window={"start": start.isoformat(), "end": end.isoformat()}, features=[])
+    feature_set["skipped"] = [{"feature_id": "imu.lumbar.sensor_x.orientation_deg", "reason": "stream_missing"}]
+    engine.override["features"] = feature_set
+    assert await analysis.process_measured_window(session_id, 1, start, end, [])
+    request = next(body for name, body in engine.calls if name == "features")
+    assert request["requested_window"] == feature_set["window"] and request["chunks"] == []
+    assert not await analysis.process_measured_window(session_id, 1, start, end, [])
+    assert len([1 for name, _ in engine.calls if name == "assess"]) == 1
+    old_start, old_end = start - timedelta(seconds=10), end - timedelta(seconds=10)
+    feature_set["window"] = {"start": old_start.isoformat(), "end": old_end.isoformat()}
+    assert await analysis.process_measured_window(session_id, 1, old_start, old_end, [])
+    assert len([1 for name, _ in engine.calls if name == "assess"]) == 1
+
+
 async def test_session_is_processed_once(store, engine, analysis):
     session_id = ended_session(store)
 

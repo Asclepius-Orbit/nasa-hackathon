@@ -7,7 +7,7 @@
  * which a session must declare. They are those of the contract examples
  * `examples/valid/domain/session.exercise.json` and `session.spine-check.json` (also checked by the test): standing
  * lat pulldown, EMG on each latissimus dorsi (10 cm between electrodes, T11 to L2, ground on the iliac crest), IMU at
- * T9, cord from C3 to S1. The cord calibration and the MVC are pending Aguado.
+ * T9, cord from C3 to S1. The cord calibration and the MVC are pending clinical validation.
  */
 import type { ProtocolId } from '../../shared/api';
 

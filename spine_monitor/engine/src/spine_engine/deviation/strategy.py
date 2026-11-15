@@ -1,4 +1,4 @@
-"""Estrategia de baseline personal: z de la última sesión + cambio sostenido sobre el histórico."""
+"""Personal baseline strategy: z of the latest session + sustained change over the history."""
 
 from collections.abc import Sequence
 
@@ -9,10 +9,10 @@ from spine_engine.reference import index_entries, reference_entry
 
 
 class StatisticalBaselineStrategy:
-    """Implementa `BaselineStrategy`. Puntúa y detecta con las estrategias que se le inyectan.
+    """Implements `BaselineStrategy`. Scores and detects with the strategies injected into it.
 
-    La puntuación es la del último valor de cada feature. El histórico de feature sets (mismo
-    protocolo y entorno de gravedad) alimenta el detector, que dice si el cambio es sostenido o ruido.
+    Scoring uses the latest value of each feature. The history of feature sets (same
+    protocol and gravity environment) feeds the detector, which says whether the change is sustained or noise.
     """
 
     def __init__(self, scorer: DeviationScorer, detector: ChangeDetector) -> None:
@@ -33,13 +33,18 @@ class StatisticalBaselineStrategy:
             entry = reference_entry(entries, feature_id, feature_set.protocol_id, feature_set.gravity_environment)
             if entry is None:
                 continue
-            series = [
-                self._scorer.score(f.value, entry)
-                for other in ordered
-                if other.protocol_id == feature_set.protocol_id and other.gravity_environment == feature_set.gravity_environment
-                for f in other.features
-                if f.feature_id == feature_id
-            ]
+            observations = {}
+            for index, other in enumerate(ordered):
+                if other.protocol_id != feature_set.protocol_id or other.gravity_environment != feature_set.gravity_environment:
+                    continue
+                for f in other.features:
+                    if f.feature_id != feature_id:
+                        continue
+                    window = f.window or other.window
+                    # Windowless observations have no identity by which to deduplicate.
+                    key = (window.start, window.end) if window is not None else (index, None)
+                    observations[key] = self._scorer.score(f.value, entry)
+            series = list(observations.values())
             z = self._scorer.score(feature.value, entry)
             signal = self._detector.detect(series)
             result.append(

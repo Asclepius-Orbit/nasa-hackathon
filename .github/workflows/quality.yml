@@ -43,8 +43,12 @@ jobs:
           docker compose -f app/docker-compose.yml run --rm -T -e BASE_REF quality
           sh -c 'git config --global --add safe.directory "*" && diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=90'
 
-  mutation:
+  mutation-shard:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [contracts, engine, backend, mcp_server, agent, physiology, gateway]
     # Incremental mutation scales with the changed functions. A branch-wide diff selecting 1541 mutants took about
     # 15 min on a 22-CPU machine (measured); on a 2-vCPU hosted runner that is only an ESTIMATE (extrapolated, not
     # measured) of about 2 h. 240 min leaves margin over that estimate.
@@ -68,19 +72,60 @@ jobs:
       - name: Incremental mutation
         env:
           MUTATION_BASE: origin/${{ github.base_ref }}
-        run: docker compose -f app/docker-compose.yml run --rm -T quality sh quality/mutation.sh changed
+          MUTATION_SHARD: ${{ matrix.package }}
+        run: >-
+          docker compose -f app/docker-compose.yml run --rm -T
+          -e MUTATION_SHARD -e MUTATION_RESULT=/work/spine_monitor/result.txt
+          quality sh quality/mutation.sh changed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutation-${{ matrix.package }}
+          path: spine_monitor/result.txt
+          if-no-files-found: error
 
-  gate:
-    # Preserve the existing required check while running its two independent parts on separate runners.
+  mutation:
     if: always()
-    needs: [tests, mutation]
+    needs: mutation-shard
     runs-on: ubuntu-latest
     steps:
-      - name: Require tests and mutation
+      - uses: actions/checkout@v4
+      - name: Require every shard to succeed
+        env:
+          SHARDS_RESULT: ${{ needs.mutation-shard.result }}
+        run: test "$SHARDS_RESULT" = success
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-*
+          path: mutation-results
+      - name: Apply aggregate mutation threshold
+        run: python spine_monitor/quality/mutation_aggregate.py mutation-results
+
+  powershell-startup:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Run PowerShell startup regressions
+        working-directory: spine_monitor
+        shell: pwsh
+        run: |
+          if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { throw 'PowerShell is required' }
+          uv run --locked --only-group dev pytest agent/tests/test_start_demo.py -k startup_continues -q -p no:randomly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  gate:
+    # Preserve the existing required check while running its independent parts on separate runners.
+    if: always()
+    needs: [tests, mutation, powershell-startup]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all quality jobs
         env:
           TESTS_RESULT: ${{ needs.tests.result }}
           MUTATION_RESULT: ${{ needs.mutation.result }}
-        run: test "$TESTS_RESULT" = success && test "$MUTATION_RESULT" = success
+          POWERSHELL_RESULT: ${{ needs.powershell-startup.result }}
+        run: test "$TESTS_RESULT" = success && test "$MUTATION_RESULT" = success && test "$POWERSHELL_RESULT" = success
 
   ui-quality:
     # Native (not compose): the bind-mounted repo is owned by the runner uid, which the image's non-root user cannot write.

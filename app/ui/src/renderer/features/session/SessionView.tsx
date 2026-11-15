@@ -128,7 +128,7 @@ export function SessionView(): React.JSX.Element {
               </button>
             )}
           </div>
-          {session.state === 'starting' && (
+          {session.state === 'starting' && session.startedAt === null && (
             <p role="status" className={styles.state}>
               {copy.starting}
             </p>

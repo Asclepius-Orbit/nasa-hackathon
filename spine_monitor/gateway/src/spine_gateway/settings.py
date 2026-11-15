@@ -1,8 +1,8 @@
-"""Arranque del gateway real (Arduino por USB serie -> MQTT v1). Variables SPINE_GATEWAY_* o `.env`.
+"""Real gateway startup (Arduino over USB serial -> MQTT v1). SPINE_GATEWAY_* variables or `.env`.
 
-Aquí va lo que el firmware no puede decir por sí mismo: dónde está el puerto, a qué broker conectarse, a qué
-astronauta/dispositivo se atribuyen los datos y el cableado/calibración de fábrica del hardware. La versión de
-firmware no se configura: llega en el hello del dispositivo.
+This holds what the firmware cannot say by itself: where the port is, which broker to connect to, which
+astronaut/device the data is attributed to and the factory wiring/calibration of the hardware. The firmware
+version is not configured: it arrives in the device hello.
 """
 
 import re
@@ -20,16 +20,16 @@ _CALIBRATION_DEFAULTS = load_calibration_defaults()
 DEFAULT_STRETCH_CURVE: tuple[tuple[float, float], ...] = tuple(
     (float(p["resistance_ohm"]), float(p["length_mm"])) for p in _CALIBRATION_DEFAULTS["stretch"]["curve"]
 )
-"""Curva por defecto del cordón, de ``contracts/catalog/calibration-defaults.json`` (la misma que la misión de ejemplo).
+"""Default cord curve, from ``contracts/catalog/calibration-defaults.json`` (the same as the example mission).
 
-Puntos absolutos (R ohm, L mm) respecto al reposo de referencia (``rest_resistance_ohm``, ``rest_length_mm`` del mismo
-fichero). La calibración los escala al reposo medido: R0 · R / R_ref y L0 · L / L_ref. Valores sin medir (PENDIENTE
-medición Aguado); se cambian con SPINE_GATEWAY_STRETCH_CURVE al medir el cordón. El cordón no es lineal y tiene histéresis.
+Absolute points (R ohm, L mm) relative to the reference rest (``rest_resistance_ohm``, ``rest_length_mm`` of the same
+file). Calibration scales them to the measured rest: R0 · R / R_ref and L0 · L / L_ref. Unmeasured values (PENDING
+measurement); change them with SPINE_GATEWAY_STRETCH_CURVE when the cord is measured. The cord is not linear and has hysteresis.
 """
 
 
 def _matches(kind: str, value: str, pattern: re.Pattern[str]) -> str:
-    # Mismas expresiones que usa `topics` para construir topics: un id válido aquí nunca rompe un topic.
+    # Same expressions that `topics` uses to build topics: an id valid here never breaks a topic.
     if not pattern.fullmatch(value):
         raise ValueError(f"invalid {kind}: {value!r}")
     return value
@@ -38,10 +38,10 @@ def _matches(kind: str, value: str, pattern: re.Pattern[str]) -> str:
 class GatewaySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SPINE_GATEWAY_", env_file=".env", extra="ignore")
 
-    # Puerto serie tal como lo entiende pyserial `serial_for_url`: COM3, /dev/ttyACM0 o socket://host:puerto.
+    # Serial port as understood by pyserial `serial_for_url`: COM3, /dev/ttyACM0 or socket://host:port.
     serial_url: str = Field(default="COM3", min_length=1)
-    serial_baud: int = Field(default=250000, gt=0)
-    # Reconexión del puerto serie con backoff exponencial si no abre o se desenchufa: espera inicial (s), factor y tope (s).
+    serial_baud: int = Field(default=9600, gt=0)
+    # Serial port reconnection with exponential backoff if it does not open or is unplugged: initial wait (s), factor and cap (s).
     serial_reconnect_initial_s: float = Field(default=1.0, gt=0)
     serial_reconnect_factor: float = Field(default=2.0, ge=1)
     serial_reconnect_max_s: float = Field(default=10.0, gt=0)
@@ -56,31 +56,31 @@ class GatewaySettings(BaseSettings):
     mqtt_password: SecretStr | None = None
     mqtt_tls: bool = False
     mqtt_tls_ca_file: Path | None = None
-    # Reconexión con backoff exponencial si el broker rechaza la conexión o la corta: espera inicial (s),
-    # factor por intento fallido y tope (s). Vuelve a la inicial tras conectar.
+    # Reconnection with exponential backoff if the broker rejects the connection or drops it: initial wait (s),
+    # factor per failed attempt and cap (s). Returns to the initial value after connecting.
     mqtt_reconnect_initial_s: float = Field(default=1.0, gt=0)
     mqtt_reconnect_factor: float = Field(default=2.0, ge=1)
     mqtt_reconnect_max_s: float = Field(default=30.0, gt=0)
 
-    # Periodos (s) de los mensajes de status y de la sincronización de reloj con el dispositivo.
+    # Periods (s) of the status messages and of the clock synchronisation with the device.
     status_interval_s: float = Field(default=30.0, gt=0)
     clock_sync_interval_s: float = Field(default=60.0, gt=0)
-    # Error estimado (ms) del ancla de reloj: hora de llegada del tick al gateway (latencia USB + lectura de línea).
+    # Estimated error (ms) of the clock anchor: tick arrival time at the gateway (USB latency + line read).
     clock_uncertainty_ms: float = Field(default=20.0, gt=0)
-    # Un stream sin lotes durante este tiempo (s) pasa a `stalled` y el estado a `degraded`.
+    # A stream without batches for this time (s) becomes `stalled` and the status `degraded`.
     stall_timeout_s: float = Field(default=2.0, gt=0)
-    # Duración (s) de un `calibrate` sin `duration_s`.
+    # Duration (s) of a `calibrate` without `duration_s`.
     calibration_default_duration_s: float = Field(default=5.0, gt=0)
 
     emg_stream_id: str = "emg_lat_left"
     imu_stream_id: str = "imu_t9"
     stretch_stream_id: str = "stretch_spine"
 
-    # Colocación del electrodo EMG (misma que EmgMvcCalibration y el YAML de misión de ejemplo).
+    # EMG electrode placement (same as EmgMvcCalibration and the example mission YAML).
     emg_muscle: Muscle = Muscle.LATISSIMUS_DORSI
     emg_side: Side = Side.LEFT
 
-    # Hardware del wearable.
+    # Wearable hardware.
     adc_bits: int = Field(default=10, gt=0)
     vref_v: float = Field(default=5.0, gt=0)
     emg_input_pin: str = Field(default="A0", min_length=1)
@@ -90,21 +90,21 @@ class GatewaySettings(BaseSettings):
     imu_gyro_range_dps: int = Field(default=500, gt=0)
     imu_dlpf_hz: int = Field(default=44, gt=0)
     emg_gain: float = Field(default=1.0, gt=0)
-    # Qué entrega el módulo EMG a la entrada del ADC: ``raw`` (cruda, bipolar polarizada a Vref/2), ``rectified`` o
-    # ``envelope``. El clon del Muscle Sensor V3 probablemente da envolvente, pero NO está confirmado con la placa
-    # (issue #13): el default es la suposición, no un hecho. Condiciona calidad, conversión a mV y calibración MVC.
+    # What the EMG module delivers to the ADC input: ``raw`` (raw, bipolar biased at Vref/2), ``rectified`` or
+    # ``envelope``. The Muscle Sensor V3 clone probably gives an envelope, but it is NOT confirmed with the board
+    # (issue #13): the default is the assumption, not a fact. It conditions quality, conversion to mV and MVC calibration.
     emg_signal_kind: SignalKind = SignalKind.ENVELOPE
-    # Defaults de calibración: salen de contracts/catalog/calibration-defaults.json (una sola fuente, la misma que la misión
-    # de ejemplo). PENDIENTE medición Aguado (#106): ~650 mm es el cordón C3->S1 del protocolo, un marcador de posición.
+    # Calibration defaults: they come from contracts/catalog/calibration-defaults.json (a single source, the same as the example
+    # mission). PENDING measurement (#106): ~650 mm is the C3->S1 cord of the protocol, a placeholder.
     stretch_rest_length_mm: float = Field(default=float(_CALIBRATION_DEFAULTS["stretch"]["rest_length_mm"]), gt=0)
-    # Punto de reposo (ohm, mm) al que está referida la curva por defecto: sirve para escalarla a la R0 y la L0 medidas; no
-    # es la R0 de la calibración (sale de las cuentas) ni ``stretch_rest_length_mm``. Si cambias la curva, cambia también este par.
+    # Rest point (ohm, mm) to which the default curve is referred: used to scale it to the measured R0 and L0; it
+    # is not the calibration R0 (that comes from the counts) nor ``stretch_rest_length_mm``. If you change the curve, change this pair too.
     stretch_curve_rest_length_mm: float = Field(default=float(_CALIBRATION_DEFAULTS["stretch"]["rest_length_mm"]), gt=0)
     stretch_curve_rest_resistance_ohm: float = Field(default=float(_CALIBRATION_DEFAULTS["stretch"]["rest_resistance_ohm"]), gt=0)
-    # Curva del cordón como puntos absolutos (R ohm, L mm) respecto a ese reposo de referencia, crecientes en ambos ejes. En .env como
-    # lista JSON de pares: [[5400, 585], [6012, 650], [6790, 731]]. PENDIENTE medición Aguado: valor por defecto sin medir.
+    # Cord curve as absolute points (R ohm, L mm) relative to that reference rest, increasing on both axes. In .env as a
+    # JSON list of pairs: [[5400, 585], [6012, 650], [6790, 731]]. PENDING measurement: unmeasured default value.
     stretch_curve: tuple[tuple[float, float], ...] = DEFAULT_STRETCH_CURVE
-    # Ventana (ms) del RMS deslizante de la calibración emg_mvc; 250 ms como el ejemplo del contrato.
+    # Window (ms) of the sliding RMS of the emg_mvc calibration; 250 ms as in the contract example.
     emg_mvc_window_ms: int = Field(default=int(_CALIBRATION_DEFAULTS["emg_mvc"]["window_ms"]), gt=0)
 
     @field_validator("stretch_curve")

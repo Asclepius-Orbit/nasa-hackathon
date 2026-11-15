@@ -1,44 +1,44 @@
-# Plantilla: subagente de diagnóstico de CI (receive-review, Fase 4)
+# Template: CI diagnosis subagent (receive-review, Phase 4)
 
-Rellena los marcadores `<...>` y pásala como prompt de un subagente (`general-purpose`, Sonnet medio por defecto, Opus alto si el fallo es de concurrencia o seguridad). Un subagente por job fallido. Fallos independientes en paralelo; si tocan los mismos ficheros, en secuencia.
+Fill in the `<...>` markers and pass it as the prompt of a subagent (`general-purpose`, medium Sonnet by default, high Opus if the failure is about concurrency or security). One subagent per failed job. Independent failures in parallel; if they touch the same files, in sequence.
 
 ```
-Diagnostica y arregla un job de CI fallido en la PR #<n> (repo Asclepius-Orbit/nasa-hackathon), rama <rama>, commit <headRefOid>. No crees ramas, no hagas git commit, git push ni git rebase; el orquestador lo hace.
+Diagnose and fix a failed CI job on PR #<n> (repo Asclepius-Orbit/nasa-hackathon), branch <branch>, commit <headRefOid>. Do not create branches, do not run git commit, git push or git rebase; the orchestrator does that.
 
-## Fallo
+## Failure
 
-- Job: <nombre del job / check>
+- Job: <job / check name>
 - Run: <run-id>
-- Log: obtén el log con `gh run view <run-id> --log-failed` y léelo entero (no solo la última línea).
+- Log: get the log with `gh run view <run-id> --log-failed` and read it in full (not just the last line).
 
-## Método obligatorio (superpowers:systematic-debugging)
+## Mandatory method (superpowers:systematic-debugging)
 
-Carga y sigue la skill `superpowers:systematic-debugging`. Causa raíz ANTES de arreglar:
-1. Lee el error completo: mensaje, traza, fichero:línea, comando que falló.
-2. Reprodúcelo en local con el bucle rápido (`cd spine_monitor && uv run pytest <ruta> -q -p no:randomly`, o ruff/pyright según el paso fallido). NO lances el gate de Docker (`GATE_MUTATION=changed docker compose ...`): lo corre el orquestador en la Fase 5. Si el paso fallido es `Diff coverage` o solo se reproduce con Docker, devuelve BLOQUEADO indicando el comando exacto para que lo ejecute el orquestador. Si no se reproduce, dilo y no adivines.
-3. Compara con lo que cambió en la rama y formula UNA hipótesis; pruébala con el cambio mínimo. Si falla, vuelve a investigar; no apiles arreglos.
-4. Arreglo en la causa, no en el síntoma.
+Load and follow the `superpowers:systematic-debugging` skill. Root cause BEFORE fixing:
+1. Read the full error: message, trace, file:line, the command that failed.
+2. Reproduce it locally with the fast loop (`cd spine_monitor && uv run pytest <path> -q -p no:randomly`, or ruff/pyright depending on the failed step). Do NOT launch the Docker gate (`GATE_MUTATION=changed docker compose ...`): the orchestrator runs it in Phase 5. If the failed step is `Diff coverage` or it only reproduces with Docker, return BLOCKED with the exact command for the orchestrator to run. If it does not reproduce, say so and do not guess.
+3. Compare with what changed on the branch and formulate ONE hypothesis; test it with the minimal change. If it fails, go back to investigating; do not pile up fixes.
+4. Fix the cause, not the symptom.
 
-## Reglas
+## Rules
 
-- Si el arreglo cambia código de producción: sigue `tdd-workflow`. Test de regresión visto en ROJO, luego el cambio, luego VERDE. Devuelve ambas salidas.
-- Exentos (config/infra sin lógica, docs): verifícalos ejecutándolos.
-- Prohibido: bajar umbrales (cobertura, mutación, diff coverage), `# pragma: no mutate`, `# type: ignore`, desactivar o saltar tests o checks, relajar el workflow para que pase.
-- `gh run rerun --failed` solo si demuestras que es flaky (mismo commit pasa y falla, causa externa, con la evidencia). Nunca como sustituto del diagnóstico.
-- Si la causa está fuera de tu alcance (infra, secretos, servicio externo) o el arreglo exige tocar ficheros que no te he asignado: para y devuelve BLOQUEADO con evidencia.
-- Tope de 2 intentos fallidos de arreglo: si el segundo falla, para y devuelve lo que sabes.
+- If the fix changes production code: follow `tdd-workflow`. Regression test seen RED, then the change, then GREEN. Return both outputs.
+- Exempt (config/infra without logic, docs): verify them by running them.
+- Forbidden: lowering thresholds (coverage, mutation, diff coverage), `# pragma: no mutate`, `# type: ignore`, disabling or skipping tests or checks, relaxing the workflow so it passes.
+- `gh run rerun --failed` only if you prove it is flaky (the same commit passes and fails, external cause, with the evidence). Never as a substitute for diagnosis.
+- If the cause is outside your scope (infra, secrets, external service) or the fix requires touching files I have not assigned to you: stop and return BLOCKED with evidence.
+- Cap of 2 failed fix attempts: if the second fails, stop and return what you know.
 
-## Ficheros asignados
+## Assigned files
 
-<Lista de ficheros que puedes tocar.>
+<List of files you may touch.>
 
-## Qué devolver
+## What to return
 
-1. Estado: ARREGLADO / FLAKY DEMOSTRADO / BLOQUEADO.
-2. Causa raíz, con `fichero:línea` y la línea del log que la prueba.
-3. Reproducción local: comando y salida literal del fallo.
-4. Si hay cambio de código: salida literal en ROJO (test de regresión) y en VERDE; fichero(s) tocados y `git diff --stat`.
-5. Cómo comprobaste que el job concreto ya pasa en local.
-6. Riesgos o fallos relacionados que veas.
-No escribas mensajes de commit con Co-Authored-By ni "generated with Claude". Si nombras a Uri, es "Uri", nunca "Oriol".
+1. Status: FIXED / DEMONSTRATED FLAKY / BLOCKED.
+2. Root cause, with `file:line` and the log line that proves it.
+3. Local reproduction: command and literal output of the failure.
+4. If there is a code change: literal output in RED (regression test) and in GREEN; file(s) touched and `git diff --stat`.
+5. How you checked that the specific job now passes locally.
+6. Risks or related failures you see.
+Do not write commit messages with Co-Authored-By or "generated with Claude". If you refer to the maintainer, use the role ("the maintainer"), not a personal name.
 ```

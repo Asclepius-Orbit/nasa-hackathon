@@ -1,31 +1,31 @@
-"""Familia ``emg_spectral`` (#43): frecuencia mediana del EMG por repetición y su pendiente entre repeticiones.
+"""``emg_spectral`` family (#43): median EMG frequency per repetition and its slope across repetitions.
 
-Por cada stream EMG declarado con ``placement.muscle`` y ``side``:
+For each EMG stream declared with ``placement.muscle`` and ``side``:
 
-- ``emg.{muscle}.{side}.median_freq_hz``: media, sobre las repeticiones válidas, de la frecuencia mediana del espectro
-  de potencia (PSD) de las muestras de la fase activa de cada repetición. La mediana es la frecuencia que parte la
-  potencia total en dos mitades: se interpola linealmente sobre la PSD acumulada. Un espectro sin potencia (señal
-  nula) da 0 Hz. Unidad: Hz.
-- ``emg.{muscle}.{side}.median_freq_slope_hz_per_rep``: pendiente del ajuste lineal por mínimos cuadrados de la
-  mediana contra el índice de repetición (``RepWindow.index``, el de la repetición, no su posición entre las
-  válidas; así una repetición descartada deja un hueco, igual que la verdad de terreno del simulador). Unidad: Hz/rep.
-  Una pendiente negativa es fatiga: la mediana baja.
+- ``emg.{muscle}.{side}.median_freq_hz``: mean, over the valid repetitions, of the median frequency of the power
+  spectrum (PSD) of the samples of the active phase of each repetition. The median is the frequency that splits the
+  total power into two halves: it is interpolated linearly over the cumulative PSD. A spectrum without power (null
+  signal) gives 0 Hz. Unit: Hz.
+- ``emg.{muscle}.{side}.median_freq_slope_hz_per_rep``: slope of the least-squares linear fit of the
+  median against the repetition index (``RepWindow.index``, that of the repetition, not its position among the
+  valid ones; so a discarded repetition leaves a gap, like the simulator's ground truth). Unit: Hz/rep.
+  A negative slope is fatigue: the median drops.
 
-PSD: Welch con segmentos de 1 s (``round(rate_hz)`` muestras, resolución de 1 Hz) o la repetición entera si es más
-corta, ventana de Hann, solape del 50 % y resta de la media de cada segmento. Es numpy puro (``scipy`` no es
-dependencia del engine); la escala de la PSD no influye en la mediana.
+PSD: Welch with 1 s segments (``round(rate_hz)`` samples, 1 Hz resolution) or the whole repetition if it is
+shorter, Hann window, 50 % overlap and subtraction of each segment's mean. It is pure numpy (``scipy`` is not a
+dependency of the engine); the scale of the PSD does not affect the median.
 
-Una repetición es válida si su fase activa aporta al menos ``MIN_ACTIVE_SAMPLES`` muestras: con menos, la ventana de
-Hann y la resolución espectral (``rate_hz`` / muestras) no dejan una mediana con sentido. Si la fase activa cae en
-varios segmentos del stream, se usa el trozo más largo (unir trozos de arranques distintos inventaría un espectro).
-``n`` es el número de repeticiones válidas. Hacen falta al menos 2 repeticiones válidas (D-60).
+A repetition is valid if its active phase contributes at least ``MIN_ACTIVE_SAMPLES`` samples: with fewer, the Hann
+window and the spectral resolution (``rate_hz`` / samples) do not leave a meaningful median. If the active phase falls in
+several segments of the stream, the longest piece is used (joining pieces from different boots would invent a spectrum).
+``n`` is the number of valid repetitions. At least 2 valid repetitions are needed (D-60).
 
-Solo vale el EMG crudo: la rectificación y la envolvente destruyen el espectro. Si algún chunk del stream no es
-``raw``, todo sale ``signal_not_raw``. Nunca lanza (D-51).
+Only raw EMG is valid: rectification and the envelope destroy the spectrum. If any chunk of the stream is not
+``raw``, everything comes out ``signal_not_raw``. Never raises (D-51).
 
-Motivos de ``skipped``, por orden de precedencia: stream declarado sin chunks ``stream_missing``; algún chunk no
-crudo ``signal_not_raw``; sin repeticiones o menos de 2 válidas ``too_few_repetitions``; repeticiones pero sin
-muestras en ninguna ``no_data``.
+``skipped`` reasons, in order of precedence: declared stream without chunks ``stream_missing``; any non-raw
+chunk ``signal_not_raw``; no repetitions or fewer than 2 valid ``too_few_repetitions``; repetitions but no
+samples in any of them ``no_data``.
 """
 
 from collections.abc import Sequence
@@ -47,18 +47,18 @@ from spine_engine.features.signals import segment_samples
 MEDIAN_FREQ_HZ = "emg.{muscle}.{side}.median_freq_hz"
 MEDIAN_FREQ_SLOPE = "emg.{muscle}.{side}.median_freq_slope_hz_per_rep"
 
-# Mínimo de muestras activas de una repetición válida: 64 muestras son 64 ms a 1 kHz, resolución de ~16 Hz,
-# lo mínimo para que la ventana de Hann deje más de un puñado de bins con potencia.
+# Minimum active samples of a valid repetition: 64 samples are 64 ms at 1 kHz, a resolution of ~16 Hz,
+# the minimum for the Hann window to leave more than a handful of bins with power.
 MIN_ACTIVE_SAMPLES = 64
-_SEGMENT_SECONDS = 1.0  # duración del segmento de Welch
-_OVERLAP = 0.5  # solape entre segmentos de Welch
+_SEGMENT_SECONDS = 1.0  # duration of the Welch segment
+_OVERLAP = 0.5  # overlap between Welch segments
 _RAW = "raw"
 
-type _Spans = list[tuple[int, tuple[datetime, datetime]]]  # (índice de repetición, fase activa)
+type _Spans = list[tuple[int, tuple[datetime, datetime]]]  # (repetition index, active phase)
 
 
 def _median_frequency_hz(values: NDArray[np.float64], rate_hz: float) -> float:
-    """Frecuencia mediana de la PSD de Welch (Hann, solape 50 %, sin media), 0 si no hay potencia."""
+    """Median frequency of the Welch PSD (Hann, 50 % overlap, mean removed), 0 if there is no power."""
     size = min(values.size, max(2, round(_SEGMENT_SECONDS * rate_hz)))
     step = max(1, round(size * (1.0 - _OVERLAP)))
     window = np.hanning(size)
@@ -73,7 +73,7 @@ def _median_frequency_hz(values: NDArray[np.float64], rate_hz: float) -> float:
 
 
 def _longest(pieces: Sequence[_Piece]) -> dict[int, _Piece]:
-    """El trozo más largo de cada repetición (índice de ventana)."""
+    """The longest piece of each repetition (window index)."""
     best: dict[int, _Piece] = {}
     for piece in pieces:
         if piece.window not in best or piece.values.size > best[piece.window].values.size:
@@ -105,10 +105,10 @@ def _spectral_reads(context: ExtractionContext, stream_id: str) -> tuple[_Read, 
 
 
 class EmgSpectralFamily:
-    """Frecuencia mediana del EMG a partir de las ventanas del servicio de repeticiones inyectado.
+    """Median EMG frequency from the windows of the injected repetitions service.
 
-    ``feature_ids`` son todos los ids concretos del catálogo; en cada petición solo se emiten los de los streams
-    EMG declarados en la sesión.
+    ``feature_ids`` are all the concrete catalog ids; in each request only those of the EMG streams
+    declared in the session are emitted.
     """
 
     family = "emg_spectral"
@@ -138,7 +138,7 @@ class EmgSpectralFamily:
 
     @staticmethod
     def _stream(context: ExtractionContext, stream: _EmgStream, spans: _Spans) -> Reason | tuple[list[int], list[float]]:
-        """Índices y medianas de las repeticiones válidas del stream, o el motivo por el que no hay."""
+        """Indices and medians of the stream's valid repetitions, or the reason there are none."""
         if context.stream_missing(stream.stream_id):
             return Reason.STREAM_MISSING
         kinds = {c.signal_kind.value for s in context.segments(stream.stream_id) for c in s.chunks if isinstance(c, EmgChunk)}

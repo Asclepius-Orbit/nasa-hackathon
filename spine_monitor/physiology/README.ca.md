@@ -14,6 +14,8 @@ Generador sintètic de missió. Publica el que publicaria el maquinari real: `St
 
 Tot paràmetre numèric, fisiològic o tècnic, és obligatori i surt del YAML de missió: el codi no té valors per defecte. Els camps opcionals del contracte s'escriuen com un `null` explícit. `configs/example-mission.yaml` és un **PLACEHOLDER**: números inventats perquè el simulador funcioni d'extrem a extrem, no referències clíniques. Els valors reals l'han de substituir. Les hores del dia van entre cometes (`"07:00"`) i els exponents s'escriuen `1.0e-3` (PyYAML llegeix `1e-3` com a text); el carregador és estricte i falla en lloc de convertir en silenci.
 
+**Realisme dels sensors.** Els tres streams modelen els sensors, no només la fisiologia: l'EMG és per defecte una envolvent rectificada (`signal_kind`: `envelope`, `rectified` o `raw`; la missió d'exemple usa `raw` perquè les features de RMS i freqüència mitjana descriguin el senyal cru) amb línia base, xarxa elèctrica i fuita d'ECG opcionals i quantització de l'ADC; la IMU aplica un passa-baix causal a `dlpf_hz`, la densitat de soroll del full de dades, una deriva de biaix acotada i quantització int16; el cordó afegeix un guany de lot per astronauta, soroll per lectura, dispersió entre repeticions per sessió, fluència, histèresi i el divisor de 10 bits. Tots els paràmetres són configurables i amb llavor. Els valors sense font són hipòtesis provisionals; en particular l'EMG no té mesures reals (el mòdul està espatllat) i la corba del cordó es va mesurar amb un muntatge de banc de 10 cm que no es pot extrapolar a l'esquena. Les fonts, les seves categories (especificació, configuració del firmware, mesura pròpia, suposició) i els límits de validació són a [sensor-sources.md](../../docs/sensor-sources.md).
+
 ## Configuració
 
 `load_config(path)` valida el YAML amb Pydantic (les claus desconegudes es rebutgen). Blocs de `configs/example-mission.yaml`:
@@ -195,3 +197,7 @@ Els tests que necessiten un broker real porten el marcador `mosquitto` i es salt
 - El qüestionari ODI setmanal és informatiu: el simulador no el genera i mai puntua risc; només es genera l'autoinforme diari.
 - Sessions, autoinformes, context diari, perfils i veritat de terreny no tenen topic MQTT: només existeixen en JSONL (els objectes de domini mai van al bus). Els calibratges sí que van al bus.
 - Tots els números de la configuració d'exemple són placeholders, no referències clíniques.
+
+## Supòsits del model d'exercici
+
+La missió d'exemple comença l'exercici en repòs i usa el mateix calendari de repeticions amb llavor per al moviment, l'EMG, el cordó i els esdeveniments de sessió. Cada repetició té una tracció i un retorn suaus, separats de la següent per una pausa. La fatiga creix amb l'esforç relatiu i el temps, i decau exponencialment durant les pauses. Els camps YAML `effort_load`, `fatigue_resistance`, `recovery_per_s` i `individual_variability` controlen aquest model. La reducció de la capacitat de moviment, les repeticions més lentes i l'augment compensatori de l'activació de l'EMG són supòsits de modelatge, no força mesurada ni relacions clíniques validades.

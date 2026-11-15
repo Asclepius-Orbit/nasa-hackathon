@@ -1,7 +1,7 @@
-"""Familia ``imu`` (#44): rango de movimiento, velocidad angular pico por plano, y RMS del acelerómetro.
+"""``imu`` family (#44): range of motion, peak angular velocity per plane, and accelerometer RMS.
 
-Las señales son sintéticas y con valores exactos: el giróscopo trae el sesgo de la calibración del ejemplo
-(``x 0.31, y -0.12, z 0.05`` deg/s) más la velocidad angular del plano, y el montaje del ejemplo es
+The signals are synthetic with exact values: the gyroscope carries the example's calibration bias
+(``x 0.31, y -0.12, z 0.05`` deg/s) plus the plane's angular velocity, and the example's mounting is
 ``sensor_x anterior, sensor_y left, sensor_z cranial`` (sagital = ``gyro_y``, frontal = ``gyro_x``, transversal = ``gyro_z``).
 """
 
@@ -46,7 +46,7 @@ TEMPLATES = (
 
 
 def ids_for(level: str) -> list[str]:
-    """Ids de un nivel en el orden de salida: por plano rom y pico; al final el RMS."""
+    """Ids of one level in output order: per plane rom and peak; the RMS last."""
     per_plane = [f"imu.{level}.{plane}.{name}" for plane in PLANES for name in ("rom_deg", "peak_angular_velocity_dps")]
     return [*per_plane, f"imu.{level}.accel_rms_g"]
 
@@ -60,7 +60,7 @@ def rep(index: int, start: float, end: float) -> RepWindow:
 
 
 class FakeService(RepetitionService):
-    """Frontera: devuelve unas ventanas fijas, sin mirar el contexto."""
+    """Boundary: returns fixed windows, ignoring the context."""
 
     def __init__(self, *windows: RepWindow) -> None:
         super().__init__()
@@ -79,7 +79,7 @@ def chunks_for(
     seq0: int = 0,
     t0_device_ms: int = 0,
 ) -> list[dict[str, Any]]:
-    """Chunks IMU con los canales dados; los que faltan valen el sesgo (giro) o 0 (acelerómetro)."""
+    """IMU chunks with the given channels; missing ones equal the bias (gyro) or 0 (accelerometer)."""
     n = len(next(iter(channels.values())))
     full = {name: list(channels.get(name, [BIAS.get(name, 0.0)] * n)) for name in ("accel_x", "accel_y", "accel_z", "gyro_x", "gyro_y", "gyro_z")}
     out: list[dict[str, Any]] = []
@@ -129,7 +129,7 @@ def make_context(
     edit: Callable[[dict[str, Any]], None] | None = None,
 ) -> ExtractionContext:
     raw = json.loads(_EXAMPLE.read_text(encoding="utf-8"))
-    # se conservan los chunks EMG y stretch del ejemplo: la petición exige al menos uno
+    # the example's EMG and stretch chunks are kept: the request requires at least one
     raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] != "imu"] + chunks
     raw["clock_syncs"] = [sync()] if syncs is None else syncs
     raw["session"]["events"] = []
@@ -143,7 +143,7 @@ def imu_calibration(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def bend(rate: float, seconds: float, speed: float) -> list[float]:
-    """Ida y vuelta a velocidad constante: ``+speed`` la primera mitad y ``-speed`` la segunda."""
+    """Round trip at constant speed: ``+speed`` the first half and ``-speed`` the second."""
     n = round(rate * seconds)
     return [speed if i < n // 2 else -speed for i in range(n)]
 
@@ -164,7 +164,7 @@ def skipped(result: FamilyResult) -> dict[str, Reason]:
     return {s.feature_id: s.reason for s in result.skipped}
 
 
-# --- funciones puras -----------------------------------------------------------------------------
+# --- pure functions -----------------------------------------------------------------------------
 
 
 def mounting(x: str, y: str, z: str) -> Mounting:
@@ -177,7 +177,7 @@ def mounting(x: str, y: str, z: str) -> Mounting:
         (mounting("anterior", "left", "cranial"), "sagittal", ("gyro_y", 1.0)),
         (mounting("anterior", "left", "cranial"), "frontal", ("gyro_x", 1.0)),
         (mounting("anterior", "left", "cranial"), "transverse", ("gyro_z", 1.0)),
-        # montaje del simulador
+        # simulator mounting
         (mounting("cranial", "left", "posterior"), "sagittal", ("gyro_y", 1.0)),
         (mounting("cranial", "left", "posterior"), "frontal", ("gyro_z", -1.0)),
         (mounting("cranial", "left", "posterior"), "transverse", ("gyro_x", 1.0)),
@@ -195,12 +195,12 @@ def test_a_mounting_without_the_plane_axis_has_no_channel():
 
 
 def test_the_range_of_motion_is_the_span_of_the_integrated_angle():
-    # ángulo 0, 1, 2, 1, 0 -> rango 2
+    # angle 0, 1, 2, 1, 0 -> range 2
     assert range_of_motion_deg(np.array([10.0, 10.0, -10.0, -10.0]), 10.0) == pytest.approx(2.0)
 
 
 def test_the_range_of_motion_starts_from_zero_before_the_first_sample():
-    # ángulo 0, 3: un único sentido sigue contando desde el inicio
+    # angle 0, 3: a single direction still counts from the start
     assert range_of_motion_deg(np.array([30.0]), 10.0) == pytest.approx(3.0)
     assert range_of_motion_deg(np.array([-30.0]), 10.0) == pytest.approx(3.0)
 
@@ -243,18 +243,18 @@ def test_the_family_declares_every_concrete_id_of_its_four_catalog_templates():
 def test_the_default_registry_registers_the_imu_family_after_emg_sharing_the_repetitions():
     families = list(default_registry())
 
-    assert [f.family for f in families] == ["exercise", "emg", "imu", "emg_spectral", "stretch"]
-    exercise, _, imu, spectral, _ = families
+    assert [f.family for f in families] == ["exercise", "emg", "imu", "emg_spectral", "stretch", "measured"]
+    exercise, _, imu, spectral, _, _ = families
     assert isinstance(exercise, ExerciseFamily)
     assert isinstance(imu, ImuFamily)
-    assert imu.repetitions is exercise._repetitions  # pyright: ignore[reportPrivateUsage] # el servicio compartido es interno de exercise
+    assert imu.repetitions is exercise._repetitions  # pyright: ignore[reportPrivateUsage]  # the shared service is internal to exercise
     assert spectral._repetitions is exercise._repetitions  # pyright: ignore[reportPrivateUsage,reportAttributeAccessIssue,reportUnknownMemberType] # idem
 
 
 def sagittal_context(
     speed: float = 20.0, *, rate: float = RATE, seconds: float = 6.0, edit: Callable[[dict[str, Any]], None] | None = None
 ) -> ExtractionContext:
-    """Quieto 2 s, una flexión de 2 s a ``speed`` en el plano sagital y quieto hasta ``seconds``."""
+    """Still for 2 s, a 2 s flexion at ``speed`` in the sagittal plane and still until ``seconds``."""
     lead = round(2.0 * rate)
     moving = bend(rate, 2.0, speed)
     tail = round(seconds * rate) - lead - len(moving)
@@ -294,7 +294,7 @@ def test_each_plane_only_produces_rom_and_peak_angular_velocity():
 
 
 def test_the_window_is_half_open_start_sample_in_end_sample_out():
-    # un pico justo en el fin de la ventana no cuenta; el del inicio sí
+    # a peak exactly at the end of the window does not count; the one at the start does
     gyro_y = with_bias("gyro_y", [0.0] * 600)
     gyro_y[200] += 7.0
     gyro_y[400] += 50.0
@@ -348,7 +348,7 @@ def test_the_gyro_bias_of_the_calibration_is_subtracted():
     def no_bias(raw: dict[str, Any]) -> None:
         imu_calibration(raw)["gyro_bias_dps"] = {"x": 0.0, "y": 0.0, "z": 0.0}
 
-    # con sesgo 0 el sesgo real del giróscopo queda en la señal y se suma al pico de cada plano
+    # with bias 0 the gyroscope's real bias stays in the signal and adds to each plane's peak
     result = run([rep(1, 2.0, 4.0)], sagittal_context(edit=no_bias))
 
     assert values(result)["imu.t9.sagittal.peak_angular_velocity_dps"] == pytest.approx(20.12)
@@ -482,7 +482,7 @@ def test_a_slow_chunk_in_the_stream_does_not_skip_anything():
 
 
 def test_the_range_of_motion_integrates_each_sample_with_the_period_of_its_own_chunk():
-    # mismo arranque con un chunk lento al final: la flexión a 100 Hz se integra a 10 ms, no al periodo del chunk lento
+    # same boot with a slow chunk at the end: the 100 Hz flexion is integrated at 10 ms, not at the slow chunk's period
     fast = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 200 + bend(RATE, 2.0, 20.0) + [0.0] * 200)})
     slow = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 10)}, rate=10.0, seq0=60, t0_device_ms=6000)
     result = run([rep(1, 2.0, 4.0)], make_context(fast + slow))
@@ -497,7 +497,7 @@ def test_a_slow_stream_without_repetitions_is_too_few_repetitions_for_every_feat
 
 
 def test_each_repetition_reads_the_segment_with_most_samples_in_its_window():
-    # reinicio a mitad de la rep: el primer arranque aporta 50 muestras quietas y el segundo 150 en movimiento
+    # restart mid-rep: the first boot contributes 50 still samples and the second 150 moving ones
     first = chunks_for({"gyro_y": with_bias("gyro_y", [0.0] * 250)}, chunk=50)
     moving = with_bias("gyro_y", [10.0] * 150 + [0.0] * 50)
     second = chunks_for({"gyro_y": moving}, boot_id=7, t0_device_ms=0, chunk=50)
@@ -575,3 +575,69 @@ def test_shifting_the_session_in_time_does_not_change_the_values(shift_s: int, s
             assert math.isnan(moved[feature_id])
         else:
             assert moved[feature_id] == pytest.approx(value)
+
+
+def test_measured_imu_requires_absolute_reference_and_fixed_mount():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import IMU
+
+    def edit(raw):
+        raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] == "imu"]
+        raw["session"]["streams"] = [s for s in raw["session"]["streams"] if s["stream_kind"] == "imu"]
+        raw["session"]["streams"][0]["placement"]["spine_level"] = "l1"
+        cal = imu_calibration(raw)
+        cal["spine_level"] = "l1"
+        cal["created_at"] = T0.isoformat()
+        cal["reference_orientation_x_deg"] = 30
+        cal["mounting"] = {"sensor_x": "left", "sensor_y": "anterior", "sensor_z": "cranial"}
+
+    ctx = make_context(chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 500)}), edit=edit)
+    result = MeasuredFamily().extract(ctx)
+    assert values(result)[IMU] == pytest.approx(35)
+    longer = make_context(chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 1000)}), edit=edit)
+    assert values(MeasuredFamily().extract(longer))[IMU] == pytest.approx(40)
+    gap_chunks = chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 1000)})
+    gap_chunks.pop(10)
+    with_gap = make_context(gap_chunks, edit=edit)
+    assert IMU in skipped(MeasuredFamily().extract(with_gap))
+    cal = ctx.calibrations["imu_t9"].calibration
+    cal.reference_orientation_x_deg = None
+    assert IMU in skipped(MeasuredFamily().extract(ctx))
+
+
+def test_measured_imu_accepts_quantized_60hz_and_unaligned_reference():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import IMU
+
+    def edit(raw):
+        raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] == "imu"]
+        raw["session"]["streams"] = [s for s in raw["session"]["streams"] if s["stream_kind"] == "imu"]
+        raw["session"]["streams"][0]["placement"]["spine_level"] = "l1"
+        raw["session"]["streams"][0]["sample_rate_hz"] = 60
+        cal = imu_calibration(raw)
+        cal.update(spine_level="l1", created_at=at(0.005).isoformat(), reference_orientation_x_deg=30,
+                   mounting={"sensor_x": "left", "sensor_y": "anterior", "sensor_z": "cranial"})
+
+    ctx = make_context(chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 360)}, rate=60, chunk=60), edit=edit)
+    assert values(MeasuredFamily().extract(ctx))[IMU] == pytest.approx(30 + 359 / 60)
+
+
+def test_measured_imu_rejects_single_missing_sample_at_1000hz_before_window():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import IMU
+
+    def edit(raw):
+        raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] == "imu"]
+        raw["session"]["streams"] = [s for s in raw["session"]["streams"] if s["stream_kind"] == "imu"]
+        raw["session"]["streams"][0]["placement"]["spine_level"] = "l1"
+        raw["session"]["streams"][0]["sample_rate_hz"] = 1000
+        cal = imu_calibration(raw)
+        cal.update(spine_level="l1", created_at=T0.isoformat(), reference_orientation_x_deg=30,
+                   mounting={"sensor_x": "left", "sensor_y": "anterior", "sensor_z": "cranial"})
+
+    chunks = chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 6000)}, rate=1000, chunk=100)
+    chunks[5]["n_samples"] -= 1
+    for channel in chunks[5]["data"].values():
+        channel.pop()
+    result = MeasuredFamily().extract(make_context(chunks, edit=edit))
+    assert IMU in skipped(result)

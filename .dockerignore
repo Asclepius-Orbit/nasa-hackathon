@@ -1,10 +1,10 @@
-# Control de versiones y metadatos
+# Version control and metadata
 .git
 .gitignore
 .gitattributes
 .github
 
-# Entornos y cachés (se reconstruyen dentro de la imagen)
+# Environments and caches (rebuilt inside the image)
 **/.venv
 **/__pycache__
 **/*.py[cod]

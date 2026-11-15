@@ -103,7 +103,7 @@ export function LengthChartFigure({ days, range }: { days: readonly DayRecord[];
         <line x1={AXIS_START} y1={chart.baselineY} x2={AXIS_END} y2={chart.baselineY} className={styles.axis} />
         <g className={styles.label}>
           {chart.yTicks.map((t) => (
-            <text key={t.mm} x={0} y={t.y + Y_LABEL_DROP}>
+            <text key={t.mm} x={0} y={t.labelY + Y_LABEL_DROP}>
               {formatLength(t.mm)}
             </text>
           ))}

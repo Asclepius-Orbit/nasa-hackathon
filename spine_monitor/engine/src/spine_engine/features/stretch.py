@@ -1,29 +1,29 @@
-"""Familia ``stretch`` (#45): elongación del cordón, pico y rango por repetición, recuperación y resistencia de reposo.
+"""``stretch`` family (#45): cord elongation, peak and range per repetition, recovery and rest resistance.
 
-Se trabaja siempre desde las cuentas ADC. Por chunk: con ``circuit`` completo (``adc_bits`` y ``series_resistor_ohm``)
-la resistencia sale de ``adc_counts`` (``stretch_curve.adc_to_resistance``); si no, de ``data.resistance_ohm``; un
-chunk sin ninguna de las dos no aporta muestras. Las resistencias no finitas (ADC a 0 o saturado, NaN) se descartan.
-La elongación por muestra sale de la curva y la longitud de reposo de ``calibration.stretch``. La espera de
-recuperación es ``recovery_wait_s`` de esa calibración (aunque esté caducada) o, si no la trae, la
-``default_recovery_wait_s`` del constructor (provisional hasta #46). Por stream stretch con ``placement.spine_region``:
+Work is always done from the ADC counts. Per chunk: with a complete ``circuit`` (``adc_bits`` and ``series_resistor_ohm``)
+the resistance comes from ``adc_counts`` (``stretch_curve.adc_to_resistance``); otherwise from ``data.resistance_ohm``; a
+a chunk with neither contributes no samples. Non-finite resistances (ADC at 0 or saturated, NaN) are discarded.
+The per-sample elongation comes from the curve and the rest length of ``calibration.stretch``. The recovery
+wait is ``recovery_wait_s`` of that calibration (even if expired) or, if it has none, the
+``default_recovery_wait_s`` of the constructor. Per stretch stream with ``placement.spine_region``:
 
-- Muestras pasivas: las que no caen en ``[inicio de activa, fin de activa + espera)`` de ninguna repetición (sin
-  repeticiones, p. ej. ``spine_check``, todas). ``elongation_mm`` = media de su elongación, ``elongation_pct`` =
-  ``100·elongation_mm / rest_length_mm`` y ``rest_resistance_ohm`` = media de su resistencia (no necesita
-  calibración, como dice el catálogo). ``n`` = número de muestras pasivas.
-- Por repetición (ventana activa ``inicio <= t < fin``): ``peak_elongation_mm`` = máxima elongación, ``range_mm`` =
-  máx − mín. Publicado = media sobre las repeticiones con muestras; ``n`` las cuenta.
-- ``recovery_time_s``: por repetición, segundos desde el fin de la activa hasta la primera muestra con elongación
-  ``<= recovery_fraction · pico de esa repetición`` (PROVISIONAL hasta #46), buscada en ``[fin, fin + espera)``
-  recortado al fin del reposo de la ``RepWindow`` si lo tiene. Una repetición que no recupera ahí se excluye;
-  publicado = media de las que recuperan, ``n`` las cuenta; si ninguna recupera, ``no_data``.
+- Passive samples: those that fall in no repetition's ``[active start, active end + wait)`` (with no
+    repetitions, e.g. ``spine_check``, all of them). ``elongation_mm`` = mean of their elongation, ``elongation_pct`` =
+  ``100·elongation_mm / rest_length_mm`` and ``rest_resistance_ohm`` = mean of their resistance (needs no
+    calibration, as the catalog says). ``n`` = number of passive samples.
+- Per repetition (active window ``start <= t < end``): ``peak_elongation_mm`` = maximum elongation, ``range_mm`` =
+    max − min. Published = mean over the repetitions with samples; ``n`` counts them.
+- ``recovery_time_s``: per repetition, seconds from the end of the active phase to the first sample with elongation
+    ``<= recovery_fraction · peak of that repetition``, searched in ``[end, end + wait)``
+    clipped to the end of the rest of the ``RepWindow`` if it has one. A repetition that does not recover there is excluded;
+    published = mean of those that recover, ``n`` counts them; if none recovers, ``no_data``.
 
-Motivos de ``skipped`` en orden: stream declarado sin chunks ``stream_missing`` (todas); para todo menos
-``rest_resistance_ohm``, sin calibración ``no_calibration``, caducada ``calibration_expired`` y una curva
-inutilizable (``StretchCurveError``) o una calibración que no es de cordón ``no_calibration``; sin muestras
-(pasivas) ``no_data`` (incluye no tener ``circuit`` ni ``resistance_ohm``, o no tener UTC); para las de repetición,
-menos de ``MIN_REPETITIONS`` (2) repeticiones con muestras ``too_few_repetitions``, salvo que haya repeticiones y
-ninguna tenga muestras (``no_data``). Nunca lanza.
+``skipped`` reasons in order: declared stream without chunks ``stream_missing`` (all of them); for everything except
+``rest_resistance_ohm``, no calibration ``no_calibration``, expired ``calibration_expired`` and an unusable
+curve (``StretchCurveError``) or a calibration that is not for a cord ``no_calibration``; without (passive)
+samples ``no_data`` (includes having no ``circuit`` or ``resistance_ohm``, or no UTC); for the repetition ones,
+fewer than ``MIN_REPETITIONS`` (2) repetitions with samples ``too_few_repetitions``, unless there are repetitions and
+none has samples (``no_data``). Never raises.
 """
 
 from collections.abc import Sequence
@@ -57,7 +57,7 @@ _MICROSECOND = timedelta(microseconds=1)
 
 @dataclass(frozen=True, slots=True)
 class _Series:
-    """Muestras válidas del stream (resistencia finita): instante UTC en µs enteros y resistencia (Ω)."""
+    """Valid samples of the stream (finite resistance): UTC instant in integer µs and resistance (Ω)."""
 
     micros: NDArray[np.int64]
     resistance: NDArray[np.float64]
@@ -68,7 +68,7 @@ def _micros(instant: datetime) -> int:
 
 
 def _read(context: ExtractionContext, stream_id: str) -> _Series:
-    """Resistencia por muestra, chunk a chunk: de ``adc_counts`` con el ``circuit`` del chunk o, sin él, ``resistance_ohm``."""
+    """Resistance per sample, chunk by chunk: from ``adc_counts`` with the chunk's ``circuit`` or, without it, ``resistance_ohm``."""
     micros: list[NDArray[np.int64]] = []
     resistance: list[NDArray[np.float64]] = []
     for segment in context.segments(stream_id):
@@ -101,14 +101,14 @@ def _calibration(context: ExtractionContext, stream_id: str) -> StretchCalibrati
 
 @dataclass(frozen=True, slots=True)
 class _Elongation:
-    """Elongación (mm) por muestra de la serie y la longitud de reposo de la calibración."""
+    """Elongation (mm) per sample of the series and the rest length of the calibration."""
 
     mm: NDArray[np.float64]
     rest_length_mm: float
 
 
 def _elongation(series: _Series, calibration: StretchCalibration | Reason) -> _Elongation | Reason:
-    """Elongación con la curva de la calibración; una curva inutilizable es ``no_calibration``."""
+    """Elongation with the calibration curve; an unusable curve is ``no_calibration``."""
     if isinstance(calibration, Reason):
         return calibration
     rest = calibration.rest_length_mm
@@ -119,14 +119,14 @@ def _elongation(series: _Series, calibration: StretchCalibration | Reason) -> _E
 
 
 def _span(micros: NDArray[np.int64], start: datetime, end: datetime) -> NDArray[np.bool_]:
-    """Máscara de las muestras en ``start <= t < end``."""
+    """Mask of the samples in ``start <= t < end``."""
     return (micros >= _micros(start)) & (micros < _micros(end))
 
 
 def _recovery_s(micros: NDArray[np.int64], elongation: NDArray[np.float64], rep: RepWindow, peak: float, wait: timedelta, fraction: float) -> float | None:
-    """Segundos desde el fin de la activa hasta la primera muestra con elongación ``<= recovery_fraction · peak``.
+    """Seconds from the end of the active phase to the first sample with elongation ``<= recovery_fraction · peak``.
 
-    Se busca en ``[fin, fin + wait)`` recortado al fin del reposo si lo hay; ``None`` si no recupera ahí.
+    Searched in ``[end, end + wait)`` clipped to the end of rest if there is one; ``None`` if it does not recover there.
     """
     end = rep.end + wait
     if rep.rest_end is not None:
@@ -141,7 +141,7 @@ type _Outcome = tuple[float, int] | Reason
 
 
 class StretchFamily:
-    """Features del cordón por stream stretch declarado con ``placement.spine_region``."""
+    """Cord features per declared stretch stream with ``placement.spine_region``."""
 
     family = "stretch"
     feature_ids: Sequence[str] = tuple(i for name in (*_NAMES, *_POSTURE_NAMES.values()) for i in expand_template(f"stretch.{{spine_region}}.{name}"))
@@ -203,7 +203,7 @@ class StretchFamily:
         return outcomes
 
     def _recovery_wait_s(self, context: ExtractionContext, stream_id: str) -> float:
-        """Espera de recuperación: la de la calibración del stream (aunque esté caducada) o, sin ella, la de por defecto."""
+        """Recovery wait: that of the stream's calibration (even if expired) or, without it, the default one."""
         calibration = context.calibration(stream_id).calibration
         if isinstance(calibration, StretchCalibration) and calibration.recovery_wait_s is not None:
             return calibration.recovery_wait_s

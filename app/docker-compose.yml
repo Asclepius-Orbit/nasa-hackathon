@@ -53,6 +53,9 @@ services:
       SPINE_APP_MQTT_USERNAME: spine-app
       SPINE_APP_MQTT_PASSWORD: "${SPINE_MQTT_APP_PASSWORD:?run sh app/mosquitto/setup.sh}"
       SPINE_APP_ENGINE_URL: http://engine:8001
+      # Single telemetry producer of the stack: simulator (profile sim) | device (profile hardware, or gateway-demo).
+      # start-demo.ps1 picks the profiles from this same value, so producer and backend config cannot diverge.
+      SPINE_APP_TELEMETRY_SOURCE: "${SPINE_APP_TELEMETRY_SOURCE:-simulator}"
       SPINE_APP_GROUND_WINDOW_ANCHOR: "2026-01-01T00:00:00Z"
       SPINE_APP_GROUND_WINDOW_PERIOD_MIN: "15"
       SPINE_APP_GROUND_WINDOW_UP_MIN: "5"
@@ -70,6 +73,23 @@ services:
       engine:
         condition: service_started
     restart: unless-stopped
+
+  seed:
+    # One-shot demo seeder (profile "seed"): AST-01 and AST-02 with ~60 days of history built with the real engine. Idempotent: an
+    # astronaut that already has sessions or a complete profile is skipped. Run it before the backend starts:
+    #   docker compose -f app/docker-compose.yml --profile seed run --rm seed
+    build:
+      context: ..
+      dockerfile: spine_monitor/backend/Dockerfile
+    image: spine-backend:dev
+    command: ["python", "-m", "monitor.demo_seed", "--engine-url", "http://engine:8001"]
+    volumes:
+      - backend_data:/data
+    depends_on:
+      engine:
+        condition: service_healthy
+    profiles: ["seed"]
+    restart: "no"
 
   read-api:
     # Read-only API of the app for the MCP server (contracts/app-openapi.yaml). Same image as the backend,
@@ -128,6 +148,7 @@ services:
       context: ..
       dockerfile: spine_monitor/physiology/Dockerfile
     image: spine-simulator:dev
+    # Only for SPINE_APP_TELEMETRY_SOURCE=simulator; never start it together with gateway/gateway-demo.
     environment:
       SPINE_SIM_CONFIG: /app/configs/example-mission.yaml
       SPINE_SIM_MQTT_HOST: mosquitto
@@ -144,6 +165,7 @@ services:
     restart: unless-stopped
 
   gateway:
+    # Only for SPINE_APP_TELEMETRY_SOURCE=device; never start it together with simulator.
     # Real wearable gateway (issue #13): Arduino over USB serial -> MQTT v1 chunks. Profile "hardware":
     #   docker compose -f app/docker-compose.yml --profile hardware up -d gateway
     # Only works on Linux: Docker Desktop on Windows/macOS cannot pass a USB device through to a container.
@@ -172,6 +194,7 @@ services:
     restart: unless-stopped
 
   arduino-emulator:
+    # Opt-in device source without a board (SPINE_APP_TELEMETRY_SOURCE=device + SPINE_GATEWAY_DEMO=1 in start-demo.ps1).
     # Fake Arduino over TCP (spine_gateway.emulator) for the gateway demo without hardware. Profile "gateway-demo":
     #   docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
     build:
@@ -222,7 +245,8 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 10
-    profiles: ["llm"]
+    # Also in "llm-prepare": agent and ollama-pull depend on it, so `--profile llm-prepare` alone must resolve it.
+    profiles: ["llm", "llm-prepare"]
     restart: unless-stopped
 
   ollama-pull:
@@ -232,12 +256,13 @@ services:
     environment:
       OLLAMA_HOST: ollama:11434
       SPINE_AGENT_LLM_MODELS: "${SPINE_AGENT_LLM_MODELS:-qwen3.5:4b}"
+      SPINE_AGENT_MODEL: "${SPINE_AGENT_MODEL:-qwen3.5:4b}"
     entrypoint:
       - /bin/sh
       - -c
       - |
         rc=0
-        for m in $$SPINE_AGENT_LLM_MODELS; do
+        for m in $$SPINE_AGENT_MODEL $$SPINE_AGENT_LLM_MODELS; do
           ollama show "$$m" >/dev/null 2>&1 || ollama pull "$$m" || rc=1
         done
         exit $$rc
@@ -311,15 +336,15 @@ services:
     profiles: ["quality"]
 
   firmware-build:
-    # Build reproducible del firmware del wearable (issue #13): test de paridad del protocolo en host (gcc)
-    # y compilacion del sketch para arduino:avr:uno. No depende del broker. Perfil "firmware":
+    # Reproducible build of the wearable firmware (issue #13): protocol parity test on the host (gcc)
+    # and sketch compilation for arduino:avr:uno. Does not depend on the broker. "firmware" profile:
     #   docker compose -f app/docker-compose.yml --profile firmware run --rm firmware-build
-    # Sale distinto de 0 si falla el test o la compilacion (el comando esta en firmware/Dockerfile).
+    # Exits non-zero if the test or the compilation fails (the command is in firmware/Dockerfile).
     build:
       context: ..
       dockerfile: firmware/Dockerfile
     image: spine-firmware:dev
-    # Las fuentes del host pisan la copia de la imagen: editar y volver a ejecutar sin reconstruir.
+    # Host sources override the copy in the image: edit and re-run without rebuilding.
     volumes:
       - ../firmware:/work/firmware:ro
     profiles: ["firmware"]

@@ -48,11 +48,12 @@ def test_plan_day_lists_scheduled_sessions_and_background_sorted(config, timelin
     for plan in plans:
         assert plan.ref == sess.SessionRef(A, 0, plan.ref.slot)
         assert plan.session_id == RngTree(config.seed).uuid(A, 0, plan.ref.slot)
-        # Duración entera en chunks (del tamaño propio de la sesión: el fondo tiene el suyo).
+        # Whole duration in chunks (of the session's own size: the background has its own).
         assert plan.chunk_ms == sess.chunk_ms_for(config, background=plan.background)
         assert (plan.end - plan.start) % timedelta(milliseconds=plan.chunk_ms) == timedelta(0)
     exercise = next(p for p in plans if p.ref.slot == "lat_pulldown")
-    assert exercise.session_type == "exercise" and exercise.reps == rep_schedule(config.protocol("lat_pulldown_standing_v1"))
+    expected_rng = RngTree(config.seed).rng(A, day.index, "lat_pulldown", "exercise")
+    assert exercise.session_type == "exercise" and exercise.reps == rep_schedule(config.protocol("lat_pulldown_standing_v1"), rng=expected_rng)
     assert abs((exercise.start - day.at(config.schedule.sessions[1].time_utc)).total_seconds()) < 5 * 600
     background = next(p for p in plans if p.background)
     assert background.session_type == "spine_check" and background.stream_ids == ("imu_t9", "stretch_spine")
@@ -78,8 +79,8 @@ def test_plan_day_respects_phases_every_n_days_and_disabled_background():
     config = make_config(edit)
     timeline = MissionTimeline(config)
     slots = {d.index: [p.ref.slot for p in sess.plan_day(config, config.seed, A, d)] for d in timeline}
-    assert "pre_spine_check" not in slots[0] and "pre_spine_check" in slots[4]  # preflight: no; inflight con ejercicio: si
-    assert "pre_spine_check" not in slots[3]  # inflight pero sin ejercicio ese dia: tampoco su spine_check
+    assert "pre_spine_check" not in slots[0] and "pre_spine_check" in slots[4]  # preflight: no; inflight with exercise: yes
+    assert "pre_spine_check" not in slots[3]  # inflight but no exercise that day: no spine_check either
     assert "lat_pulldown" in slots[0] and "lat_pulldown" not in slots[1] and "lat_pulldown" in slots[2]
     assert all("background" not in s for s in slots.values())
 
@@ -126,7 +127,7 @@ def test_background_active_chunks_skip_the_pause_on_the_chunk_grid(config, timel
     post = next(p for p in plans if p.ref.slot == "post_spine_check")
     ranges = sess.active_chunks(background)
     (a0, a1), (b0, b1) = ranges[0], ranges[-1]
-    assert len(ranges) == 4  # el fondo reanuda en los huecos entre pre, ejercicio y post
+    assert len(ranges) == 4  # the background resumes in the gaps between pre, exercise and post
     assert a0 == 0 and b1 == sess.n_chunks(background)
     assert background.start + a1 * chunk <= pre.start < background.start + (a1 + 1) * chunk
     assert background.start + (b0 - 1) * chunk < post.end <= background.start + b0 * chunk
@@ -134,7 +135,7 @@ def test_background_active_chunks_skip_the_pause_on_the_chunk_grid(config, timel
 
 
 def test_scheduled_calibrations_follow_every_n_days_and_segment_starts(config, timeline):
-    # every_n_days 7 y tramos de 3/8/3 días: calibraciones los días 0, 3 (inicio de tramo), 7, 11 (inicio de tramo).
+    # every_n_days 7 and segments of 3/8/3 days: calibrations on days 0, 3 (segment start), 7, 11 (segment start).
     ids = {d.index: sess.scheduled_calibrations(config, config.seed, timeline, A, d) for d in timeline}
     stretch = [ids[d]["stretch_spine"].calibration_id for d in range(len(timeline))]
     changes = [d for d in range(len(timeline)) if d == 0 or stretch[d] != stretch[d - 1]]
@@ -199,14 +200,17 @@ def test_session_records_validate_and_declare_streams(config, timeline, slot):
         assert declaration["placement"] == config.device.stream(stream_id).placement.model_dump(mode="json", exclude_none=True)
     if slot == "background":
         assert declared["imu_t9"]["sample_rate_hz"] == config.schedule.background.sample_rates_hz.imu
-        assert [e["note"] for e in payload["events"]] == ["background paused", "background resumed"] * 3  # pre, ejercicio, post
+        assert [e["note"] for e in payload["events"]] == ["background paused", "background resumed"] * 3  # pre, exercise, post
 
 
 def test_exercise_session_has_load_and_rep_events_with_device_clock(config, timeline):
     _plan, _, payload = _session_payload(config, timeline, "lat_pulldown")
     protocol = config.protocol("lat_pulldown_standing_v1")
     assert payload["load_declared"] == {
-        "type": "elastic_band", "nominal_kg": 25.0, "band_stretch_cm": 40.0, "band_id": "green",
+        "type": "elastic_band",
+        "nominal_kg": 25.0,
+        "band_stretch_cm": 40.0,
+        "band_id": "green",
         "description": "Standing, band anchored overhead, pronated grip.",
     }
     assert payload["planned_reps"] == protocol.planned_reps
@@ -240,6 +244,24 @@ def _clean(raw):
         fault["probability"] = 0.0
 
 
+def test_emg_fatigue_parameters_affect_exercise_synthesis():
+    def configured(per_rep, gain):
+        def edit(raw):
+            raw["signals"]["emg"]["fatigue_per_rep"] = per_rep
+            raw["signals"]["emg"]["deconditioning_fatigue_gain"] = gain
+        return make_config(edit)
+
+    def fatigue(per_rep, gain):
+        _, synthesis = _synth(configured(per_rep, gain), "lat_pulldown", day=4)
+        return synthesis.stream("emg_lat_left").truth["fatigue"]
+
+    baseline = fatigue(0.0, 0.0)
+    increased = fatigue(0.02, 0.0)
+    deconditioned = fatigue(0.02, 3.0)
+    assert np.max(increased - baseline) > 0
+    assert np.max(deconditioned - increased) > 0
+
+
 def test_synthesis_shapes_channels_and_calibration(config):
     plan, synthesis = _synth(config, "lat_pulldown")
     n_chunks = sess.n_chunks(plan)
@@ -251,7 +273,7 @@ def test_synthesis_shapes_channels_and_calibration(config):
     stretch = synthesis.stream("stretch_spine")
     assert set(stretch.channels) == {"adc_counts", "resistance_ohm", "length_mm"}
     assert stretch.calibration_id is not None and stretch.channels["adc_counts"].dtype == np.int64
-    assert synthesis.stream("emg_lat_left").calibration_id is None  # la MVC va en Session.streams, no en el chunk
+    assert synthesis.stream("emg_lat_left").calibration_id is None  # the MVC goes in Session.streams, not in the chunk
 
 
 def test_synthesis_is_deterministic(config):
@@ -269,8 +291,8 @@ def test_cord_marks_band_recovering_after_the_reps_but_not_at_rest():
     stretch = synthesis.stream("stretch_spine")
     flagged = [QualityFlag.BAND_RECOVERING in q["length_mm"].flags for q in stretch.quality]
     first_rep_chunk = int(plan.reps[0].start_s * 1000 // config.signals.chunk_ms)
-    assert not any(flagged[:first_rep_chunk])  # antes de estirar no hay residuo
-    assert flagged[-1]  # lead_out de 120 s con tau 90 s: aún se recupera al final
+    assert not any(flagged[:first_rep_chunk])  # before stretching there is no residual
+    assert flagged[-1]  # lead_out of 120 s with tau 90 s: still recovering at the end
     assert all(QualityFlag.BAND_RECOVERING not in q["adc_counts"].flags for q in stretch.quality)
     _, rest = _synth(config, "pre_spine_check")
     assert all(not q["length_mm"].flags for q in rest.stream("stretch_spine").quality)
@@ -281,13 +303,15 @@ def test_microgravity_removes_gravity_from_accel_and_keeps_everything_else():
     _, earth = _synth(config, "background", day=4, gravity=GravityEnvironment.EARTH_1G)
     _, micro = _synth(config, "background", day=4)
     e, m = earth.stream("imu_t9").channels, micro.stream("imu_t9").channels
+
     def accel(c):
         return np.sqrt(c["accel_x"] ** 2 + c["accel_y"] ** 2 + c["accel_z"] ** 2)
+
     assert np.mean(accel(e)) == pytest.approx(1.0, abs=0.05)
     assert np.mean(accel(m)) < 0.1
     for gyro in ("gyro_x", "gyro_y", "gyro_z"):
         assert np.array_equal(e[gyro], m[gyro])
-    # Pérdida diurna del cordón solo con gravedad: más largo en micro.
+    # Diurnal cord loss only with gravity: longer in micro.
     assert np.mean(micro.stream("stretch_spine").truth["length_mm"]) > np.mean(earth.stream("stretch_spine").truth["length_mm"])
 
 
@@ -296,9 +320,9 @@ def test_background_uses_reduced_rates_and_shared_bends(config):
     imu, stretch = synthesis.stream("imu_t9"), synthesis.stream("stretch_spine")
     assert imu.rate_hz == config.schedule.background.sample_rates_hz.imu
     assert stretch.rate_hz == config.schedule.background.sample_rates_hz.stretch
-    # Mismas flexiones en IMU y cordón (mismo tronco): el ángulo coincide a igual frecuencia.
+    # Same flexions in IMU and cord (same trunk): the angle matches at the same frequency.
     assert np.array_equal(imu.truth["angle_deg"], stretch.truth["angle_deg"])
-    assert imu.truth["angle_deg"].max() > 0  # 6 flexiones/h en una hora
+    assert imu.truth["angle_deg"].max() > 0  # 6 flexions/h in one hour
 
 
 def test_stream_rate_rejects_emg_in_background(config):
@@ -319,7 +343,7 @@ def test_background_chunks_are_about_ten_times_fewer_than_at_session_chunk_size(
     heavy = make_config(lambda raw: raw["schedule"]["background"].update(chunk_ms=raw["signals"]["chunk_ms"]))
     ratio = emitted(heavy) / emitted(config)
     assert ratio == pytest.approx(config.schedule.background.chunk_ms / config.signals.chunk_ms, rel=0.02) and 9 < ratio < 11
-    # El fondo sintetiza a su tamaño de chunk: un chunk de fondo lleva rate * chunk_ms / 1000 muestras.
+    # The background synthesizes at its chunk size: a background chunk carries rate * chunk_ms / 1000 samples.
     _, synthesis = _synth(config, "background")
     rates = config.schedule.background.sample_rates_hz
     assert synthesis.stream("imu_t9").samples_per_chunk == round(rates.imu * background.chunk_ms / 1000)
@@ -327,7 +351,7 @@ def test_background_chunks_are_about_ten_times_fewer_than_at_session_chunk_size(
 
 
 def test_background_pause_aligns_to_the_background_grid_not_the_session_one():
-    # Con chunks de fondo de 7 s el hueco de la pausa se redondea a esa rejilla, no a la de 100 ms.
+    # With 7 s background chunks the pause gap is rounded to that grid, not to the 100 ms one.
     config = make_config(lambda raw: raw["schedule"]["background"].update(chunk_ms=7000.0))
     timeline = MissionTimeline(config)
     plans = sess.plan_day(config, config.seed, A, timeline.day(0))
@@ -369,7 +393,7 @@ def test_a_session_that_does_not_fit_is_skipped_but_a_shorter_later_one_still_ru
 
     config = make_config(edit)
     plans = sess.plan_day(config, config.seed, A, MissionTimeline(config).day(0))
-    assert [p.ref.slot for p in plans] == ["pre_spine_check", "post_spine_check"]  # lat_pulldown (331 s) no cabe; post_spine_check (120 s) si
+    assert [p.ref.slot for p in plans] == ["pre_spine_check", "post_spine_check"]  # lat_pulldown (331 s) does not fit; post_spine_check (120 s) does
 
 
 def test_active_chunks_split_around_each_pause_on_the_chunk_grid(config, timeline):
@@ -384,11 +408,11 @@ def test_active_chunks_split_around_each_pause_on_the_chunk_grid(config, timelin
     def ranges(*pauses):
         return sess.active_chunks(replace(plan, pauses=tuple((start + a * sec, start + b * sec) for a, b in pauses)))
 
-    assert ranges((0, 2)) == ((2, 10),)  # una pausa desde el inicio no deja un tramo vacio ni uno de 1 chunk
-    assert ranges((8, 10)) == ((0, 8),)  # ni al final
-    assert ranges((3, 3)) == ((0, 10),)  # una pausa vacia no parte nada
-    assert ranges((2, 4), (4, 6)) == ((0, 2), (6, 10))  # pausas contiguas
-    assert ranges((2, 4), (3, 5)) == ((0, 2), (5, 10))  # pausas solapadas
+    assert ranges((0, 2)) == ((2, 10),)  # a pause from the start leaves neither an empty span nor a 1-chunk one
+    assert ranges((8, 10)) == ((0, 8),)  # nor at the end
+    assert ranges((3, 3)) == ((0, 10),)  # an empty pause splits nothing
+    assert ranges((2, 4), (4, 6)) == ((0, 2), (6, 10))  # contiguous pauses
+    assert ranges((2, 4), (3, 5)) == ((0, 2), (5, 10))  # overlapping pauses
 
 
 def test_calibration_records_name_their_type_and_the_session_that_hosts_them(config, timeline):
@@ -399,3 +423,31 @@ def test_calibration_records_name_their_type_and_the_session_that_hosts_them(con
     assert {r.calibration_type for r in mvc.values()} == {"emg_mvc"}
     assert {r.session_id for r in mvc.values()} == {exercise.session_id}
     assert {r.day for r in mvc.values()} == {0}
+
+
+def test_lot_gain_is_deterministic_per_seed_and_astronaut_and_varies(config):
+    a1 = sess.member_lot_gain(config, 7, "AST-01")
+    assert a1 == sess.member_lot_gain(config, 7, "AST-01")
+    assert a1 != sess.member_lot_gain(config, 8, "AST-01")
+    assert a1 != sess.member_lot_gain(config, 7, "AST-02")
+    assert a1 == pytest.approx(1.0, abs=3 * config.signals.stretch.lot_variation_fraction)
+
+
+def test_lot_gain_scales_resistance_and_is_shared_by_calibration_and_signal():
+    def zero_noise(raw):
+        _clean(raw)
+        raw["signals"]["stretch"].update(read_noise_ohm=0.0, repeat_dispersion_ohm=0.0, adc_noise_counts=0.0, lot_variation_fraction=0.3)
+
+    cfg = make_config(zero_noise)
+    gain = sess.member_lot_gain(cfg, cfg.seed, A)
+    assert gain != 1.0
+    _, synthesis = _synth(cfg, "lat_pulldown")
+    stretch = synthesis.stream("stretch_spine")
+    # The published curve carries the lot gain, so the derived length follows the true one despite it.
+    err = np.abs(stretch.channels["length_mm"] - stretch.truth["length_mm"])
+    assert float(np.median(err)) < 5.0
+    # And the published resistance is the cord one scaled by the lot.
+    cfg1 = make_config(lambda raw: (zero_noise(raw), raw["signals"]["stretch"].update(lot_variation_fraction=0.0)))
+    _, base = _synth(cfg1, "lat_pulldown")
+    ratio = float(np.median(stretch.channels["resistance_ohm"] / base.stream("stretch_spine").channels["resistance_ohm"]))
+    assert ratio == pytest.approx(gain, rel=0.03)

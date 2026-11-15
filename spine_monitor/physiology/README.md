@@ -14,6 +14,8 @@ Synthetic mission generator. It publishes what the real hardware would: `StreamC
 
 Every numeric parameter, physiological or technical, is mandatory and comes from the mission YAML: the code has no defaults. Optional contract fields are written as an explicit `null`. `configs/example-mission.yaml` is a **PLACEHOLDER**: invented numbers so the simulator runs end to end, not clinical references. Real values are meant to replace it. Quote times of day (`"07:00"`) and write exponents as `1.0e-3` (PyYAML reads `1e-3` as text); the loader is strict and fails instead of converting silently.
 
+**Sensor realism.** The three streams model the sensors, not just the physiology: the EMG is a rectified envelope by default (`signal_kind`: `envelope`, `rectified` or `raw`; the example mission uses `raw` so that the RMS and median-frequency features describe the raw signal) with optional baseline wander, mains and ECG leakage and ADC quantization; the IMU applies a causal low-pass at `dlpf_hz`, the datasheet noise density, a bounded bias drift and int16 quantization; the stretch cord adds a lot gain per astronaut, per-reading noise, per-session repeat dispersion, creep, hysteresis and the 10-bit divider. Every parameter is configurable and seeded. Values without a source are provisional hypotheses; in particular the EMG has no real measurements (the module is faulty) and the cord curve was measured with a 10 cm bench setup that cannot be extrapolated to the back. Sources, categories (specification, firmware configuration, own measurement, assumption) and validation limits are in [sensor-sources.md](../../docs/sensor-sources.md).
+
 ## Configuration
 
 `load_config(path)` validates the YAML with Pydantic (unknown keys are rejected). Blocks of `configs/example-mission.yaml`:
@@ -194,4 +196,17 @@ Tests that need a real broker are marked `mosquitto` and are skipped when nothin
 - Background volume: with `schedule.background.chunk_ms` at 1000 ms, every background hour is about 3 600 chunks per stream (10x fewer than with 100 ms chunks); it still scales with the window. The example config limits the background to one hour a day.
 - The weekly ODI questionnaire is informational: the simulator does not generate it and it never scores risk; only the daily self-report is generated.
 - Sessions, self-reports, daily context, profiles and ground truth have no MQTT topic: they only exist in JSONL (domain objects never go to the bus). Calibrations do go to the bus.
+- The simulator is one of two telemetry sources (`SPINE_APP_TELEMETRY_SOURCE=simulator`, default, profile `sim`; the other is `device`, see the gateway README). Never run it together with the gateway: only `app/start-demo.ps1` enforces it. The backend drops anything whose `source` is not the configured one. Realism of the simulated signal is tracked separately (#131).
 - Every number in the example config is a placeholder, not a clinical reference.
+
+## Exercise model assumptions
+
+The example mission starts exercise at rest and uses the same seeded repetition
+schedule for movement, EMG, cord and session events. Each repetition has a
+smooth pull and return separated from the next by a pause. Fatigue grows with
+relative effort and time and decays exponentially during pauses. The YAML
+fields `effort_load`, `fatigue_resistance`, `recovery_per_s` and
+`individual_variability` control this model. The reduction in movement capacity,
+slower repetitions and compensatory increase in EMG activation are modelling
+assumptions, not measured force or validated clinical relationships.
+

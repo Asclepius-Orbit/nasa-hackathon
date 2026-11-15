@@ -3,10 +3,26 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, constr
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, constr
 
 from ..domain import astronaut_profile_schema, calibration_schema, session_schema
 from ..telemetry import clock_sync_schema, stream_chunk_schema
+
+
+class RequestedWindow(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    start: AwareDatetime = Field(
+        ...,
+        description='RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.',
+        examples=['2026-11-13T10:00:00.250Z'],
+    )
+    end: AwareDatetime = Field(
+        ...,
+        description='RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.',
+        examples=['2026-11-13T10:00:00.250Z'],
+    )
 
 
 class FeaturesRequest(BaseModel):
@@ -19,6 +35,10 @@ class FeaturesRequest(BaseModel):
         examples=['1.0.0'],
     )
     session: session_schema.Session
+    requested_window: RequestedWindow | None = Field(
+        None,
+        description='Explicit UTC interval for a measured-window extraction. Both bounds are required; the engine verifies a five-second duration. Omit for the full-session feature extraction.',
+    )
     chunks: list[
         stream_chunk_schema.EmgChunk
         | stream_chunk_schema.ImuChunk
@@ -26,7 +46,6 @@ class FeaturesRequest(BaseModel):
     ] = Field(
         ...,
         description='All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).',
-        min_length=1,
     )
     calibrations: (
         list[

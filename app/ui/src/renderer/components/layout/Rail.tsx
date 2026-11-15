@@ -3,8 +3,7 @@ import { NavLink } from 'react-router';
 import type { DataSource } from '../../data/DataSource';
 import { REFRESH_MS, useLoad } from '../../data/useLoad';
 import { dueLabel, nav } from '../../strings/common';
-import { AskIcon, GroundLinkIcon, HistoryIcon, ReportIcon, SessionIcon, SettingsIcon, TodayIcon } from './icons';
-import { MockScreensMenu } from './MockScreensMenu';
+import { AskIcon, HistoryIcon, ReportIcon, SessionIcon, SettingsIcon, TodayIcon } from './icons';
 import styles from './Rail.module.css';
 
 const selectStrip = (data: DataSource): ReturnType<DataSource['getStrip']> => data.getStrip();
@@ -15,7 +14,6 @@ const TABS = [
   { to: '/session', label: nav.session, Icon: SessionIcon },
   { to: '/history', label: nav.history, Icon: HistoryIcon },
   { to: '/chat', label: nav.ask, Icon: AskIcon },
-  { to: '/houston', label: nav.houston, Icon: GroundLinkIcon },
   { to: '/settings', label: nav.settings, Icon: SettingsIcon },
 ] as const;
 
@@ -36,7 +34,6 @@ export function Rail(): React.JSX.Element {
           )}
         </NavLink>
       ))}
-      <MockScreensMenu />
     </nav>
   );
 }

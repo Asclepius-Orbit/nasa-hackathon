@@ -1,4 +1,4 @@
-"""Interfaces del motor. Son Protocols: las implementaciones no necesitan importar nada de aquí."""
+"""Engine interfaces. They are Protocols: implementations do not need to import anything from here."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -26,10 +26,10 @@ Direction = Literal["up", "down"]
 
 @dataclass(frozen=True)
 class Deviation:
-    """Desviación de una feature respecto a su baseline.
+    """Deviation of a feature from its baseline.
 
-    `score` es la magnitud que consume el modelo de riesgo; los campos con valor por defecto son
-    opcionales para que una estrategia simple (como la nula) no tenga que rellenarlos.
+    `score` is the magnitude consumed by the risk model; fields with a default value are
+    optional so that a simple strategy (such as the null one) does not have to fill them in.
     """
 
     feature_id: str
@@ -45,7 +45,7 @@ class Deviation:
 
 @dataclass(frozen=True)
 class ChangeSignal:
-    """Veredicto de un detector sobre una serie: ¿hay un cambio sostenido, y hacia dónde?"""
+    """Verdict of a detector on a series: is there a sustained change, and in which direction?"""
 
     sustained: bool = False
     direction: Direction | None = None
@@ -73,13 +73,14 @@ class TriageDecision:
 
 @dataclass(frozen=True)
 class TriageContext:
-    """Todo lo que la política de triaje puede mirar para decidir."""
+    """Everything the triage policy can look at to decide."""
 
     risk: RiskResult
     deviations: Sequence[Deviation]
     completeness: Completeness
     self_reports: Sequence[SelfReport]
     as_of: datetime
+    feature_sets: Sequence[FeatureSet] = ()
 
 
 class BaselineStrategy(Protocol):
@@ -87,19 +88,19 @@ class BaselineStrategy(Protocol):
 
 
 class DeviationScorer(Protocol):
-    """Convierte un valor en una puntuación de desviación respecto a su entrada de baseline."""
+    """Converts a value into a deviation score against its baseline entry."""
 
     def score(self, value: float, entry: BaselineEntry) -> float: ...
 
 
 class ChangeDetector(Protocol):
-    """Decide si una serie de desviaciones (más antigua primero) muestra un cambio sostenido."""
+    """Decides whether a series of deviations (oldest first) shows a sustained change."""
 
     def detect(self, series: Sequence[float]) -> ChangeSignal: ...
 
 
 class VotePolicy(Protocol):
-    """Combina los veredictos de varios detectores en uno."""
+    """Combines the verdicts of several detectors into one."""
 
     def decide(self, signals: Sequence[ChangeSignal]) -> ChangeSignal: ...
 
@@ -109,13 +110,13 @@ class BaselineBuilder(Protocol):
 
 
 class FeatureExtractor(Protocol):
-    """Datos crudos de una sesión -> FeatureSet. La extracción real llega con #15."""
+    """Raw session data -> FeatureSet. The real extraction arrives with #15."""
 
     def extract(self, request: FeaturesRequest) -> FeatureSet: ...
 
 
 class RiskModel(Protocol):
-    """Desviaciones -> riesgo. `completeness` (en [0, 1]) es la parte de lo esperado que se pudo comparar."""
+    """Deviations -> risk. `completeness` (in [0, 1]) is the part of what was expected that could be compared."""
 
     def score(self, deviations: Sequence[Deviation], completeness: float) -> RiskResult: ...
 

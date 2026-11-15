@@ -15,7 +15,7 @@ export type Level = Assessment['level'];
 export type DayLevel = Level | 'nodata';
 /** Red-flag codes (contract `red_flags` enum), most serious first in the catalogue. */
 export type RedFlagCode = NonNullable<DailySelfReport['red_flags']>[number];
-/** Choices of the Urgent dialog outside the red-flag catalogue (contract `other_symptoms`); how they are triaged is pending Aguado. */
+/** Choices of the Urgent dialog outside the red-flag catalogue (contract `other_symptoms`); how they are triaged is pending clinical validation. */
 export type EscapeCode = NonNullable<RedFlagReport['other_symptoms']>[number];
 
 export interface SymptomOption<Code extends string> {
@@ -391,6 +391,6 @@ export interface HoustonData {
   lastContactAt: string | null;
   /** How the summaries reach the ground (the contract allows only `simulated` today; a string so a later transport does not claim to be it). */
   transport: string;
-  /** Whether Aguado validated the content; today always false. */
+  /** Whether the content was clinically validated; today always false. */
   contentValidated: boolean;
 }

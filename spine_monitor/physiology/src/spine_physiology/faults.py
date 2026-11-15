@@ -1,20 +1,20 @@
-"""Fallos de calidad (sobre arrays de muestras + quality por chunk) y fallos de dispositivo (planes).
+"""Quality faults (on sample arrays + quality per chunk) and device faults (plans).
 
-- `plan_quality_faults`: episodios probabilísticos por flag (probabilidad por chunk de empezar,
-  duración uniforme en `duration_ms`), solo para los `kinds` del flag. probability 0 => ninguno;
-  probability 1 => al menos un episodio que empieza en el primer chunk.
-- `apply_quality_faults`: altera la señal de cada episodio y devuelve la quality por chunk (flag + score
-  mínimo de lo que lo toque). Semántica de `amplitude` (relativa a la señal limpia del canal en el chunk):
-  clipping: recorte a ±amplitude × pico | lead_off: señal sustituida por ruido de amplitude × RMS |
-  motion_artifact: ráfaga de baja frecuencia (banda de `motion_artifact`) de amplitude × RMS | powerline_noise: seno de
-  `frequency_hz` de amplitude × RMS | low_snr: ruido blanco de amplitude × RMS | saturated_adc: cuentas
-  clavadas al máximo del ADC (o al rango del canal) | out_of_calibration: offset de amplitude × RMS |
-  sensor_warmup: deriva lenta que decae, de amplitude × RMS.
-  En el cordón solo se alteran `adc_counts` (enteros, recortados al ADC); como length_mm se deriva de ellas,
-  su quality hereda la de adc_counts.
-- Planes de dispositivo: reinicios (Poisson por hora), pérdidas de chunks en ráfagas, deriva de reloj
-  por arranque y latencia de recepción (jitter de received_at).
-`QualityState`, `CLEAN`, `QUALITY_KEYS` y las utilidades de merge sirven de base común a todos los módulos.
+- `plan_quality_faults`: probabilistic episodes per flag (per-chunk probability of starting,
+  uniform duration in `duration_ms`), only for the flag's `kinds`. probability 0 => none;
+  probability 1 => at least one episode starting at the first chunk.
+- `apply_quality_faults`: alters the signal of each episode and returns the quality per chunk (flag + minimum
+  score of what touches it). Semantics of `amplitude` (relative to the channel's clean signal in the chunk):
+  clipping: clip to ±amplitude × peak | lead_off: signal replaced by noise of amplitude × RMS |
+  motion_artifact: low-frequency burst (`motion_artifact` band) of amplitude × RMS | powerline_noise: sine of
+  `frequency_hz` of amplitude × RMS | low_snr: white noise of amplitude × RMS | saturated_adc: counts
+  pinned to the ADC maximum (or the channel range) | out_of_calibration: offset of amplitude × RMS |
+  sensor_warmup: slow decaying drift, of amplitude × RMS.
+  On the cord only `adc_counts` are altered (integers, clipped to the ADC); since length_mm is derived from them,
+  its quality inherits that of adc_counts.
+- Device plans: restarts (Poisson per hour), chunk losses in bursts, clock drift
+  per boot and reception latency (received_at jitter).
+`QualityState`, `CLEAN`, `QUALITY_KEYS` and the merge utilities are the common base for all modules.
 """
 
 import math
@@ -28,7 +28,7 @@ from spine_contracts.models.common_schema import AssessedBy
 
 from spine_physiology.config import ClockFaultConfig, PacketLossConfig, QualityFaultsConfig, RebootConfig, SignalsConfig
 
-# Claves de `quality` de cada tipo de chunk, en el orden del contrato.
+# `quality` keys of each chunk type, in the contract's order.
 QUALITY_KEYS: dict[StreamKind, tuple[str, ...]] = {
     StreamKind.EMG: ("emg",),
     StreamKind.IMU: ("accel", "gyro"),
@@ -37,7 +37,7 @@ QUALITY_KEYS: dict[StreamKind, tuple[str, ...]] = {
 
 
 def quality_key(kind: StreamKind, channel: str) -> str:
-    """Clave de quality de un canal de datos: accel_x -> accel, gyro_z -> gyro, resistance_ohm -> adc_counts..."""
+    """Quality key of a data channel: accel_x -> accel, gyro_z -> gyro, resistance_ohm -> adc_counts..."""
     if kind is StreamKind.IMU:
         return channel.split("_", 1)[0]
     if kind is StreamKind.STRETCH:
@@ -51,18 +51,18 @@ class QualityState:
     flags: frozenset[QualityFlag]
 
     def merge(self, other: QualityState) -> QualityState:
-        """Peor de los dos: score mínimo y unión de flags."""
+        """The worse of the two: minimum score and union of flags."""
         return QualityState(min(self.score, other.score), self.flags | other.flags)
 
     def to_contract(self) -> Quality:
-        """Quality del contrato, evaluada por el gateway; flags en el orden del enum."""
+        """Contract quality, assessed by the gateway; flags in enum order."""
         flags = [f for f in QualityFlag if f in self.flags]
         return Quality(score=self.score, flags=flags, assessed_by=AssessedBy.GATEWAY)
 
 
 CLEAN = QualityState(1.0, frozenset())
 
-# Quality de un chunk: clave de QUALITY_KEYS -> estado.
+# Quality of a chunk: QUALITY_KEYS key -> state.
 type ChunkQuality = dict[str, QualityState]
 
 
@@ -71,7 +71,7 @@ def clean_quality(kind: StreamKind, n_chunks: int) -> list[ChunkQuality]:
 
 
 def merge_quality(a: Sequence[ChunkQuality], b: Sequence[ChunkQuality]) -> list[ChunkQuality]:
-    """Merge chunk a chunk (misma longitud); claves ausentes en un lado se toman del otro."""
+    """Chunk-by-chunk merge (same length); keys missing on one side are taken from the other."""
     if len(a) != len(b):
         raise ValueError(f"quality sequences differ in length: {len(a)} != {len(b)}")
     out: list[ChunkQuality] = []
@@ -84,12 +84,12 @@ def merge_quality(a: Sequence[ChunkQuality], b: Sequence[ChunkQuality]) -> list[
 
 
 def _n_chunks(n_samples: int, samples_per_chunk: int) -> int:
-    """Chunks necesarios para `n_samples` (el último puede ser parcial)."""
+    """Chunks needed for `n_samples` (the last may be partial)."""
     return -(-n_samples // samples_per_chunk) if n_samples > 0 else 0
 
 
 def _chunks_hit(mask: np.ndarray, samples_per_chunk: int) -> np.ndarray:
-    """Bool por chunk: alguna muestra de la máscara cae dentro."""
+    """Bool per chunk: some sample of the mask falls inside."""
     if mask.size == 0:
         return np.zeros(0, dtype=bool)
     starts = np.arange(0, mask.size, samples_per_chunk)
@@ -105,8 +105,8 @@ def mask_quality(
     score: float,
     samples_per_chunk: int,
 ) -> list[ChunkQuality]:
-    """Quality por chunk a partir de una máscara por muestra (p. ej. band_recovering del cordón):
-    los chunks con alguna muestra marcada llevan `flag` y `score` en `key`; el resto, CLEAN.
+    """Quality per chunk from a per-sample mask (e.g. the cord's band_recovering):
+    chunks with some marked sample carry `flag` and `score` in `key`; the rest, CLEAN.
     """
     if key not in QUALITY_KEYS[kind]:
         raise ValueError(f"quality key {key!r} not valid for {kind.value} (expected one of {QUALITY_KEYS[kind]})")
@@ -122,7 +122,7 @@ def mask_quality(
 
 @dataclass(frozen=True, slots=True)
 class FaultEpisode:
-    """Episodio de un fallo de calidad inyectado, en muestras desde el inicio del array (fin exclusivo)."""
+    """Episode of an injected quality fault, in samples from the start of the array (exclusive end)."""
 
     flag: QualityFlag
     stream_id: str
@@ -142,14 +142,14 @@ def plan_quality_faults(
     rate_hz: float,
     samples_per_chunk: int,
 ) -> tuple[FaultEpisode, ...]:
-    """Episodios de todos los flags aplicables a `kind`, ordenados por inicio."""
+    """Episodes of all flags applicable to `kind`, ordered by start."""
     n_chunks = _n_chunks(n_samples, samples_per_chunk)
     episodes: list[FaultEpisode] = []
     for flag, cfg in faults.items():
         if kind not in cfg.kinds:
             continue
-        # Cada chunk tiene `probability` de iniciar un episodio; los candidatos que caen dentro de un
-        # episodio en curso se descartan (un mismo flag no se solapa consigo mismo).
+        # Each chunk has `probability` of starting an episode; candidates falling inside an
+        # ongoing episode are discarded (a flag never overlaps itself).
         candidates = np.flatnonzero(rng.random(n_chunks) < cfg.probability)
         pos = 0
         while pos < candidates.size:
@@ -175,13 +175,13 @@ def apply_quality_faults(
     signals: SignalsConfig,
     faults: QualityFaultsConfig,
 ) -> tuple[dict[str, np.ndarray], list[ChunkQuality]]:
-    """(canales alterados — copias, nunca in place —, quality por chunk con todas las QUALITY_KEYS[kind]).
+    """(altered channels — copies, never in place —, quality per chunk with all QUALITY_KEYS[kind]).
 
-    `channels`: emg -> {"emg"}; imu -> los 6 de IMU_CHANNELS; stretch -> {"adc_counts"} (int64).
-    Sin episodios devuelve copias idénticas y `clean_quality`.
+    `channels`: emg -> {"emg"}; imu -> the 6 of IMU_CHANNELS; stretch -> {"adc_counts"} (int64).
+    Without episodes it returns identical copies and `clean_quality`.
 
-    `saturated_adc` ignora `amplitude`: clava la señal al fondo de escala (cuentas máximas del ADC del
-    cordón; `accel_range_g` / `gyro_range_dps` en el IMU; el pico del canal en el EMG).
+    `saturated_adc` ignores `amplitude`: pins the signal to full scale (maximum ADC counts of the
+    cord; `accel_range_g` / `gyro_range_dps` on the IMU; the channel peak on the EMG).
     """
     lengths = {len(arr) for arr in channels.values()}
     if len(lengths) != 1:
@@ -194,7 +194,7 @@ def apply_quality_faults(
 
     centered = kind is StreamKind.STRETCH
     work = {name: np.asarray(arr, dtype=np.float64).copy() for name, arr in channels.items()}
-    # Referencias de la señal limpia por chunk (RMS, pico, media), calculadas antes de alterar nada.
+    # Clean-signal references per chunk (RMS, peak, mean), computed before altering anything.
     stats = {name: _chunk_stats(arr, samples_per_chunk, centered) for name, arr in work.items()}
 
     for episode in episodes:
@@ -225,7 +225,7 @@ def apply_quality_faults(
         else:
             out[name] = signal.astype(original.dtype)
     if kind is StreamKind.IMU:
-        # Los fallos (offset, ruido, artefactos) pueden sacar el IMU del rango del sensor: se recorta al fondo de escala.
+        # Faults (offset, noise, artifacts) can push the IMU out of the sensor range: clip to full scale.
         for name in out:
             limit = signals.imu.accel_range_g if name.startswith("accel") else signals.imu.gyro_range_dps
             np.clip(out[name], -limit, limit, out=out[name])
@@ -233,9 +233,9 @@ def apply_quality_faults(
 
 
 def _chunk_stats(x: np.ndarray, samples_per_chunk: int, centered: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(RMS, pico, media) de la señal limpia por chunk. `centered`: RMS respecto a la media del chunk
-    (cordón, cuyas cuentas llevan un nivel continuo grande). Un chunk sin energía usa la del canal
-    entero y, si tampoco la hay, 1.0 (unidad nominal del canal) para que el fallo siempre altere algo.
+    """(RMS, peak, mean) of the clean signal per chunk. `centered`: RMS with respect to the chunk mean
+    (cord, whose counts carry a large DC level). A chunk without energy uses that of the whole
+    channel and, if there is none either, 1.0 (nominal channel unit) so the fault always alters something.
     """
     n = x.size
     starts = np.arange(0, n, samples_per_chunk)
@@ -266,10 +266,10 @@ def _apply_episode(
     signals: SignalsConfig,
     faults: QualityFaultsConfig,
 ) -> None:
-    """Altera `segment` (vista del canal de trabajo) in place según el flag del episodio."""
+    """Alters `segment` (view of the working channel) in place according to the episode's flag."""
     m = segment.size
     amp = episode.amplitude
-    t = np.arange(m) / rate_hz  # segundos desde el inicio del episodio
+    t = np.arange(m) / rate_hz  # seconds since the start of the episode
     flag = episode.flag
     if flag is QualityFlag.CLIPPING:
         limit = amp * ref_peak
@@ -278,7 +278,7 @@ def _apply_episode(
         centre = ref_mean if kind is StreamKind.STRETCH else 0.0
         segment[:] = centre + rng.normal(0.0, 1.0, m) * amp * ref_rms
     elif flag is QualityFlag.MOTION_ARTIFACT:
-        # Ráfaga de baja frecuencia (< 20 Hz): tres senos con ventana de seno (sube y baja).
+        # Low-frequency burst (< 20 Hz): three sines with a sine window (rises and falls).
         cfg = faults.motion_artifact
         top = min(cfg.band_high_hz, cfg.max_fraction_of_rate * rate_hz)
         freqs = rng.uniform(min(cfg.band_low_hz, top / 2), top, 3)
@@ -286,7 +286,7 @@ def _apply_episode(
         shape = sum(np.sin(2 * math.pi * f * t + p) for f, p in zip(freqs, phases, strict=True)) * math.sqrt(2 / 3)
         segment += amp * ref_rms * shape * np.sin(math.pi * (np.arange(m) + 0.5) / m)
     elif flag is QualityFlag.POWERLINE_NOISE:
-        t_abs = (start + np.arange(m)) / rate_hz  # fase continua entre chunks
+        t_abs = (start + np.arange(m)) / rate_hz  # continuous phase across chunks
         phase = rng.uniform(0.0, 2 * math.pi)
         segment += amp * ref_rms * np.sin(2 * math.pi * faults.powerline_noise.frequency_hz * t_abs + phase)
     elif flag is QualityFlag.LOW_SNR:
@@ -312,14 +312,14 @@ def _full_scale(kind: StreamKind, channel: str, signals: SignalsConfig, ref_peak
 
 @dataclass(frozen=True, slots=True)
 class RebootEvent:
-    """Reinicio espontáneo: el dispositivo cae en `at` y vuelve (boot nuevo) tras `offline_s`."""
+    """Spontaneous restart: the device drops at `at` and returns (new boot) after `offline_s`."""
 
     at: datetime
     offline_s: float
 
 
 def plan_reboots(rng: np.random.Generator, cfg: RebootConfig, *, start: datetime, end: datetime) -> tuple[RebootEvent, ...]:
-    """Reinicios Poisson en [start, end), ordenados y sin solaparse (cada uno tras volver del anterior)."""
+    """Poisson restarts in [start, end), ordered and non-overlapping (each after the previous one returns)."""
     if cfg.probability_per_hour <= 0:
         return ()
     mean_gap_s = 3600.0 / cfg.probability_per_hour
@@ -336,7 +336,7 @@ def plan_reboots(rng: np.random.Generator, cfg: RebootConfig, *, start: datetime
 
 
 def plan_packet_loss(rng: np.random.Generator, cfg: PacketLossConfig, n_chunks: int) -> np.ndarray:
-    """Máscara bool por chunk (True = perdido): ráfagas de `burst_chunks` que empiezan con `probability`."""
+    """Bool mask per chunk (True = lost): bursts of `burst_chunks` starting with `probability`."""
     lost = np.zeros(n_chunks, dtype=bool)
     candidates = np.flatnonzero(rng.random(n_chunks) < cfg.probability)
     pos = 0
@@ -349,10 +349,10 @@ def plan_packet_loss(rng: np.random.Generator, cfg: PacketLossConfig, n_chunks: 
 
 
 def sample_drift_ppm(rng: np.random.Generator, cfg: ClockFaultConfig) -> float:
-    """Deriva del reloj del dispositivo para un arranque (uniforme en `drift_ppm`)."""
+    """Device clock drift for a boot (uniform in `drift_ppm`)."""
     return float(rng.uniform(cfg.drift_ppm.min, cfg.drift_ppm.max))
 
 
 def sample_latency_ms(rng: np.random.Generator, cfg: ClockFaultConfig, n: int) -> np.ndarray:
-    """Latencia de recepción de `n` chunks (uniforme en `latency_ms`), float64."""
+    """Reception latency of `n` chunks (uniform in `latency_ms`), float64."""
     return rng.uniform(cfg.latency_ms.min, cfg.latency_ms.max, n).astype(np.float64)

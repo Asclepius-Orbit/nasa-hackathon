@@ -13,7 +13,7 @@ coord = st.floats(min_value=-1e3, max_value=1e3, allow_nan=False, allow_infinity
 
 @st.composite
 def curves(draw):
-    # x estrictamente creciente por construcción (huecos positivos acumulados), sin assume/filter.
+    # x strictly increasing by construction (accumulated positive gaps), without assume/filter.
     start = draw(coord)
     gaps = draw(st.lists(st.floats(min_value=1e-3, max_value=10), max_size=7))
     xs = list(accumulate(gaps, initial=start))

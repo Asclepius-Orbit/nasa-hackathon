@@ -15,9 +15,10 @@ Verified **without hardware**:
 
 **Not tested yet with a real board.** Nothing of this has run on hardware:
 
+- The whole device source (`SPINE_APP_TELEMETRY_SOURCE=device`) with a physical board: **pending**. On a real session the EMG is broken and the IMU signal is unreliable. Through the emulator (`SPINE_GATEWAY_DEMO=1` in `app/start-demo.ps1`, profile `gateway-demo`) only pairing, session start and stop are covered; `pnpm run e2e:real:device` (from `app/ui`, ports 1883/8000/8001 free) and `SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetry_source.py` (from `spine_monitor`) check it. The backend takes only the `source` it is configured for, and the gateway must be the single producer (never together with the simulator, profile `sim`).
 - Real timing of the ADC sampling and the Timer1 ISR (1000 Hz EMG, 20 Hz cord).
 - I2C reading of the MPU-6050 (100 Hz, 400 kHz).
-- Throughput of the USB-serial bridge at 250000 baud (about 5 KB/s of average payload).
+- Throughput of the USB-serial bridge at 9600 baud (about 0.96 KB/s of capacity, against about 5 KB/s of average payload: it does not fit, so samples would be lost).
 - The real EMG module: power supply, range of `SIG`, and whether it outputs a raw signal or an envelope.
 - Noise of the stretch cord voltage divider.
 - Reset of the Uno when the serial port is opened (the gateway assumes it and waits for the next hello/tick).
@@ -40,12 +41,13 @@ Package `spine_gateway` (`src/spine_gateway/`):
 | `status.py` | `DeviceStatus`, `ClockSync` and the background `session_id`; stream and global state. |
 | `app.py` | `Gateway`: MQTT loop (aiomqtt), Last Will, timers, commands, sessions and calibrations. |
 | `emulator.py` | Fake Arduino over TCP (`spine-arduino-emulator`) for working without a board. |
+| `signals.py` | Signals of the emulator: `spine_physiology` generators converted to raw firmware counts. |
 | `__main__.py` | Entry point `spine-gateway`. |
 
 Data flow:
 
 ```
-Arduino (firmware/spine_wearable) --USB serial, 250000 baud--> lines H / T / D (+ CRC-8)
+Arduino (firmware/spine_wearable) --USB serial, 9600 baud--> lines H / T / D (+ CRC-8)
   -> SerialLineSource -> Gateway (parse_line, ChunkAssembler, CalibrationRecorder)
   -> MQTT v1 (aiomqtt, QoS 1) -> Mosquitto
 ```
@@ -81,7 +83,7 @@ uv run spine-arduino-emulator --port 5000
 SPINE_GATEWAY_SERIAL_URL=socket://127.0.0.1:5000 uv run spine-gateway
 ```
 
-pyserial turns `socket://host:port` into a TCP connection, so the gateway runs the exact same code as with a board. The emulator produces deterministic synthetic signals and gives each client a fresh device (new `boot_id`, counters at zero), like an Arduino reset by opening the port. Options: `--host` (default `127.0.0.1`), `--port` (default 5000), `--seed`, `--no-imu` (firmware without MPU-6050: no `I` frames and `#imu absent`), `--drop-every N` (every Nth batch is not sent but consumes its `frame_seq`, like an overrun) and `--reboot-after S` (device reboot after S seconds).
+pyserial turns `socket://host:port` into a TCP connection, so the gateway runs the exact same code as with a board. The emulator produces deterministic synthetic signals, generated with the `spine_physiology` models and sent as the raw counts of the firmware (10-bit EMG as an envelope, MPU-6050 int16 at ±4 g / ±500 dps, cord through the 10 kΩ divider): a 3 s flexion repetition every 4 s on `gyro_x` (what the backend counts), with the EMG contraction and the cord stretch tied to the same effort phase; the amplitudes depend on `--seed`. It gives each client a fresh device (new `boot_id`, counters at zero), like an Arduino reset by opening the port. Options: `--host` (default `127.0.0.1`), `--port` (default 5000), `--seed`, `--no-imu` (firmware without MPU-6050: no `I` frames and `#imu absent`), `--drop-every N` (every Nth batch is not sent but consumes its `frame_seq`, like an overrun) and `--reboot-after S` (device reboot after S seconds).
 
 The same demo in Docker, profile `gateway-demo` (emulator + gateway, Mosquitto starts as a dependency). The image `spine-gateway:dev` is built on the first `up` (use `--build` after changing the code):
 
@@ -111,7 +113,7 @@ All variables have the prefix `SPINE_GATEWAY_` and are optional; `.env.example` 
 | Variable | Default | What it does |
 |---|---|---|
 | `SPINE_GATEWAY_SERIAL_URL` | `COM3` | Serial port as pyserial understands it: `COM3`, `/dev/ttyACM0` or `socket://host:port`. |
-| `SPINE_GATEWAY_SERIAL_BAUD` | `250000` | Baud rate (the firmware is fixed at 250000). |
+| `SPINE_GATEWAY_SERIAL_BAUD` | `9600` | Baud rate (the firmware is fixed at 9600). |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_INITIAL_S` | `1.0` | First wait (s) before reopening the port if it fails to open or is unplugged. |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_FACTOR` | `2.0` | Multiplier of the wait after each failed attempt (>= 1). |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_MAX_S` | `10.0` | Cap (s) of the serial reconnection wait (>= initial). |
@@ -143,13 +145,13 @@ All variables have the prefix `SPINE_GATEWAY_` and are optional; `.env.example` 
 | `SPINE_GATEWAY_IMU_DLPF_HZ` | `44` | Digital low-pass filter of the MPU-6050, declared in the chunk (`config.dlpf_hz`). The firmware configures 44 Hz. |
 | `SPINE_GATEWAY_EMG_GAIN` | `1.0` | Gain of the EMG module; mV are divided by it. |
 | `SPINE_GATEWAY_EMG_SIGNAL_KIND` | `envelope` | What the EMG module delivers to the ADC: `raw`, `rectified` or `envelope`. The default is an assumption, not confirmed with the board (see below). |
-| `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Length (mm) of the cord at rest, used by the `stretch` calibration. PENDING Aguado's ohmmeter measurement: ~650 mm placeholder for the C3->S1 cord (#12). |
-| `SPINE_GATEWAY_STRETCH_CURVE` | `[[5400, 585], [6012, 650], [6790, 731], [7560, 812]]` | Points (ohm, mm) of the cord curve, as a JSON list of pairs rising strictly in both axes. The default is the curve of the example mission, read from `contracts/catalog/calibration-defaults.json` (single source, checked against the mission by a test). The `stretch` calibration scales it to the measured rest: `R0 * R / CURVE_REST_RESISTANCE_OHM` and `L0 * L / CURVE_REST_LENGTH_MM`. Replaces the old `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (multiples of (R0, L0)). PENDING Aguado's ohmmeter measurement (#106): unmeasured default. |
+| `SPINE_GATEWAY_STRETCH_REST_LENGTH_MM` | `650.0` | Length (mm) of the cord at rest, used by the `stretch` calibration. PENDING the clinical reviewer's ohmmeter measurement: ~650 mm placeholder for the C3->S1 cord (#12). |
+| `SPINE_GATEWAY_STRETCH_CURVE` | `[[5400, 585], [6012, 650], [6790, 731], [7560, 812]]` | Points (ohm, mm) of the cord curve, as a JSON list of pairs rising strictly in both axes. The default is the curve of the example mission, read from `contracts/catalog/calibration-defaults.json` (single source, checked against the mission by a test). The `stretch` calibration scales it to the measured rest: `R0 * R / CURVE_REST_RESISTANCE_OHM` and `L0 * L / CURVE_REST_LENGTH_MM`. Replaces the old `SPINE_GATEWAY_STRETCH_CURVE_FACTORS` (multiples of (R0, L0)). PENDING the clinical reviewer's ohmmeter measurement (#106): unmeasured default. |
 | `SPINE_GATEWAY_STRETCH_CURVE_REST_RESISTANCE_OHM` | `6012.0` | Rest resistance (ohm) the curve above is referred to. Change it together with the curve. |
 | `SPINE_GATEWAY_STRETCH_CURVE_REST_LENGTH_MM` | `650.0` | Rest length (mm) the curve above is referred to. Change it together with the curve. |
 | `SPINE_GATEWAY_EMG_MVC_WINDOW_MS` | `250` | Window (ms) of the sliding RMS of the `emg_mvc` calibration. |
 
-The protocol declares two EMG modules (left/right latissimus) but the current hardware and gateway publish one (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) until Polfer confirms the hardware (#13).
+The protocol declares two EMG modules (left/right latissimus) but the current hardware and gateway publish one (`emg_lat_left`, `SPINE_GATEWAY_EMG_STREAM_ID` / `SPINE_GATEWAY_EMG_SIDE`) until the hardware lead confirms the hardware (#13).
 
 `SPINE_GATEWAY_EMG_SIGNAL_KIND` sets `signal_kind` in the EMG chunks and in the `emg_mvc` calibration, and decides how mV and quality are computed:
 
@@ -286,7 +288,7 @@ EMG electrodes (three, connected to the EMG module, not to the Arduino): two dif
 ### Step by step
 
 1. Upload the sketch with the Arduino IDE: open `firmware/spine_wearable/spine_wearable.ino`, board Arduino Uno or Nano (on Nano clones choose the processor "ATmega328P (Old Bootloader)"), choose the port and upload.
-2. Open the Serial Monitor at **250000 baud**. You should see `H,...` once, `T,...` every second, `D,E`/`D,I`/`D,S` every 100 ms, and `#imu ok` (or `#imu absent` if the MPU-6050 does not answer).
+2. Open the Serial Monitor at **9600 baud**. You should see `H,...` once, `T,...` every second, `D,E`/`D,I`/`D,S` every 100 ms, and `#imu ok` (or `#imu absent` if the MPU-6050 does not answer).
 3. **Close the Serial Monitor**: the port is exclusive, and the gateway cannot open it while the IDE holds it.
 4. Start the broker: `docker compose -f app/docker-compose.yml up -d mosquitto`.
 5. Start the native gateway (see above) with the right port.
@@ -308,4 +310,5 @@ With the module connected, measure `SIG` with a multimeter (or watch `emg` in a 
 - `rest_length_mm` and the real curve of the stretch cord (#12); today they are a placeholder and the mission curve.
 - `calibrate` of type `imu` is not implemented.
 - A dedicated error code for "not supported": it requires changing the contract (today `invalid_command` is used).
+- The lat pulldown protocol declares `emg_lat_left` and `emg_lat_right`, but the gateway has one EMG stream, so it is rejected; `calibrate` and artefact injection are simulator-only in the e2e tests (a follow-up issue will track this).
 - BLE is out of scope.

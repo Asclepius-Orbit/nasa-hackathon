@@ -1,4 +1,4 @@
-"""Defaults de calibración: contrato propio y coincidencia con la misión de ejemplo del simulador."""
+"""Calibration defaults: own contract and match with the simulator example mission."""
 
 import json
 from pathlib import Path
@@ -24,8 +24,8 @@ def test_calibration_defaults_curve_rises_strictly_and_contains_the_rest_point()
 
 def test_calibration_defaults_keep_the_pending_measurement_marks():
     defaults = load_calibration_defaults()
-    assert "PENDIENTE medición Aguado" in defaults["stretch"]["notes"]
-    assert "PENDIENTE medición Aguado" in defaults["emg_mvc"]["notes"]
+    assert "PENDING measurement" in defaults["stretch"]["notes"]
+    assert "PENDING measurement" in defaults["emg_mvc"]["notes"]
 
 
 def test_example_mission_calibration_matches_the_calibration_defaults():

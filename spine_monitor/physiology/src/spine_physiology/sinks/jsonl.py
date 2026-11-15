@@ -1,14 +1,14 @@
-"""Sink JSONL: una carpeta por astronauta y día.
+"""JSONL sink: one folder per astronaut and day.
 
-Dueño: D1. Estructura:
-    out/manifest.json                       config (model_dump JSON), semilla, versión del paquete y del contrato, `complete`
-    out/AST-01/profile.json                 el AstronautProfile (último recibido)
-    out/AST-01/day-012/<fichero>.jsonl      un fichero por tipo (ver `FILES`), `day` con 3 dígitos
-Cada línea es `{"topic", "retained", "at", "payload"}` para los tipos con topic (chunks, estado, reloj,
-acks, calibraciones) y `{"at", "payload"}` para los objetos de dominio (JSON compacto, claves en el orden del payload,
-UTF-8, `\n`, sin relojes de pared: mismos bytes con la misma semilla). `close()` escribe el manifest.
-Los ficheros se abren perezosamente con un tope de manejadores: al superarlo se cierra el menos usado
-recientemente y se reabre (en modo append) cuando vuelve a hacer falta.
+Owner: D1. Layout:
+    out/manifest.json                       config (model_dump JSON), seed, package and contract version, `complete`
+    out/AST-01/profile.json                 the AstronautProfile (last one received)
+    out/AST-01/day-012/<file>.jsonl         one file per type (see `FILES`), `day` with 3 digits
+Each line is `{"topic", "retained", "at", "payload"}` for the types with a topic (chunks, status, clock,
+acks, calibrations) and `{"at", "payload"}` for domain objects (compact JSON, keys in payload order,
+UTF-8, `\n`, no wall clocks: same bytes with the same seed). `close()` writes the manifest.
+Files are opened lazily with a cap on handles: when exceeded, the least recently used one is closed
+and reopened (in append mode) when needed again.
 """
 
 import json
@@ -22,7 +22,7 @@ from typing import IO, Any
 from spine_physiology.config import MissionConfig
 from spine_physiology.envelope import Envelope, EnvelopeKind
 
-# Fichero de cada tipo dentro de la carpeta del día (el perfil va aparte, en profile.json).
+# File for each type inside the day folder (the profile goes separately, in profile.json).
 FILES: dict[EnvelopeKind, str] = {
     EnvelopeKind.STREAM_CHUNK: "chunks.jsonl",
     EnvelopeKind.SESSION: "sessions.jsonl",
@@ -61,7 +61,7 @@ def _version(package: str) -> str:
 
 class JsonlSink:
     def __init__(self, out_dir: Path, *, config: MissionConfig, seed: int, max_open_files: int = 64) -> None:
-        # El tope de manejadores es un límite del sistema operativo, no un parámetro de simulación.
+        # The handle cap is an operating system limit, not a simulation parameter.
         if max_open_files < 1:
             raise ValueError("max_open_files must be >= 1")
         self._out_dir = out_dir
@@ -69,7 +69,7 @@ class JsonlSink:
         self._seed = seed
         self._max_open = max_open_files
         self._open: OrderedDict[Path, IO[str]] = OrderedDict()
-        # Ficheros ya creados en esta ejecución: la primera apertura trunca, las reaperturas añaden.
+        # Files already created in this run: the first open truncates, reopens append.
         self._seen: set[Path] = set()
         self._closed = False
 
@@ -102,7 +102,7 @@ class JsonlSink:
         self._handle(path).write(_line(envelope))
 
     def close(self, *, complete: bool = True) -> None:
-        """Cierra los ficheros abiertos y escribe el manifest (`complete` False si la ejecución se interrumpió). Idempotente."""
+        """Closes the open files and writes the manifest (`complete` False if the run was interrupted). Idempotent."""
         if self._closed:
             return
         self._closed = True
@@ -127,7 +127,7 @@ class JsonlSink:
 
 
 def write_jsonl(messages: Iterable[Envelope], out_dir: Path, *, config: MissionConfig, seed: int) -> int:
-    """Escribe todos los mensajes; devuelve cuántos."""
+    """Writes all the messages; returns how many."""
     count = 0
     with JsonlSink(out_dir, config=config, seed=seed) as sink:
         for envelope in messages:

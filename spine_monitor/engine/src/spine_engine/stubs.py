@@ -1,4 +1,4 @@
-"""Implementaciones nulas: no inventan métricas ni umbrales (dependen del modelo de Aguado)."""
+"""Null implementations: they invent no metrics or thresholds (they depend on the clinical model)."""
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -11,10 +11,10 @@ from spine_engine.reference import index_entries, reference_entry
 
 
 class NullBaselineStrategy:
-    """Delta del último valor de cada feature respecto a la media de su entrada de baseline.
+    """Delta of the latest value of each feature against the mean of its baseline entry.
 
-    La entrada es la del mismo protocolo y entorno de gravedad; si no existe, la de la Tierra
-    (así se mide el efecto del entorno). Las features sin entrada no generan desviación.
+    The entry is that of the same protocol and gravity environment; if it does not exist, the Earth one
+    (this measures the environment effect). Features without an entry generate no deviation.
     """
 
     def deviations(self, baseline: Baseline, feature_sets: Sequence[FeatureSet]) -> list[Deviation]:
@@ -33,7 +33,7 @@ class NullBaselineStrategy:
 
 
 class NullFeatureExtractor:
-    """FeatureSet vacío con los metadatos de la sesión: no inventa ninguna feature."""
+    """Empty FeatureSet with the session metadata: it invents no feature."""
 
     def extract(self, request: FeaturesRequest) -> FeatureSet:
         session = request.session

@@ -4,7 +4,7 @@ export const cord = {
   heading: 'Cord sessions',
   lede: 'Two independent sessions: back straight and back as curved as possible. The Earth reference is your own, taken before launch; in flight the same session is repeated.',
   loadError: 'The cord sessions could not be loaded.',
-  cadence: (days: number): string => `Suggested every ${String(days)} days in flight (example cadence, not a fixed rule; pending Aguado).`,
+  cadence: (days: number): string => `Suggested every ${String(days)} days in flight (example cadence, not a fixed rule; pending clinical validation).`,
   due: 'Due',
   upToDate: 'Up to date',
   dueReasons: {
@@ -53,7 +53,7 @@ export const cord = {
     unavailable: {
       ESTIMATE_NO_EARTH_REFERENCE: 'No estimate: there is no Earth reference yet.',
       ESTIMATE_NO_FOLLOW_UP: 'No estimate: there is no in-flight measurement yet.',
-      ESTIMATE_REFERENCE_LENGTH_UNKNOWN: 'No estimate: the distance between the contacts in this posture has not been measured (pending Aguado).',
+      ESTIMATE_REFERENCE_LENGTH_UNKNOWN: 'No estimate: the distance between the contacts in this posture has not been measured (pending clinical validation).',
       ESTIMATE_OUT_OF_MODEL_RANGE: 'No estimate: a reading is outside the range of the bench measurements.',
       ESTIMATE_ENGINE_UNAVAILABLE: 'No estimate: the calculation is not available right now.',
     } as Readonly<Record<string, string>>,

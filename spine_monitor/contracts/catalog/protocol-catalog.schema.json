@@ -60,22 +60,22 @@
           "minimum": 0
         },
         "rep_duration_s": {
-          "description": "Duration of one repetition, in seconds; null for protocols without repetitions. Provisional until Aguado measures it (#106).",
+          "description": "Duration of one repetition, in seconds; null for protocols without repetitions. Provisional until measured (#106).",
           "type": ["number", "null"],
           "exclusiveMinimum": 0
         },
         "rest_between_reps_s": {
-          "description": "Pause between two repetitions of a set, in seconds; null for protocols without repetitions. Provisional until Aguado measures it (#106).",
+          "description": "Pause between two repetitions of a set, in seconds; null for protocols without repetitions. Provisional until measured (#106).",
           "type": ["number", "null"],
           "minimum": 0
         },
         "gap_s": {
-          "description": "Gap, in seconds, between the exercise and the spine check that brackets it (before and after); null for protocols that are not bracketed. Provisional until Aguado measures it (#106).",
+          "description": "Gap, in seconds, between the exercise and the spine check that brackets it (before and after); null for protocols that are not bracketed. Provisional until measured (#106).",
           "type": ["number", "null"],
           "minimum": 0
         },
         "rom_deg": {
-          "description": "Nominal range of motion of the exercise, in degrees; null for protocols without a movement. Provisional until Aguado measures it (#106).",
+          "description": "Nominal range of motion of the exercise, in degrees; null for protocols without a movement. Provisional until measured (#106).",
           "type": ["number", "null"],
           "minimum": 0
         },
@@ -98,7 +98,7 @@
           "enum": ["standing", "seated", "supine"]
         },
         "notes": {
-          "description": "Facts of the entry that are nominal or still pending the clinical owner (Aguado). Free text for maintainers, never shown as UI copy.",
+          "description": "Facts of the entry that are nominal or still pending the clinical owner. Free text for maintainers, never shown as UI copy.",
           "type": "string"
         },
         "fit_items": {

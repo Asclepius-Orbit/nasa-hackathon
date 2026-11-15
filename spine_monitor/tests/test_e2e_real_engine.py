@@ -15,7 +15,7 @@ The doubles are only at the boundaries: the MQTT broker (in memory), the wall cl
 wearable gateway (the test delivers what the simulator emits and acks the commands) and the LLM (a scripted model that
 calls the tools and builds its answer from what they returned).
 
-ASSUMPTION (provisional, to be reviewed with Uri): the engine runs with `risk_saturation` = ENGINE_RISK_SATURATION instead
+ASSUMPTION (provisional, to be reviewed): the engine runs with `risk_saturation` = ENGINE_RISK_SATURATION instead
 of its default 3.0. With the default the same simulated data is red with the risk score saturated at 1.0: the cord
 elongation of the third day in microgravity is some 70 robust deviations away from a three-session Earth baseline, and
 the score is 1 - exp(-sum|z| / risk_saturation). No clinical value, no threshold of the triage policy and no catalog
@@ -111,6 +111,10 @@ def _mission_config() -> MissionConfig:
     raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
     raw["faults"]["device"]["reboot"]["probability_per_hour"] = 0.0
     raw["signals"]["chunk_ms"] = 4000
+    # The per-session repeat dispersion is a resistance offset nobody can calibrate out; with it the session-to-session spread
+    # of the spine length is as large as the elongation the scenario relies on, so it is switched off here (the rest of the
+    # sensor realism stays on).
+    raw["signals"]["stretch"]["repeat_dispersion_ohm"] = 0.0
     raw["protocols"][EXERCISE_PROTOCOL]["planned_sets"] = 1
     return MissionConfig.model_validate(raw)
 
@@ -432,12 +436,18 @@ def test_the_simulated_flight_ends_in_an_amber_assessment_decided_by_the_real_po
 
     assert validation.errors("domain/assessment", assessment) == []
     assert assessment["level"] == "amber"
-    # Amber by the risk cutoffs of the shipped policy, not by missing data and not by a rule overriding the model.
+    # The model reaches amber, and unavailable fresh measurements also trigger the incomplete-data rule.
     assert policy.amber_cutoff is not None and policy.red_cutoff is not None
     assert policy.amber_cutoff <= assessment["risk_score"] < policy.red_cutoff
-    assert assessment["completeness"] == {"score": 1.0, "missing": []}
-    assert INCOMPLETE_DATA_RULE not in {rule["rule_id"] for rule in assessment["fired_rules"]}
-    assert {rule["rule_id"] for rule in assessment["fired_rules"]} <= {rule.rule_id for rule in policy.rules}
+    assert assessment["completeness"]["score"] < 1.0
+    assert {item["what"] for item in assessment["completeness"]["missing"]} == {
+        "emg.reference.normalized_amplitude",
+        "imu.lumbar.sensor_x.orientation_deg",
+        "stretch.full_spine.resistance_change_pct",
+    }
+    assert all(item["reason"] == "no_data" for item in assessment["completeness"]["missing"])
+    assert INCOMPLETE_DATA_RULE in {rule["rule_id"] for rule in assessment["fired_rules"]}
+    assert {rule["rule_id"] for rule in assessment["fired_rules"]} <= {rule.rule_id for rule in policy.rules} | {INCOMPLETE_DATA_RULE}
     assert not any(rule["overrides_model"] for rule in assessment["fired_rules"])
 
 
@@ -524,7 +534,10 @@ async def test_simulate_scenario_starts_from_the_real_amber_and_an_override_of_i
         assert reference["based_on"] == stored["based_on"]
     assert unchanged["scenario"]["level"] == "amber"
     assert _driver_ids(unchanged["scenario"]) == _driver_ids(stored)
-    assert relieved["scenario"]["level"] == "green"
+    # Lowering the drivers reduces model risk, but cannot turn missing measurements green.
+    assert relieved["scenario"]["risk_score"] < unchanged["scenario"]["risk_score"]
+    assert relieved["scenario"]["level"] == "amber"
+    assert INCOMPLETE_DATA_RULE in {rule["rule_id"] for rule in relieved["scenario"]["fired_rules"]}
     assert relieved["scenario"]["drivers"] == []
 
 

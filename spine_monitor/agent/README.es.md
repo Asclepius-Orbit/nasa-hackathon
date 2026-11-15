@@ -30,6 +30,14 @@ spine-agent (CLI, chat en streaming)
 
 Necesita Docker. Ollama corre en Docker bajo el perfil `llm` de compose y los modelos **se guardan en caché en el volumen `ollama-models`**: se descargan una sola vez y los arranques siguientes no necesitan red.
 
+En Windows, `app/start-demo.ps1` prueba un contenedor aislado con GPU NVIDIA y compara inferencias CPU y GPU en caliente para el modelo configurado con contexto de 16k. Elige GPU solo si confirma uso de memoria GPU y el tiempo estimado del prompt más 32 tokens es menor. Esta muestra corta no garantiza el dispositivo más rápido para cada consulta. Si falta soporte NVIDIA en Docker, el modelo no está disponible, se agota el tiempo o falla la medición, usa CPU. Si Ollama ya está activo se conserva; detén la demo y vuelve a arrancarla para medir de nuevo. Compose directo usa CPU salvo que se añada explícitamente el overlay NVIDIA. NVIDIA requiere controladores compatibles y soporte GPU en Docker; este lanzador no cubre el acceso a GPU AMD ni Apple. La medición puede tardar varios minutos.
+
+La demo se inicia con `powershell -File app/start-demo.ps1` (`-NoUi` omite la interfaz; `-SkipModelPull` usa solo modelos en caché). La aceleración NVIDIA requiere una GPU compatible, controladores NVIDIA actuales y Docker configurado para contenedores con GPU NVIDIA (en Linux, NVIDIA Container Toolkit; en Windows, Docker Desktop con soporte GPU de WSL 2). La prueba temporal usa un puerto de loopback efímero y el volumen compartido de modelos. Carga el modelo `SPINE_AGENT_MODEL` configurado (`qwen3.5:4b` por defecto), calienta cada modo y mide un prompt nuevo y la generación; después elimina el contenedor de prueba. El primer arranque puede descargar el modelo. En arranques posteriores vuelve a medir, lo que puede tardar varios minutos; `-SkipModelPull` no omite la medición.
+
+Si Windows detecta una NVIDIA y Docker informa de un fallo de acceso a la GPU, el lanzador muestra el error y los pasos para revisar el controlador, actualizar WSL y activar el motor WSL 2 de Docker Desktop. También muestra la guía si Ollama no usa memoria GPU: puede deberse a la configuración, a incompatibilidad o a VRAM insuficiente. La demo continúa en CPU; el script no instala controladores ni reinicia Docker o Windows. Después de corregir la configuración, detén la demo y vuelve a iniciarla para repetir la prueba. Consulta la [guía oficial de GPU de Docker Desktop](https://docs.docker.com/desktop/features/gpu/).
+
+Si el resultado sorprende, revisa la salida del lanzador, el soporte NVIDIA de Docker y `docker compose -f app/docker-compose.yml exec ollama ollama ps` después de una pregunta; la columna de procesador muestra el reparto CPU/GPU. El endpoint `http://127.0.0.1:11434/api/ps` también devuelve `size_vram` para los modelos cargados. Un servidor activo no se mide ni se reconfigura: detén la demo con `docker compose -f app/docker-compose.yml --profile llm --profile sim down` y arráncala de nuevo para seleccionar hardware. Detenerla interrumpe las sesiones activas, pero conserva los volúmenes de modelos (no añadas `-v`). Usa el perfil de productor correspondiente en lugar de `sim` si utilizas un dispositivo. Para Compose manual, añade `-f app/docker-compose.nvidia.yml` al comando habitual para solicitar NVIDIA; sin el overlay el contenedor no reserva GPU. El overlay requiere soporte NVIDIA operativo y no realiza ninguna medición ni fallback automático.
+
 ```bash
 # Desde la raíz del repositorio. Una vez: las credenciales del broker (compose las necesita).
 sh app/mosquitto/setup.sh
@@ -103,6 +111,8 @@ cd spine_monitor/agent
 SPINE_AGENT_EVALS_LIVE=1 uv run --no-sync python -m evals.run_live \
     --models qwen3.5:4b gemma4:e4b qwen3.5:9b --repeat 1 --dump failures.jsonl
 ```
+
+Para ejecutarlo contra la app y el motor reales en vez de los datos de demo, añade `--dataset http` y exporta `SPINE_APP_URL` y `SPINE_ENGINE_URL` (se reenvían al subproceso MCP). Por defecto es `--dataset demo`; las expectativas de los casos son específicas de la demo, así que los fallos con `http` requieren revisión. Una ejecución contra el motor real sigue pendiente.
 
 ## Nota del modelo
 

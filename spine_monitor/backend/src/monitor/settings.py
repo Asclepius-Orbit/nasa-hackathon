@@ -1,9 +1,9 @@
 """App settings: broker, engine, database, retries and thresholds. SPINE_APP_* variables or `.env`."""
 
 from pathlib import Path
-from typing import Self
+from typing import Any, Literal, Self
 
-from pydantic import AwareDatetime, Field, SecretStr, model_validator
+from pydantic import AwareDatetime, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from monitor.ground.link import GroundWindows
@@ -25,6 +25,10 @@ class AppSettings(BaseSettings):
     mqtt_tls_ca_file: Path | None = None
     mqtt_reconnect_min_s: float = 1.0
     mqtt_reconnect_max_s: float = 30.0
+
+    # Where the data of this installation comes from: ingest drops whatever carries another `source` (including `replay`), so
+    # real and simulated data are never mixed.
+    telemetry_source: Literal["simulator", "device"] = "simulator"
 
     # Engine (stateless local API).
     engine_url: str = "http://127.0.0.1:8001"
@@ -64,7 +68,7 @@ class AppSettings(BaseSettings):
 
     # Cord-resistance protocols (back straight, maximum flexion): days between in-flight follow-ups of each posture and the minimum
     # quality score of a feature for the measurement to count as valid. Both are placeholders (7 days is an example, not a fixed
-    # cadence; the score is not a validated threshold): PENDIENTE Aguado.
+    # cadence; the score is not a validated threshold): PENDING clinical validation.
     cord_follow_up_interval_days: int = Field(default=7, ge=1)
     cord_min_quality_score: float = Field(default=0.5, ge=0, le=1)
 
@@ -107,6 +111,13 @@ class AppSettings(BaseSettings):
     processing_retry_max_s: float = Field(default=900.0, gt=0)
     processing_max_attempts: int = Field(default=5, ge=1)
     processing_retry_tick_s: float = Field(default=5.0, gt=0)
+
+    @field_validator("telemetry_source", mode="before")
+    @classmethod
+    def _known_telemetry_source(cls, value: Any) -> Any:
+        if value not in ("simulator", "device"):
+            raise ValueError(f"SPINE_APP_TELEMETRY_SOURCE must be one of: simulator, device (got {value!r})")
+        return value
 
     @model_validator(mode="after")
     def _ground_ranges(self) -> Self:

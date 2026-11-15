@@ -1,4 +1,4 @@
-"""Protocolo estandarizado de #12: 4 series x 15 reps, colocación de sensores y spine_check pre/post."""
+"""Standardized protocol from #12: 4 sets x 15 reps, sensor placement and pre/post spine_check."""
 
 import json
 from datetime import timedelta
@@ -78,9 +78,8 @@ def test_rep_schedule_counts_reps_across_sets_with_rest_between_sets(config):
     reps = rep_schedule(p)
     assert [r.index for r in reps] == list(range(1, 61))
     assert [r.set_index for r in reps] == [s for s in range(1, 5) for _ in range(15)]
-    period = p.rep_duration_s + p.rest_between_reps_s
-    assert reps[0].start_s == p.lead_in_s and reps[14].end_s == p.lead_in_s + 14 * period + p.rep_duration_s
-    assert reps[15].start_s == p.lead_in_s + 15 * period + p.rest_between_sets_s
+    assert reps[0].start_s == p.lead_in_s
+    assert reps[15].start_s - reps[14].end_s == pytest.approx(p.rest_between_reps_s + p.rest_between_sets_s)
 
 
 def test_set_schedule_and_duration_formula(config):
@@ -92,8 +91,7 @@ def test_set_schedule_and_duration_formula(config):
         in_set = [r for r in reps if r.set_index == s.index]
         assert s.start_s == in_set[0].start_s and s.end_s == in_set[-1].end_s
     assert sets[1].start_s - sets[0].end_s == pytest.approx(p.rest_between_reps_s + p.rest_between_sets_s)
-    period = p.rep_duration_s + p.rest_between_reps_s
-    assert exercise_duration_s(p) == pytest.approx(p.lead_in_s + 4 * 15 * period + 3 * p.rest_between_sets_s + p.lead_out_s)
+    assert exercise_duration_s(p) == pytest.approx(reps[-1].end_s + p.rest_between_reps_s + p.lead_out_s)
 
 
 def test_exercise_session_events_have_sets_and_session_wide_rep_index(config, timeline):

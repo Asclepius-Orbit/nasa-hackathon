@@ -1,8 +1,8 @@
-"""Puertos del gateway: lo que la app necesita de la fuente de líneas del Arduino.
+"""Gateway ports: what the app needs from the Arduino line source.
 
-Solo tipos, sin lógica. La implementación real es ``serial_source.SerialLineSource`` (pyserial en un hilo) y los tests de la
-app usan una fuente de mentira que reparte líneas ya preparadas. Los puertos de MQTT (cliente, mensajes entrantes) viven en
-``app`` porque solo los usa ella.
+Types only, no logic. The real implementation is ``serial_source.SerialLineSource`` (pyserial in a thread) and the app tests
+use a fake source that hands out ready-made lines. The MQTT ports (client, incoming messages) live in
+``app`` because only it uses them.
 """
 
 from collections.abc import AsyncIterator
@@ -13,7 +13,7 @@ from typing import Protocol
 
 @dataclass(frozen=True, slots=True)
 class SerialLine:
-    """Una línea cruda recibida del Arduino (sin el terminador) y el instante UTC en que llegó al gateway."""
+    """A raw line received from the Arduino (without the terminator) and the UTC instant at which it reached the gateway."""
 
     data: bytes
     received_at: datetime
@@ -21,14 +21,14 @@ class SerialLine:
 
 @dataclass(frozen=True, slots=True)
 class LinkUp:
-    """El puerto serie se ha abierto (o reabierto tras un corte)."""
+    """The serial port has been opened (or reopened after an outage)."""
 
     at: datetime
 
 
 @dataclass(frozen=True, slots=True)
 class LinkDown:
-    """El puerto serie se ha perdido o no se pudo abrir; la fuente reintenta por su cuenta."""
+    """The serial port was lost or could not be opened; the source retries on its own."""
 
     at: datetime
     reason: str
@@ -38,10 +38,10 @@ type SerialEvent = SerialLine | LinkUp | LinkDown
 
 
 class LineSource(Protocol):
-    """Fuente de eventos del enlace serie.
+    """Source of serial link events.
 
-    ``events()`` es un generador asíncrono que no termina por sí solo: emite ``LinkUp`` al abrir, ``SerialLine`` por cada línea
-    y ``LinkDown`` al perder el puerto, y reintenta la apertura con backoff. Termina cuando se cancela la tarea que lo consume.
+    ``events()`` is an async generator that does not end by itself: it emits ``LinkUp`` on open, ``SerialLine`` for each line
+    and ``LinkDown`` when the port is lost, and retries opening with backoff. It ends when the task consuming it is cancelled.
     """
 
     def events(self) -> AsyncIterator[SerialEvent]: ...

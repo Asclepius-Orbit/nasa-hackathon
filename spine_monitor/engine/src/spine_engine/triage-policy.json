@@ -1,5 +1,5 @@
 {
-  "source": "provisional, pendiente de Aguado: risk cutoffs are placeholders, not a clinical validation; global-risk cutoffs for triage levels must be decided with clinical judgement (#53)",
+  "source": "provisional, pending clinical validation: risk cutoffs are placeholders, not a clinical validation; global-risk cutoffs for triage levels must be decided with clinical judgement (#53)",
   "amber_cutoff": 0.3,
   "red_cutoff": 0.8,
   "unknown_flag_urgency": "immediate",
@@ -13,7 +13,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: sphincter dysfunction is a textbook cauda equina warning sign; any report escalates at once"
+      "source": "provisional, pending clinical validation: sphincter dysfunction is a textbook cauda equina warning sign; any report escalates at once"
     },
     {
       "rule_id": "RULE_RED_FLAG_SADDLE_NUMBNESS",
@@ -24,7 +24,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: saddle anaesthesia is a textbook cauda equina warning sign; any report escalates at once"
+      "source": "provisional, pending clinical validation: saddle anaesthesia is a textbook cauda equina warning sign; any report escalates at once"
     },
     {
       "rule_id": "RULE_RED_FLAG_LEG_WEAKNESS",
@@ -35,7 +35,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: motor deficit suggests significant nerve root or cord compromise; treated like the cauda equina signs"
+      "source": "provisional, pending clinical validation: motor deficit suggests significant nerve root or cord compromise; treated like the cauda equina signs"
     },
     {
       "rule_id": "RULE_RED_FLAG_FEVER_WITH_BACK_PAIN",
@@ -46,7 +46,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: fever with back pain can indicate spinal infection; treated as an emergency pending clinical review"
+      "source": "provisional, pending clinical validation: fever with back pain can indicate spinal infection; treated as an emergency pending clinical review"
     },
     {
       "rule_id": "RULE_RED_FLAG_TRAUMA",
@@ -57,7 +57,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: a trauma event with back symptoms may imply fracture or injury; priority review, urgency level to be set by Aguado"
+      "source": "provisional, pending clinical validation: a trauma event with back symptoms may imply fracture or injury; priority review, urgency level to be set clinically"
     },
     {
       "rule_id": "RULE_RED_FLAG_RADIATING_LEG_PAIN",
@@ -68,7 +68,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: radicular pain suggests nerve root irritation; flagged for priority medical review without forcing red"
+      "source": "provisional, pending clinical validation: radicular pain suggests nerve root irritation; flagged for priority medical review without forcing red"
     },
     {
       "rule_id": "RULE_RED_FLAG_NUMBNESS_OR_TINGLING",
@@ -79,7 +79,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: sensory symptoms suggest nerve involvement; flagged for priority medical review without forcing red"
+      "source": "provisional, pending clinical validation: sensory symptoms suggest nerve involvement; flagged for priority medical review without forcing red"
     },
     {
       "rule_id": "RULE_RED_FLAG_SEVERE_NIGHT_PAIN",
@@ -90,7 +90,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: non-mechanical night pain is a conventional red flag for serious pathology; flagged for priority review"
+      "source": "provisional, pending clinical validation: non-mechanical night pain is a conventional red flag for serious pathology; flagged for priority review"
     },
     {
       "rule_id": "RULE_SELF_REPORT_PAIN_SEVERE",
@@ -103,7 +103,7 @@
       "recommendations": [
         "REC_CONTACT_FLIGHT_SURGEON"
       ],
-      "source": "provisional, pendiente de Aguado: a pain NRS of 7 or more on the 0-10 scale is the usual convention for severe pain; cutoff to be confirmed"
+      "source": "provisional, pending clinical validation: a pain NRS of 7 or more on the 0-10 scale is the usual convention for severe pain; cutoff to be confirmed"
     }
   ]
 }

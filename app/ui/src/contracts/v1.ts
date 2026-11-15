@@ -322,7 +322,7 @@ export type RedFlagReport = ReportBase & {
     | "trauma_event"
   )[];
   /**
-   * Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model (Aguado): they are reported, not triaged here.
+   * Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model: they are reported, not triaged here.
    *
    * Items: Urgent symptom outside the red-flag catalogue: 'very_severe_pain' (pain the astronaut cannot bear) or 'other' (described in the note). Kept apart from red_flag until the clinical model decides how it is triaged.
    */
@@ -620,13 +620,17 @@ export type TodayView = {
  */
 export type Calibration = StretchCalibration | EmgMvcCalibration | ImuCalibration;
 /**
- * Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. A resistance of 350 ohm is the resistance of one inch of cord at rest, not a 2.54 cm deformation: elongation is derived from the change against rest_resistance_ohm through the measured curve. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDIENTE medición Aguado: until the cord is measured with an ohmmeter, curve and rest values are placeholders.
+ * Adafruit 519 cord. The datasheet gives ~140-160 ohm/cm but the response is non-linear and the cord needs 1-2 minutes to recover after stretching, so the curve is measured, not assumed, and rest_resistance_ohm is taken after a recovery wait. A resistance of 350 ohm is the resistance of one inch of cord at rest, not a 2.54 cm deformation: elongation is derived from the change against rest_resistance_ohm through the measured curve. In the standard protocol the cord spans C3-C4 to L5-S1, about 650 mm. PENDING measurement: until the cord is measured with an ohmmeter, curve and rest values are placeholders.
  */
 export type StretchCalibration = CalibrationBase & {
   calibration_type: "stretch";
+  /**
+   * Explicitly attested posture during the reference measurement; omitted when unknown.
+   */
+  reference_posture?: "straight_back";
   rest_resistance_ohm: number;
   /**
-   * Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.
+   * Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDING measurement.
    */
   rest_length_mm: number;
   recovery_wait_s?: number;
@@ -657,7 +661,7 @@ export type StretchCalibration = CalibrationBase & {
   };
 };
 /**
- * Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed. The MVC procedure is pending Aguado: until it is defined, mvc_rms_mv values are placeholders.
+ * Reference amplitude of a muscle during a maximum voluntary contraction. Features expressed as %MVC divide by mvc_rms_mv. Redo it whenever the electrodes are re-placed. The MVC procedure is pending clinical validation: until it is defined, mvc_rms_mv values are placeholders.
  */
 export type EmgMvcCalibration = CalibrationBase & {
   calibration_type: "emg_mvc";
@@ -719,6 +723,10 @@ export type ImuCalibration = CalibrationBase & {
   gyro_range_dps: 250 | 500 | 1000 | 2000;
   gyro_bias_dps: Xyz;
   accel_bias_g?: Xyz;
+  /**
+   * Independently measured initial orientation around sensor X, in degrees at created_at. Gyroscope integration alone cannot establish absolute orientation; omit when no reference is available.
+   */
+  reference_orientation_x_deg?: number;
   mounting: {
     /**
      * Anatomical direction a sensor axis points to: cranial/caudal (head/feet), anterior/posterior (front/back), left/right.
@@ -902,6 +910,8 @@ export type MarkEventCommand = CommandBase & {
     | "rep_end"
     | "mvc_start"
     | "mvc_end"
+    | "reference_effort_start"
+    | "reference_effort_end"
     | "rest_start"
     | "rest_end"
     | "pain_reported"
@@ -931,6 +941,10 @@ export type CalibrateCommand = CommandBase & {
    */
   stream_ids: [string, ...string[]];
   duration_s?: number;
+  /**
+   * Operator attests that the stretch reference is measured with a straight back.
+   */
+  reference_posture?: "straight_back";
 };
 
 /**
@@ -1212,6 +1226,14 @@ export interface Assessment {
       value: number;
       operator: ">" | ">=" | "<" | "<=" | "==" | "!=";
       threshold: number;
+      /**
+       * Unit shared by value and threshold.
+       */
+      unit?: string;
+      /**
+       * Source of the threshold or operational convention.
+       */
+      source?: string;
     };
   }[];
   recommendations: string[];
@@ -1376,6 +1398,19 @@ export interface FeatureSet {
     value: number;
     unit: string;
     /**
+     * Time span of this feature when it differs from the enclosing feature set's window.
+     */
+    window?: {
+      /**
+       * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+       */
+      start: string;
+      /**
+       * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+       */
+      end: string;
+    };
+    /**
      * How many repetitions, samples or days the value summarises.
      */
     n?: number;
@@ -1454,7 +1489,7 @@ export interface PainLocation {
   side?: "left" | "right" | "midline" | "bilateral";
 }
 /**
- * What travels to the ground station: one revision of the summary of one day of one astronaut. PROVISIONAL content, pending validation by Aguado: which fields go to the ground and how is not decided yet. Codes and numbers only, never prose; every unknown is an explicit null. Carries no personal data of the astronaut profile, only the pseudonymous astronaut id. A day without an assessment has level 'nodata' and null or empty assessment fields, never a reassuring default.
+ * What travels to the ground station: one revision of the summary of one day of one astronaut. PROVISIONAL content, pending clinical validation: which fields go to the ground and how is not decided yet. Codes and numbers only, never prose; every unknown is an explicit null. Carries no personal data of the astronaut profile, only the pseudonymous astronaut id. A day without an assessment has level 'nodata' and null or empty assessment fields, never a reassuring default.
  */
 export interface GroundSummary {
   /**
@@ -1766,6 +1801,8 @@ export interface Event {
     | "rep_end"
     | "mvc_start"
     | "mvc_end"
+    | "reference_effort_start"
+    | "reference_effort_end"
     | "rest_start"
     | "rest_end"
     | "pain_reported"
@@ -2070,7 +2107,7 @@ export interface CordProtocolsView {
    */
   schema_version: string;
   /**
-   * Days between in-flight measurements of each posture. Configurable; the default is an example, not a clinical cadence (pending Aguado).
+   * Days between in-flight measurements of each posture. Configurable; the default is an example, not a clinical cadence (pending clinical validation).
    */
   cadence_days: number;
   /**
@@ -2091,7 +2128,7 @@ export interface CordPosture {
   last_follow_up: CordFollowUpMeasurement | null;
   estimate: CordLengthEstimate | null;
   /**
-   * Why there is no estimate; null when there is one. ESTIMATE_NO_EARTH_REFERENCE and ESTIMATE_NO_FOLLOW_UP: a measurement is missing. ESTIMATE_REFERENCE_LENGTH_UNKNOWN: the distance between the contacts in this posture is not measured (only the straight back has it; pending Aguado). ESTIMATE_OUT_OF_MODEL_RANGE: a resistance is outside the bench model. ESTIMATE_ENGINE_UNAVAILABLE: the engine did not answer.
+   * Why there is no estimate; null when there is one. ESTIMATE_NO_EARTH_REFERENCE and ESTIMATE_NO_FOLLOW_UP: a measurement is missing. ESTIMATE_REFERENCE_LENGTH_UNKNOWN: the distance between the contacts in this posture is not measured (only the straight back has it; pending clinical validation). ESTIMATE_OUT_OF_MODEL_RANGE: a resistance is outside the bench model. ESTIMATE_ENGINE_UNAVAILABLE: the engine did not answer.
    */
   estimate_unavailable:
     | (
@@ -2284,7 +2321,7 @@ export interface HistoryDayReport {
   )[];
 }
 /**
- * Response of GET /ui/crew/{astronaut_id}/houston: what goes to the ground station and the state of the link, for the Houston screen of the desktop UI. Codes and data only; every unknown is an explicit null. The transport is simulated and the content is not yet validated by Aguado: the UI shows both.
+ * Response of GET /ui/crew/{astronaut_id}/houston: what goes to the ground station and the state of the link, for the Houston screen of the desktop UI. Codes and data only; every unknown is an explicit null. The transport is simulated and the content is not yet clinically validated: the UI shows both.
  */
 export interface HoustonView {
   /**
@@ -2312,7 +2349,7 @@ export interface HoustonView {
    */
   transport: "simulated";
   /**
-   * Whether the content of the summary has been validated by Aguado. Today always false: the UI shows it as pending.
+   * Whether the content of the summary has been clinically validated. Today always false: the UI shows it as pending.
    */
   content_validated: false;
 }
@@ -2699,7 +2736,7 @@ export interface AstronautProfile {
     }[];
   };
   /**
-   * Pre-flight spine history. Which of these factors weigh in the risk model, and how much, is decided by the clinical model (Aguado), not by this contract.
+   * Pre-flight spine history. Which of these factors weigh in the risk model, and how much, is decided by the clinical model, not by this contract.
    */
   spine_history?: {
     low_back_pain_history?: boolean;
@@ -2867,7 +2904,7 @@ export interface CalibrationBase {
   source: "device" | "simulator" | "replay";
   quality?: Quality;
   /**
-   * Free text for maintainers, e.g. PENDIENTE medición Aguado while a placeholder stands in for a value still to be measured.
+   * Free text for maintainers, e.g. PENDING measurement while a placeholder stands in for a value still to be measured.
    */
   notes?: string;
 }
@@ -3004,11 +3041,22 @@ export interface FeaturesRequest {
   schema_version: string;
   session: Session;
   /**
-   * All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).
-   *
-   * @minItems 1
+   * Explicit UTC interval for a measured-window extraction. Both bounds are required; the engine verifies a five-second duration. Omit for the full-session feature extraction.
    */
-  chunks: [StreamChunk, ...StreamChunk[]];
+  requested_window?: {
+    /**
+     * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+     */
+    start: string;
+    /**
+     * RFC 3339 date-time. The UTC offset is mandatory, so naive timestamps are invalid; validators must have format checking enabled for date-time.
+     */
+    end: string;
+  };
+  /**
+   * All chunks of the session, any stream, in any order (the engine sorts by stream, boot_id and seq).
+   */
+  chunks: StreamChunk[];
   /**
    * Every calibration referenced by session.streams[].calibration_id or by a chunk.
    */

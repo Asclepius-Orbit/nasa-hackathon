@@ -1,13 +1,13 @@
-"""Lectura de los comandos de ``.../cmd`` y construcción de sus acks (``telemetry/command-ack``).
+"""Reading of the ``.../cmd`` commands and construction of their acks (``telemetry/command-ack``).
 
-Lógica pura, el mismo esqueleto que el gateway falso del simulador:
+Pure logic, the same skeleton as the simulator's fake gateway:
 
-- Por encima de ``PAYLOAD_MAX_BYTES`` ni se parsea: el ``command_id`` se busca con una expresión regular y, si aparece,
-  se rechaza con ``invalid_command``.
-- Sin ``command_id`` UUID legible (JSON roto, anidado hasta ``RecursionError``, no objeto...) no hay a quién responder:
-  se ignora (``None``).
-- Se valida contra el JSON Schema (``validation``, que aplica también los ``if/then``) y con ``command_adapter``; los ids
-  del payload deben ser los del topic y las duraciones no pueden pasar de ``DURATION_MAX_S``.
+- Above ``PAYLOAD_MAX_BYTES`` it is not even parsed: the ``command_id`` is looked up with a regular expression and, if it appears,
+  it is rejected with ``invalid_command``.
+- Without a readable UUID ``command_id`` (broken JSON, nested to ``RecursionError``, not an object...) there is nobody to reply to:
+  it is ignored (``None``).
+- It is validated against the JSON Schema (``validation``, which also applies the ``if/then``) and with ``command_adapter``; the ids
+  in the payload must be those of the topic and durations cannot exceed ``DURATION_MAX_S``.
 """
 
 import json
@@ -22,16 +22,16 @@ from spine_contracts import SCHEMA_VERSION, CalibrateCommand, Command, CommandAc
 from spine_gateway.settings import GatewaySettings
 
 PAYLOAD_MAX_BYTES = 16 * 1024
-"""Los comandos del contrato ocupan cientos de bytes: por encima de esto ni se parsea (un JSON enorme no debe costar tiempo)."""
+"""Contract commands take hundreds of bytes: above this they are not even parsed (a huge JSON must not cost time)."""
 MESSAGE_MAX = 300
-"""``maxLength`` de ``error.message`` en ``command-ack.schema.json``."""
+"""``maxLength`` of ``error.message`` in ``command-ack.schema.json``."""
 DURATION_MAX_S = 30 * 86400
-"""Tope de ``max_duration_s``/``duration_s``: el esquema no lo acota y un valor enorme desbordaría las esperas."""
+"""Cap on ``max_duration_s``/``duration_s``: the schema does not bound it and a huge value would overflow the waits."""
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _COMMAND_ID = re.compile(rb'"command_id"\s*:\s*"([0-9a-f-]{36})"')
 _COMMAND_SCHEMA = "telemetry/command"
-# Constante de módulo: mutmut no muta el módulo, y "ascii" -> "ASCII" sería un mutante equivalente (como en protocol.py).
+# Module constant: mutmut does not mutate the module, and "ascii" -> "ASCII" would be an equivalent mutant (as in protocol.py).
 _ASCII = "ascii"
 
 
@@ -43,7 +43,7 @@ class AckStatus(StrEnum):
 
 
 class AckCode(StrEnum):
-    """``error.code`` del contrato (enum cerrado)."""
+    """``error.code`` of the contract (closed enum)."""
 
     BUSY = "busy"
     UNKNOWN_STREAM = "unknown_stream"
@@ -62,7 +62,7 @@ class Rejection:
 
 @dataclass(frozen=True, slots=True)
 class Incoming:
-    """Un comando con ``command_id`` legible: ``command`` si es válido, si no ``rejection``."""
+    """A command with a readable ``command_id``: ``command`` if valid, otherwise ``rejection``."""
 
     command_id: str
     command: Command | None
@@ -70,7 +70,7 @@ class Incoming:
 
 
 def read_command(payload: bytes, *, astronaut_id: str, device_id: str) -> Incoming | None:
-    """Interpreta un payload de ``topics.cmd(astronaut_id, device_id)``; ``None`` si no hay ``command_id`` que responder."""
+    """Interprets a payload of ``topics.cmd(astronaut_id, device_id)``; ``None`` if there is no ``command_id`` to reply to."""
     if len(payload) > PAYLOAD_MAX_BYTES:
         found = _COMMAND_ID.search(payload[:PAYLOAD_MAX_BYTES])
         command_id = found.group(1).decode(_ASCII) if found else None
@@ -80,7 +80,7 @@ def read_command(payload: bytes, *, astronaut_id: str, device_id: str) -> Incomi
         return Incoming(command_id, None, Rejection(AckCode.INVALID_COMMAND, message))
     try:
         data: Any = json.loads(payload)
-    except ValueError, RecursionError:  # ValueError cubre UnicodeDecodeError y JSONDecodeError
+    except ValueError, RecursionError:  # ValueError covers UnicodeDecodeError and JSONDecodeError
         return None
     command_id = data.get("command_id") if isinstance(data, dict) else None
     if not isinstance(command_id, str) or not _UUID.fullmatch(command_id):
@@ -99,7 +99,7 @@ def _problems(data: dict[str, Any], *, astronaut_id: str, device_id: str) -> Rej
     if (command.astronaut_id, command.device_id) != (astronaut_id, device_id):
         return Rejection(AckCode.INVALID_COMMAND, f"command for {command.astronaut_id}/{command.device_id} received on the topic of {astronaut_id}/{device_id}")
     duration = command.max_duration_s if isinstance(command, StartSessionCommand) else command.duration_s if isinstance(command, CalibrateCommand) else None
-    # `not <= tope` rechaza también inf (json.loads acepta 1e999).
+    # `not <= cap` also rejects inf (json.loads accepts 1e999).
     if duration is not None and not duration <= DURATION_MAX_S:
         return Rejection(AckCode.INVALID_COMMAND, f"duration exceeds the {DURATION_MAX_S} s limit of this gateway")
     return None

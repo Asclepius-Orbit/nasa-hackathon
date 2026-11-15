@@ -1,4 +1,4 @@
-"""Construcción de la baseline personal a partir de features de sesiones de referencia."""
+"""Building the personal baseline from the features of reference sessions."""
 
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -12,11 +12,11 @@ from spine_engine.features.symptoms import symptom_feature_set
 
 
 class StatisticalBaselineBuilder:
-    """Una entrada por feature + protocolo + entorno de gravedad.
+    """One entry per feature + protocol + gravity environment.
 
-    Media y desviación, más mediana y MAD (robustas ante sesiones atípicas). Una feature con una sola
-    sesión también tiene entrada (desviación y MAD 0): `n` dice cuánto fiarse. Los feature sets sin
-    entorno de gravedad no se pueden comparar y se ignoran.
+    Mean and deviation, plus median and MAD (robust to atypical sessions). A feature with a single
+    session also gets an entry (deviation and MAD 0): `n` says how far to trust it. Feature sets without
+    a gravity environment cannot be compared and are ignored.
     """
 
     def build(self, request: BaselineRequest) -> Baseline:
@@ -67,7 +67,7 @@ class StatisticalBaselineBuilder:
             min=min(values),
             max=max(values),
         )
-        # `dump` emite lo que se fijó: un `protocol_id=None` explícito saldría como null y el schema pide un string.
+        # `dump` emits what was set: an explicit `protocol_id=None` would come out as null and the schema asks for a string.
         if protocol_id is not None:
             entry.protocol_id = protocol_id
         return entry

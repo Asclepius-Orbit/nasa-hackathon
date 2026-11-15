@@ -44,5 +44,5 @@ class HoustonView(BaseModel):
     )
     content_validated: Literal[False] = Field(
         ...,
-        description='Whether the content of the summary has been validated by Aguado. Today always false: the UI shows it as pending.',
+        description='Whether the content of the summary has been clinically validated. Today always false: the UI shows it as pending.',
     )

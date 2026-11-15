@@ -118,7 +118,7 @@ def test_rejects_non_finite_domain_weights(value):
 
 
 def test_a_tiny_sustained_deviation_still_adds_risk_and_keeps_its_share():
-    # 1 - exp(-x) redondea a 0.0 con x diminuto; expm1 lo conserva
+    # 1 - exp(-x) rounds to 0.0 with a tiny x; expm1 keeps it
     result = model().score([dev(z=1e-300)], 1.0)
 
     assert result.score > 0

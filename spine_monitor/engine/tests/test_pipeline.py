@@ -1,4 +1,4 @@
-import json
+﻿import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -70,8 +70,8 @@ def test_domains_without_comparison_are_not_evaluated():
 def test_completeness_reports_what_could_not_be_compared():
     completeness = stub_pipeline().evaluate(request()).completeness
 
-    # Four comparable sensor features out of five sensor and four symptom features.
-    assert completeness.score == pytest.approx(4 / 9)
+    # Four comparable sensor features out of five sensor, four symptom and three measured features.
+    assert completeness.score == pytest.approx(4 / 12)
     assert MissingItem(what="exercise.rep_count", reason=MissingReason.NO_BASELINE) in completeness.missing
 
 
@@ -126,7 +126,7 @@ def test_a_feature_computed_by_one_set_and_skipped_by_another_is_not_missing():
     completeness = stub_pipeline().evaluate(req).completeness
 
     assert computed_id not in {item.what for item in completeness.missing}
-    assert completeness.score == pytest.approx(4 / 9)
+    assert completeness.score == pytest.approx(4 / 12)
 
 
 def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
@@ -136,7 +136,7 @@ def test_null_skipped_in_a_feature_set_means_nothing_was_skipped():
 
     completeness = stub_pipeline().evaluate(req).completeness
 
-    assert completeness.score == pytest.approx(4 / 9)
+    assert completeness.score == pytest.approx(4 / 12)
 
 
 def test_null_self_reports_mean_no_self_reports():
@@ -199,7 +199,7 @@ def test_based_on_lists_each_input_once():
     assert validation.errors("domain/assessment", dump(assessment)) == []
 
 
-# Fakes sin herencia: el pipeline solo depende de la forma (Protocol).
+# Fakes without inheritance: the pipeline only depends on the shape (Protocol).
 class FakeBaseline:
     def __init__(self):
         self.calls = []
@@ -332,3 +332,18 @@ def test_null_baseline_uses_the_latest_value_of_each_feature():
     result = NullBaselineStrategy().deviations(req.baseline, [req.feature_sets[0], older])
 
     assert all(d.value != 0.0 for d in result)
+
+
+
+def test_triage_only_receives_current_reports_for_requested_astronaut():
+    from datetime import timedelta
+    triage = FakeTriage()
+    req = request()
+    current = req.self_reports[0].model_copy(deep=True)
+    current.timestamp = req.as_of
+    other = current.model_copy(update={"astronaut_id": "AST-02", "report_id": "00000000-0000-0000-0000-000000000002"})
+    stale = current.model_copy(update={"timestamp": req.as_of - timedelta(days=7, seconds=1), "report_id": "00000000-0000-0000-0000-000000000003"})
+    req.self_reports = [current, other, stale]
+    assessment = AssessmentPipeline(FakeBaseline(), FakeRisk(), triage).evaluate(req)
+    assert list(triage.received.self_reports) == [current]
+    assert assessment.based_on.self_report_ids == [current.report_id]

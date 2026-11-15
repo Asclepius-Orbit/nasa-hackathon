@@ -19,7 +19,13 @@ function Where(): React.JSX.Element {
   return <output data-testid="where">{useLocation().pathname}</output>;
 }
 
-const view = (state: SessionPayload['state'], id = SESSION_ID): SessionPayload => ({ ...example<SessionPayload>('ui-session'), session_id: id, state });
+/** A session the harness has not confirmed yet has no start time: `startedAt` is null until the gateway starts it. */
+const view = (state: SessionPayload['state'], id = SESSION_ID): SessionPayload => ({
+  ...example<SessionPayload>('ui-session'),
+  session_id: id,
+  state,
+  ...(state === 'starting' ? { started_at: null } : {}),
+});
 
 function world(options: { today: 'none' | 'running'; sessions?: Record<string, SessionPayload>; route?: string }): ReturnType<typeof renderInWorld> {
   const api = new FakeAsclepiusApi();
@@ -54,6 +60,19 @@ const pushRep = async (api: FakeAsclepiusApi, rep?: number): Promise<void> => {
     api.emitReps(SESSION_ID, { kind: 'state', state: { ...example<RepStateView>('ui-rep-state'), ...(rep === undefined ? {} : { rep }) } });
   });
 };
+
+describe('the starting line', () => {
+  it('says it is waiting for the harness while the start is not confirmed', async () => {
+    world({ today: 'running', sessions: { [SESSION_ID]: { ...view('starting'), started_at: null } } });
+    expect(await screen.findByText('Starting. Waiting for the harness to confirm.')).toBeInTheDocument();
+  });
+
+  it('hides the waiting text once the start is confirmed and shows the start time instead', async () => {
+    world({ today: 'running', sessions: { [SESSION_ID]: { ...view('starting'), started_at: '2026-11-13T10:02:31Z' } } });
+    expect(await screen.findByText(/^Started \d{2}:\d{2} GMT/)).toBeInTheDocument();
+    expect(screen.queryByText('Starting. Waiting for the harness to confirm.')).not.toBeInTheDocument();
+  });
+});
 
 describe('starting a session', () => {
   it('offers the cord sessions as two independent protocols and marks the one that is due', async () => {

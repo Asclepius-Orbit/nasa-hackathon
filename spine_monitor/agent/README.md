@@ -30,6 +30,14 @@ spine-agent (CLI, streaming chat)
 
 Needs Docker. Ollama runs in Docker under the `llm` compose profile, and the models are **cached in the `ollama-models` volume**: they are downloaded once, and later starts need no network.
 
+On Windows, `app/start-demo.ps1` tries an isolated NVIDIA GPU container, then compares warm CPU and GPU inference for the configured model with a 16k context. It chooses GPU only when the test confirms GPU memory use and its estimated prompt plus 32-token generation time is lower. This short sample cannot guarantee the fastest device for every request. Missing NVIDIA Docker support, an unavailable model, timeout or failed measurement falls back to CPU. A running Ollama container is preserved; stop the demo and start it again to remeasure. Plain Docker Compose starts use CPU unless the NVIDIA overlay is explicitly supplied. NVIDIA requires compatible drivers and GPU support in Docker; AMD and Apple GPU passthrough are not covered by this launcher. Benchmarking can take several minutes.
+
+The demo launcher is run with `powershell -File app/start-demo.ps1` (`-NoUi` omits the desktop UI; `-SkipModelPull` uses only cached models). NVIDIA acceleration needs a supported GPU, current NVIDIA drivers and a Docker installation configured for NVIDIA GPU containers (on Linux, the NVIDIA Container Toolkit; on Windows, Docker Desktop with WSL 2 GPU support). The temporary probe uses an ephemeral loopback port and the shared model volume. It loads the configured `SPINE_AGENT_MODEL` (default `qwen3.5:4b`), warms each mode, then measures a fresh prompt and generation; it removes the probe afterwards. The first run may download the model. Subsequent launches measure again, which can take several minutes; `-SkipModelPull` does not skip measurement.
+
+If Windows detects an NVIDIA GPU and Docker reports a GPU access failure, the launcher displays the error and steps to check the driver, update WSL and enable Docker Desktop's WSL 2 engine. It also shows the guide if Ollama uses no GPU memory: configuration, incompatibility or insufficient VRAM are possible causes. The demo continues on CPU; the script does not install drivers or restart Docker or Windows. After fixing the configuration, stop and restart the demo to repeat the test. See the [official Docker Desktop GPU guide](https://docs.docker.com/desktop/features/gpu/).
+
+If the result is unexpected, inspect the launcher output, Docker's NVIDIA support and `docker compose -f app/docker-compose.yml exec ollama ollama ps` after making a chat request; the processor column shows CPU/GPU allocation. The HTTP endpoint `http://127.0.0.1:11434/api/ps` also reports `size_vram` for loaded models. A running server is never benchmarked or reconfigured: stop the demo with `docker compose -f app/docker-compose.yml --profile llm --profile sim down` and launch it again to select hardware. Stopping the demo interrupts active sessions but preserves model volumes (do not add `-v`). Use the appropriate producer profile instead of `sim` for a device setup. For manual Compose operation, append `-f app/docker-compose.nvidia.yml` to the usual Compose command to request NVIDIA; without the overlay the container has no GPU reservation. The overlay requires working NVIDIA support and does not perform a benchmark or automatic fallback.
+
 ```bash
 # From the repository root. Once: the broker credentials (compose needs them).
 sh app/mosquitto/setup.sh
@@ -103,6 +111,8 @@ cd spine_monitor/agent
 SPINE_AGENT_EVALS_LIVE=1 uv run --no-sync python -m evals.run_live \
     --models qwen3.5:4b gemma4:e4b qwen3.5:9b --repeat 1 --dump failures.jsonl
 ```
+
+To run against the real app and engine instead of the demo data, add `--dataset http` and export `SPINE_APP_URL` and `SPINE_ENGINE_URL` (forwarded to the MCP subprocess). The default is `--dataset demo`; the case expectations are demo-specific, so failures on `http` need review. A run against the real engine is still pending.
 
 ## Model note
 

@@ -33,6 +33,46 @@ def test_simulate_projection_metadata_contract(validator_for):
         assert list(validator.iter_errors(response))
 
 
+def test_measured_threshold_evidence_carries_units_and_source(validator_for):
+    assessment = load_json(EXAMPLES_DIR / "valid/domain/assessment.amber.json")
+    evidence = assessment["fired_rules"][0]["evidence"]
+    evidence.update(unit="%", source="Device report")
+    validator = validator_for("domain/assessment")
+    assert validator.is_valid(assessment)
+    evidence["unit"] = ""
+    assert not validator.is_valid(assessment)
+
+
+def test_imu_orientation_reference_is_explicit_and_bounded(validator_for):
+    calibration = load_json(EXAMPLES_DIR / "valid/domain/calibration.imu.json")
+    validator = validator_for("domain/calibration")
+    calibration["reference_orientation_x_deg"] = 30
+    assert validator.is_valid(calibration)
+    calibration["reference_orientation_x_deg"] = 181
+    assert not validator.is_valid(calibration)
+
+
+def test_feature_can_carry_its_own_window(validator_for):
+    feature_set = load_json(EXAMPLES_DIR / "valid/domain/feature-set.preflight.json")
+    feature = feature_set["features"][0]
+    feature["window"] = {"start": "2026-11-13T10:00:00Z", "end": "2026-11-13T10:00:05Z"}
+    validator = validator_for("domain/feature-set")
+    assert validator.is_valid(feature_set)
+    del feature["window"]["end"]
+    assert not validator.is_valid(feature_set)
+
+
+def test_explicit_measurement_window_can_represent_a_total_outage(validator_for):
+    request = load_json(EXAMPLES_DIR / "valid/engine/features-request.json")
+    request["chunks"] = []
+    validator = validator_for("engine/features-request")
+    assert not validator.is_valid(request)
+    request["requested_window"] = {"start": "2026-11-13T10:00:00Z", "end": "2026-11-13T10:00:05Z"}
+    assert validator.is_valid(request)
+    request["requested_window"].pop("end")
+    assert not validator.is_valid(request)
+
+
 def test_stretch_estimate_contract_rejects_invalid_inputs_and_extras(validator_for):
     request = {"schema_version": "1.0.0", "baseline_resistance_ohm": 4500, "current_resistance_ohm": 5650, "reference_length_mm": 500}
     validator = validator_for("engine/stretch-estimate-request")
@@ -227,7 +267,7 @@ MUTATIONS = [
     ("domain/assessment.amber", "evidence with non-numeric value", lambda d: d["fired_rules"][0]["evidence"].update(value="high")),
     ("domain/assessment.amber", "evidence with non-numeric threshold", lambda d: d["fired_rules"][0]["evidence"].update(threshold="3")),
     ("domain/assessment.amber", "evidence with non-string datum", lambda d: d["fired_rules"][0]["evidence"].update(datum=7)),
-    ("domain/assessment.amber", "evidence with unknown property", lambda d: d["fired_rules"][0]["evidence"].update(unit="x")),
+    ("domain/assessment.amber", "evidence with unknown property", lambda d: d["fired_rules"][0]["evidence"].update(unexpected="x")),
     ("engine/features-request", "no chunks", lambda d: d.update(chunks=[])),
     ("engine/baseline-request", "no reference sessions", lambda d: d.update(feature_sets=[])),
     ("engine/baseline-request", "self-report with pain above 10", lambda d: d["self_reports"][0].update(pain_nrs=11)),
@@ -684,8 +724,8 @@ def test_catalog_placeholders_resolve_and_expand_to_valid_ids(catalog, common):
             assert fullmatch(pattern, expanded), expanded
 
 
-# Until Aguado validates (#38), ranges may exist only if they say so in their source.
-PROVISIONAL_MARKER = "provisional, pendiente de Aguado"
+# Until the clinical owner validates (#38), ranges may exist only if they say so in their source.
+PROVISIONAL_MARKER = "provisional, pending clinical validation"
 NO_RANGES_DIRECTIONS = {"none", "unspecified"}
 SYMMETRY_ID = "emg.{muscle}.symmetry_index_pct"
 
@@ -729,7 +769,7 @@ def test_catalog_ranges_are_ordered_and_consistent_with_risk_direction(entry):
 def test_provisional_catalog_entries_stay_proposed(entry):
     if entry["ranges"]["source"].startswith(PROVISIONAL_MARKER):
         assert entry["status"] == "proposed", entry["feature_id"]
-        assert "Aguado" in entry["ranges"]["source"] and len(entry["ranges"]["source"]) > len(PROVISIONAL_MARKER) + 2
+        assert "clinical validation" in entry["ranges"]["source"] and len(entry["ranges"]["source"]) > len(PROVISIONAL_MARKER) + 2
 
 
 @pytest.mark.parametrize("entry", _catalog_entries(), ids=_entry_ids(_catalog_entries()))
@@ -742,15 +782,14 @@ def test_catalog_version_marks_the_provisional_values():
     assert load_catalog()["catalog_version"] == "0.3.0"
 
 
-def test_catalog_carries_provisional_directions_and_ranges_for_the_risk_layer():
-    # #51 needs something to read: more than the symptoms scales, and at least one provisional range
+def test_catalog_carries_directions_for_the_risk_layer():
     directions = {entry["feature_id"]: entry["risk_direction"] for entry in _catalog_entries()}
     specified = {fid for fid, direction in directions.items() if direction not in NO_RANGES_DIRECTIONS}
     assert len([fid for fid in specified if not fid.startswith("symptoms.")]) >= 5
-    assert any(entry["ranges"]["source"].startswith(PROVISIONAL_MARKER) for entry in _entries_with_ranges())
+    assert next(e for e in _catalog_entries() if e["feature_id"] == "imu.{spine_level}.{anatomical_plane}.rom_deg")["ranges"] is None
 
 
-def test_symmetry_index_waits_for_aguado():
+def test_symmetry_index_waits_for_clinical_validation():
     entry = next(entry for entry in _catalog_entries() if entry["feature_id"] == SYMMETRY_ID)
     assert (entry["risk_direction"], entry["ranges"], entry["status"]) == ("unspecified", None, "proposed")
 

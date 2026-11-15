@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14.8, <3.15"
 
 [manifest]
@@ -2326,6 +2326,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyserial" },
     { name = "spine-contracts" },
+    { name = "spine-physiology" },
 ]
 
 [package.metadata]
@@ -2335,6 +2336,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.16.1" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "spine-contracts", editable = "contracts" },
+    { name = "spine-physiology", editable = "physiology" },
 ]
 
 [[package]]

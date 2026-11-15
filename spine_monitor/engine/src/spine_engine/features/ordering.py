@@ -1,7 +1,7 @@
-"""Orden de chunks por (stream, boot_id, seq), duplicados, huecos de seq, muestras perdidas y reinicios.
+"""Chunk ordering by (stream, boot_id, seq), duplicates, seq gaps, lost samples and restarts.
 
-Funciones puras: no filtran por sesión ni por streams declarados (eso lo hace quien llama). Cada
-``boot_id`` es un segmento independiente; nunca se concatenan muestras de dos arranques distintos.
+Pure functions: they do not filter by session or by declared streams (the caller does that). Each
+``boot_id`` is an independent segment; samples of two different boots are never concatenated.
 """
 
 from collections.abc import Iterable
@@ -14,7 +14,7 @@ type ChunkKey = tuple[str, int, int]
 
 
 class IncidentKind(StrEnum):
-    """Tipo de incidencia detectada al ordenar."""
+    """Kind of incident detected while ordering."""
 
     DUPLICATE = "duplicate"
     SEQ_GAP = "seq_gap"
@@ -24,13 +24,13 @@ class IncidentKind(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Incident:
-    """Incidencia de un stream dentro de un ``boot_id``.
+    """Incident of a stream within a ``boot_id``.
 
-    - ``DUPLICATE``: ``seq`` repetido; ``chunks`` = copias descartadas (gana la primera).
-    - ``SEQ_GAP``: ``seq`` = primer seq ausente; ``chunks`` = chunks ausentes; ``samples`` = muestras
-      estimadas con el ``n_samples`` del chunk anterior al hueco.
-    - ``DROPPED_SAMPLES``: ``seq`` del chunk; ``samples`` = ``dropped_samples`` declarado por el dispositivo.
-    - ``DEVICE_RESTART``: ``boot_id`` = arranque nuevo; ``seq`` = su primer seq recibido.
+    - ``DUPLICATE``: repeated ``seq``; ``chunks`` = discarded copies (the first wins).
+    - ``SEQ_GAP``: ``seq`` = first missing seq; ``chunks`` = missing chunks; ``samples`` = samples
+      estimated with the ``n_samples`` of the chunk before the gap.
+    - ``DROPPED_SAMPLES``: ``seq`` of the chunk; ``samples`` = ``dropped_samples`` declared by the device.
+    - ``DEVICE_RESTART``: ``boot_id`` = new boot; ``seq`` = its first received seq.
     """
 
     kind: IncidentKind
@@ -43,11 +43,11 @@ class Incident:
 
 @dataclass(frozen=True, slots=True)
 class Segment:
-    """Chunks únicos de un stream en un ``boot_id``, ordenados por ``seq``.
+    """Unique chunks of a stream in a ``boot_id``, ordered by ``seq``.
 
-    ``present_samples`` son las muestras recibidas; ``missing_samples`` suma las perdidas dentro de
-    chunks (``dropped_samples``) y las estimadas en huecos de seq. Un hueco antes del primer seq
-    recibido no cuenta: la ventana puede empezar a mitad del stream.
+    ``present_samples`` are the received samples; ``missing_samples`` adds those lost inside
+    chunks (``dropped_samples``) and those estimated in seq gaps. A gap before the first received
+    seq does not count: the window may start mid-stream.
     """
 
     stream_id: str
@@ -58,23 +58,23 @@ class Segment:
 
     @property
     def expected_samples(self) -> int:
-        """Muestras que debería haber: presentes + perdidas."""
+        """Samples there should be: present + missing."""
         return self.present_samples + self.missing_samples
 
 
 @dataclass(frozen=True, slots=True)
 class OrderedChunks:
-    """Resultado de :func:`order_chunks`: segmentos ordenados por (stream, boot_id) e incidencias."""
+    """Result of :func:`order_chunks`: segments ordered by (stream, boot_id) and incidents."""
 
     segments: tuple[Segment, ...]
     incidents: tuple[Incident, ...]
 
     def chunks(self) -> tuple[StreamChunk, ...]:
-        """Todos los chunks únicos, en orden (stream, boot_id, seq)."""
+        """All the unique chunks, in order (stream, boot_id, seq)."""
         return tuple(c for segment in self.segments for c in segment.chunks)
 
     def segments_for(self, stream_id: str) -> tuple[Segment, ...]:
-        """Segmentos de un stream, ordenados por ``boot_id``."""
+        """Segments of a stream, ordered by ``boot_id``."""
         return tuple(s for s in self.segments if s.stream_id == stream_id)
 
 
@@ -106,10 +106,10 @@ def _segment(stream_id: str, boot_id: int, chunks: list[StreamChunk], incidents:
 
 
 def order_chunks(chunks: Iterable[StreamChunk]) -> OrderedChunks:
-    """Ordena, deduplica (gana la primera aparición) y segmenta por (stream, boot_id).
+    """Sort, deduplicate (the first occurrence wins) and segment by (stream, boot_id).
 
-    Los reinicios se detectan por stream: cada ``boot_id`` que no es el primero en llegar (por el
-    ``received_at`` de su primer chunk; empate por ``boot_id``) genera un ``DEVICE_RESTART``.
+    Restarts are detected per stream: each ``boot_id`` that is not the first to arrive (by the
+    ``received_at`` of its first chunk; ties broken by ``boot_id``) generates a ``DEVICE_RESTART``.
     """
     unique: dict[ChunkKey, StreamChunk] = {}
     duplicates: dict[ChunkKey, int] = {}

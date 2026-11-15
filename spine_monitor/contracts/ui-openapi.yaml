@@ -482,7 +482,7 @@ paths:
               required: [event_type]
               properties:
                 event_type:
-                  enum: [set_start, set_end, rep_start, rep_end, mvc_start, mvc_end, rest_start, rest_end, pain_reported, artifact, note]
+                  enum: [set_start, set_end, rep_start, rep_end, mvc_start, mvc_end, reference_effort_start, reference_effort_end, rest_start, rest_end, pain_reported, artifact, note]
                 set_index:
                   type: integer
                   minimum: 1
@@ -535,6 +535,10 @@ paths:
               properties:
                 calibration_type:
                   enum: [stretch, emg_mvc, imu]
+                reference_posture:
+                  type: string
+                  enum: [straight_back]
+                  description: Operator attestation for a straight-back stretch reference; only for stretch calibration.
                 stream_ids:
                   type: array
                   minItems: 1
@@ -734,7 +738,7 @@ paths:
     get:
       operationId: getHoustonView
       summary: Houston screen
-      description: Latest summary prepared for the ground station, state of the link and last confirmed contact. `summary` is null while the astronaut has nothing yet. The transport is simulated (`transport` is `simulated`) and the content is pending validation by Aguado (`content_validated` is false).
+      description: Latest summary prepared for the ground station, state of the link and last confirmed contact. `summary` is null while the astronaut has nothing yet. The transport is simulated (`transport` is `simulated`) and the content is pending clinical validation (`content_validated` is false).
       parameters:
         - $ref: '#/components/parameters/AstronautId'
       responses:

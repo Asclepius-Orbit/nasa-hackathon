@@ -2,7 +2,7 @@
 export const oswestry = {
   title: 'Weekly Oswestry questionnaire',
   lede: 'How much your back limits you this week. Pick the sentence closest to you.',
-  pending: 'Item set pending validation by Aguado',
+  pending: 'Item set pending clinical validation',
   loading: 'Loading the questionnaire.',
   failed: 'The questionnaire could not be loaded.',
   option: (n: number, text: string): string => `${String(n)}. ${text}`,

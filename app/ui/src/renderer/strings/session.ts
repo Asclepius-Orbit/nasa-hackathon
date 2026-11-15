@@ -57,7 +57,7 @@ export const session = {
   countingBy: 'IMU at T9, automatic',
   backup: 'Say “mark rep” or press the foot pedal',
   stepsHint: 'Tap a step to see it.',
-  pending: 'Placement and procedure pending Aguado',
+  pending: 'Placement and procedure pending clinical validation',
   back: 'Back',
   next: 'Next step',
 } as const;

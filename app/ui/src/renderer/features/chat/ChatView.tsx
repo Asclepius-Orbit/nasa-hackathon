@@ -9,6 +9,7 @@ import { shouldUseMockData } from '../../data/AppDataProvider';
 import { createMockChat } from '../../data/mock/MockChat';
 import { chat as copy, toolName } from '../../strings/chat';
 import styles from './ChatView.module.css';
+import { Markdown } from './Markdown';
 
 const MAX_QUESTION = 2000;
 
@@ -67,7 +68,7 @@ function reduce(turns: Turn[], action: Action): Turn[] {
 
 /**
  * Chat with the spine assistant about the astronaut's own data. It goes straight through the bridge (`useApi().chat`), not
- * the DataSource: it is a live conversation, not a view. One answer at a time; text is shown as plain text as it streams;
+ * the DataSource: it is a live conversation, not a view. One answer at a time; the answer is rendered as Markdown as it streams (the question stays plain text);
  * the assistant's tool calls are shown as small "Looked at" chips; a `fallback` replaces the text and says it is not the
  * assistant's own. Nothing here diagnoses: the screen says so, and a corrected answer says it was corrected.
  */
@@ -130,76 +131,77 @@ export function ChatView(): React.JSX.Element {
   return (
     <section aria-labelledby="chat-title" data-testid="chat-view" className={styles.chat}>
       <header className={styles.head}>
-        <div>
-          <h1 id="chat-title">{copy.title}</h1>
-          <p className={styles.lede}>{copy.lede}</p>
-        </div>
-        <Button variant="quiet" onClick={newConversation} disabled={turns.length === 0}>
-          {copy.newConversation}
-        </Button>
+        <h1 id="chat-title">{copy.title}</h1>
+        {turns.length > 0 && (
+          <Button variant="quiet" className={styles.fresh} onClick={newConversation}>
+            <span aria-hidden="true">+</span> {copy.newConversation}
+          </Button>
+        )}
       </header>
       <p className={styles.disclaimer}>{copy.disclaimer}</p>
 
-      {turns.length === 0 ? (
-        <p className={styles.empty}>{copy.empty}</p>
-      ) : (
-        <ol className={styles.thread} aria-label={copy.conversationLabel}>
-          {turns.map((turn) => (
-            <li key={turn.id} className={styles.turn}>
-              <div className={styles.question}>
-                <b className={styles.who}>{copy.you}</b>
-                <p className={styles.plain}>{turn.question}</p>
-              </div>
-              <Panel className={styles.answer} aria-busy={isLive(turn)}>
-                <b className={styles.who}>{copy.assistant}</b>
-                {turn.tools.length > 0 && (
-                  <ul className={styles.tools}>
-                    {turn.tools.map((tool, index) => (
-                      // A tool may be used more than once in a turn, so the position is part of the key.
-                      <li key={`${tool}-${String(index)}`} className={styles.chip}>
-                        {copy.tool(toolName(tool))}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {turn.status === 'thinking' && (
-                  <p role="status" className={styles.thinking}>
-                    <span>{copy.thinking}</span> <small>{copy.slowNote}</small>
-                  </p>
-                )}
-                {turn.fallback && <p className={styles.fallback}>{copy.fallbackLabel}</p>}
-                {turn.text !== '' && <p className={styles.text}>{turn.text}</p>}
-                {turn.notices.map((code) => (
-                  <p key={code} className={styles.notice}>
-                    {copy.notice[code]}
-                  </p>
-                ))}
-                {turn.status === 'cancelled' && <p className={styles.notice}>{copy.stopped}</p>}
-                {turn.error !== null && (
-                  <Alert
-                    variant="warning"
-                    action={
-                      turn === last ? (
-                        <Button
-                          variant="quiet"
-                          onClick={() => {
-                            start(turn.question);
-                          }}
-                        >
-                          {copy.retry}
-                        </Button>
-                      ) : undefined
-                    }
-                  >
-                    {copy.errors[turn.error]}
-                  </Alert>
-                )}
-              </Panel>
-            </li>
-          ))}
-        </ol>
-      )}
-      <div ref={endRef} />
+      <div className={styles.scroll}>
+        {turns.length === 0 ? (
+          <p className={styles.empty}>{copy.empty}</p>
+        ) : (
+          <ol className={styles.thread} aria-label={copy.conversationLabel}>
+            {turns.map((turn) => (
+              <li key={turn.id} className={styles.turn}>
+                <div className={styles.question}>
+                  <b className={styles.who}>{copy.you}</b>
+                  <p className={styles.plain}>{turn.question}</p>
+                </div>
+                <Panel className={styles.answer} aria-busy={isLive(turn)}>
+                  <b className={styles.who}>{copy.assistant}</b>
+                  {turn.tools.length > 0 && (
+                    <ul className={styles.tools}>
+                      {turn.tools.map((tool, index) => (
+                        // A tool may be used more than once in a turn, so the position is part of the key.
+                        <li key={`${tool}-${String(index)}`} className={styles.chip}>
+                          {copy.tool(toolName(tool))}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {turn.status === 'thinking' && (
+                    <p role="status" className={styles.thinking}>
+                      <span>{copy.thinking}</span> <small>{copy.slowNote}</small>
+                    </p>
+                  )}
+                  {turn.fallback && <p className={styles.fallback}>{copy.fallbackLabel}</p>}
+                  {turn.text !== '' && <Markdown text={turn.text} />}
+                  {turn.notices.map((code) => (
+                    <p key={code} className={styles.notice}>
+                      {copy.notice[code]}
+                    </p>
+                  ))}
+                  {turn.status === 'cancelled' && <p className={styles.notice}>{copy.stopped}</p>}
+                  {turn.error !== null && (
+                    <Alert
+                      variant="warning"
+                      action={
+                        turn === last ? (
+                          <Button
+                            variant="quiet"
+                            onClick={() => {
+                              start(turn.question);
+                            }}
+                          >
+                            {copy.retry}
+                          </Button>
+                        ) : undefined
+                      }
+                    >
+                      {copy.errors[turn.error]}
+                    </Alert>
+                  )}
+                </Panel>
+              </li>
+            ))}
+          </ol>
+        )}
+        <div ref={endRef} />
+      </div>
 
       <form
         className={styles.composer}

@@ -51,10 +51,10 @@ export const today = {
   alsoToday: 'Also today',
 } as const;
 
-/** The weekly PDF for Houston. A separate file from the daily summary on the Houston screen, which it does not replace or change. */
+/** The weekly PDF for Houston. It is generated on demand; daily summaries are sent on their own. */
 export const houstonReport = {
   title: 'Weekly report for Houston',
-  body: 'A PDF with your last seven days, to save and send to the flight surgeon. It is a separate file: the daily summary on the Houston screen is not changed by it.',
+  body: 'A PDF with your last seven days, to save and send to the flight surgeon. Daily summaries go to Houston on their own while the ground link is up, and the urgent dialog shows when one is queued.',
   button: 'Generate report for Houston',
   busy: 'Generating the report...',
   demo: 'Not available in the demo: there is no backend to build the report.',
@@ -102,4 +102,21 @@ export const spine = {
   imuWhere: 'at T9',
   preflight: 'Preflight',
   today: 'Today',
+  pick: 'Pick a vertebra',
+  close: 'Close',
+  hint: 'Click a vertebra or sensor to see what it is.',
+  region: { thoracic: 'Thoracic', lumbar: 'Lumbar' },
+  thoracicRole: 'Carries the rib cage and sets the posture curve.',
+  lumbarRole: 'Takes the load and is where the cord measures stretch.',
+  thoracicOrdinals: ['fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'],
+  lumbarOrdinals: ['first', 'second', 'third', 'fourth', 'fifth'],
+  vertebraName: (ordinal: string, region: string): string => `${ordinal[0]?.toUpperCase() ?? ''}${ordinal.slice(1)} ${region} vertebra`,
+  imuHere: 'The IMU sits here and reads the curve.',
+  groundHere: 'The ground electrode sits near this level, on the iliac crest.',
+  sensors: {
+    imu: { name: 'IMU', note: 'Inertial sensor taped over T9. It reads the thoracic curve.' },
+    emg: { name: 'EMG', note: 'Electrodes over the latissimus dorsi, left and right. They read muscle activity.' },
+    gnd: { name: 'GND', note: 'Ground electrode on the iliac crest. It is the electrical reference for the EMG.' },
+    cord: { name: 'Stretch cord', note: 'Runs from C3 to S1 and measures how much the spine lengthens.' },
+  },
 } as const;

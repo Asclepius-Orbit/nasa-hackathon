@@ -1,4 +1,4 @@
-"""Servidor MCP de Asclepius Orbit (stdio). Por defecto usa la app y el motor reales por http; `--dataset` elige demo o ejemplos."""
+"""Asclepius Orbit MCP server (stdio). By default it uses the real app and engine over http; `--dataset` selects demo or examples."""
 
 import argparse
 import os
@@ -19,7 +19,7 @@ DEFAULT_ENGINE_URL = "http://127.0.0.1:8001"
 
 
 def _aware_iso(text: str) -> datetime:
-    """ISO 8601 con zona horaria (p. ej. `2026-11-13T12:00:00Z`); sin zona es ambiguo y se rechaza."""
+    """ISO 8601 with a timezone (e.g. `2026-11-13T12:00:00Z`); without a zone it is ambiguous and rejected."""
     try:
         moment = datetime.fromisoformat(text)
     except ValueError as error:
@@ -30,21 +30,21 @@ def _aware_iso(text: str) -> datetime:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    """Opciones de `python -m spine_mcp_server`."""
-    parser = argparse.ArgumentParser(prog="spine_mcp_server", description="Servidor MCP de Asclepius Orbit por stdio.")
+    """Options of `python -m spine_mcp_server`."""
+    parser = argparse.ArgumentParser(prog="spine_mcp_server", description="Asclepius Orbit MCP server over stdio.")
     parser.add_argument(
         "--dataset",
         choices=("demo", "examples", "http"),
         default="http",
-        help=f"http (por defecto): la API de lectura de la app en {APP_URL_ENV} (por defecto {DEFAULT_APP_URL}) y el motor en {ENGINE_URL_ENV} "
-        f"(por defecto {DEFAULT_ENGINE_URL}); demo: 14 días de AST-01 relativos al reloj; examples: la foto única de los ejemplos de los contratos.",
+        help=f"http (default): the app read API at {APP_URL_ENV} (default {DEFAULT_APP_URL}) and the engine at {ENGINE_URL_ENV} "
+        f"(default {DEFAULT_ENGINE_URL}); demo: 14 days of AST-01 relative to the clock; examples: the single snapshot of the contract examples.",
     )
-    parser.add_argument("--now", type=_aware_iso, default=None, help="Fija el reloj del dataset demo (ISO 8601 con zona, p. ej. 2026-11-13T12:00:00Z).")
+    parser.add_argument("--now", type=_aware_iso, default=None, help="Fix the clock of the demo dataset (ISO 8601 with a timezone, e.g. 2026-11-13T12:00:00Z).")
     return parser.parse_args(argv)
 
 
 def build_server(argv: Sequence[str] | None = None) -> MCPServer:
-    """Servidor MCP con el dataset elegido en `argv`; el demo usa el reloj de pared salvo que `--now` lo fije."""
+    """MCP server with the dataset chosen in `argv`; the demo uses the wall clock unless `--now` fixes it."""
     args = parse_args(argv)
     if args.dataset == "examples":
         return create_server(ExampleAppReader(), ExampleSimulator(), ExampleAssessBaseSource())
@@ -60,5 +60,5 @@ def build_server(argv: Sequence[str] | None = None) -> MCPServer:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Arranca el servidor MCP por stdio (`argv` por defecto: `sys.argv[1:]`)."""
+    """Starts the MCP server over stdio (`argv` defaults to `sys.argv[1:]`)."""
     build_server(argv).run("stdio")

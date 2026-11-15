@@ -1,12 +1,12 @@
-"""EMG de superficie crudo, en mV.
+"""Raw surface EMG, in mV.
 
-Dueño: B2. Modelo: ruido gaussiano filtrado en banda [band_low_hz, band_high_hz] (Butterworth de orden
-`filter_order`), modulado por la envolvente de amplitud `mvc_rms_mv × pct_mvc / 100`, más ruido blanco de
-fondo `noise_rms_mv`. La fatiga (0..1) desplaza la banda hacia abajo un `fatigue_band_shift × fatiga`
-relativo, así que la frecuencia mediana baja a lo largo de la serie. Requisitos verificables en tests:
-- RMS en ventanas de esfuerzo constante ∝ %MVC (salvo el suelo de ruido).
-- Frecuencia mediana menor con fatiga que sin ella, monótona en la fatiga.
-- Misma rng (mismo estado) ⇒ mismo array bit a bit.
+Owner: B2. Model: Gaussian noise band-filtered to [band_low_hz, band_high_hz] (Butterworth of order
+`filter_order`), modulated by the amplitude envelope `mvc_rms_mv × pct_mvc / 100`, plus background white noise
+`noise_rms_mv`. Fatigue (0..1) shifts the band downwards by a relative `fatigue_band_shift × fatigue`,
+so the median frequency drops along the series. Requirements verifiable in tests:
+- RMS in constant-effort windows ∝ %MVC (apart from the noise floor).
+- Median frequency lower with fatigue than without it, monotonic in fatigue.
+- Same rng (same state) ⇒ bit-for-bit the same array.
 """
 
 from collections.abc import Sequence
@@ -17,29 +17,31 @@ from scipy import signal as sp_signal
 from spine_physiology.config import EmgSignalConfig
 from spine_physiology.signals import Rep
 
-# Detalles de implementación (no son parámetros fisiológicos ni de misión):
-# - La banda con fatiga variable en el tiempo se sintetiza filtrando UNA misma secuencia blanca con
-#   `_FATIGUE_LEVELS` bandas repartidas entre la fatiga mínima y máxima de la serie, y mezclando los
-#   niveles contiguos con pesos triangulares por muestra (la misma entrada los mantiene correlados).
-# - `_MIN_BAND_SCALE` evita que `1 − shift × fatiga` colapse la banda a 0 Hz con shift = fatiga = 1.
-# - `_RESPONSE_GRID` es la rejilla de frecuencias para el factor de normalización de potencia del filtro.
+# Implementation details (not physiological or mission parameters):
+# - The band with time-varying fatigue is synthesised by filtering ONE SAME white sequence with
+#   `_FATIGUE_LEVELS` bands spread between the minimum and maximum fatigue of the series, and mixing the
+#   contiguous levels with per-sample triangular weights (the same input keeps them correlated).
+# - `_MIN_BAND_SCALE` keeps `1 − shift × fatigue` from collapsing the band to 0 Hz with shift = fatigue = 1.
+# - `_RESPONSE_GRID` is the frequency grid for the filter power-normalisation factor.
 _FATIGUE_LEVELS = 9
 _MIN_BAND_SCALE = 0.05
 _RESPONSE_GRID = 4096
+# - `_ECG_SIGMA_S`: width (σ, s) of the synthetic QRS pulse of the ECG leak. Shape hypothesis, no source.
+_ECG_SIGMA_S = 0.01
 
 
 def effective_pct_mvc(protocol_pct_mvc: float, deconditioning: float, params: EmgSignalConfig) -> float:
-    """%MVC pico por rep con desacondicionamiento: pct × (1 + deconditioning_pct_mvc_gain × d)."""
+    """Peak %MVC per rep with deconditioning: pct × (1 + deconditioning_pct_mvc_gain × d)."""
     return protocol_pct_mvc * (1.0 + params.deconditioning_pct_mvc_gain * deconditioning)
 
 
 def effective_fatigue_per_rep(deconditioning: float, params: EmgSignalConfig) -> float:
-    """Fatiga por rep con desacondicionamiento: fatigue_per_rep × (1 + deconditioning_fatigue_gain × d)."""
+    """Fatigue per rep with deconditioning: fatigue_per_rep × (1 + deconditioning_fatigue_gain × d)."""
     return params.fatigue_per_rep * (1.0 + params.deconditioning_fatigue_gain * deconditioning)
 
 
 def _rep_slice(rep: Rep, n_samples: int, rate_hz: float) -> tuple[int, int]:
-    """Índices [i0, i1) de las muestras con start_s <= i / rate < end_s, recortados a la serie."""
+    """Indices [i0, i1) of the samples with start_s <= i / rate < end_s, clipped to the series."""
     i0 = int(np.ceil(rep.start_s * rate_hz - 1e-9))
     i1 = int(np.ceil(rep.end_s * rate_hz - 1e-9))
     return min(max(i0, 0), n_samples), min(max(i1, 0), n_samples)
@@ -53,10 +55,10 @@ def activation_profile(
     n_samples: int,
     rate_hz: float,
 ) -> np.ndarray:
-    """%MVC por muestra: `rest_pct_mvc` fuera de las reps y una campana suave hasta el pico dentro.
+    """%MVC per sample: `rest_pct_mvc` outside the reps and a smooth bell up to the peak inside.
 
-    `peak_pct_mvc` escalar (igual en todas) o uno por rep. Sin reps: constante `rest_pct_mvc`.
-    La campana es un seno² (Hann) que parte y vuelve al nivel de reposo con pendiente nula.
+    `peak_pct_mvc` scalar (the same for all) or one per rep. Without reps: constant `rest_pct_mvc`.
+    The bell is a sin² (Hann) that starts and returns to the rest level with zero slope.
     """
     peak_values = np.asarray(peak_pct_mvc, dtype=np.float64)
     if peak_values.ndim == 0:
@@ -77,9 +79,9 @@ def activation_profile(
 
 
 def fatigue_profile(reps: Sequence[Rep], *, fatigue_per_rep: float, n_samples: int, rate_hz: float) -> np.ndarray:
-    """Índice de fatiga por muestra en [0, 1]: crece durante cada rep (k reps hechas ⇒ ~k × per_rep).
+    """Fatigue index per sample in [0, 1]: grows during each rep (k reps done ⇒ ~k × per_rep).
 
-    Dentro de cada rep sube con una rampa suave (smoothstep) y se mantiene entre reps. Se satura en 1.
+    Within each rep it rises with a smooth ramp (smoothstep) and holds between reps. Saturates at 1.
     """
     profile = np.zeros(n_samples, dtype=np.float64)
     level = 0.0
@@ -99,8 +101,26 @@ def fatigue_profile(reps: Sequence[Rep], *, fatigue_per_rep: float, n_samples: i
     return np.clip(profile, 0.0, 1.0)
 
 
+def exercise_fatigue_profile(reps: Sequence[Rep], *, n_samples: int, rate_hz: float, recovery_per_s: float, fatigue_per_rep: float = 0.0) -> np.ndarray:
+    """Interpolate the model's rep fatigue and exponential recovery between efforts."""
+    times = np.arange(n_samples, dtype=np.float64) / rate_hz
+    profile = np.zeros(n_samples, dtype=np.float64)
+    extra = 0.0
+    for index, rep in enumerate(reps):
+        end_level = rep.fatigue_end
+        inside = (times >= rep.start_s) & (times < rep.end_s)
+        u = (times[inside] - rep.start_s) / (rep.end_s - rep.start_s)
+        profile[inside] = rep.fatigue + (end_level - rep.fatigue) * u + extra + fatigue_per_rep * u
+        next_start = reps[index + 1].start_s if index + 1 < len(reps) else np.inf
+        rest = (times >= rep.end_s) & (times < next_start)
+        profile[rest] = (end_level + extra + fatigue_per_rep) * np.exp(-recovery_per_s * (times[rest] - rep.end_s))
+        if index + 1 < len(reps):
+            extra = (extra + fatigue_per_rep) * np.exp(-recovery_per_s * (next_start - rep.end_s))
+    return np.clip(profile, 0.0, 1.0)
+
+
 def _band_sos(params: EmgSignalConfig, fatigue: float, rate_hz: float) -> np.ndarray:
-    """Butterworth paso banda con ambos bordes desplazados un `fatigue_band_shift × fatiga` relativo."""
+    """Band-pass Butterworth with both edges shifted by a relative `fatigue_band_shift × fatigue`."""
     scale = max(1.0 - params.fatigue_band_shift * fatigue, _MIN_BAND_SCALE)
     sos = sp_signal.butter(
         params.filter_order,
@@ -109,20 +129,73 @@ def _band_sos(params: EmgSignalConfig, fatigue: float, rate_hz: float) -> np.nda
         fs=rate_hz,
         output="sos",
     )
-    return np.asarray(sos, dtype=np.float64)  # el stub de scipy devuelve una unión por `output`
+    return np.asarray(sos, dtype=np.float64)  # the scipy stub returns a union by `output`
 
 
 def _zero_phase_power_gain(sos: np.ndarray) -> float:
-    """Potencia de salida de ruido blanco unitario tras sosfiltfilt: media de |H|⁴ en [0, Nyquist]."""
+    """Output power of unit white noise after sosfiltfilt: mean of |H|⁴ over [0, Nyquist]."""
     _, h = sp_signal.sosfreqz(sos, worN=_RESPONSE_GRID)
     return float(np.mean(np.abs(h) ** 4))
 
 
 def _filter_zero_phase(sos: np.ndarray, x: np.ndarray) -> np.ndarray:
-    # Fase cero ⇒ sin retardo; el padding por reflexión por defecto de sosfiltfilt amortigua los
-    # transitorios de borde. En series cortas se reduce el padding al máximo posible.
+    # Zero phase ⇒ no delay; the default reflection padding of sosfiltfilt damps the
+    # edge transients. On short series the padding is reduced to the maximum possible.
     default_padlen = 3 * (2 * sos.shape[0] + 1)
     return sp_signal.sosfiltfilt(sos, x, padlen=min(default_padlen, x.size - 1))
+
+
+def _lowpass_zero_phase(x: np.ndarray, cutoff_hz: float, rate_hz: float) -> tuple[np.ndarray, float]:
+    """Butterworth de 2.º orden paso bajo de fase cero. Devuelve (y, potencia de salida de ruido blanco unitario)."""
+    sos = np.asarray(sp_signal.butter(2, cutoff_hz, btype="lowpass", fs=rate_hz, output="sos"), dtype=np.float64)
+    return _filter_zero_phase(sos, x), _zero_phase_power_gain(sos)
+
+
+def _ecg_pulses(n: int, params: EmgSignalConfig, rate_hz: float, phase_s: float) -> np.ndarray:
+    """Train of QRS complexes (Gaussian pulses of σ = _ECG_SIGMA_S) with peak `ecg_leak_mv`, one per beat."""
+    t = np.arange(n, dtype=np.float64) / rate_hz
+    period = 60.0 / params.ecg_heart_rate_bpm
+    nearest = ((t - phase_s + period / 2.0) % period) - period / 2.0  # signed distance to the nearest beat
+    return params.ecg_leak_mv * np.exp(-0.5 * (nearest / _ECG_SIGMA_S) ** 2)
+
+
+def _interference(rng: np.random.Generator, params: EmgSignalConfig, n: int, rate_hz: float) -> np.ndarray:
+    """Sum of slow drift, mains and ECG leak (each one 0 if its amplitude is 0)."""
+    t = np.arange(n, dtype=np.float64) / rate_hz
+    out = np.zeros(n, dtype=np.float64)
+    if params.baseline_wander_mv > 0.0:
+        slow, gain = _lowpass_zero_phase(rng.standard_normal(n), params.baseline_wander_hz, rate_hz)
+        out += params.baseline_wander_mv * slow / np.sqrt(gain)
+    if params.mains_amplitude_mv > 0.0:
+        phase = rng.uniform(0.0, 2.0 * np.pi)
+        out += params.mains_amplitude_mv * np.sin(2.0 * np.pi * params.mains_hz * t + phase)
+    if params.ecg_leak_mv > 0.0:
+        out += _ecg_pulses(n, params, rate_hz, rng.uniform(0.0, 60.0 / params.ecg_heart_rate_bpm))
+    return out
+
+
+def _apply_signal_kind(x: np.ndarray, params: EmgSignalConfig, rate_hz: float) -> np.ndarray:
+    """raw: tal cual; rectified: |x|; envelope: |x| suavizada (paso bajo de fase cero). Luego cuantiza si procede."""
+    if params.signal_kind != "raw":
+        x = np.abs(x)
+    if params.signal_kind == "envelope":
+        x, _ = _lowpass_zero_phase(x, params.envelope_lowpass_hz, rate_hz)
+        x = np.maximum(x, 0.0)  # the low-pass can leave a tiny negative ripple
+    if params.quantize_adc:
+        x = _quantize(x, params)
+    return x
+
+
+def _quantize(x: np.ndarray, params: EmgSignalConfig) -> np.ndarray:
+    """Rounds to ADC counts (step `vref / gain / 2^bits`, referred to the input, in mV) and saturates.
+
+    Raw: bipolar around mid-scale [-2^(b-1), 2^(b-1) - 1]; rectified/envelope: unipolar [0, 2^b - 1].
+    """
+    acq = params.acquisition
+    full = 2**acq.adc_bits
+    lsb_mv = acq.vref_v * 1000.0 / acq.gain / full
+    low, high = (-full // 2, full // 2 - 1) if params.signal_kind == "raw" else (0, full - 1)
+    return np.clip(np.round(x / lsb_mv), low, high) * lsb_mv
 
 
 def synth_emg(
@@ -134,11 +207,13 @@ def synth_emg(
     fatigue: np.ndarray,
     rate_hz: float,
 ) -> np.ndarray:
-    """EMG crudo en mV (float64, len(pct_mvc) muestras). `pct_mvc` y `fatigue` tienen la misma longitud.
+    """Raw EMG in mV (float64, len(pct_mvc) samples). `pct_mvc` and `fatigue` have the same length.
 
-    Un único bloque de ruido blanco se filtra en banda (con la banda desplazada según la fatiga),
-    se normaliza a RMS unitario y se multiplica por la envolvente `mvc_rms_mv × pct / 100`; después
-    se suma ruido blanco de sensor `noise_rms_mv`. Consume de `rng` exactamente 2 × n normales.
+    A single white-noise block is band-filtered (with the band shifted according to fatigue),
+    normalised to unit RMS and multiplied by the envelope `mvc_rms_mv × pct / 100`; then
+    sensor white noise `noise_rms_mv` is added. It draws 2 × n normals from `rng` and, only if they are
+    on, afterwards those of drift (n normals), mains (1 phase) and ECG (1 phase), in that order. At the end it
+    applies `signal_kind` (raw | rectified | envelope) and, if `quantize_adc`, the ADC quantisation.
     """
     pct = np.asarray(pct_mvc, dtype=np.float64)
     fat = np.clip(np.asarray(fatigue, dtype=np.float64), 0.0, 1.0)
@@ -168,11 +243,15 @@ def synth_emg(
         band += weight * unit
 
     envelope = mvc_rms_mv * pct / 100.0
-    return envelope * band + params.noise_rms_mv * sensor_noise
+    out = envelope * band + params.noise_rms_mv * sensor_noise
+    # Additive interference: their normals/phases are drawn from `rng` AFTER the 2 × n of the EMG and only if
+    # they are on, so with them off the raw output does not change by a single bit.
+    out = out + _interference(rng, params, n, rate_hz)
+    return _apply_signal_kind(out, params, rate_hz)
 
 
 def rms(x: np.ndarray) -> float:
-    """Valor cuadrático medio (raíz) de la señal, en sus mismas unidades."""
+    """Root mean square of the signal, in its own units."""
     x = np.asarray(x, dtype=np.float64)
     if x.size == 0:
         raise ValueError("rms of an empty array is undefined")
@@ -180,10 +259,10 @@ def rms(x: np.ndarray) -> float:
 
 
 def median_frequency(x: np.ndarray, rate_hz: float) -> float:
-    """Frecuencia mediana del espectro de potencia (Welch) en Hz.
+    """Median frequency of the power spectrum (Welch) in Hz.
 
-    Segmentos de 1 s (resolución 1 Hz) o la serie entera si es más corta; es la frecuencia que divide
-    la potencia total en dos mitades iguales (interpolada linealmente sobre la PSD acumulada).
+    1 s segments (1 Hz resolution) or the whole series if it is shorter; it is the frequency that splits
+    the total power into two equal halves (linearly interpolated over the cumulative PSD).
     """
     x = np.asarray(x, dtype=np.float64)
     if x.size < 2:

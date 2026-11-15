@@ -3,7 +3,10 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-build/
+**/build/*
+!app/ui/build/
+!app/ui/build/icon.png
+!app/ui/build/icon.ico
 dist/
 .pytest_cache/
 .ruff_cache/

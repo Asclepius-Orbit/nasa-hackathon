@@ -25,7 +25,7 @@ T0 = datetime(2026, 11, 13, 10, 0, tzinfo=UTC)
 
 def make_config(edit=None) -> MissionConfig:
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
-    # Dispositivo limpio por defecto: sin pérdidas ni reinicios, para que cada test active lo que prueba.
+    # Clean device by default: no losses or reboots, so each test enables what it exercises.
     raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
     raw["faults"]["device"]["reboot"]["probability_per_hour"] = 0.0
     if edit:
@@ -135,7 +135,7 @@ def test_timing_uses_the_drifting_clock_and_received_at_jitter(config):
         assert o.t0_device_ms == int(((chunk_start - boot.boot_at).total_seconds() * 1000) * (1 + drift * 1e-6))
         latency_ms = (o.received_at - (chunk_start + timedelta(milliseconds=100))).total_seconds() * 1000
         assert clock.latency_ms.min - 0.01 <= latency_ms <= clock.latency_ms.max + 0.01
-    assert len({o.received_at - (T0 + timedelta(milliseconds=100 * (i + 1))) for i, o in enumerate(outcomes)}) > 1  # hay jitter
+    assert len({o.received_at - (T0 + timedelta(milliseconds=100 * (i + 1))) for i, o in enumerate(outcomes)}) > 1  # there is jitter
 
 
 def test_boot_epoch_round_trip():
@@ -173,7 +173,7 @@ def test_seq_is_continuous_across_calls_and_advance(config):
     assert device.next_seq(1234, "emg_lat_left") == 30
     after = emit(device, config, "emg_lat_left", n=300, start=T0 + timedelta(seconds=3))
     assert [o.seq for o in after] == [30, 31, 32]
-    # El seq es por stream.
+    # The seq is per stream.
     assert [o.seq for o in emit(device, config, "imu_t9", n=30)] == [0, 1, 2]
 
 
@@ -194,7 +194,7 @@ def test_lost_chunks_jump_seq_and_flag_the_next_one(config):
     outcomes = emit(device, cfg, "emg_lat_left", n=100 * 300)
     lost = [o for o in outcomes if o.lost]
     assert lost and len(lost) < len(outcomes)
-    assert [o.seq for o in outcomes] == list(range(300))  # los perdidos también consumen seq
+    assert [o.seq for o in outcomes] == list(range(300))  # lost ones also consume seq
     emitted = [o for o in outcomes if not o.lost]
     seqs = [o.seq for o in emitted]
     assert any(b - a > 1 for a, b in zip(seqs, seqs[1:], strict=False))
@@ -215,7 +215,7 @@ def test_clock_uncertain_after_long_time_without_anchor(config):
     device = SimDevice(config, plan)
     flagged = emit(device, config, "imu_t9", n=100)[0].chunk
     assert "clock_uncertain" in [f.value for f in flagged.quality.accel.flags]
-    # Con un anclaje reciente el error acumulado vuelve a ser pequeño.
+    # With a recent anchor the accumulated error is small again.
     device.clock_sync(np.random.default_rng(0), T0 - timedelta(seconds=1))
     clean = emit(device, config, "imu_t9", n=100)[0].chunk
     assert "clock_uncertain" not in [f.value for f in clean.quality.accel.flags]
@@ -232,7 +232,7 @@ def test_quality_per_chunk_is_forwarded(config):
     assert outcomes[0].chunk.quality.emg.flags == [] and CLEAN.score == 1.0
 
 
-# --- planes y reinicios -------------------------------------------------------------------------
+# --- plans and reboots -------------------------------------------------------------------------
 
 
 def test_day_plan_is_deterministic_per_astronaut_and_day(config):
@@ -286,14 +286,14 @@ def test_reboot_resets_seq_and_t0_with_new_boot_id_and_skips_offline_chunks(conf
     second = [o for o in outcomes if o.boot_id == 222]
     assert [o.seq for o in first] == list(range(len(first))) and len(first) == 20
     assert [o.seq for o in second] == list(range(len(second)))
-    assert second[0].t0_device_ms < 100  # el reloj vuelve a ~0 con el arranque nuevo
-    assert first[-1].t0_device_ms > 300_000  # el anterior llevaba 5 min encendido
-    # Los chunks con el dispositivo caído no existen: ni salen ni gastan seq.
-    gap = second[0].t0_device_ms  # primer chunk tras volver
+    assert second[0].t0_device_ms < 100  # the clock returns to ~0 with the new boot
+    assert first[-1].t0_device_ms > 300_000  # the previous one had been on for 5 min
+    # Chunks while the device is down do not exist: they are neither emitted nor spend seq.
+    gap = second[0].t0_device_ms  # first chunk after coming back
     assert len(first) + len(second) < 200 and gap >= 0
     for o in outcomes:
         assert validation.errors(SCHEMA, dump(o.chunk)) == []
-    # Un chunk posterior continúa el seq del arranque vivo.
+    # A later chunk continues the seq of the live boot.
     more = emit(device, config, "emg_lat_left", n=300, start=T0 + timedelta(seconds=30))
     assert [o.seq for o in more] == [len(second), len(second) + 1, len(second) + 2]
 
@@ -326,8 +326,10 @@ def test_status_reports_the_active_stream_rate(config):
     nominal = config.signals.rate(StreamKind.IMU)
     reduced = nominal / 2
     at = T0 + timedelta(seconds=5)
+
     def rate():
         return {s["stream_id"]: s["sample_rate_hz"] for s in dump(device.status(np.random.default_rng(0), at))["streams"]}
+
     assert rate()["imu_t9"] == nominal
     device.advance("imu_t9", start=T0, n_samples=100, rate_hz=reduced, chunk_ms=100)
     assert rate()["imu_t9"] == reduced and rate()["emg_lat_left"] == config.signals.rate(StreamKind.EMG)
@@ -351,13 +353,13 @@ def test_battery_drains_and_drops_to_degraded(config):
     assert device.battery_pct(T0) == cfg.start_pct
     hour = T0 + timedelta(hours=1)
     assert device.battery_pct(hour) == pytest.approx(cfg.start_pct - cfg.drain_pct_per_hour_idle)
-    device.advance("emg_lat_left", start=T0, n_samples=1_800_000, rate_hz=1000.0, chunk_ms=100)  # 30 min de streaming
-    device.advance("imu_t9", start=T0, n_samples=180_000, rate_hz=100.0, chunk_ms=100)  # el mismo tramo no cuenta doble
+    device.advance("emg_lat_left", start=T0, n_samples=1_800_000, rate_hz=1000.0, chunk_ms=100)  # 30 min of streaming
+    device.advance("imu_t9", start=T0, n_samples=180_000, rate_hz=100.0, chunk_ms=100)  # the same span does not count twice
     expected = cfg.start_pct - cfg.drain_pct_per_hour_idle - (cfg.drain_pct_per_hour_streaming - cfg.drain_pct_per_hour_idle) * 0.5
     assert device.battery_pct(hour) == pytest.approx(expected)
     assert device.battery_pct(T0 + timedelta(days=5)) == 0.0
 
-    # Por debajo del umbral configurado el estado pasa a degraded.
+    # Below the configured threshold the status becomes degraded.
     low_cfg = make_config(lambda raw: raw["device"]["battery"].update(degraded_below_pct=95.0))
     low_device = SimDevice(low_cfg, single_boot_plan(low_cfg, boot_at=T0))
     assert dump(low_device.status(np.random.default_rng(0), T0))["status"] == "ok"
@@ -371,7 +373,7 @@ def test_stalled_stream_degrades_status(config):
 
     cfg = make_config(edit)
     device = SimDevice(cfg, single_boot_plan(cfg))
-    emit(device, cfg, "emg_lat_left", n=1000)  # 10 chunks, todos perdidos
+    emit(device, cfg, "emg_lat_left", n=1000)  # 10 chunks, all lost
     payload = dump(device.status(np.random.default_rng(0), T0 + timedelta(milliseconds=500)))
     assert payload["status"] == "degraded"
     states = {s["stream_id"]: s["state"] for s in payload["streams"]}
@@ -437,12 +439,14 @@ def test_everything_emitted_over_a_day_validates():
 
 
 def test_chunk_size_is_the_one_given_per_call(config):
-    """Mismo tramo de muestras a 10 Hz: 1 chunk de 10 muestras por segundo con chunk_ms=1000 (fondo), y 1 de
-    una sola muestra con 100 ms; seq y advance siguen el tamaño de chunk de cada llamada."""
+    """Same span of samples at 10 Hz: 1 chunk of 10 samples per second with chunk_ms=1000 (background), and 1 of
+    a single sample with 100 ms; seq and advance follow the chunk size of each call."""
     rate = config.schedule.background.sample_rates_hz.imu
     channels = channels_for(StreamKind.IMU, 100)
+
     def quality(n):
         return clean_quality(StreamKind.IMU, n)
+
     device = SimDevice(config, single_boot_plan(config))
     heavy = list(device.chunks(np.random.default_rng(0), stream_id="imu_t9", session_id=SESSION, start=T0, rate_hz=rate, chunk_ms=100.0,
                                channels=channels, quality=quality(100), calibration_id=None))  # fmt: skip
@@ -459,17 +463,19 @@ def test_chunk_size_is_the_one_given_per_call(config):
 
 def test_status_last_seq_uses_published_when_given(config):
     device = SimDevice(config, single_boot_plan(config))
-    emit(device, config, "emg_lat_left", n=1000)  # el dispositivo ya consumió seq 0..9
+    emit(device, config, "emg_lat_left", n=1000)  # the device already consumed seq 0..9
     at = T0 + timedelta(seconds=1)
+
     def by_id(**kw):
         return {s["stream_id"]: s for s in dump(device.status(np.random.default_rng(0), at, **kw))["streams"]}
-    assert by_id()["emg_lat_left"]["last_seq"] == 9  # sin published: next_seq - 1
+
+    assert by_id()["emg_lat_left"]["last_seq"] == 9  # without published: next_seq - 1
     published = by_id(published={"emg_lat_left": 4})
     assert published["emg_lat_left"]["last_seq"] == 4 and "last_seq" not in published["imu_t9"]
-    assert "last_seq" not in by_id(published={})["emg_lat_left"]  # nada publicado todavía: no declara seq
+    assert "last_seq" not in by_id(published={})["emg_lat_left"]  # nothing published yet: no seq declared
     payload = dump(device.status(np.random.default_rng(0), at, published={"emg_lat_left": 4}))
     assert validation.errors("telemetry/device-status", payload) == []
-    # Mismos números aleatorios con o sin published.
+    # Same random numbers with or without published.
     assert dump(device.status(np.random.default_rng(0), at))["temperature_c"] == payload["temperature_c"]
 
 
@@ -497,8 +503,8 @@ def test_chunks_rejects_malformed_input_naming_the_problem(config):
         call("imu_t9", imu, quality=clean_quality(StreamKind.IMU, 3))
 
 
-# `_us` es el unico punto de conversion timedelta->int del dispositivo; solo su tipo (int, no float)
-# distingue al mutante `/`, y eso no llega intacto a la salida publica.
+# `_us` is the only timedelta->int conversion point of the device; only its type (int, not float)
+# distinguishes the `/` mutant, and that does not reach the public output intact.
 def test_microseconds_of_a_timedelta_are_whole_numbers():
     from spine_physiology.device import _us
 
@@ -521,13 +527,22 @@ def test_status_is_degraded_only_below_the_battery_threshold_and_a_stall_ends_ex
 
     cfg = make_config(edit)
     device = SimDevice(cfg, single_boot_plan(cfg))
-    assert dump(device.status(np.random.default_rng(0), T0))["status"] == "ok"  # 20 % no es "por debajo de 20 %"
+    assert dump(device.status(np.random.default_rng(0), T0))["status"] == "ok"  # 20 % is not "below 20 %"
 
     def lossy(raw):
         raw["faults"]["device"]["packet_loss"].update(probability=1.0, burst_chunks={"min": 5, "max": 5})
 
     cfg = make_config(lossy)
     device = SimDevice(cfg, single_boot_plan(cfg))
-    emit(device, cfg, "emg_lat_left", n=1000)  # 10 chunks de 100 ms perdidos: stalled en [T0, T0 + 1 s)
+    emit(device, cfg, "emg_lat_left", n=1000)  # 10 lost 100 ms chunks: stalled in [T0, T0 + 1 s)
     assert dump(device.status(np.random.default_rng(0), T0 + timedelta(milliseconds=999)))["status"] == "degraded"
     assert dump(device.status(np.random.default_rng(0), T0 + timedelta(seconds=1)))["status"] == "ok"
+
+
+@pytest.mark.parametrize("kind", ["raw", "rectified", "envelope"])
+def test_emg_chunk_declares_the_configured_signal_kind(kind):
+    config = make_config(lambda raw: raw["signals"]["emg"].update(signal_kind=kind))
+    device = SimDevice(config, single_boot_plan(config))
+    chunk = emit(device, config, "emg_lat_left")[0].chunk
+    assert chunk.signal_kind.value == kind
+    assert validation.errors(SCHEMA, dump(chunk)) == []

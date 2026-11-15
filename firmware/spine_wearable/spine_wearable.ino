@@ -1,38 +1,39 @@
 /*
- * spine_wearable - Firmware del wearable (Arduino Uno / Nano, ATmega328P, 16 MHz, 2 KB RAM).
+ * spine_wearable - Wearable firmware (Arduino Uno / Nano, ATmega328P, 16 MHz, 2 KB RAM).
  *
- * Muestrea 3 sensores y emite SIEMPRE por USB serie (250000 baud, 8N1) el protocolo de
- * chunks v1 (ver protocol.h y firmware/README.md). No espera ordenes del host.
+ * Samples 3 sensors and ALWAYS emits the v1 chunk protocol over USB serial (9600 baud,
+ * 8N1) (see protocol.h and firmware/README.md). It does not wait for host commands.
  *
- *   EMG    A0  analogico (envolvente del Muscle Sensor V3)   1000 Hz  lote cada 100 ms: 100 x u16
- *   Cordon A1  divisor resistivo (Adafruit 519 + 10 kOhm)      20 Hz  lote cada 100 ms:   2 x u16
- *   MPU6050 I2C 0x68 (A4=SDA, A5=SCL, 400 kHz)                100 Hz lote cada 100 ms:  10 x 6 x i16
+ *   EMG    A0  analog (Muscle Sensor V3 envelope)            1000 Hz  batch every 100 ms: 100 x u16
+ *   Cord   A1  resistive divider (Adafruit 519 + 10 kOhm)      20 Hz  batch every 100 ms:   2 x u16
+ *   MPU6050 I2C 0x68 (A4=SDA, A5=SCL, 400 kHz)                100 Hz batch every 100 ms:  10 x 6 x i16
  *
  * ---------------------------------------------------------------------------------------
- * PRESUPUESTO DE TIEMPO (16 MHz, 1 ms de periodo = 16000 ciclos)
- *   - Timer1 CTC, prescaler 64, OCR1A = 249  ->  16e6 / 64 / 250 = 1000 Hz exactos.
- *   - ADC con prescaler 64 (250 kHz): una conversion = 13 ciclos de ADC = 52 us.
- *     Cada ms hay 1 conversion (EMG); cada 50 ms hay 4 (EMG + descarte + cordon + descarte):
- *     208 us en el peor caso, un 21 % de un ms. Nadie espera a la conversion: la ISR del
- *     timer la dispara y la ISR del ADC la recoge (ADIE), asi que analogRead() NO bloquea
- *     el resto de interrupciones (el TX serie usa UDRE: a 250000 baud un byte dura 40 us,
- *     un analogRead de 52..104 us dentro de una ISR dejaria huecos en la linea).
- *   - Coste de CPU de las ISR: Timer1 ~5 us + ADC ~4 us por conversion  =>  ~1-3 % de CPU.
- *   - TX serie (UDRE) ~4 us por byte x ~5 KB/s  =>  ~2 %.
- *   - Lectura I2C del MPU (14 bytes a 400 kHz): ~0.4 ms cada 10 ms (~4 %), en loop().
- *   (Estimaciones por ciclos de instruccion; no medidas en placa.)
+ * TIME BUDGET (16 MHz, 1 ms period = 16000 cycles)
+ *   - Timer1 CTC, prescaler 64, OCR1A = 249  ->  16e6 / 64 / 250 = exactly 1000 Hz.
+ *   - ADC with prescaler 64 (250 kHz): one conversion = 13 ADC cycles = 52 us.
+ *     Every ms there is 1 conversion (EMG); every 50 ms there are 4 (EMG + discard + cord + discard):
+ *     208 us in the worst case, 21 % of a ms. Nobody waits for the conversion: the timer
+ *     ISR triggers it and the ADC ISR collects it (ADIE), so analogRead() does NOT block
+ *     the other interrupts (the serial TX uses UDRE: at 9600 baud one byte lasts ~1.04 ms,
+ *     much longer than an analogRead of 52..104 us).
+ *   - ISR CPU cost: Timer1 ~5 us + ADC ~4 us per conversion  =>  ~1-3 % of CPU.
+ *   - Serial TX (UDRE) ~4 us per byte x ~5 KB/s  =>  ~2 %.
+ *   - MPU I2C read (14 bytes at 400 kHz): ~0.4 ms every 10 ms (~4 %), in loop().
+ *   (Estimates from instruction cycles; not measured on the board.)
  *
- * RAM (arduino-cli lo informa al compilar): lotes 400 + 240 + 8 = 648 B; el resto es el
- * core (Serial 2 x 64 B, Wire ~100 B) y las variables de estado.
+ * RAM (arduino-cli reports it when compiling): batches 400 + 240 + 8 = 648 B; the rest is
+ * the core (Serial 2 x 64 B, Wire ~100 B) and the state variables.
  *
- * TX bloqueante: Serial.write bloquea si el buffer TX (64 B) se llena. A 250000 baud salen
- * ~25 KB/s y el caudal medio de este protocolo es ~5 KB/s (E ~2.7 KB/s, I ~1.9 KB/s), asi que
- * un lote entero (~300 B) tarda ~12 ms en salir y no hay problema. Si el host no lee, el
- * Arduino NO se bloquea: su UART transmite igual a 250000 baud hacia el chip USB-serie
- * (ATmega16U2 / CH340), que descarta lo que el host no recoge. (A confirmar en la placa
- * concreta: es comportamiento del puente, no de este firmware.)
- * Mientras espera hueco en el buffer TX, el sink atiende las lecturas del MPU (ver abajo),
- * de modo que escribir un lote largo no hace perder muestras del IMU.
+ * Blocking TX: Serial.write blocks if the TX buffer (64 B) fills up. At 9600 baud ~0.96 KB/s
+ * go out, LESS than the average throughput of this protocol (~5 KB/s: E ~2.7 KB/s, I ~1.9 KB/s):
+ * a whole batch (~300 B) takes ~312 ms to go out, longer than its 100 ms period, so the TX
+ * would saturate and samples would be lost. If the host does not read, the Arduino does NOT
+ * block: its UART still transmits at 9600 baud to the USB-serial chip (ATmega16U2 / CH340),
+ * which discards what the host does not pick up. (To be confirmed on the specific board: it
+ * is bridge behaviour, not this firmware's.)
+ * While it waits for room in the TX buffer, the sink serves the MPU reads (see below),
+ * so writing a long batch does not lose IMU samples.
  * ---------------------------------------------------------------------------------------
  */
 
@@ -45,11 +46,11 @@
 #include "protocol.h"
 
 // ---------------------------------------------------------------------------------------
-// Configuracion
+// Configuration
 // ---------------------------------------------------------------------------------------
-static const uint32_t SERIAL_BAUD = 250000UL;
+static const uint32_t SERIAL_BAUD = 9600UL;
 
-static const uint8_t PIN_NOISE = A3;  // flotante: solo semilla del boot_id
+static const uint8_t PIN_NOISE = A3;  // floating: only the boot_id seed
 
 static const uint8_t ADC_CH_EMG = 0;     // A0
 static const uint8_t ADC_CH_STRAIN = 1;  // A1
@@ -59,9 +60,9 @@ static const uint8_t IMU_BATCH = 10;         // 100 Hz x 100 ms
 static const uint8_t STRAIN_BATCH = 2;       // 20 Hz x 100 ms
 static const uint8_t IMU_SAMPLE_BYTES = 12;  // 6 x int16
 
-static const uint8_t TICKS_PER_STRAIN = 50;  // ticks de 1 ms -> 20 Hz
-static const uint8_t TICKS_PER_IMU = 10;     // ticks de 1 ms -> 100 Hz
-static const uint16_t TICKS_PER_T = 1000;    // ticks de 1 ms -> 1 Hz
+static const uint8_t TICKS_PER_STRAIN = 50;  // 1 ms ticks -> 20 Hz
+static const uint8_t TICKS_PER_IMU = 10;     // 1 ms ticks -> 100 Hz
+static const uint16_t TICKS_PER_T = 1000;    // 1 ms ticks -> 1 Hz
 
 static const uint8_t MPU_ADDR = 0x68;
 static const uint8_t MPU_REG_ACCEL_OUT = 0x3B;  // 14 bytes: accel XYZ, temp, gyro XYZ (big-endian)
@@ -70,31 +71,31 @@ static const uint8_t MPU_REG_CONFIG = 0x1A;
 static const uint8_t MPU_REG_GYRO_CONFIG = 0x1B;
 static const uint8_t MPU_REG_ACCEL_CONFIG = 0x1C;
 
-// Fallos de lectura I2C consecutivos tolerados antes de dar el IMU por perdido (~0.2 s).
+// Consecutive I2C read failures tolerated before declaring the IMU lost (~0.2 s).
 static const uint8_t IMU_MAX_FAILS = 20;
 static const uint16_t IMU_RETRY_MS = 1000;
 
-static const int EEPROM_BOOT_COUNTER_ADDR = 0;  // contador de arranques (uint32, 4 B)
+static const int EEPROM_BOOT_COUNTER_ADDR = 0;  // boot counter (uint32, 4 B)
 
 // ---------------------------------------------------------------------------------------
-// Lotes con doble buffer
+// Double-buffered batches
 // ---------------------------------------------------------------------------------------
-// Una mitad se llena (ISR o loop) mientras la otra, ya completa, se emite desde loop().
-// frame_seq se asigna al COMPLETAR el lote, incluidos los descartados por overrun, asi que
-// un lote perdido se ve en el host como un salto de frame_seq.
+// One half fills (ISR or loop) while the other, already complete, is emitted from loop().
+// frame_seq is assigned when the batch COMPLETES, including those dropped by overrun, so
+// a lost batch shows up on the host as a jump in frame_seq.
 struct Batcher {
-    uint8_t *mem;         // 2 mitades de n * elem bytes
-    uint8_t n;            // muestras por lote
-    uint8_t elem;         // bytes por muestra
-    uint8_t pos;          // siguiente muestra a escribir en la mitad que se llena
-    uint8_t fill;         // mitad que se llena (0 / 1)
-    uint8_t pending;      // mitad completa a la espera de emitirse (valida si ready)
-    volatile bool ready;  // hay un lote completo sin emitir
-    uint32_t t0[2];       // millis() de la primera muestra de cada mitad
-    uint16_t seq[2];      // frame_seq de cada mitad
-    uint16_t next_seq;    // frame_seq del proximo lote que se complete (da la vuelta en 65536)
-    uint8_t overruns;     // lotes descartados (satura en 255)
-    bool warned;          // ya se aviso por '#' del primer overrun
+    uint8_t *mem;         // 2 halves of n * elem bytes
+    uint8_t n;            // samples per batch
+    uint8_t elem;         // bytes per sample
+    uint8_t pos;          // next sample to write in the half being filled
+    uint8_t fill;         // half being filled (0 / 1)
+    uint8_t pending;      // complete half waiting to be emitted (valid if ready)
+    volatile bool ready;  // there is a complete batch not yet emitted
+    uint32_t t0[2];       // millis() of the first sample of each half
+    uint16_t seq[2];      // frame_seq of each half
+    uint16_t next_seq;    // frame_seq of the next batch to complete (wraps at 65536)
+    uint8_t overruns;     // dropped batches (saturates at 255)
+    bool warned;          // the first overrun was already reported via '#'
 };
 
 static uint8_t emgMem[2 * EMG_BATCH * 2];
@@ -105,8 +106,8 @@ static Batcher emg = {emgMem, EMG_BATCH, 2, 0, 0, 0, false, {0, 0}, {0, 0}, 0, 0
 static Batcher imu = {imuMem, IMU_BATCH, IMU_SAMPLE_BYTES, 0, 0, 0, false, {0, 0}, {0, 0}, 0, 0, false};
 static Batcher strain = {strainMem, STRAIN_BATCH, 2, 0, 0, 0, false, {0, 0}, {0, 0}, 0, 0, false};
 
-// Anade una muestra (elem bytes ya en little-endian). Seguro desde ISR: cada lote tiene un
-// unico escritor y solo loop() baja `ready`.
+// Adds a sample (elem bytes already little-endian). Safe from an ISR: each batch has a
+// single writer and only loop() lowers `ready`.
 static void batchPush(Batcher *b, const uint8_t *sample, uint32_t nowMs)
 {
     uint8_t p = b->pos;
@@ -121,8 +122,8 @@ static void batchPush(Batcher *b, const uint8_t *sample, uint32_t nowMs)
     if (p >= b->n) {
         p = 0;
         if (b->ready) {
-            // El lote anterior sigue sin emitirse: se descarta este (se reutiliza la mitad
-            // que se llenaba) pero su frame_seq se consume para que el host vea el hueco.
+            // The previous batch is still not emitted: this one is dropped (the half being
+            // filled is reused) but its frame_seq is consumed so the host sees the gap.
             if (b->overruns < 255) {
                 b->overruns++;
             }
@@ -138,31 +139,31 @@ static void batchPush(Batcher *b, const uint8_t *sample, uint32_t nowMs)
 }
 
 // ---------------------------------------------------------------------------------------
-// Estado compartido ISR <-> loop
+// State shared ISR <-> loop
 // ---------------------------------------------------------------------------------------
 enum AdcState : uint8_t {
     ADC_IDLE = 0,
-    ADC_EMG_REAL,      // conversion del EMG que se guarda
-    ADC_STRAIN_DUMMY,  // primera conversion tras cambiar a A1: se descarta
-    ADC_STRAIN_REAL,   // conversion del cordon que se guarda
-    ADC_EMG_DUMMY      // primera conversion tras volver a A0: se descarta
+    ADC_EMG_REAL,      // EMG conversion that is kept
+    ADC_STRAIN_DUMMY,  // first conversion after switching to A1: discarded
+    ADC_STRAIN_REAL,   // cord conversion that is kept
+    ADC_EMG_DUMMY      // first conversion after switching back to A0: discarded
 };
 
 static const uint8_t ADCSRA_RUN = _BV(ADEN) | _BV(ADIE) | _BV(ADPS2) | _BV(ADPS1);  // /64
 static const uint8_t ADMUX_BASE = _BV(REFS0);                                          // AVcc
 
 static volatile AdcState adcState = ADC_IDLE;
-static volatile bool adcWithStrain = false;  // este tick tambien toca muestrear el cordon
-static volatile uint32_t adcNowMs = 0;       // millis() del tick que dispara la conversion
-static volatile uint8_t adcSkipped = 0;      // ticks con el ADC aun ocupado (no deberia pasar)
+static volatile bool adcWithStrain = false;  // this tick the cord must also be sampled
+static volatile uint32_t adcNowMs = 0;       // millis() of the tick that triggers the conversion
+static volatile uint8_t adcSkipped = 0;      // ticks with the ADC still busy (should not happen)
 
-static volatile uint8_t imuDue = 0;     // periodos de 10 ms pendientes de leer
-static volatile uint32_t imuDueMs = 0;  // millis() del periodo pendiente mas antiguo
+static volatile uint8_t imuDue = 0;     // 10 ms periods pending to be read
+static volatile uint32_t imuDueMs = 0;  // millis() of the oldest pending period
 static volatile bool tickDue = false;
 static volatile uint32_t tickMs = 0;
 
-// Avisos de depuracion levantados por imuService y emitidos solo desde loop() (nunca en
-// medio de una linea de datos).
+// Debug notices raised by imuService and emitted only from loop() (never in the middle
+// of a data line).
 static const uint8_t DBG_IMU_LOST = 1;
 static const uint8_t DBG_IMU_UP = 2;
 static const uint8_t DBG_IMU_LATE = 4;
@@ -171,7 +172,7 @@ static volatile uint8_t dbgFlags = 0;
 static uint32_t bootId = 0;
 
 // ---------------------------------------------------------------------------------------
-// ISR de muestreo
+// Sampling ISR
 // ---------------------------------------------------------------------------------------
 ISR(TIMER1_COMPA_vect)
 {
@@ -182,7 +183,7 @@ ISR(TIMER1_COMPA_vect)
 
     if (adcState != ADC_IDLE) {
         if (adcSkipped < 255) {
-            adcSkipped++;  // el ADC no ha terminado en 1 ms: no deberia pasar
+            adcSkipped++;  // the ADC has not finished in 1 ms: should not happen
         }
     } else {
         adcNowMs = now;
@@ -196,7 +197,7 @@ ISR(TIMER1_COMPA_vect)
         ADCSRA = ADCSRA_RUN | _BV(ADSC);
     }
 
-    // IMU: solo se anota que toca leer (la lectura I2C se hace en loop()).
+    // IMU: only note that a read is due (the I2C read is done in loop()).
     if (++divImu >= TICKS_PER_IMU) {
         divImu = 0;
         if (imuDue == 0) {
@@ -207,7 +208,7 @@ ISR(TIMER1_COMPA_vect)
         }
     }
 
-    // Tick de 1 s.
+    // 1 s tick.
     if (++divT >= TICKS_PER_T) {
         divT = 0;
         tickMs = now;
@@ -255,7 +256,7 @@ ISR(ADC_vect)
 // ---------------------------------------------------------------------------------------
 static bool imuOk = false;
 static uint8_t imuFails = 0;
-static uint8_t imuLast[IMU_SAMPLE_BYTES];  // ultima muestra valida
+static uint8_t imuLast[IMU_SAMPLE_BYTES];  // last valid sample
 static uint32_t imuLastTry = 0;
 
 static bool mpuWrite(uint8_t reg, uint8_t value)
@@ -266,15 +267,15 @@ static bool mpuWrite(uint8_t reg, uint8_t value)
     return Wire.endTransmission() == 0;
 }
 
-// Despierta el MPU y lo configura: DLPF 44 Hz, +-500 dps, +-4 g.
+// Wakes up the MPU and configures it: DLPF 44 Hz, +-500 dps, +-4 g.
 static bool mpuConfigure()
 {
     return mpuWrite(MPU_REG_PWR_MGMT_1, 0x00) && mpuWrite(MPU_REG_CONFIG, 0x03) &&
            mpuWrite(MPU_REG_GYRO_CONFIG, 0x08) && mpuWrite(MPU_REG_ACCEL_CONFIG, 0x08);
 }
 
-// Lectura en rafaga (14 bytes big-endian) -> 12 bytes little-endian: ax ay az gx gy gz.
-// Se descarta la temperatura (bytes 6 y 7).
+// Burst read (14 bytes big-endian) -> 12 bytes little-endian: ax ay az gx gy gz.
+// The temperature is discarded (bytes 6 and 7).
 static bool mpuRead(uint8_t *out)
 {
     uint8_t raw[14];
@@ -290,21 +291,21 @@ static bool mpuRead(uint8_t *out)
         raw[i] = (uint8_t)Wire.read();
     }
     for (uint8_t axis = 0; axis < 3; axis++) {
-        out[axis * 2] = raw[axis * 2 + 1];          // accel: byte bajo
-        out[axis * 2 + 1] = raw[axis * 2];          // accel: byte alto
-        out[6 + axis * 2] = raw[8 + axis * 2 + 1];  // gyro: byte bajo
-        out[6 + axis * 2 + 1] = raw[8 + axis * 2];  // gyro: byte alto
+        out[axis * 2] = raw[axis * 2 + 1];          // accel: low byte
+        out[axis * 2 + 1] = raw[axis * 2];          // accel: high byte
+        out[6 + axis * 2] = raw[8 + axis * 2 + 1];  // gyro: low byte
+        out[6 + axis * 2 + 1] = raw[8 + axis * 2];  // gyro: high byte
     }
     return true;
 }
 
-// Atiende los periodos de IMU pendientes. Se llama desde loop() y desde el sink serie (para
-// que escribir un lote largo no retrase la lectura). NO escribe nada por serie.
+// Services the pending IMU periods. Called from loop() and from the serial sink (so that
+// writing a long batch does not delay the read). It does NOT write anything to serial.
 //
-// Si loop() llega tarde y se acumulan `due` periodos, se lee UNA vez y esa muestra se repite
-// en los `due` huecos (retencion de orden cero): cada hueco conserva su posicion en el lote
-// (t0 + 10 ms * i) y no se desplaza ninguna muestra posterior. Se avisa con '#'.
-// Un fallo de lectura suelto se trata igual (se repite la ultima muestra valida).
+// If loop() arrives late and `due` periods accumulate, it reads ONCE and that sample is
+// repeated in the `due` slots (zero-order hold): each slot keeps its position in the batch
+// (t0 + 10 ms * i) and no later sample is shifted. A '#' notice is emitted.
+// An isolated read failure is treated the same way (the last valid sample is repeated).
 static void imuService()
 {
     if (imuDue == 0) {
@@ -319,13 +320,13 @@ static void imuService()
         imuDue = 0;
     }
     if (!imuOk) {
-        return;  // sin IMU: los periodos se descartan y no se emiten tramas I
+        return;  // no IMU: the periods are discarded and no I frames are emitted
     }
     if (mpuRead(imuLast)) {
         imuFails = 0;
     } else if (++imuFails > IMU_MAX_FAILS) {
-        // IMU perdido: se deja de emitir I, se descarta el lote a medias y se reintenta
-        // la configuracion cada IMU_RETRY_MS desde loop().
+        // IMU lost: stop emitting I, discard the partial batch and retry the
+        // configuration every IMU_RETRY_MS from loop().
         imuOk = false;
         imu.pos = 0;
         dbgFlags |= DBG_IMU_LOST;
@@ -339,7 +340,7 @@ static void imuService()
     }
 }
 
-// Reintento de configuracion cuando el IMU falta (arranque sin MPU o perdido en marcha).
+// Configuration retry when the IMU is missing (boot without MPU or lost while running).
 static void imuRetry()
 {
     if (imuOk) {
@@ -359,10 +360,10 @@ static void imuRetry()
 }
 
 // ---------------------------------------------------------------------------------------
-// Salida serie
+// Serial output
 // ---------------------------------------------------------------------------------------
-// Sink del protocolo. Mientras espera hueco en el buffer TX atiende el IMU. Solo se usa desde
-// el contexto de loop(): nunca desde una ISR, asi que dos lineas no se mezclan.
+// Protocol sink. While waiting for room in the TX buffer it services the IMU. Only used from
+// the loop() context: never from an ISR, so two lines are never interleaved.
 static void serialSink(void *, char c)
 {
     imuService();
@@ -392,7 +393,7 @@ static void emitBatch(char kind, Batcher *b)
     }
     sp_emit_data(serialSink, nullptr, kind, seq, t0, b->n, b->mem + (uint16_t)idx * b->n * b->elem,
                  (size_t)b->n * b->elem);
-    b->ready = false;  // libera la mitad: ya puede volver a llenarse
+    b->ready = false;  // frees the half: it can be filled again
 }
 
 static void reportOverrun(char kind, Batcher *b)
@@ -401,11 +402,11 @@ static void reportOverrun(char kind, Batcher *b)
         b->warned = true;
         Serial.print(F("#overrun "));
         Serial.write((uint8_t)kind);
-        Serial.print(F(": lote descartado, frame_seq salta\n"));
+        Serial.print(F(": batch dropped, frame_seq jumps\n"));
     }
 }
 
-// Lineas de depuracion ('#'): solo desde aqui, entre lineas de datos.
+// Debug lines ('#'): only from here, between data lines.
 static void flushDebug()
 {
     static bool adcWarned = false;
@@ -416,17 +417,17 @@ static void flushDebug()
         dbgFlags = 0;
     }
     if (flags & DBG_IMU_LOST) {
-        Serial.print(F("#imu lost: sin tramas I hasta que responda\n"));
+        Serial.print(F("#imu lost: no I frames until it responds\n"));
     }
     if (flags & DBG_IMU_UP) {
         Serial.print(F("#imu up\n"));
     }
     if (flags & DBG_IMU_LATE) {
-        Serial.print(F("#imu late: muestra repetida en los periodos perdidos\n"));
+        Serial.print(F("#imu late: sample repeated in the missed periods\n"));
     }
     if (adcSkipped != 0 && !adcWarned) {
         adcWarned = true;
-        Serial.print(F("#adc busy: tick sin conversion\n"));
+        Serial.print(F("#adc busy: tick without conversion\n"));
     }
     reportOverrun('E', &emg);
     reportOverrun('I', &imu);
@@ -436,7 +437,7 @@ static void flushDebug()
 // ---------------------------------------------------------------------------------------
 // boot_id
 // ---------------------------------------------------------------------------------------
-// Mezcla de bits de MurmurHash3 (fmix32): biyectiva, reparte cualquier diferencia de entrada.
+// MurmurHash3 bit mixer (fmix32): bijective, spreads any input difference.
 static uint32_t mix32(uint32_t h)
 {
     h ^= h >> 16;
@@ -447,14 +448,14 @@ static uint32_t mix32(uint32_t h)
     return h;
 }
 
-// boot_id = fmix32( contador_EEPROM * 0x9E3779B1  XOR  ruido(A3 flotante)  XOR  micros() ).
-//  - contador en EEPROM[0..3], +1 en cada arranque: dos arranques consecutivos no repiten
-//    entrada aunque ruido y micros() coincidieran (EEPROM.put solo escribe los bytes que
-//    cambian; el 328P aguanta ~100000 ciclos por celda). EEPROM en blanco = 0xFFFFFFFF.
-//  - 32 lecturas del ADC de un pin flotante (bit menos significativo) con micros() entre
-//    medias: aporta entropia fisica.
-//  - micros() en el momento de arrancar.
-// No es criptografico: solo debe distinguir arranques (colision entre dos ~2^-32).
+// boot_id = fmix32( EEPROM_counter * 0x9E3779B1  XOR  noise(floating A3)  XOR  micros() ).
+//  - counter in EEPROM[0..3], +1 on every boot: two consecutive boots never repeat the
+//    input even if noise and micros() coincided (EEPROM.put only writes the bytes that
+//    change; the 328P endures ~100000 cycles per cell). Blank EEPROM = 0xFFFFFFFF.
+//  - 32 ADC reads of a floating pin (least significant bit) with micros() in between:
+//    contributes physical entropy.
+//  - micros() at boot time.
+// Not cryptographic: it only needs to tell boots apart (collision between two ~2^-32).
 static uint32_t makeBootId()
 {
     uint32_t counter;
@@ -478,27 +479,27 @@ void setup()
 {
     Serial.begin(SERIAL_BAUD);
 
-    bootId = makeBootId();  // usa analogRead: antes de tomar el control del ADC
+    bootId = makeBootId();  // uses analogRead: before taking control of the ADC
 
-    // ADC: AVcc de referencia, A0 y A1 sin buffer digital (menos ruido), prescaler 64 e
-    // interrupcion. A partir de aqui NO se debe usar analogRead(): el ADC es de las ISR.
+    // ADC: AVcc reference, A0 and A1 without digital buffer (less noise), prescaler 64 and
+    // interrupt. From here on analogRead() must NOT be used: the ADC belongs to the ISRs.
     DIDR0 = _BV(ADC0D) | _BV(ADC1D);
     ADMUX = ADMUX_BASE | ADC_CH_EMG;
-    // Conversion de descarte tras cambiar de canal (A3 -> A0). Con ADIE puesto la ISR del ADC
-    // la recoge con adcState == ADC_IDLE y no hace nada.
+    // Dummy conversion after switching channel (A3 -> A0). With ADIE set, the ADC ISR
+    // picks it up with adcState == ADC_IDLE and does nothing.
     ADCSRA = ADCSRA_RUN | _BV(ADSC);
     while (ADCSRA & _BV(ADSC)) {
     }
 
-    // IMU. Si no responde: no se emiten tramas I, se sigue con E y S y se reintenta cada 1 s.
+    // IMU. If it does not respond: no I frames are emitted, E and S continue, retry every 1 s.
     Wire.begin();
     Wire.setClock(400000UL);
-    Wire.setWireTimeout(3000UL, true);  // un bus colgado no cuelga el firmware
+    Wire.setWireTimeout(3000UL, true);  // a hung bus does not hang the firmware
     imuOk = mpuConfigure();
     imuLastTry = millis();
 
     sp_emit_hello(serialSink, nullptr, bootId, SP_FW_VERSION, millis());
-    Serial.print(imuOk ? F("#imu ok\n") : F("#imu absent: sin tramas I\n"));
+    Serial.print(imuOk ? F("#imu ok\n") : F("#imu absent: no I frames\n"));
 
     // Timer1: CTC, prescaler 64, OCR1A = 249 -> 1 kHz.
     noInterrupts();

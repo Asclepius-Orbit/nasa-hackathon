@@ -1,22 +1,22 @@
-"""Protocolo de línea entre el Arduino del wearable y el gateway (USB serie).
+"""Line protocol between the wearable Arduino and the gateway (USB serial).
 
-Lógica pura: sin I/O, sin reloj y sin asyncio. El firmware implementa el mismo formato en C++; los vectores dorados de
-``tests/data/protocol_vectors.txt`` son la referencia común de ambos lados.
+Pure logic: no I/O, no clock and no asyncio. The firmware implements the same format in C++; the golden vectors in
+``tests/data/protocol_vectors.txt`` are the common reference for both sides.
 
-Formato: líneas ASCII terminadas en ``\\n`` (se tolera ``\\r\\n``) de la forma ``<cuerpo>*<XX>``, donde ``XX`` son dos
-dígitos hex (el encoder los emite en mayúscula; el parser acepta también minúscula) con el CRC-8/MAXIM de los bytes del
-cuerpo, es decir, todo lo que hay antes del último ``*``. Cuerpos:
+Format: ASCII lines terminated by ``\\n`` (``\\r\\n`` is tolerated) of the form ``<body>*<XX>``, where ``XX`` are two
+hex digits (the encoder emits them in uppercase; the parser also accepts lowercase) with the CRC-8/MAXIM of the bytes of the
+body, that is, everything before the last ``*``. Bodies:
 
-- ``H,1,<boot_id>,<fw_version>,<millis>``: hello tras el arranque. ``1`` es la versión del protocolo.
-- ``T,<boot_id>,<millis>``: tick de 1 s, ancla del reloj del dispositivo.
-- ``D,<kind>,<frame_seq>,<t0_ms>,<n>,<b64>``: lote de ``n`` muestras de un sensor. ``kind`` es ``E`` (EMG), ``I`` (IMU)
-  o ``S`` (cordón elástico). ``frame_seq`` es un contador u16 por kind que da la vuelta en 65536. ``t0_ms`` son los
-  ``millis()`` de la primera muestra: u32, da la vuelta cada ~49,7 días de funcionamiento continuo, así que quien
-  convierta a tiempo de pared debe anclarlo con los ticks y no compararlo en absoluto entre vueltas.
-  ``b64`` es base64 estándar con padding de un payload binario little-endian: E y S son ``n`` uint16 (cuentas de ADC;
-  aquí no se valida el rango de 10 bits, solo el ancho de 16), I son ``n`` × 6 int16 en orden ax, ay, az, gx, gy, gz.
+- ``H,1,<boot_id>,<fw_version>,<millis>``: hello after boot. ``1`` is the protocol version.
+- ``T,<boot_id>,<millis>``: 1 s tick, anchor of the device clock.
+- ``D,<kind>,<frame_seq>,<t0_ms>,<n>,<b64>``: batch of ``n`` samples from one sensor. ``kind`` is ``E`` (EMG), ``I`` (IMU)
+  or ``S`` (elastic cord). ``frame_seq`` is a u16 counter per kind that wraps at 65536. ``t0_ms`` is the
+  ``millis()`` of the first sample: u32, wraps every ~49.7 days of continuous operation, so whoever
+  converts to wall time must anchor it with the ticks and not compare it at all across wraps.
+  ``b64`` is standard base64 with padding of a little-endian binary payload: E and S are ``n`` uint16 (ADC counts;
+  the 10-bit range is not validated here, only the 16-bit width), I are ``n`` × 6 int16 in the order ax, ay, az, gx, gy, gz.
 
-``parse_line`` nunca lanza: cualquier línea que no sea un mensaje válido devuelve un ``BadLine`` con su razón.
+``parse_line`` never raises: any line that is not a valid message returns a ``BadLine`` with its reason.
 """
 
 import base64
@@ -27,7 +27,7 @@ from enum import StrEnum
 
 PROTOCOL_VERSION = 1
 MAX_LINE_LENGTH = 1024
-"""Longitud máxima de una línea sin su terminador; protege del ruido de un puerto serie sin sincronizar."""
+"""Maximum length of a line without its terminator; protects against noise from an unsynchronised serial port."""
 
 U16_MAX = 0xFFFF
 U32_MAX = 0xFFFFFFFF
@@ -38,19 +38,19 @@ SEQ_HALF = SEQ_MODULUS // 2
 IMU_AXES = 6
 
 _DIGITS = frozenset("0123456789")
-# Caracteres permitidos en la versión de firmware: ASCII imprimible sin espacio, coma ni asterisco.
+# Characters allowed in the firmware version: printable ASCII without space, comma or asterisk.
 _FIRMWARE_CHARS = frozenset(chr(c) for c in range(0x21, 0x7F)) - {",", "*"}
 _HEX = frozenset("0123456789abcdefABCDEF")
-# Nombres de codec como constantes de módulo: mutmut no muta el módulo, y "ascii" -> "ASCII" sería un mutante equivalente.
+# Codec names as module constants: mutmut does not mutate the module, and "ascii" -> "ASCII" would be an equivalent mutant.
 _ASCII = "ascii"
 _LATIN1 = "latin-1"
 
 type ImuSample = tuple[int, int, int, int, int, int]
-"""Una muestra cruda del MPU-6050: ax, ay, az, gx, gy, gz."""
+"""A raw MPU-6050 sample: ax, ay, az, gx, gy, gz."""
 
 
 class FrameKind(StrEnum):
-    """Sensor de un lote ``D``; el valor es la letra del protocolo."""
+    """Sensor of a ``D`` batch; the value is the protocol letter."""
 
     EMG = "E"
     IMU = "I"
@@ -58,7 +58,7 @@ class FrameKind(StrEnum):
 
 
 class BadLineReason(StrEnum):
-    """Por qué una línea no es un mensaje válido."""
+    """Why a line is not a valid message."""
 
     EMPTY = "empty"
     TOO_LONG = "too_long"
@@ -74,7 +74,7 @@ class BadLineReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Hello:
-    """Saludo del firmware tras arrancar; ``boot_id`` identifica el arranque."""
+    """Firmware greeting after boot; ``boot_id`` identifies the boot."""
 
     version: int
     boot_id: int
@@ -84,7 +84,7 @@ class Hello:
 
 @dataclass(frozen=True, slots=True)
 class Tick:
-    """Tick de 1 s con los ``millis()`` del dispositivo."""
+    """1 s tick with the device ``millis()``."""
 
     boot_id: int
     millis: int
@@ -92,7 +92,7 @@ class Tick:
 
 @dataclass(frozen=True, slots=True)
 class Frame:
-    """Lote de muestras de un sensor. EMG y cordón: tupla de enteros; IMU: tupla de ``ImuSample``."""
+    """Batch of samples from one sensor. EMG and cord: tuple of integers; IMU: tuple of ``ImuSample``."""
 
     kind: FrameKind
     frame_seq: int
@@ -102,7 +102,7 @@ class Frame:
 
 @dataclass(frozen=True, slots=True)
 class BadLine:
-    """Línea rechazada; ``raw`` es la línea recibida (los bytes no ASCII van escapados con ``\\xNN``)."""
+    """Rejected line; ``raw`` is the received line (non-ASCII bytes are escaped with ``\\xNN``)."""
 
     reason: BadLineReason
     raw: str
@@ -112,7 +112,7 @@ type Message = Hello | Tick | Frame
 
 
 class _Rejected(Exception):
-    """Señal interna de rechazo; ``parse_line`` la convierte en ``BadLine`` y nunca sale del módulo."""
+    """Internal rejection signal; ``parse_line`` turns it into ``BadLine`` and it never leaves the module."""
 
     def __init__(self, reason: BadLineReason) -> None:
         super().__init__(reason)
@@ -123,7 +123,7 @@ class _Rejected(Exception):
 
 
 def crc8(data: bytes) -> int:
-    """CRC-8/MAXIM (Dallas/1-Wire): polinomio reflejado 0x8C, init 0x00, sin xorout. ``crc8(b"123456789") == 0xA1``."""
+    """CRC-8/MAXIM (Dallas/1-Wire): reflected polynomial 0x8C, init 0x00, no xorout. ``crc8(b"123456789") == 0xA1``."""
     crc = 0
     for byte in data:
         crc ^= byte
@@ -136,13 +136,13 @@ def crc8(data: bytes) -> int:
 
 
 def parse_line(line: str | bytes) -> Message | BadLine:
-    """Interpreta una línea del Arduino; nunca lanza.
+    """Interprets an Arduino line; never raises.
 
-    Se quita un único terminador (``\\n``, ``\\r\\n`` o ninguno). El límite ``MAX_LINE_LENGTH`` se aplica después
-    y antes que cualquier otra comprobación, para no trabajar sobre basura larga.
+    A single terminator is removed (``\\n``, ``\\r\\n`` or none). The ``MAX_LINE_LENGTH`` limit is applied afterwards
+    and before any other check, so as not to work on long garbage.
     """
     raw = line.decode(_ASCII, "backslashreplace") if isinstance(line, bytes) else line
-    # latin-1 asigna un carácter a cada byte: conserva la longitud y deja los bytes no ASCII para ``isascii``.
+    # latin-1 maps one character to each byte: it preserves the length and leaves non-ASCII bytes for ``isascii``.
     text = line.decode(_LATIN1) if isinstance(line, bytes) else line
     try:
         return _parse(_strip_terminator(text))
@@ -188,7 +188,7 @@ def _expect(fields: list[str], count: int) -> None:
 
 
 def _uint(text: str, maximum: int) -> int:
-    """Entero decimal sin signo de solo dígitos ASCII (sin ``+``, ``-``, ``_`` ni espacios) y como mucho ``maximum``."""
+    """Unsigned decimal integer of ASCII digits only (no ``+``, ``-``, ``_`` or spaces) and at most ``maximum``."""
     if not text or not _DIGITS.issuperset(text):
         raise _Rejected(BadLineReason.BAD_FIELD)
     value = int(text)
@@ -250,11 +250,11 @@ def _valid_firmware(text: str) -> bool:
     return bool(text) and _FIRMWARE_CHARS.issuperset(text)
 
 
-# --- encoder (espejo del firmware; lo usan el emulador y los tests) ---
+# --- encoder (mirror of the firmware; used by the emulator and the tests) ---
 
 
 def encode_hello(hello: Hello) -> str:
-    """Línea ``H`` sin terminador. Lanza ``ValueError`` si algún campo no cabe en el protocolo."""
+    """``H`` line without terminator. Raises ``ValueError`` if any field does not fit in the protocol."""
     _check_range("version", hello.version, 0, U32_MAX)
     _check_range("boot_id", hello.boot_id, 0, U32_MAX)
     _check_range("millis", hello.millis, 0, U32_MAX)
@@ -264,14 +264,14 @@ def encode_hello(hello: Hello) -> str:
 
 
 def encode_tick(tick: Tick) -> str:
-    """Línea ``T`` sin terminador. Lanza ``ValueError`` si algún campo no cabe en u32."""
+    """``T`` line without terminator. Raises ``ValueError`` if any field does not fit in u32."""
     _check_range("boot_id", tick.boot_id, 0, U32_MAX)
     _check_range("millis", tick.millis, 0, U32_MAX)
     return _with_crc(f"T,{tick.boot_id},{tick.millis}")
 
 
 def encode_frame(frame: Frame) -> str:
-    """Línea ``D`` sin terminador. Lanza ``ValueError`` si un campo o una muestra no cabe, o si no casan con el kind."""
+    """``D`` line without terminator. Raises ``ValueError`` if a field or a sample does not fit, or if they do not match the kind."""
     _check_range("frame_seq", frame.frame_seq, 0, U16_MAX)
     _check_range("t0_ms", frame.t0_ms, 0, U32_MAX)
     if not frame.samples:
@@ -306,17 +306,17 @@ def _with_crc(body: str) -> str:
     return f"{body}*{crc8(body.encode(_ASCII)):02X}"
 
 
-# --- secuencia de lotes ---
+# --- batch sequence ---
 
 
 def frame_gap(prev_seq: int | None, seq: int) -> int:
-    """Lotes perdidos entre el ``frame_seq`` anterior y el actual de un mismo kind, con vuelta en 65536.
+    """Batches lost between the previous ``frame_seq`` and the current one of the same kind, wrapping at 65536.
 
-    Devuelve 0 si ``seq`` es el siguiente o si no hay anterior (``None``), y ``k`` si faltan ``k`` lotes. La distancia
-    modular se interpreta con signo en (-32768, 32768]: un salto hacia delante de más de 32768 no se distingue de un
-    retroceso y se trata como tal. Un resultado negativo significa que la secuencia no avanzó: -1 es un duplicado
-    (``seq == prev_seq``) y ``-(k + 1)`` un retroceso de ``k``; el llamador decide (descartar, o resincronizar si hubo
-    reinicio, que se detecta por ``boot_id`` y no aquí). Rango del resultado: [-32768, 32767].
+    Returns 0 if ``seq`` is the next one or if there is no previous (``None``), and ``k`` if ``k`` batches are missing. The modular distance
+    is interpreted as signed in (-32768, 32768]: a forward jump of more than 32768 is indistinguishable from a
+    regression and is treated as such. A negative result means the sequence did not advance: -1 is a duplicate
+    (``seq == prev_seq``) and ``-(k + 1)`` a regression of ``k``; the caller decides (discard, or resynchronise if there was a
+    reboot, which is detected by ``boot_id`` and not here). Result range: [-32768, 32767].
     """
     if prev_seq is None:
         return 0

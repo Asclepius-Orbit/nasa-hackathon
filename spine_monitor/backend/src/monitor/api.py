@@ -241,6 +241,7 @@ def build_router(
     clock=lambda: datetime.now(UTC),
     queue_day: Callable[[str, date], None] = lambda astronaut_id, day: None,
     guard: Callable[[Request], Any] | None = None,
+    telemetry_source: str = "device",
 ) -> APIRouter:
     router = APIRouter(prefix="/ui", tags=["ui"], dependencies=[] if guard is None else [Depends(guard)])
 
@@ -495,7 +496,7 @@ def build_router(
             "schema_version": SCHEMA_VERSION,
             "session_id": str(uuid.uuid4()),
             "astronaut_id": astronaut_id,
-            "source": status["source"] if status is not None else "device",
+            "source": status["source"] if status is not None else telemetry_source,
             "started_at": clock().isoformat(),
             "ended_at": None,
             "events": [],
@@ -556,7 +557,7 @@ def build_router(
 
     @router.post("/sessions/{session_id}/calibrations", status_code=202)
     async def calibrate(session_id: str, body: CalibrateBody) -> dict[str, Any]:
-        return {"command": await control.calibrate(session_id, body.calibration_type, body.stream_ids, body.duration_s)}
+        return {"command": await control.calibrate(session_id, body.calibration_type, body.stream_ids, body.duration_s, body.reference_posture)}
 
     @router.get("/commands/{command_id}")
     async def get_command(command_id: str) -> dict[str, Any]:

@@ -1,10 +1,10 @@
-"""Familia ``emg_spectral`` (#43) de extremo a extremo: sesiones del simulador por ``CompositeFeatureExtractor(default_registry())``.
+"""End-to-end ``emg_spectral`` family (#43): simulator sessions through ``CompositeFeatureExtractor(default_registry())``.
 
-La verdad es ``expected_features``: ``median_freq_hz`` es la media de la mediana de banda del modelo en el punto medio de
-cada repetición y la pendiente es el ajuste lineal contra ``RepWindow.index``. La extracción mide la mediana del espectro
-(Welch + Hann) sobre toda la fase activa de la señal cruda con ruido, así que hay un sesgo respecto al punto medio.
-Sesiones y semillas son las de #42 (``test_features_emg_simulator``), cuyos helpers se cargan por ruta: con
-``--import-mode=importlib`` los tests no se importan entre sí por nombre.
+The truth is ``expected_features``: ``median_freq_hz`` is the mean of the model's band median at the midpoint of
+each repetition and the slope is the linear fit against ``RepWindow.index``. The extraction measures the spectrum median
+(Welch + Hann) over the whole active phase of the noisy raw signal, so there is a bias relative to the midpoint.
+Sessions and seeds are those of #42 (``test_features_emg_simulator``), whose helpers are loaded by path: with
+``--import-mode=importlib`` tests do not import each other by name.
 """
 
 import copy
@@ -29,12 +29,12 @@ SEEDS: list[int] = _AMPLITUDE.SEEDS
 GRAVITIES: list[str] = _AMPLITUDE.GRAVITIES
 NAMES = ("median_freq_hz", "median_freq_slope_hz_per_rep")
 
-# Mediana: Welch sobre toda la fase activa frente al punto medio de la repetición, más el ruido de sensor: observado
-# hasta 1,2 % en las 4 combinaciones semilla x gravedad y los dos lados (verdad ~220 Hz); umbral 3 %.
+# Median: Welch over the whole active phase against the repetition midpoint, plus sensor noise: observed
+# up to 1.2 % across the 4 seed x gravity combinations and both sides (truth ~220 Hz); threshold 3 %.
 MEDIAN_REL = 0.03
-# Pendiente (Hz/rep): con 10 medianas ruidosas (cada una con ~1 Hz de error) la pendiente es la magnitud menos estable;
-# la verdad es ~-2,4 Hz/rep y se observa entre -1,3 y -4,3, es decir, hasta 1,9 Hz/rep de error absoluto; umbral 3.
-# Lo que sí se exige aparte es el signo: con la fatiga simulada la pendiente es siempre negativa.
+# Slope (Hz/rep): with 10 noisy medians (each with ~1 Hz of error) the slope is the least stable quantity;
+# the truth is ~-2.4 Hz/rep and -1.3 to -4.3 is observed, i.e. up to 1.9 Hz/rep of absolute error; threshold 3.
+# What is required separately is the sign: with simulated fatigue the slope is always negative.
 SLOPE_ABS_HZ_PER_REP = 3.0
 
 

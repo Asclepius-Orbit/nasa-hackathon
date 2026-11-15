@@ -1,17 +1,17 @@
-"""Errores de dominio del motor; la API los traduce a problem details."""
+"""Domain errors of the engine; the API translates them to problem details."""
 
 
 class EngineError(Exception):
-    """Base de los errores que el motor sabe explicar al cliente."""
+    """Base of the errors the engine knows how to explain to the client."""
 
 
 class InsufficientDataError(EngineError):
-    """No hay datos suficientes para producir el resultado pedido."""
+    """There is not enough data to produce the requested result."""
 
 
 class UnknownFeatureError(EngineError):
-    """Un override apunta a una feature fuera del catálogo o sin valor en la base."""
+    """An override points to a feature outside the catalog or without a value in the base."""
 
 
 class InvalidOverrideError(EngineError):
-    """Un override produce un valor que no es un número finito."""
+    """An override produces a value that is not a finite number."""

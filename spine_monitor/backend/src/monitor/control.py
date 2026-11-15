@@ -230,7 +230,9 @@ class Control:
         await self._send(command)
         return command
 
-    async def calibrate(self, session_id: str, calibration_type: str, stream_ids: list[str], duration_s: float | None = None) -> dict[str, Any]:
+    async def calibrate(
+        self, session_id: str, calibration_type: str, stream_ids: list[str], duration_s: float | None = None, reference_posture: str | None = None
+    ) -> dict[str, Any]:
         session = self._active(session_id)
         declared = {s["stream_id"] for s in session["streams"]}
         if unknown := sorted(set(stream_ids) - declared):
@@ -238,6 +240,8 @@ class Control:
         fields: dict[str, Any] = {"session_id": session_id, "calibration_type": calibration_type, "stream_ids": stream_ids}
         if duration_s is not None:
             fields["duration_s"] = duration_s
+        if reference_posture is not None:
+            fields["reference_posture"] = reference_posture
         command = self._command(session["astronaut_id"], session["device_id"], "calibrate", **fields)
         await self._send(command)
         return command

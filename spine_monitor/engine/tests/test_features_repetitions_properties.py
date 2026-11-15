@@ -1,4 +1,4 @@
-"""Propiedades de la detección de repeticiones desde eventos (#41)."""
+"""Properties of repetition detection from events (#41)."""
 
 import random
 from datetime import UTC, datetime, timedelta
@@ -26,8 +26,8 @@ def _at(event_type: EventType, second: int) -> Event:
     return Event(event_type=event_type, timestamp=T0 + timedelta(seconds=second), device_ms=None, set_index=None, rep_index=None)
 
 
-# Un set_end entre dos repeticiones separa series: el hueco no es un reposo entre repeticiones (#12). Hypothesis lo
-# generaba solo de vez en cuando y el test fallaba de forma intermitente; el ejemplo lo fija.
+# A set_end between two repetitions separates series: the gap is not a rest between repetitions (#12). Hypothesis
+# generated it only occasionally and the test failed intermittently; the example pins it.
 _BETWEEN_SETS = [
     _at(EventType.REP_START, 0),
     _at(EventType.REP_END, 1),
@@ -52,7 +52,7 @@ def test_windows_are_ordered_disjoint_positive_and_consecutive(items: list[Event
         assert window.duration_s > 0
     for before, after in zip(windows, windows[1:], strict=False):
         assert before.end <= after.start
-        if before.rest_start is None:  # entre series: sin reposo entre repeticiones
+        if before.rest_start is None:  # between series: no rest between repetitions
             assert before.rest_end is None
             assert any(e.event_type not in _REP_EVENTS for e in items)
         else:

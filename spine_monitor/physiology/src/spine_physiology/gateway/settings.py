@@ -1,7 +1,7 @@
-"""Arranque del gateway falso. Variables SPINE_SIM_* o `.env`.
+"""Fake gateway startup. SPINE_SIM_* variables or `.env`.
 
-Dueño: D2. Los parámetros de simulación (fisiológicos y técnicos) están en el YAML de misión, no aquí:
-aquí solo va dónde está ese YAML, a qué broker conectarse y a qué ritmo avanza el día de misión.
+Owner: D2. The simulation parameters (physiological and technical) live in the mission YAML, not here:
+only where that YAML is, which broker to connect to and how fast the mission day advances go here.
 """
 
 from pathlib import Path
@@ -14,33 +14,33 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class GatewaySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SPINE_SIM_", env_file=".env", extra="ignore")
 
-    # YAML de misión (ver configs/example-mission.yaml).
+    # Mission YAML (see configs/example-mission.yaml).
     config: Path
-    # Semilla; None = la del YAML.
+    # Seed; None = the YAML's.
     seed: int | None = Field(default=None, ge=0)
 
     mqtt_host: str = "127.0.0.1"
     mqtt_port: int = 1883
-    # Prefijo del identificador MQTT: cada dispositivo abre su conexión `<prefijo>-<device_id>` (con su
-    # propio Last Will, que MQTT solo admite uno por conexión).
+    # MQTT client id prefix: each device opens its own connection `<prefix>-<device_id>` (with its
+    # own Last Will, since MQTT allows only one per connection).
     mqtt_client_id: str = "spine-sim-gateway"
-    # Credenciales del broker (app/mosquitto/setup.sh las deja en app/.env). `{device_id}` en el usuario se cambia por
-    # el id de cada dispositivo: el simulador entra como `sim-01`, `sim-02`... (cada uno con su ACL) con la misma
-    # contraseña. None = sin credenciales (anónimo).
+    # Broker credentials (app/mosquitto/setup.sh leaves them in app/.env). `{device_id}` in the username is replaced by
+    # each device's id: the simulator logs in as `sim-01`, `sim-02`... (each with its own ACL) with the same
+    # password. None = no credentials (anonymous).
     mqtt_username: str | None = None
     mqtt_password: SecretStr | None = None
-    # TLS al broker (listener 8883 de la LAN); sin fichero de CA verifican el certificado las CA del sistema.
+    # TLS to the broker (LAN listener 8883); without a CA file the system CAs verify the certificate.
     mqtt_tls: bool = False
     mqtt_tls_ca_file: Path | None = None
-    # Reconexión con backoff exponencial si el broker rechaza la conexión o la corta: espera inicial (s),
-    # factor por intento fallido y tope (s). Vuelve a la inicial tras conectar.
+    # Reconnection with exponential backoff if the broker rejects or drops the connection: initial wait (s),
+    # factor per failed attempt and cap (s). Goes back to the initial one after connecting.
     mqtt_reconnect_initial_s: float = Field(default=1.0, gt=0)
     mqtt_reconnect_factor: float = Field(default=2.0, ge=1)
     mqtt_reconnect_max_s: float = Field(default=30.0, gt=0)
 
-    # El día de misión avanza con el reloj de pared × speed (1 = tiempo real, 0 = día fijo). Obligatorio.
+    # The mission day advances with the wall clock × speed (1 = real time, 0 = fixed day). Required.
     speed: float = Field(ge=0)
-    # Índice de día de misión en el arranque del gateway (0 = primer día simulado). Obligatorio.
+    # Mission day index when the gateway starts (0 = first simulated day). Required.
     start_day: int = Field(ge=0)
 
     @model_validator(mode="after")

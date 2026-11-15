@@ -1,15 +1,15 @@
-"""Features de síntomas (#47): agregados de 7 días de los autoinformes; función pura, sin reloj de pared.
+"""Symptom features (#47): 7-day aggregates of the self-reports; pure function, no wall clock.
 
-- Ventana ``[as_of - 7 días, as_of]`` con ambos extremos incluidos (se compara el instante ``timestamp``).
-- ``pain_nrs_7d_mean``/``stiffness_nrs_7d_mean`` salen de los informes ``daily``;
-  ``sleep_hours_7d_mean`` solo de los ``daily`` que traen ``sleep.hours``. Los ``weekly_odi`` no aportan nada.
-- ``red_flag_count_7d`` suma las banderas de los ``daily`` y de los ``red_flag``; una lista vacía cuenta 0,
-  mientras que un campo ausente o nulo no aporta una observación.
-- Una feature sin datos aplicables va a ``skipped`` con ``no_data``: nunca se rellena con ceros.
-- Solo cuentan los informes y contextos del astronauta pedido.
-- ``gravity_environment`` es el del contexto diario más reciente (por ``date``) dentro de la ventana, comparando
-  fechas UTC (``start.date() <= date <= end.date()``); sin contexto, ``None``.
-- ``computed_at`` es ``as_of``: no hay reloj en la lógica.
+- Window ``[as_of - 7 days, as_of]`` with both ends included (the ``timestamp`` instant is compared).
+- ``pain_nrs_7d_mean``/``stiffness_nrs_7d_mean`` come from the ``daily`` reports;
+    ``sleep_hours_7d_mean`` only from the ``daily`` ones that carry ``sleep.hours``. ``weekly_odi`` contribute nothing.
+- ``red_flag_count_7d`` adds the flags of the ``daily`` and ``red_flag`` reports; an empty list counts 0,
+    whereas an absent or null field contributes no observation.
+- A feature without applicable data goes to ``skipped`` with ``no_data``: it is never filled with zeros.
+- Only the reports and contexts of the requested astronaut count.
+- ``gravity_environment`` is that of the most recent daily context (by ``date``) within the window, comparing
+    UTC dates (``start.date() <= date <= end.date()``); without a context, ``None``.
+- ``computed_at`` is ``as_of``: there is no clock in the logic.
 """
 
 import math
@@ -30,7 +30,7 @@ from spine_contracts.catalog import unit_for
 from spine_contracts.models.common_schema import AssessedBy
 from spine_contracts.models.domain.feature_set_schema import Reason, SkippedItem, Window
 
-# Ventana móvil de los agregados de síntomas: ``[as_of - 7 días, as_of]``, ambos extremos incluidos.
+# Rolling window of the symptom aggregates: ``[as_of - 7 days, as_of]``, both ends included.
 WINDOW = timedelta(days=7)
 
 PAIN_MEAN = "symptoms.pain_nrs_7d_mean"
@@ -38,7 +38,7 @@ STIFFNESS_MEAN = "symptoms.stiffness_nrs_7d_mean"
 SLEEP_MEAN = "symptoms.sleep_hours_7d_mean"
 RED_FLAG_COUNT = "symptoms.red_flag_count_7d"
 
-# Autoinforme: no hay muestreo que degrade, así que la calidad es máxima y sin flags (la pone el motor).
+# Self-report: there is no sampling to degrade, so quality is maximal and without flags (the engine sets it).
 _QUALITY_SCORE = 1.0
 
 
@@ -48,18 +48,18 @@ def _mean(values: Sequence[float]) -> float:
 
 def _feature(feature_id: str, value: float, n: int) -> FeatureValue:
     quality = Quality(score=_QUALITY_SCORE, flags=[], assessed_by=AssessedBy.ENGINE)
-    return FeatureValue(feature_id=feature_id, value=value, unit=unit_for(feature_id), n=n, quality=quality)
+    return FeatureValue.model_validate({"feature_id": feature_id, "value": value, "unit": unit_for(feature_id), "n": n, "quality": quality})
 
 
 def _latest_gravity(daily_context: Sequence[DailyContext], astronaut_id: str, first: datetime, last: datetime) -> DailyContext | None:
     first_day, last_day = first.astimezone(UTC).date(), last.astimezone(UTC).date()
     candidates = [c for c in daily_context if c.astronaut_id == astronaut_id and first_day <= c.date <= last_day]
-    # desempate por valor para que el resultado no dependa del orden de entrada
+    # tie-break by value so the result does not depend on the input order
     return max(candidates, key=lambda c: (c.date, c.gravity_environment.value), default=None)
 
 
 def symptom_feature_set(self_reports: Sequence[SelfReport], daily_context: Sequence[DailyContext], as_of: datetime, astronaut_id: str) -> FeatureSet:
-    """FeatureSet de ventana móvil (``session_id=None``) con los agregados de síntomas de ``astronaut_id``."""
+    """Rolling-window FeatureSet (``session_id=None``) with the symptom aggregates of ``astronaut_id``."""
     start = as_of - WINDOW
     reports = [r for r in self_reports if r.astronaut_id == astronaut_id and start <= r.timestamp <= as_of]
     dailies = [r for r in reports if isinstance(r, DailySelfReport)]

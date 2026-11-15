@@ -1,4 +1,4 @@
-"""Valores exactos del lector de demo para un reloj fijo (2026-11-13T12:00:00Z): cada marca de tiempo, nivel, riesgo y límite."""
+"""Exact values of the demo reader for a fixed clock (2026-11-13T12:00:00Z): each timestamp, level, risk and limit."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -36,7 +36,7 @@ def _id(kind: str, moment: datetime) -> str:
 
 
 def _day(k: int, hour: int = 12, minute: int = 0) -> datetime:
-    """Instante de hace `k` días respecto a NOW, a la hora indicada."""
+    """Instant `k` days before NOW, at the given time."""
     return (NOW - timedelta(days=k)).replace(hour=hour, minute=minute)
 
 
@@ -177,7 +177,7 @@ def test_self_reports_are_daily_at_half_past_eleven_plus_one_weekly_odi():
     assert (odi[0]["timestamp"], odi[0]["mission_day"], odi[0]["report_id"]) == ("2026-11-11T11:15:00Z", 85, _id("self_report", _day(2, 11, 15)))
     assert len(items) == 15
     assert [i["timestamp"] for i in items] == sorted(i["timestamp"] for i in items)
-    assert items[11] == odi[0]  # el ODI va justo antes del autoinforme diario de ese día (11:15 < 11:30)
+    assert items[11] == odi[0]  # the ODI goes right before the daily self-report of that day (11:15 < 11:30)
 
 
 def test_status_block():
@@ -221,7 +221,7 @@ def test_ids_are_deterministic_and_change_with_the_clock():
     assert a == _history(NOW + timedelta(minutes=59))["assessments"][-1]["assessment_id"]
 
 
-# --- filtros y límites en los bordes exactos -------------------------------------------------
+# --- filters and limits at the exact edges -------------------------------------------------
 
 FIRST_SESSION = _day(13, 10, 30)
 LAST_SESSION = _day(0, 10, 0)
@@ -307,7 +307,7 @@ def test_history_limit_keeps_the_most_recent_and_truncates_when_either_list_exce
     assert _history(limit=7)["truncated"] is True  # 7 feature sets caben, 14 valoraciones no
 
 
-# --- errores y explicaciones -----------------------------------------------------------------
+# --- errors and explanations -----------------------------------------------------------------
 
 
 def test_every_reader_method_rejects_an_unknown_astronaut_with_a_404():

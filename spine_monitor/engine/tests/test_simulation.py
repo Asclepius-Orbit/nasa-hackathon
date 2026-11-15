@@ -1,4 +1,4 @@
-"""Paso puro de `/simulate`: aplicar los overrides a la base antes de reevaluar."""
+"""Pure `/simulate` step: apply the overrides to the base before re-assessing."""
 
 import json
 import math
@@ -19,13 +19,13 @@ PEAK = "stretch.full_spine.peak_elongation_mm"
 
 
 def _with_history() -> AssessRequest:
-    """La base del ejemplo con un conjunto anterior (mismas features, otros valores) delante."""
+    """The example base with a previous set (same features, other values) in front."""
     base = REQUEST.base.model_copy(deep=True)
     older = base.feature_sets[0].model_copy(deep=True)
     older.computed_at = older.computed_at - timedelta(days=1)
     for feature in older.features:
         feature.value = feature.value + 1000.0
-    base.feature_sets = [base.feature_sets[0], older]  # el más reciente va primero a propósito
+    base.feature_sets = [base.feature_sets[0], older]  # the most recent goes first on purpose
     return base
 
 
@@ -77,7 +77,7 @@ def test_example_overrides_on_the_same_feature_compose_in_order():
     assert _latest(scale_then_add, PEAK) == pytest.approx(x * 3 + 2)
 
 
-# Acotado a 1e3 y 5 overrides: el resultado crece como mucho ~1e15 y nunca llega a infinito.
+# Bounded to 1e3 and 5 overrides: the result grows at most ~1e15 and never reaches infinity.
 bounded = st.floats(min_value=-1e3, max_value=1e3, allow_nan=False, allow_infinity=False)
 same_feature = st.lists(
     st.builds(Override, feature_id=st.just(PEAK), mode=st.sampled_from(list(Mode)), value=bounded),
@@ -93,7 +93,7 @@ same_feature = st.lists(
 @example(overrides=_on_peak((Mode.ADD, -1e3), (Mode.SCALE, -1e3), (Mode.ADD, 1e3), (Mode.SET, 0.0)))
 def test_overrides_on_one_feature_compose_sequentially(overrides):
     expected = _latest(BASE, PEAK)
-    for o in overrides:  # oráculo secuencial escrito a mano
+    for o in overrides:  # hand-written sequential oracle
         if o.mode is Mode.SET:
             expected = o.value
         elif o.mode is Mode.ADD:
@@ -116,7 +116,7 @@ def test_feature_only_in_an_older_set_overrides_that_older_value():
 
     result = apply_overrides(base, _on_peak((Mode.SET, 42.0)))
 
-    assert _value_in(result, 1, PEAK) == 42.0  # el antiguo es el único que la tiene
+    assert _value_in(result, 1, PEAK) == 42.0  # the old one is the only one that has it
     assert result.feature_sets[0] == base.feature_sets[0]
     others = [f for f in base.feature_sets[1].features if f.feature_id != PEAK]
     assert [f for f in result.feature_sets[1].features if f.feature_id != PEAK] == others
@@ -187,7 +187,7 @@ def test_non_finite_result_is_rejected(mode):
     huge = Override(feature_id=PEAK, mode=mode, value=1.7e308)
 
     with pytest.raises(InvalidOverrideError):
-        apply_overrides(BASE, [huge, huge])  # se componen: el segundo desborda a infinito
+        apply_overrides(BASE, [huge, huge])  # they compose: the second overflows to infinity
 
 
 def test_non_finite_set_is_rejected():

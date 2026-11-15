@@ -13,7 +13,7 @@ const SIZES = [
   { w: 800, h: 1000 },
 ] as const;
 
-const SCREENS = ['today', 'report', 'session', 'stopped', 'history', 'settings', 'first-day', 'baseline', 'oswestry', 'houston'] as const;
+const SCREENS = ['today', 'report', 'session', 'stopped', 'history', 'settings', 'first-day', 'baseline', 'oswestry'] as const;
 
 test('@visual captures every screen at 1280x800 and 800x1000', async () => {
   test.setTimeout(180_000);

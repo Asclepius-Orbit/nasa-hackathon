@@ -1,132 +1,132 @@
-# Validación del resumen y del informe PDF para tierra (Houston)
+# Validation of the ground summary and the PDF report for ground (Houston)
 
-Para: **Aguado**. Revisa con Uri y se vuelca al código después (issue #62: resumen diario a tierra; el envío urgente real es #63).
+For: **the clinical reviewer**. Review with the maintainer; the result is then applied to the code (issue #62: daily summary to ground; the real urgent send is #63).
 
-Cómo rellenarlo: en cada tabla, la casilla viene **premarcada con nuestra propuesta**. Cámbiala si no estás de acuerdo y escribe tu redacción o criterio en la columna de nota. Lo que no se decide aquí queda como `pendiente de X`; se abrirá una issue por cada punto pendiente.
+How to fill it in: in each table, the box comes **pre-ticked with our proposal**. Change it if you disagree and write your wording or criterion in the note column. Anything not decided here stays as `pending clinical review`; one issue will be opened for each pending point.
 
-Fuentes (si discrepan con este documento, manda el código): `spine_monitor/contracts/schemas/v1/app/ground-summary.schema.json`, `spine_monitor/contracts/ui-openapi.yaml` (`getHoustonWeeklyReport`), `spine_monitor/backend/src/monitor/views/ground_summary.py`, `spine_monitor/backend/src/monitor/report/`, `spine_monitor/backend/src/monitor/ground/`, `app/ui/src/renderer/strings/codes.ts` y `app/ui/src/renderer/strings/urgent.ts`.
+Sources (if they differ from this document, the code wins): `spine_monitor/contracts/schemas/v1/app/ground-summary.schema.json`, `spine_monitor/contracts/ui-openapi.yaml` (`getHoustonWeeklyReport`), `spine_monitor/backend/src/monitor/views/ground_summary.py`, `spine_monitor/backend/src/monitor/report/`, `spine_monitor/backend/src/monitor/ground/`, `app/ui/src/renderer/strings/codes.ts` and `app/ui/src/renderer/strings/urgent.ts`.
 
-**Principio de partida (vale para el resumen y para el PDF):** solo códigos y números. Nada de texto libre (las notas de los informes y las descripciones de las reglas no se copian), nada del perfil del astronauta (nombre, edad, etc.), y el único identificador es el `astronaut_id` seudónimo. Todo lo desconocido es un dato ausente explícito. Una semana o un día sin evaluación sale como `nodata`, nunca con un verde por defecto.
+**Starting principle (applies to the summary and the PDF):** only codes and numbers. No free text (report notes and rule descriptions are not copied), nothing from the astronaut's profile (name, age, etc.), and the only identifier is the pseudonymous `astronaut_id`. Anything unknown is an explicit missing datum. A week or day without an assessment comes out as `nodata`, never with a default green.
 
-## 0. Dos productos distintos para tierra
+## 0. Two different products for ground
 
-| | Resumen diario (#62) | Informe PDF semanal |
+| | Daily summary (#62) | Weekly PDF report |
 |---|---|---|
-| Qué es | Mensaje JSON `ground-summary`, una revisión por cambio de la evaluación del día | Documento PDF con texto, tablas y gráficas |
-| Quién lo dispara | Automático: bandeja de salida y enlace con tierra | El astronauta, con el botón «Generar informe para Houston» de la pantalla de inicio |
-| Ventana | Un día UTC | Los últimos 7 días UTC (hasta `end`, por defecto hoy). Nunca el historial entero |
-| Endpoint | (bandeja `ground_outbox`) | `GET /ui/crew/{astronaut_id}/houston-report.pdf?end=YYYY-MM-DD` |
-| Estado | Contenido provisional | Contenido provisional |
+| What it is | `ground-summary` JSON message, one revision per change in the day's assessment | PDF document with text, tables and charts |
+| Who triggers it | Automatic: outbox and ground link | The astronaut, with the "Generate report for Houston" button on the home screen |
+| Window | One UTC day | The last 7 UTC days (up to `end`, today by default). Never the whole history |
+| Endpoint | (`ground_outbox` outbox) | `GET /ui/crew/{astronaut_id}/houston-report.pdf?end=YYYY-MM-DD` |
+| Status | Provisional content | Provisional content |
 
-El PDF **no sustituye** al resumen diario ni lo modifica. Se asume un envío semanal del PDF; el guardado y la transmisión del archivo a tierra no están automatizados (hoy lo guarda el astronauta en el equipo).
+The PDF **does not replace** the daily summary or modify it. A weekly PDF send is assumed; saving and transmitting the file to ground are not automated (today the astronaut saves it on the workstation).
 
-## 1. Qué viaja a tierra
+## 1. What travels to ground
 
-### 1.1 Resumen diario: campos que ya están en el esquema
+### 1.1 Daily summary: fields already in the schema
 
-| Campo | Qué lleva hoy | Decisión (Aguado) | Nota |
+| Field | What it carries today | Decision (reviewer) | Note |
 |---|---|---|---|
-| `schema_version`, `astronaut_id`, `date`, `mission_day`, `revision`, `as_of` | Técnicos y de identificación (id seudónimo; `mission_day` es `null` sin fecha de lanzamiento) | [x] va | |
-| `level`, `assessment_id`, `confidence`, `data_available`, `data_total` | Nivel `green`/`amber`/`red`/`nodata` y confianza de la evaluación | [x] va | `nodata` si no hay evaluación. |
-| `drivers[]` | `feature_id` y `deviation_z`, de más a menos influyente | [x] va | Códigos del catálogo. |
-| `red_flags` | Banderas rojas del día (catálogo cerrado) | [x] va | |
-| `other_symptoms` | `very_severe_pain`, `other`; solo el código, nunca la descripción | [x] va | Si escalan como bandera roja: pendiente de Aguado. |
-| `sessions[]` | `session_id`, `state`, `protocol_id`, `pain_stop` (repetición e instante, no la intensidad) | [x] va | |
-| `recommendations` | Códigos `REC_*` | [x] va | |
-| `escalation` | `required`, `urgency` (`routine`/`priority`/`immediate`), `reasons` (`RULE_*`) | [x] va | Textos en la sección 3. |
-| `contacts[]` | `contact_id`, `at`, `contact` (rol); la nota se queda a bordo | [x] va | Hecho en #63. |
+| `schema_version`, `astronaut_id`, `date`, `mission_day`, `revision`, `as_of` | Technical and identification (pseudonymous id; `mission_day` is `null` without a launch date) | [x] goes | |
+| `level`, `assessment_id`, `confidence`, `data_available`, `data_total` | Level `green`/`amber`/`red`/`nodata` and the assessment's confidence | [x] goes | `nodata` if there is no assessment. |
+| `drivers[]` | `feature_id` and `deviation_z`, from most to least influential | [x] goes | Catalogue codes. |
+| `red_flags` | The day's red flags (closed catalogue) | [x] goes | |
+| `other_symptoms` | `very_severe_pain`, `other`; only the code, never the description | [x] goes | Whether they escalate as a red flag: pending clinical review. |
+| `sessions[]` | `session_id`, `state`, `protocol_id`, `pain_stop` (repetition and instant, not the intensity) | [x] goes | |
+| `recommendations` | `REC_*` codes | [x] goes | |
+| `escalation` | `required`, `urgency` (`routine`/`priority`/`immediate`), `reasons` (`RULE_*`) | [x] goes | Texts in section 3. |
+| `contacts[]` | `contact_id`, `at`, `contact` (role); the note stays on board | [x] goes | Done in #63. |
 
-### 1.2 Informe PDF semanal: contenido propuesto
+### 1.2 Weekly PDF report: proposed content
 
-Origen de los datos: lo que el astronauta registra en la UI (informe diario, síntomas urgentes, Oswestry semanal), las sesiones de ejercicio con sus mediciones, y los datos del motor.
+Data origin: what the astronaut records in the UI (daily report, urgent symptoms, weekly Oswestry), the exercise sessions with their measurements, and the engine's data.
 
-| Bloque | Qué lleva el PDF | Decisión (Aguado) | Nota |
+| Block | What the PDF carries | Decision (reviewer) | Note |
 |---|---|---|---|
-| Cabecera | `astronaut_id`, rango de fechas UTC, día de misión, instante de generación | [x] va | Sin nombre ni perfil. El perfil solo se lee para numerar los días de misión. |
-| Estado actual | Nivel de la última evaluación de la semana, confianza, completitud de datos, escalada requerida | [x] va | Sin evaluación: «NO DATA», gris. |
-| Resumen de la semana | Frases generadas con plantilla a partir de los datos (sin IA): evolución del nivel, escalada y reglas, días con dolor, síntomas, sesiones, Oswestry | [x] va | |
-| Dolor | Gráfica diaria de dolor (`pain_nrs`) y peor de 24 h (`pain_nrs_worst_24h`), con marca de bandera roja o síntoma urgente | [x] va | Cambia la propuesta anterior: **el dolor sí viaja**, porque son números del informe diario. Confirmar valor (actual, peor 24 h o ambos): pendiente de Aguado. |
-| Nivel de riesgo por día | Banda diaria con el último nivel del motor, e índice de riesgo y confianza | [x] va | |
-| Informe diario | Tabla por día: dolor, peor 24 h, rigidez, sueño, nº de sesiones, banderas rojas | [x] va | Solo valores numéricos y códigos. Las notas libres no salen. |
-| Síntomas | Tabla de banderas rojas y síntomas urgentes con los días en que se reportaron | [x] va | Etiqueta legible del código, nunca la descripción libre de `other`. |
-| Oswestry | Último Oswestry registrado esa semana, por ítem y como porcentaje | [x] va | **Solo informativo**: sin papel en el triaje (#107). |
-| Sesiones de ejercicio | Estado, protocolo, parada por dolor (repetición) y mediciones: repeticiones, tiempo por repetición, elongación, rango de movimiento, EMG (%MVC) | [x] va | Incluye la longitud lumbar si la sesión la mide: **la longitud lumbar sí viaja** en el PDF. Valor absoluto o cambio respecto a la referencia: pendiente de Aguado. |
-| Motor | Evolución del nivel y de la confianza, drivers con z, recomendaciones `REC_*`, escalada y reglas `RULE_*` | [x] va | Solo códigos. |
-| Del agente | Nada del MCP ni de Ollama: ni chat, ni explicaciones generadas, ni texto del agente | [ ] no va | Decidido: no se incluye. |
-| Texto libre que acompaña a una escalada | No existe y no se propone | [x] no va | Pendiente de Aguado: si hace falta un motivo clínico legible, ¿basta un código nuevo de un catálogo cerrado? |
+| Header | `astronaut_id`, UTC date range, mission day, generation instant | [x] goes | No name or profile. The profile is only read to number the mission days. |
+| Current status | Level of the week's latest assessment, confidence, data completeness, escalation required | [x] goes | No assessment: "NO DATA", grey. |
+| Week summary | Template-generated sentences from the data (no AI): level evolution, escalation and rules, days with pain, symptoms, sessions, Oswestry | [x] goes | |
+| Pain | Daily pain chart (`pain_nrs`) and worst of 24 h (`pain_nrs_worst_24h`), with a red-flag or urgent-symptom marker | [x] goes | Changes the earlier proposal: **pain does travel**, because they are numbers from the daily report. Confirm the value (current, worst 24 h or both): pending clinical review. |
+| Risk level per day | Daily band with the engine's latest level, and risk index and confidence | [x] goes | |
+| Daily report | Table per day: pain, worst 24 h, stiffness, sleep, number of sessions, red flags | [x] goes | Numeric values and codes only. Free notes are not included. |
+| Symptoms | Table of red flags and urgent symptoms with the days they were reported | [x] goes | Readable label of the code, never the free description of `other`. |
+| Oswestry | Latest Oswestry recorded that week, per item and as a percentage | [x] goes | **Informative only**: no role in triage (#107). |
+| Exercise sessions | State, protocol, pain stop (repetition) and measurements: repetitions, time per repetition, elongation, range of motion, EMG (%MVC) | [x] goes | Includes lumbar length if the session measures it: **lumbar length does travel** in the PDF. Absolute value or change from the reference: pending clinical review. |
+| Engine | Evolution of level and confidence, drivers with z, `REC_*` recommendations, escalation and `RULE_*` rules | [x] goes | Codes only. |
+| From the agent | Nothing from MCP or Ollama: no chat, no generated explanations, no agent text | [ ] does not go | Decided: not included. |
+| Free text accompanying an escalation | Does not exist and is not proposed | [x] does not go | Pending clinical review: if a readable clinical reason is needed, is a new code from a closed catalogue enough? |
 
-Una semana sin datos sigue generando un PDF, con mensajes explícitos de «sin datos», nunca con un verde por defecto. El pie del PDF dice «Provisional content, pending clinical validation» hasta que Aguado valide.
+A week without data still generates a PDF, with explicit "no data" messages, never with a default green. The PDF footer says "Provisional content, pending clinical validation" until the clinical reviewer validates.
 
-## 2. Cuándo se envía
+## 2. When it is sent
 
-**Resumen diario (hoy):** se encola una revisión por cada cambio de la evaluación del día. Si la última revisión sigue en cola, se sustituye; si ya fue enviada, se abre otra. Un día con bandera roja o síntoma urgente cuya evaluación se omitió se encola con nivel `nodata` y la bandera; lo mismo para una parada por dolor o un contacto médico. El emisor vacía la cola solo con enlace, por orden cronológico, con reintentos con retroceso exponencial. Hoy **una escalada no adelanta a un resumen rutinario más antiguo**.
+**Daily summary (today):** one revision is queued for each change in the day's assessment. If the latest revision is still queued, it is replaced; if it has already been sent, another is opened. A day with a red flag or urgent symptom whose assessment was skipped is queued with level `nodata` and the flag; the same for a pain stop or a medical contact. The sender drains the queue only when the link is up, in chronological order, with retries using exponential backoff. Today **an escalation does not jump ahead of an older routine summary**.
 
-**Informe PDF:** se asume envío **semanal**. Lo genera el astronauta a demanda con el botón y cubre siempre los 7 últimos días.
+**PDF report:** a **weekly** send is assumed. The astronaut generates it on demand with the button and it always covers the last 7 days.
 
-| Decisión | Opciones | Decisión (Aguado) |
+| Decision | Options | Decision (reviewer) |
 |---|---|---|
-| Cadencia del PDF | Semanal a demanda (propuesta) / recordatorio o generación automática semanal | pendiente de Aguado |
-| Cómo llega el PDF a tierra | Hoy lo guarda el astronauta. ¿Se transmite por el enlace con tierra como el resumen? | pendiente de Aguado |
-| Política de envío del resumen diario | [ ] La actual: cronológica. [ ] Envío prioritario de escaladas y banderas rojas | pendiente de Aguado |
-| Qué cuenta como prioritario | Propuesta: `escalation.required = true` o alguna bandera roja. ¿También `other_symptoms`? ¿`pain_stop`? | pendiente de Aguado |
+| PDF cadence | Weekly on demand (proposal) / weekly reminder or automatic generation | pending clinical review |
+| How the PDF reaches ground | Today the astronaut saves it. Is it transmitted over the ground link like the summary? | pending clinical review |
+| Daily summary send policy | [ ] The current one: chronological. [ ] Priority send of escalations and red flags | pending clinical review |
+| What counts as priority | Proposal: `escalation.required = true` or any red flag. Also `other_symptoms`? `pain_stop`? | pending clinical review |
 
-## 3. Textos de urgencia en la app
+## 3. Urgency texts in the app
 
-Fuente: `app/ui/src/renderer/strings/codes.ts` (`urgencyText`, `escalationRuleText`). Se muestran al astronauta tal cual. Un código desconocido se muestra como el propio código.
+Source: `app/ui/src/renderer/strings/codes.ts` (`urgencyText`, `escalationRuleText`). They are shown to the astronaut as is. An unknown code is shown as the code itself.
 
-| Código | Redacción actual | Redacción de Aguado |
+| Code | Current wording | Reviewer's wording |
 |---|---|---|
-| `routine` | routine, can wait for the next scheduled contact | pendiente de Aguado |
-| `priority` | priority, needs the flight surgeon soon | pendiente de Aguado |
-| `immediate` | immediate, needs the flight surgeon now | pendiente de Aguado |
-| `RULE_RED_FLAG_NEURO` | warning neurological symptom | pendiente de Aguado |
-| `RULE_SYMPTOM_PAIN_TREND` | pain trend rising | pendiente de Aguado |
-| `RULE_INCOMPLETE_DATA` | data too incomplete to assess | pendiente de Aguado |
-| `RULE_UNKNOWN_RED_FLAG` | unrecognised warning symptom | pendiente de Aguado |
+| `routine` | routine, can wait for the next scheduled contact | pending clinical review |
+| `priority` | priority, needs the flight surgeon soon | pending clinical review |
+| `immediate` | immediate, needs the flight surgeon now | pending clinical review |
+| `RULE_RED_FLAG_NEURO` | warning neurological symptom | pending clinical review |
+| `RULE_SYMPTOM_PAIN_TREND` | pain trend rising | pending clinical review |
+| `RULE_INCOMPLETE_DATA` | data too incomplete to assess | pending clinical review |
+| `RULE_UNKNOWN_RED_FLAG` | unrecognised warning symptom | pending clinical review |
 
-Pregunta abierta: ¿hay más reglas de escalada que deban tener texto propio? Las demás se muestran hoy como su código crudo. Nota: el PDF muestra los `RULE_*` como código; si Aguado redacta los textos, ¿deben aparecer también en el PDF? (pendiente de Aguado).
+Open question: are there more escalation rules that should have their own text? The others are currently shown as their raw code. Note: the PDF shows the `RULE_*` codes as codes; if the reviewer writes the texts, should they also appear in the PDF? (pending clinical review).
 
-## 4. Urgente en modo real
+## 4. Urgent in real mode
 
-Hasta que exista el envío real (#63) la app no puede mandar avisos urgentes y lo dice, pidiendo avisar al oficial médico en persona. Textos actuales en `app/ui/src/renderer/strings/urgent.ts`:
+Until real sending exists (#63) the app cannot send urgent notices and says so, asking the user to tell the medical officer in person. Current texts in `app/ui/src/renderer/strings/urgent.ts`:
 
-- `introNotSent`: «Mark what applies. This app cannot send urgent reports: tell the crew medical officer now, in person or by voice.»
-- `notRecordedBody`: «The report could not be saved. Tell the crew medical officer now, in person or by voice.»
-- `noCrew`: «The crew list could not be read, so this report cannot be sent from here. Tell the crew medical officer now, in person or by voice.»
+- `introNotSent`: "Mark what applies. This app cannot send urgent reports: tell the crew medical officer now, in person or by voice."
+- `notRecordedBody`: "The report could not be saved. Tell the crew medical officer now, in person or by voice."
+- `noCrew`: "The crew list could not be read, so this report cannot be sent from here. Tell the crew medical officer now, in person or by voice."
 
-| Pregunta | Decisión (Aguado) |
+| Question | Decision (reviewer) |
 |---|---|
-| ¿Es adecuado este texto mientras no exista el envío? | [ ] sí, tal cual. [ ] no, redacción propia: pendiente de Aguado |
-| ¿Hay que nombrar también otra vía (p. ej. radio o voz con Houston)? | pendiente de Aguado |
+| Is this text adequate while sending does not exist? | [ ] yes, as is. [ ] no, own wording: pending clinical review |
+| Should another channel also be named (e.g. radio or voice with Houston)? | pending clinical review |
 
-El informe PDF **no es un aviso urgente**: no sustituye al aviso en persona al oficial médico.
+The PDF report **is not an urgent notice**: it does not replace telling the medical officer in person.
 
-## Decisiones pendientes
+## Pending decisions
 
-Una issue por punto.
+One issue per point.
 
-- [ ] 1a. Dolor en el PDF: confirmar valor (actual, peor 24 h o ambos) y si viaja también en el resumen diario (pendiente de Aguado)
-- [ ] 1b. Longitud lumbar: valor absoluto o cambio respecto a la referencia, en PDF y en resumen diario (pendiente de Aguado)
-- [ ] 1c. Texto que acompaña a una escalada: confirmar que no viaja, o definir un catálogo cerrado de motivos (pendiente de Aguado)
-- [ ] 1d. `other_symptoms`: confirmar que viajan solo como código y si escalan como bandera roja (pendiente de Aguado)
-- [ ] 1e. Oswestry: confirmar que va en el PDF solo como dato informativo, sin papel en el triaje (pendiente de Aguado)
-- [ ] 2a. Cadencia del PDF y cómo llega a tierra (pendiente de Aguado)
-- [ ] 2b. Política de envío del resumen diario: cronológica o prioritaria para escaladas y banderas rojas, y qué es prioritario (pendiente de Aguado)
-- [ ] 3a. Redacción de `routine`, `priority`, `immediate` (pendiente de Aguado)
-- [ ] 3b. Redacción de los cuatro motivos de escalada y reglas que faltan, y si salen en el PDF (pendiente de Aguado)
-- [ ] 4. Texto de «no se puede enviar, avisa en persona» hasta #63 (pendiente de Aguado)
+- [ ] 1a. Pain in the PDF: confirm the value (current, worst 24 h or both) and whether it also travels in the daily summary (pending clinical review)
+- [ ] 1b. Lumbar length: absolute value or change from the reference, in the PDF and in the daily summary (pending clinical review)
+- [ ] 1c. Text accompanying an escalation: confirm it does not travel, or define a closed catalogue of reasons (pending clinical review)
+- [ ] 1d. `other_symptoms`: confirm they travel only as a code and whether they escalate as a red flag (pending clinical review)
+- [ ] 1e. Oswestry: confirm it goes in the PDF only as informative data, with no role in triage (pending clinical review)
+- [ ] 2a. PDF cadence and how it reaches ground (pending clinical review)
+- [ ] 2b. Daily summary send policy: chronological or prioritised for escalations and red flags, and what is priority (pending clinical review)
+- [ ] 3a. Wording of `routine`, `priority`, `immediate` (pending clinical review)
+- [ ] 3b. Wording of the four escalation reasons and missing rules, and whether they appear in the PDF (pending clinical review)
+- [ ] 4. "Cannot be sent, tell someone in person" text until #63 (pending clinical review)
 
-## Cómo se vuelca al código
+## How it is applied to the code
 
-Lo hace Uri tras revisar este documento con Aguado.
+The maintainer does it after reviewing this document with the clinical reviewer.
 
-| Decisión | Ficheros que cambian |
+| Decision | Files that change |
 |---|---|
-| 1a, 1b, 1e: qué lleva el PDF | `spine_monitor/backend/src/monitor/report/` (`week.py` datos, `charts.py` gráficas, `houston_pdf.py` maquetación) y `spine_monitor/backend/tests/test_houston_week.py` |
-| 1a, 1b, 1c: campos del resumen diario | Esquema `ground-summary.schema.json` (y su descripción «PROVISIONAL»); ejemplos `contracts/examples/valid/app/ground-summary*.json`; vista `ground_summary.py`; tests `test_ground_summary.py` y `contracts/tests/`. Regla del repo: contrato primero (skill `contract-first`), luego los modelos generados |
-| 1d: `other_symptoms` | `ground_summary.py` (`_day_other_symptoms`), `domain/self-report.schema.json` si cambia el catálogo, tests de la vista |
-| 2a: cadencia y entrega del PDF | `api.py` (endpoint), `app/ui/src/main/views/houston-report-service.ts` y `app/ui/src/renderer/features/today/HoustonReportCard.tsx` |
-| 2b: prioridad del resumen diario | `db.py` (`next_ground_item`, `upsert_ground_summary`), `ground/enqueue.py`, `ground/sender.py`; tests `test_ground_flow.py`, `test_ground_sender.py` |
-| 3a, 3b: textos de urgencia | `app/ui/src/renderer/strings/codes.ts` y tests de UI que los citen (p. ej. `TodayView.test.tsx`); `report/labels.py` si salen en el PDF |
-| 4: aviso en persona | `app/ui/src/renderer/strings/urgent.ts` y `UrgentDialog.test.tsx` |
-| Cualquier validación | Quitar las notas «PROVISIONAL / pending validation by Aguado» del esquema, de `ground_summary.py` y el pie del PDF |
+| 1a, 1b, 1e: what the PDF carries | `spine_monitor/backend/src/monitor/report/` (`week.py` data, `charts.py` charts, `houston_pdf.py` layout) and `spine_monitor/backend/tests/test_houston_week.py` |
+| 1a, 1b, 1c: daily summary fields | Schema `ground-summary.schema.json` (and its "PROVISIONAL" description); examples `contracts/examples/valid/app/ground-summary*.json`; view `ground_summary.py`; tests `test_ground_summary.py` and `contracts/tests/`. Repo rule: contract first (skill `contract-first`), then the generated models |
+| 1d: `other_symptoms` | `ground_summary.py` (`_day_other_symptoms`), `domain/self-report.schema.json` if the catalogue changes, view tests |
+| 2a: PDF cadence and delivery | `api.py` (endpoint), `app/ui/src/main/views/houston-report-service.ts` and `app/ui/src/renderer/features/today/HoustonReportCard.tsx` |
+| 2b: daily summary priority | `db.py` (`next_ground_item`, `upsert_ground_summary`), `ground/enqueue.py`, `ground/sender.py`; tests `test_ground_flow.py`, `test_ground_sender.py` |
+| 3a, 3b: urgency texts | `app/ui/src/renderer/strings/codes.ts` and UI tests that quote them (e.g. `TodayView.test.tsx`); `report/labels.py` if they appear in the PDF |
+| 4: in-person notice | `app/ui/src/renderer/strings/urgent.ts` and `UrgentDialog.test.tsx` |
+| Any validation | Remove the "PROVISIONAL / pending validation" notes from the schema, from `ground_summary.py` and the PDF footer |

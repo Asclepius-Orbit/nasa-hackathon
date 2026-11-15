@@ -31,7 +31,8 @@ from spine_physiology.config import ExerciseProtocol, load_config
 from spine_physiology.device import SimDevice, plan_device_live
 from spine_physiology.envelope import EnvelopeKind
 from spine_physiology.generator import MissionGenerator
-from spine_physiology.signals import exercise_duration_s
+from spine_physiology.rng import RngTree
+from spine_physiology.signals import exercise_duration_s, rep_schedule
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples" / "valid"
 ASTRONAUT, DEVICE = "AST-01", "wb-01"
@@ -61,11 +62,12 @@ def _simulated_imu_chunks() -> tuple[dict[str, Any], ...]:
     )  # fmt: skip
     protocol = config.protocols[SIM_PROTOCOL]
     assert isinstance(protocol, ExerciseProtocol)
+    reps = rep_schedule(protocol, rng=RngTree(config.seed).rng(ASTRONAUT, "live", SIM_SESSION, "exercise"))
     chunks: list[dict[str, Any]] = []
     for envelope in stream:
         if envelope.kind is EnvelopeKind.STREAM_CHUNK:
             chunks.append(envelope.payload)
-            if (chunks[-1]["t0_device_ms"] - chunks[0]["t0_device_ms"]) / 1000.0 > exercise_duration_s(protocol):
+            if (chunks[-1]["t0_device_ms"] - chunks[0]["t0_device_ms"]) / 1000.0 > exercise_duration_s(protocol, reps):
                 return tuple(chunks)
     raise AssertionError("the live session iterator never ends")
 
@@ -278,7 +280,7 @@ async def harness(tmp_path: Path, anyio_backend: str, harness_settings: dict[str
         baseline_builder=default_baseline_builder(),
         feature_extractor=extractor,
     )
-    defaults = {"reassess_debounce_s": 0.0, "ui_token": UI_TOKEN}
+    defaults = {"reassess_debounce_s": 0.0, "ui_token": UI_TOKEN, "telemetry_source": "device"}  # the contract examples are device data
     settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2, **{**defaults, **harness_settings})
     app = create_app(settings, mqtt_client_factory=mqtt.factory, engine_transport=httpx.ASGITransport(app=engine_app), clock=clock)
     runtime = app.state.runtime

@@ -1,4 +1,4 @@
-"""Qué entrada de la baseline corresponde a una feature."""
+"""Which baseline entry corresponds to a feature."""
 
 from collections.abc import Iterable
 
@@ -17,11 +17,11 @@ def reference_entry(
     protocol_id: str | None,
     gravity: GravityEnvironment | None,
 ) -> BaselineEntry | None:
-    """Entrada del mismo protocolo y entorno de gravedad; si no existe, la de la Tierra.
+    """Entry of the same protocol and gravity environment; if it does not exist, the Earth one.
 
-    Así una sesión en microgravedad se compara con su propia deriva y, si aún no hay baseline de ese
-    entorno, con la Tierra (efecto del entorno). Las resistencias por postura requieren siempre Tierra.
-    Sin gravedad declarada no hay referencia.
+    This way a microgravity session is compared with its own drift and, if there is no baseline of that
+    environment yet, with Earth (environment effect). Per-posture resistances always require Earth.
+    Without a declared gravity there is no reference.
     """
     if gravity is None:
         return None

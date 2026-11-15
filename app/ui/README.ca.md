@@ -27,7 +27,7 @@ pnpm start          # des de l'arrel del repo: pnpm -C app/ui start
 l'app en mode desenvolupament amb recàrrega en calent.
 
 En desenvolupament (i només a les builds d'e2e) hi ha dos tripulants de demo: **Elena Ruiz** i **Marc Dubois**,
-PIN **1234**. El menú "Mock screens" i "Mock: skip login or lock" també són només de desenvolupament. Una build de
+PIN **1234**. El menú "Mock screens" també és només de desenvolupament. Una build de
 producció arrenca sense tripulants: el primer es dona d'alta amb "New crew member". Els arnesos dels tripulants de
 demo són els del simulador (`sim-01` i `sim-02`, com a `spine_monitor/physiology/configs/example-mission.yaml`).
 **Sign out** (a la franja superior i a la pantalla de bloqueig) tanca la sessió i torna al login, perquè un altre

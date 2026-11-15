@@ -15,7 +15,7 @@ spread = st.floats(min_value=0.0, max_value=1e6, allow_nan=False, allow_infinity
 
 
 def entry(median: float, mad: float, std: float) -> BaselineEntry:
-    # RobustZScorer solo lee median, mad y std; un SimpleNamespace basta y evita rellenar el resto del modelo.
+    # RobustZScorer only reads median, mad and std; a SimpleNamespace is enough and avoids filling in the rest of the model.
     return cast(BaselineEntry, SimpleNamespace(median=median, mad=mad, std=std))
 
 

@@ -20,6 +20,13 @@ from spine_contracts import validation
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
+
+@pytest.fixture
+def harness_settings() -> dict[str, Any]:
+    """These tests feed the real simulator chunks, so the installation takes simulator data."""
+    return {"telemetry_source": "simulator"}
+
+
 STATE_SCHEMA = "app/ui-rep-state"
 ERROR_SCHEMA = "app/error"
 TICK_S = 0.5

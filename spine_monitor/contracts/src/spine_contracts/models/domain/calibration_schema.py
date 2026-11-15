@@ -110,7 +110,7 @@ class CalibrationBase(BaseModel):
     quality: common_schema.Quality | None = None
     notes: constr(max_length=200) | None = Field(
         None,
-        description='Free text for maintainers, e.g. PENDIENTE medición Aguado while a placeholder stands in for a value still to be measured.',
+        description='Free text for maintainers, e.g. PENDING measurement while a placeholder stands in for a value still to be measured.',
     )
 
 
@@ -119,10 +119,14 @@ class StretchCalibration(CalibrationBase):
         extra='forbid',
     )
     calibration_type: Literal['stretch']
+    reference_posture: Literal['straight_back'] | None = Field(
+        None,
+        description='Explicitly attested posture during the reference measurement; omitted when unknown.',
+    )
     rest_resistance_ohm: PositiveFloat
     rest_length_mm: PositiveFloat = Field(
         ...,
-        description='Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDIENTE medición Aguado.',
+        description='Length of cord between the two clamps at rest (the reference for elongation). About 650 mm in the standard protocol (C3-C4 to L5-S1); PENDING measurement.',
     )
     recovery_wait_s: confloat(ge=0.0) | None = None
     temperature_c: float | None = None
@@ -167,6 +171,10 @@ class ImuCalibration(CalibrationBase):
     gyro_range_dps: GyroRangeDps
     gyro_bias_dps: common_schema.Xyz
     accel_bias_g: common_schema.Xyz | None = None
+    reference_orientation_x_deg: confloat(ge=0.0, le=180.0) | None = Field(
+        None,
+        description='Independently measured initial orientation around sensor X, in degrees at created_at. Gyroscope integration alone cannot establish absolute orientation; omit when no reference is available.',
+    )
     mounting: Mounting
     static_duration_s: PositiveFloat | None = Field(
         None, description='How long the sensor was held still to estimate the bias.'

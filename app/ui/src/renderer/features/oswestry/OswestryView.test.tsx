@@ -18,7 +18,7 @@ it('shows six items of six numbered options and the pending-validation note', as
   const group = screen.getByRole('radiogroup', { name: 'Sleeping' });
   expect(within(group).getAllByRole('radio')).toHaveLength(6);
   expect(within(group).getByRole('radio', { name: '3. Under 4 h' })).toBeInTheDocument();
-  expect(screen.getByText('Item set pending validation by Aguado')).toBeInTheDocument();
+  expect(screen.getByText('Item set pending clinical validation')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Save questionnaire' })).toBeDisabled();
   expect(screen.getByText('6 of 6 still to answer.')).toBeInTheDocument();
 });
@@ -62,7 +62,7 @@ describe('with the backend (real mode)', () => {
   it('serves the same provisional items, still tagged pending validation', async () => {
     await realSetup();
     expect(screen.getAllByRole('radiogroup')).toHaveLength(6);
-    expect(screen.getByText('Item set pending validation by Aguado')).toBeInTheDocument();
+    expect(screen.getByText('Item set pending clinical validation')).toBeInTheDocument();
   });
 
   it('saves each answer as item id and option index', async () => {

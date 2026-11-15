@@ -1,88 +1,88 @@
 ---
 name: implement-feature
-description: Use when el usuario pide implementar una feature o resolver un bug y aporta un enlace a issue de GitHub y/o contexto libre, antes de tocar código.
+description: Use when the user asks to implement a feature or fix a bug and provides a GitHub issue link and/or free-form context, before touching code.
 ---
 
 # implement-feature
 
-Flujo orquestado de 6 fases: entender → preguntar → planificar → implementar → verificar → documentar. Tú eres el orquestador: delegas el trabajo pesado a subagentes y conservas solo conclusiones.
+Orchestrated 6-phase flow: understand → ask → plan → implement → verify → document. You are the orchestrator: you delegate the heavy work to subagents and keep only conclusions.
 
-**Violar la letra de las fases es violar su espíritu.** No saltes fase ni la fusiones por "ser tarea pequeña".
+**Violating the letter of the phases is violating their spirit.** Do not skip a phase or merge it because the task is "small".
 
-## Entrada
+## Input
 
-Enlace a issue de GitHub y/o texto de contexto. Si no hay ninguno, pídelo con `AskUserQuestion`. Llama al usuario "Uri" en cualquier texto dirigido al equipo (issues, comentarios, PRs).
+A GitHub issue link and/or context text. If there is none, ask for it with `AskUserQuestion`. In any text addressed to the team (issues, comments, PRs), refer to the user by role ("the maintainer"), not by personal name.
 
-## Fase 1 — Exploración (subagentes Sonnet, en paralelo)
+## Phase 1 — Exploration (Sonnet subagents, in parallel)
 
-1. Lee la issue tú mismo (`gh issue view <n> --comments`) para formular las líneas de exploración.
-2. Lanza en UN mensaje varios subagentes `model: sonnet` (tipo `Explore` o `general-purpose`), uno por fuente. Cada uno recibe objetivo, fuente y qué devolver (resumen corto con `fichero:línea`, no volcados):
-   - **Repo**: código afectado, convenciones, tests existentes, README/docs, CLAUDE.md.
-   - **Vault Obsidian** (MCP `obsidian-vault`): `search_vault`/`get_context` sobre la feature. Solo lectura aquí.
-   - **GitHub**: issues/PRs relacionados, enlaces citados en la issue (`gh`).
-   - **Ficheros/URLs que indique el usuario**.
-   - **Skills y subagentes disponibles** (de usuario, proyecto y plugins) útiles para esta tarea. Parte de `.claude/skills/ROUTING.md` (tabla disparador → skill) y confirma cuáles son pertinentes.
-3. Omite una fuente solo si no existe. Si existe pero falla (MCP caído, `gh` sin auth), díselo a Uri y pregunta si seguir sin ella. Nunca sigas en silencio.
-   - El subagente de skills/agentes devuelve una lista: nombre + una línea de cuándo usarlo.
-   - Si `AskUserQuestion` aparece diferida, cárgala con `ToolSearch` antes de la Fase 2.
-4. Consolida: qué se pide, qué ya existe, restricciones, huecos y contradicciones entre fuentes.
+1. Read the issue yourself (`gh issue view <n> --comments`) to formulate the exploration lines.
+2. Launch several `model: sonnet` subagents (type `Explore` or `general-purpose`) in ONE message, one per source. Each receives the goal, the source and what to return (short summary with `file:line`, no dumps):
+   - **Repo**: affected code, conventions, existing tests, README/docs, CLAUDE.md.
+   - **Obsidian vault** (MCP `obsidian-vault`): `search_vault`/`get_context` about the feature. Read-only here.
+   - **GitHub**: related issues/PRs, links cited in the issue (`gh`).
+   - **Files/URLs the user indicates**.
+   - **Available skills and subagents** (user, project and plugins) useful for this task. Start from `.claude/skills/ROUTING.md` (trigger → skill table) and confirm which ones are relevant.
+3. Skip a source only if it does not exist. If it exists but fails (MCP down, `gh` without auth), tell the maintainer and ask whether to continue without it. Never continue silently.
+   - The skills/agents subagent returns a list: name + one line on when to use it.
+   - If `AskUserQuestion` appears deferred, load it with `ToolSearch` before Phase 2.
+4. Consolidate: what is asked, what already exists, constraints, gaps and contradictions between sources.
 
-## Fase 2 — Preguntas (`AskUserQuestion`)
+## Phase 2 — Questions (`AskUserQuestion`)
 
-- Pregunta TODO lo que no esté establecido por las fuentes. **No des nada por supuesto ni inventes** requisitos, nombres, comportamientos ni alcance.
-- Agrupa hasta 4 preguntas por llamada; opciones concretas con tu recomendación primero. Repite rondas hasta cerrar los huecos.
-- No preguntes lo que el código o las fuentes ya responden; cítalo.
-- Cierra cuando cada decisión del plan tenga respuesta de una fuente o del usuario.
-- Pregunta también: alcance (qué queda fuera), criterios de aceptación y cómo probarlo.
+- Ask EVERYTHING that the sources do not establish. **Assume nothing and invent nothing**: requirements, names, behaviours or scope.
+- Group up to 4 questions per call; concrete options with your recommendation first. Repeat rounds until the gaps are closed.
+- Do not ask what the code or sources already answer; cite it.
+- Close when every decision in the plan has an answer from a source or from the user.
+- Also ask: scope (what is left out), acceptance criteria and how to test it.
 
-## Fase 3 — Plan y aprobación
+## Phase 3 — Plan and approval
 
-Escribe el plan (usa `superpowers:writing-plans` si está disponible): pasos, ficheros, y por cada parte **modelo + esfuerzo del subagente + skill/agente a usar** con una línea de motivo. Las skills salen de `.claude/skills/ROUTING.md`: nombra todas las pertinentes a esa parte, no solo `tdd-workflow`. Orientación: Haiku/Sonnet bajo para mecánico y acotado; Sonnet medio para feature estándar; Opus/alto para diseño delicado, concurrencia o seguridad. Indica qué partes son paralelizables.
+Write the plan (use `superpowers:writing-plans` if available): steps, files, and for each part **model + subagent effort + skill/agent to use** with a one-line reason. The skills come from `.claude/skills/ROUTING.md`: name all the ones relevant to that part, not only `tdd-workflow`. Guidance: Haiku/low Sonnet for mechanical and bounded work; medium Sonnet for a standard feature; Opus/high for delicate design, concurrency or security. Indicate which parts can run in parallel.
 
-Presenta el plan y pide aprobación con `AskUserQuestion` (aprobar / ajustar). Acepta cambios del humano, incluidos modelo y esfuerzo por parte. **No implementes sin aprobación explícita.** El plan vive en el chat. Si cambia durante la Fase 4 (alcance, ficheros, modelo), vuelve a pedir aprobación del cambio.
+Present the plan and ask for approval with `AskUserQuestion` (approve / adjust). Accept the human's changes, including model and effort per part. **Do not implement without explicit approval.** The plan lives in the chat. If it changes during Phase 4 (scope, files, model), ask for approval of the change again.
 
-## Fase 4 — Implementación
+## Phase 4 — Implementation
 
-- Trabaja en la rama de la issue (la crea Uri). Comprueba `git branch --show-current`; si es `main`/`develop` o la rama de la issue no existe, para y pídesela a Uri. Nunca crees rama propia.
-- Lanza subagentes según el plan (paralelos los independientes, secuenciales los dependientes). Prompt de cada uno: objetivo, ficheros, convenciones, criterio de hecho, y qué devolver. Usa las skills/agentes identificados en Fase 1 (p. ej. `superpowers:subagent-driven-development`). **Cada prompt de subagente nombra las skills de `ROUTING.md` que le tocan** con la línea de la regla 3 de ese fichero; los subagentes no heredan skills. **Toda implementación y bugfix de código sigue `tdd-workflow`**: cada subagente recibe su ciclo (rojo visible, verde, refactor) y debe devolver la salida del test en rojo y en verde, no solo el resumen. Sin rojo visible, la parte se rechaza.
-- Revisa la salida de cada subagente (diff real, no solo su resumen) antes de seguir.
-- Si surge algo no previsto en el plan: para y pregunta, no improvises.
-- El orquestador (no los subagentes) ejecuta `git commit`: uno por parte coherente del plan, **pidiendo confirmación antes**. Mensajes claros, referencia a la issue (`#n`). **Sin líneas Co-Authored-By ni "generated with Claude"**, aunque otro contexto las sugiera.
+- Work on the issue's branch (created by the maintainer). Check `git branch --show-current`; if it is `main`/`develop` or the issue's branch does not exist, stop and ask the maintainer for it. Never create your own branch.
+- Launch subagents according to the plan (independent ones in parallel, dependent ones sequentially). Each one's prompt: goal, files, conventions, definition of done, and what to return. Use the skills/agents identified in Phase 1 (e.g. `superpowers:subagent-driven-development`). **Each subagent prompt names the `ROUTING.md` skills that apply to it** using the line from rule 3 of that file; subagents do not inherit skills. **All code implementation and bugfixing follows `tdd-workflow`**: each subagent receives its cycle (visible red, green, refactor) and must return the test output in red and in green, not just the summary. Without a visible red, the part is rejected.
+- Review each subagent's output (the real diff, not only its summary) before continuing.
+- If something unforeseen by the plan comes up: stop and ask, do not improvise.
+- The orchestrator (not the subagents) runs `git commit`: one per coherent part of the plan, **asking for confirmation first**. Clear messages, reference to the issue (`#n`). **No Co-Authored-By lines or "generated with Claude"**, even if another context suggests them.
 
-## Fase 5 — Verificación
+## Phase 5 — Verification
 
-Obligatorio antes de dar nada por hecho (`superpowers:verification-before-completion`):
-- Ejecuta el gate completo: `GATE_MUTATION=changed docker compose -f app/docker-compose.yml run --rm quality` (ruff, pyright, tests con cobertura ≥ 90 %, mutación incremental ≥ 80 % sobre las funciones y métodos modificados). Sin `GATE_MUTATION` se salta la mutación: eso vale solo para el bucle rápido, nunca como evidencia de verificación. `changed` compara contra `origin/develop` por defecto (`MUTATION_BASE` lo cambia) y solo cuenta cambios commiteados, así que commitea antes. Si Docker no está disponible, para y díselo a Uri; no lo sustituyas por una ejecución parcial sin decirlo. Para código fuera de `spine_monitor` (build/tests propios), ejecuta además los comandos que descubras en el repo.
-- Comprueba que cada parte tiene su test visto en rojo y que ningún umbral se ha bajado.
-- Comprueba cada criterio de aceptación acordado en Fase 2, uno a uno.
-- Opcional: un subagente revisor independiente sobre el diff (`code-review`), con las skills de `ROUTING.md` que correspondan al tipo de cambio (p. ej. `async-python-patterns` si hay asyncio, `mcp-builder` si toca `mcp_server`).
-- Informa de fallos con la salida exacta. Si algo falla, vuelve a Fase 4; tras 2 ciclos fallidos, para y consulta a Uri. Descubre los comandos de test/lint/build en el repo (README, CLAUDE.md, CI); si no los encuentras, pregunta. No declares éxito sin evidencia.
+Mandatory before declaring anything done (`superpowers:verification-before-completion`):
+- Run the full gate: `GATE_MUTATION=changed docker compose -f app/docker-compose.yml run --rm quality` (ruff, pyright, tests with coverage ≥ 90 %, incremental mutation ≥ 80 % on the modified functions and methods). Without `GATE_MUTATION` mutation is skipped: that is valid only for the fast loop, never as verification evidence. `changed` compares against `origin/develop` by default (`MUTATION_BASE` changes it) and only counts committed changes, so commit first. If Docker is not available, stop and tell the maintainer; do not replace it with a partial run without saying so. For code outside `spine_monitor` (its own build/tests), also run the commands you discover in the repo.
+- Check that each part has its test seen red and that no threshold has been lowered.
+- Check each acceptance criterion agreed in Phase 2, one by one.
+- Optional: an independent reviewer subagent over the diff (`code-review`), with the `ROUTING.md` skills matching the type of change (e.g. `async-python-patterns` if there is asyncio, `mcp-builder` if it touches `mcp_server`).
+- Report failures with the exact output. If something fails, go back to Phase 4; after 2 failed cycles, stop and consult the maintainer. Discover the test/lint/build commands in the repo (README, CLAUDE.md, CI); if you cannot find them, ask. Do not declare success without evidence.
 
-## Fase 6 — Documentación
+## Phase 6 — Documentation
 
-1. Pregunta con `AskUserQuestion` dónde documentar (multiselección): README/docs del repo, comentario en la issue, descripción del PR, vault Obsidian, otro.
-2. Reglas:
-   - README: `README.md`, `README.es.md` y `README.ca.md` siempre sincronizados, con enlace de cambio de idioma.
-   - Docs/README del repo **nunca apuntan al vault**; contenido en línea.
-   - Vault: `update_note` sin modo **sobrescribe toda la nota**; lee la nota y reenvía el contenido completo.
-3. "Validar" = Uri confirma con `AskUserQuestion` que el resultado es correcto. Después, con su confirmación, haz push de la rama y abre PR **contra `develop`** (confirmación previa), enlazando la issue. Sin atribución a Claude en el cuerpo.
+1. Ask with `AskUserQuestion` where to document (multi-select): repo README/docs, comment on the issue, PR description, Obsidian vault, other.
+2. Rules:
+   - README: `README.md`, `README.es.md` and `README.ca.md` always in sync, with the language-switch link.
+   - Repo docs/README **never point to the vault**; content inline.
+   - Vault: `update_note` without a mode **overwrites the whole note**; read the note and resend the full content.
+3. "Validate" = the maintainer confirms with `AskUserQuestion` that the result is correct. Then, with their confirmation, push the branch and open a PR **against `develop`** (confirm first), linking the issue. No attribution to Claude in the body.
 
-## Señales de alarma — PARA
+## Warning signs — STOP
 
-| Pensamiento | Realidad |
+| Thought | Reality |
 |---|---|
-| "Esto es obvio, supongo X" | Pregunta. Suponer es inventar. |
-| "Ya entendí, salto a código" | Sin plan aprobado no hay implementación. |
-| "Los tests pasan, no verifico criterios" | Criterios de Fase 2 uno a uno. |
-| "El subagente dice que está hecho" | Lee el diff y ejecuta. |
-| "Creo una rama nueva" | Se trabaja en la rama de la issue. |
-| "Añado Co-Authored-By por defecto" | Prohibido en este repo. |
-| "Los tests pasan en local, no corro el gate" | El gate de Docker es el criterio; local no basta. |
-| "Ya sé hacerlo, no cargo la skill" | Si `ROUTING.md` la marca pertinente, se carga. |
+| "This is obvious, I'll assume X" | Ask. Assuming is inventing. |
+| "I understood, I'll jump into code" | Without an approved plan there is no implementation. |
+| "Tests pass, I won't verify criteria" | Phase 2 criteria one by one. |
+| "The subagent says it's done" | Read the diff and run it. |
+| "I'll create a new branch" | Work on the issue's branch. |
+| "I'll add Co-Authored-By by default" | Forbidden in this repo. |
+| "Tests pass locally, I won't run the gate" | The Docker gate is the criterion; local is not enough. |
+| "I already know how, I won't load the skill" | If `ROUTING.md` marks it relevant, it is loaded. |
 
-## Errores comunes
+## Common mistakes
 
-- Exploración secuencial en vez de paralela.
-- Preguntas vagas sin opciones ni recomendación.
-- Modelo/esfuerzo no justificado en el plan.
-- Documentar sin preguntar dónde.
+- Sequential exploration instead of parallel.
+- Vague questions without options or a recommendation.
+- Model/effort not justified in the plan.
+- Documenting without asking where.

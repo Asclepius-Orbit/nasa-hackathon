@@ -1,4 +1,4 @@
-"""Gateway falso con un cliente MQTT falso y tiempo virtual (sin broker)."""
+"""Fake gateway with a fake MQTT client and virtual time (no broker)."""
 
 import asyncio
 import itertools
@@ -31,7 +31,7 @@ SCHEMAS = {
 
 
 def make_config(edit=None) -> MissionConfig:
-    """Ejemplo con chunks de 500 ms (menos chunks que validar), sin pérdidas ni reinicios."""
+    """Example with 500 ms chunks (fewer chunks to validate), without losses or reboots."""
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     raw["signals"]["chunk_ms"] = 500
     raw["faults"]["device"]["packet_loss"]["probability"] = 0.0
@@ -75,8 +75,8 @@ class Message:
 
 
 class FakeClient:
-    """`drop_after`: el broker se cae al intentar publicar el chunk número `drop_after` (no llega) y desde
-    entonces todo publish falla. `drop_messages`: la recepción se corta en cuanto se escucha."""
+    """`drop_after`: the broker goes down when trying to publish chunk number `drop_after` (it does not arrive) and from
+    then on every publish fails. `drop_messages`: reception is cut as soon as it is listened to."""
 
     def __init__(self, *, drop_after: int | None = None, drop_messages: bool = False) -> None:
         self.published: list[Published] = []
@@ -131,7 +131,7 @@ def stop(n: int, session_id: str = SESSION) -> dict:
 
 
 class Harness:
-    """Gateway + cliente falso + reloj virtual. `run(seconds)` avanza el reloj y publica lo que toca."""
+    """Gateway + fake client + virtual clock. `run(seconds)` advances the clock and publishes what is due."""
 
     def __init__(self, config: MissionConfig | None = None, *, generator: MissionGenerator | None = None, **kw: Any) -> None:
         self.config = config or make_config()
@@ -165,10 +165,10 @@ def assert_all_valid(client: FakeClient) -> None:
 
 
 def assert_calibrations_resolvable(published: list[Published], *, superseded_ok: bool = False) -> int:
-    """Cada chunk con calibration_id llega cuando la retained de `topics.calibration` de su stream es esa
-    calibración (publicada antes por este cliente): un consumidor tardío siempre la resuelve. Con
-    `superseded_ok`, también vale una que fue la retained de ese topic antes (el resto del bloque en curso
-    tras un `calibrate`). Devuelve cuántos chunks la citan."""
+    """Each chunk with calibration_id arrives when the `topics.calibration` retained of its stream is that
+    calibration (published earlier by this client): a late consumer always resolves it. With
+    `superseded_ok`, one that was the retained of that topic before is also valid (the rest of the current block
+    after a `calibrate`). Returns how many chunks cite it."""
     retained: dict[str, str] = {}
     history: dict[str, set[str]] = {}
     cited = 0
@@ -186,7 +186,7 @@ def assert_calibrations_resolvable(published: list[Published], *, superseded_ok:
 
 
 def assert_retained_calibrations_never_regress(published: list[Published]) -> None:
-    """En cada topic de calibración, una vez sale otro calibration_id no vuelve a salir uno anterior."""
+    """In each calibration topic, once another calibration_id is emitted, an earlier one is never emitted again."""
     seen: dict[str, list[str]] = {}
     for p in published:
         if p.channel == "calibration":
@@ -207,7 +207,7 @@ def seqs_per_stream(payloads: list[dict]) -> dict[str, list[int]]:
     return out
 
 
-# --- arranque -------------------------------------------------------------------------------------
+# --- startup -------------------------------------------------------------------------------------
 
 
 def test_first_tick_publishes_retained_status_and_clock_and_background():
@@ -234,12 +234,12 @@ def test_status_and_clock_follow_their_intervals():
         device = h.config.device
         assert len(h.client.on("status")) == 1 + int(125 // device.status_interval_s)
         assert len(h.client.on("clock")) == 1 + int(125 // device.clock_sync_interval_s)
-        assert chunks(h.client) == []  # sin fondo ni sesión no se publica nada en stream
+        assert chunks(h.client) == []  # without background or session nothing is published on stream
 
     go(scenario())
 
 
-# --- sesiones -------------------------------------------------------------------------------------
+# --- sessions -------------------------------------------------------------------------------------
 
 
 def test_start_session_acks_and_streams_its_chunks():
@@ -292,14 +292,14 @@ def test_stop_completes_the_session_and_background_pauses_and_resumes_with_conti
         background_id = chunks(h.client)[0]["session_id"]
         during = [p.payload for p in h.client.published[before:after_stop] if p.channel == "stream"]
         first_session = next(i for i, c in enumerate(during) if c["session_id"] == SESSION)
-        # Tras el primer chunk de la sesión no hay fondo hasta el stop (solo el vaciado justo al empezar).
+        # After the first chunk of the session there is no background until the stop (only the flush right at the start).
         assert all(c["session_id"] == SESSION for c in during[first_session:])
         resumed = [p.payload for p in h.client.published[after_stop:] if p.channel == "stream"]
         assert resumed and {c["session_id"] for c in resumed} == {background_id}
-        # Mismo stream_id, el seq sigue sin huecos: fondo -> sesión -> fondo.
+        # Same stream_id, the seq continues without gaps: background -> session -> background.
         for stream, seq in seqs_per_stream(chunks(h.client)).items():
             assert seq == list(range(len(seq))), stream
-        # Y los tramos no se solapan en el tiempo del dispositivo.
+        # And the spans do not overlap in device time.
         for stream in ("imu_t9", "stretch_spine"):
             t0 = [c["t0_device_ms"] for c in chunks(h.client) if c["stream_id"] == stream]
             assert t0 == sorted(t0)
@@ -331,10 +331,10 @@ def test_max_duration_ends_the_session():
         session = chunks(h.client, SESSION)
         assert session
         ends = [datetime.fromisoformat(c["received_at"]) for c in session]
-        assert max(ends) <= T0 + timedelta(seconds=3 + 1)  # como mucho el chunk en vuelo al cortar
-        # Después vuelve el fondo.
+        assert max(ends) <= T0 + timedelta(seconds=3 + 1)  # at most the in-flight chunk when cutting
+        # Then the background returns.
         assert chunks(h.client)[-1]["session_id"] != SESSION
-        await h.send(start(2, OTHER))  # ya no está ocupado
+        await h.send(start(2, OTHER))  # no longer busy
         assert h.client.acks(start(2)["command_id"])[0]["status"] == "accepted"
 
     go(scenario())
@@ -355,7 +355,7 @@ def test_mark_event_needs_the_running_session():
     go(scenario())
 
 
-# --- calibración ----------------------------------------------------------------------------------
+# --- calibration ----------------------------------------------------------------------------------
 
 
 def test_calibrate_completes_with_a_calibration_id_used_by_the_next_session():
@@ -384,7 +384,7 @@ def test_calibrate_publishes_retained_calibrations_right_before_its_completed_ac
         cal = command("calibrate", 1, session_id=SESSION, calibration_type="emg_mvc", stream_ids=["emg_lat_left", "emg_lat_right"], duration_s=2)
         await h.send(cal)
         await h.run(1)
-        assert h.client.on("calibration") == []  # aún no ha acabado
+        assert h.client.on("calibration") == []  # has not finished yet
         await h.run(2)
         published = [(p.channel, p.payload) for p in h.client.published if p.channel in ("calibration", "ack")]
         accepted, first, second, completed = published
@@ -393,7 +393,7 @@ def test_calibrate_publishes_retained_calibrations_right_before_its_completed_ac
         assert completed[1]["result"]["calibration_id"] == first[1]["calibration_id"]
         assert all(p[1]["calibration_type"] == "emg_mvc" and p[1]["session_id"] == SESSION for p in (first, second))
         assert all(p.retain and p.qos == 1 for p in h.client.on("calibration"))
-        await h.send(cal)  # reentrega: mismos acks, sin volver a publicar calibraciones
+        await h.send(cal)  # redelivery: same acks, without publishing calibrations again
         assert len(h.client.on("calibration")) == 2 and len(h.client.acks(cal["command_id"])) == 4
         assert_all_valid(h.client)
 
@@ -404,7 +404,7 @@ def test_every_chunk_citing_a_calibration_comes_after_its_retained_calibration()
     async def scenario():
         h = Harness()
         await h.run(3)
-        # El fondo cita la calibración programada de la misión: ya está retained antes de su primer chunk.
+        # The background cites the mission's scheduled calibration: it is already retained before its first chunk.
         scheduled = {c["calibration_id"] for c in chunks(h.client) if "calibration_id" in c}
         assert len(scheduled) == 1 and h.client.on("calibration")[0].payload["calibration_id"] in scheduled
         cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"])
@@ -417,10 +417,10 @@ def test_every_chunk_citing_a_calibration_comes_after_its_retained_calibration()
         await h.run(4)
         cited = {c["calibration_id"] for c in chunks(h.client) if "calibration_id" in c}
         assert live in cited and cited <= {p.payload["calibration_id"] for p in h.client.on("calibration")}
-        # Tras el calibrate, el resto del bloque de fondo en curso aún cita la anterior (ya retained antes).
+        # After the calibrate, the rest of the current background block still cites the previous one (already retained before).
         assert assert_calibrations_resolvable(h.client.published, superseded_ok=True) > 10
         assert_retained_calibrations_never_regress(h.client.published)
-        assert not any(p.channel not in SCHEMAS for p in h.client.published)  # el ground truth nunca va al bus
+        assert not any(p.channel not in SCHEMAS for p in h.client.published)  # the ground truth never goes onto the bus
         assert_all_valid(h.client)
 
     go(scenario())
@@ -433,7 +433,7 @@ def stretch_ids_after(client: FakeClient, mark: int) -> list[str]:
 def test_calibrate_while_background_runs_moves_its_chunks_to_the_new_calibration_from_the_next_block():
     async def scenario():
         h = Harness()
-        block_s = h.config.device.status_interval_s  # un bloque en vivo = un intervalo de estado
+        block_s = h.config.device.status_interval_s  # one live block = one status interval
         await h.run(5)
         (old,) = {c["calibration_id"] for c in chunks(h.client) if c["stream_kind"] == "stretch"}
         cal = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"])
@@ -444,16 +444,16 @@ def test_calibrate_while_background_runs_moves_its_chunks_to_the_new_calibration
         mark = len(h.client.published)
         await h.run(2 * block_s)
         ids = stretch_ids_after(h.client, mark)
-        assert len({c["session_id"] for c in chunks(h.client)}) == 1  # todo es fondo
-        # El resto del bloque en curso cita la anterior; desde el bloque siguiente, la nueva y ya nunca la anterior.
+        assert len({c["session_id"] for c in chunks(h.client)}) == 1  # everything is background
+        # The rest of the current block cites the previous one; from the next block, the new one and never the previous one again.
         first_new = ids.index(new)
         assert set(ids[:first_new]) <= {old} and set(ids[first_new:]) == {new} and len(ids) - first_new >= block_s / 2
-        # La retained del stream pasa de la anterior a la nueva y no vuelve atrás (antes se republicaba la vieja).
+        # The stream's retained goes from the previous to the new one and does not go back (the old one used to be republished).
         topic = topics.calibration(AST, DEV, "stretch_spine")
         assert [p.payload["calibration_id"] for p in h.client.on("calibration") if p.topic == topic] == [old, new]
         assert_retained_calibrations_never_regress(h.client.published)
         assert assert_calibrations_resolvable(h.client.published, superseded_ok=True) > 0
-        assert h.client.acks(cal["command_id"])[-1]["result"]["calibration_id"] == new  # el ack no cambia
+        assert h.client.acks(cal["command_id"])[-1]["result"]["calibration_id"] == new  # the ack does not change
         assert_all_valid(h.client)
 
     go(scenario())
@@ -481,7 +481,7 @@ def test_a_calibrate_superseded_before_it_completes_is_not_published_but_keeps_i
     go(scenario())
 
 
-# --- estado: last_seq -----------------------------------------------------------------------------
+# --- state: last_seq -----------------------------------------------------------------------------
 
 
 def test_status_last_seq_never_reports_an_unpublished_seq():
@@ -502,22 +502,22 @@ def test_status_last_seq_never_reports_an_unpublished_seq():
                 statuses += 1
                 for s in p.payload["streams"]:
                     published = seen.get((p.payload["boot_id"], s["stream_id"]))
-                    # Exactamente lo último publicado (el dispositivo ya comprometió el chunk siguiente).
+                    # Exactly the last published (the device already committed the next chunk).
                     assert s.get("last_seq") == published, (p.payload["timestamp"], s)
         assert statuses >= 3
         device = h.gateway._units[0].device
         boot = h.client.on("status")[-1].payload["boot_id"]
-        assert any(device.next_seq(boot, s) - 1 > seen[(boot, s)] for s in ("imu_t9", "stretch_spine"))  # hay anticipo
+        assert any(device.next_seq(boot, s) - 1 > seen[(boot, s)] for s in ("imu_t9", "stretch_spine"))  # there is look-ahead
 
     go(scenario())
 
 
-# --- ritmo y bucle de eventos ---------------------------------------------------------------------
+# --- pacing and event loop ---------------------------------------------------------------------
 
 
 def test_each_source_paces_the_loop_with_its_own_chunk():
     async def scenario():
-        config = make_config()  # sesiones a 500 ms, fondo a 1000 ms
+        config = make_config()  # sessions at 500 ms, background at 1000 ms
         assert config.schedule.background.chunk_ms == 1000.0
         clock = Clock()
         client = FakeClient()
@@ -542,7 +542,7 @@ def test_each_source_paces_the_loop_with_its_own_chunk():
         background = [s for s, in_session in sleeps if not in_session]
         session = [s for s, in_session in sleeps if in_session]
         assert session and max(session) <= 0.5
-        assert max(background) <= 1.0 and max(background) > 0.5  # el fondo no se despierta cada 500 ms
+        assert max(background) <= 1.0 and max(background) > 0.5  # the background does not wake up every 500 ms
         t0 = [c["t0_device_ms"] for c in chunks(client) if c["stream_id"] == "imu_t9" and c["session_id"] != SESSION][:4]
         assert len(t0) == 4 and all(abs(b - a - 1000) <= 2 for a, b in itertools.pairwise(t0))
         assert_all_valid(client)
@@ -562,8 +562,8 @@ def test_long_synthesis_runs_off_the_event_loop():
             inner = real(**kw)
 
             def gen():
-                # Síntesis "larga": solo acaba cuando otra tarea del bucle la libera. Si corriera en el
-                # bucle, nadie la liberaría y `wait` agotaría su tiempo.
+                # "Long" synthesis: it only finishes when another loop task releases it. If it ran on the
+                # loop, nobody would release it and `wait` would time out.
                 released.append(gate.wait(timeout=10))
                 yield from inner
 
@@ -608,7 +608,7 @@ def test_calibrate_rejections():
     go(scenario())
 
 
-# --- comandos inválidos ---------------------------------------------------------------------------
+# --- invalid commands ---------------------------------------------------------------------------
 
 
 def test_invalid_commands_are_rejected_or_ignored_without_crashing():
@@ -616,8 +616,8 @@ def test_invalid_commands_are_rejected_or_ignored_without_crashing():
         h = Harness()
         await h.send(b"\xff not json")
         await h.send(b"[1, 2, 3]")
-        await h.send({"type": "start_session"})  # sin command_id: nada que responder
-        await h.send(start(9), topic=topics.cmd("AST-02", "sim-02"))  # topic de otro gateway
+        await h.send({"type": "start_session"})  # without command_id: nothing to reply to
+        await h.send(start(9), topic=topics.cmd("AST-02", "sim-02"))  # topic of another gateway
         assert h.client.published == []
 
         missing = start(1)
@@ -632,7 +632,7 @@ def test_invalid_commands_are_rejected_or_ignored_without_crashing():
             (ack,) = h.client.acks(payload["command_id"])
             assert ack["status"] == "rejected" and ack["error"]["code"] == "invalid_command"
             assert ack["astronaut_id"] == AST and ack["device_id"] == DEV
-        # Y sigue funcionando.
+        # And it keeps working.
         await h.send(start(4))
         assert h.client.acks(start(4)["command_id"])[0]["status"] == "accepted"
         assert_all_valid(h.client)
@@ -643,11 +643,11 @@ def test_invalid_commands_are_rejected_or_ignored_without_crashing():
 def test_hostile_payloads_never_bring_the_gateway_down():
     async def scenario():
         h = Harness()
-        # Anidado hasta provocar RecursionError en json.loads: se ignora (menor que el tope de tamaño).
+        # Nested until it causes RecursionError in json.loads: ignored (smaller than the size cap).
         deep = b"[" * 10_000 + b"]" * 10_000
         await h.send(deep)
         assert h.client.published == []
-        # Demasiado grande con command_id legible: invalid_command sin parsear; sin command_id: se ignora.
+        # Too large with a readable command_id: invalid_command without parsing; without command_id: ignored.
         big = start(1)
         big["padding"] = "x" * 20_000
         await h.send(big)
@@ -655,7 +655,7 @@ def test_hostile_payloads_never_bring_the_gateway_down():
         assert ack["status"] == "rejected" and ack["error"]["code"] == "invalid_command"
         await h.send(b'{"padding": "' + b"x" * 20_000 + b'"}')
         assert len(h.client.published) == 1
-        # Y sigue funcionando.
+        # And it keeps working.
         await h.send(start(2))
         assert h.client.acks(start(2)["command_id"])[0]["status"] == "accepted"
         assert_all_valid(h.client)
@@ -679,9 +679,9 @@ def test_failed_accepted_publish_leaves_no_session_running():
         h.client.publish = real
         assert h.gateway._units[0].session is None
         assert h.client.acks(start(1)["command_id"]) == []
-        await h.run(2)  # el fondo sigue publicando
+        await h.run(2)  # the background keeps publishing
         assert chunks(h.client)[-1]["session_id"] != SESSION
-        # El cliente reintenta (mismo command_id): se ejecuta de nuevo con normalidad.
+        # The client retries (same command_id): it runs again normally.
         await h.send(start(1))
         assert [a["status"] for a in h.client.acks(start(1)["command_id"])] == ["accepted"]
         assert h.gateway._units[0].session is not None
@@ -713,7 +713,7 @@ def test_handled_commands_lru_is_bounded():
     async def scenario():
         h = Harness()
         for n in range(1, 300):
-            await h.send(stop(n))  # no_session: cada uno anota su ack
+            await h.send(stop(n))  # no_session: each one records its ack
         assert len(h.gateway._units[0].handled) <= 256
 
     go(scenario())
@@ -732,17 +732,17 @@ def test_huge_durations_are_rejected_before_touching_state():
             assert "duration exceeds" in ack["error"]["message"]
         assert h.gateway._units[0].session is None
         await h.run(2)
-        assert chunks(h.client)[-1]["session_id"] != SESSION  # el fondo no se paró
+        assert chunks(h.client)[-1]["session_id"] != SESSION  # the background did not stop
         assert_all_valid(h.client)
 
     go(scenario())
 
 
-# --- día de misión y dispositivo ------------------------------------------------------------------
+# --- mission day and device ------------------------------------------------------------------
 
 
 def test_mission_day_advances_with_speed_and_is_clamped():
-    h = Harness(speed=1440.0, start_day=2)  # un día de misión por minuto
+    h = Harness(speed=1440.0, start_day=2)  # one mission day per minute
     total = h.config.total_days
     assert h.gateway.mission_day(T0) == 2
     assert h.gateway.mission_day(T0 + timedelta(seconds=59)) == 2
@@ -755,7 +755,7 @@ def test_mission_day_advances_with_speed_and_is_clamped():
 
 def test_background_gets_a_new_session_id_each_mission_day():
     async def scenario():
-        h = Harness(speed=86400.0 / 10, start_day=1)  # un día de misión cada 10 s
+        h = Harness(speed=86400.0 / 10, start_day=1)  # one mission day every 10 s
         await h.run(25)
         ids = list(dict.fromkeys(c["session_id"] for c in chunks(h.client)))
         assert len(ids) == 3
@@ -786,7 +786,7 @@ def test_device_recharges_after_its_power_window():
     go(scenario())
 
 
-# --- bucle completo, Last Will y parada -----------------------------------------------------------
+# --- full loop, Last Will and stop -----------------------------------------------------------
 
 
 def test_run_subscribes_serves_commands_and_publishes_offline_on_shutdown():
@@ -795,7 +795,7 @@ def test_run_subscribes_serves_commands_and_publishes_offline_on_shutdown():
         client = FakeClient()
         reached = asyncio.Event()
 
-        async def sleep(seconds: float) -> None:  # tiempo virtual
+        async def sleep(seconds: float) -> None:  # virtual time
             clock.advance(seconds)
             if clock.now >= T0 + timedelta(seconds=6):
                 reached.set()
@@ -809,7 +809,7 @@ def test_run_subscribes_serves_commands_and_publishes_offline_on_shutdown():
         with pytest.raises(asyncio.CancelledError):
             await task
         assert sorted(client.subscriptions) == [(topics.cmd("AST-01", "sim-01"), 1), (topics.cmd("AST-02", "sim-02"), 1)]
-        assert h_status(client, "AST-02")  # también el segundo astronauta
+        assert h_status(client, "AST-02")  # also the second astronaut
         assert client.acks(start(1)["command_id"])[0]["status"] == "accepted"
         assert chunks(client, SESSION)
         last = [p for p in client.on("status") if p.payload["astronaut_id"] == AST][-1]
@@ -861,7 +861,7 @@ def test_serve_opens_one_connection_per_device_with_its_last_will():
 
 
 class FakeConnection:
-    """Un intento de conexión: entrar da `client`, o MqttError si es None (el broker la rechaza)."""
+    """A connection attempt: entering gives `client`, or MqttError if it is None (the broker rejects it)."""
 
     def __init__(self, client: FakeClient | None) -> None:
         self.client = client
@@ -876,8 +876,8 @@ class FakeConnection:
 
 
 class Connections:
-    """client_factory para `_serve`: anota cada intento (kwargs) y da el cliente que diga `plan(identifier,
-    intento)`; None = el broker rechaza la conexión."""
+    """client_factory for `_serve`: records each attempt (kwargs) and gives the client that `plan(identifier,
+    attempt)` says; None = the broker rejects the connection."""
 
     def __init__(self, plan) -> None:
         self.plan = plan
@@ -903,7 +903,7 @@ def test_broker_drop_mid_run_reconnects_resubscribes_and_resumes_without_seq_gap
                 return first if n == 1 else second
             return FakeClient()
 
-        async def sleep(seconds: float) -> None:  # tiempo virtual; el ritmo nunca pasa de 1 s, el backoff sí
+        async def sleep(seconds: float) -> None:  # virtual time; the pacing never exceeds 1 s, the backoff does
             if seconds > 1.0:
                 backoff.append(seconds)
             clock.advance(seconds)
@@ -930,15 +930,15 @@ def test_broker_drop_mid_run_reconnects_resubscribes_and_resumes_without_seq_gap
         assert first.dropped and backoff == [3.0]
         ours = [a for a in connections.attempts if a["identifier"].endswith("sim-01")]
         assert len(ours) == 2 and all(a["will"].topic == topics.status(AST, DEV) for a in ours)
-        assert second.subscriptions == [(topics.cmd(AST, DEV), 1)]  # se vuelve a suscribir
-        # Al reconectar: estado `ok` (el Last Will dejó `offline`) antes que ningún chunk, y la sesión sigue.
+        assert second.subscriptions == [(topics.cmd(AST, DEV), 1)]  # subscribes again
+        # On reconnect: status `ok` (the Last Will left `offline`) before any chunk, and the session continues.
         assert second.published[0].channel in ("status", "clock") and second.on("status")[0].payload["status"] == "ok"
         assert chunks(first, SESSION) and chunks(second, SESSION)
-        # Ni huecos ni duplicados de seq entre las dos conexiones (el chunk que falló se publica después).
+        # Neither gaps nor duplicate seq between the two connections (the chunk that failed is published afterwards).
         both = chunks(first) + chunks(second)
         for stream, seq in seqs_per_stream(both).items():
             assert seq == list(range(len(seq))), stream
-        # La calibración se vuelve a dejar retained en la conexión nueva antes de sus chunks.
+        # The calibration is left retained again on the new connection before its chunks.
         assert assert_calibrations_resolvable(second.published) > 0
         assert_retained_calibrations_never_regress(first.published + second.published)
         assert second.on("status")[-1].payload["status"] == "offline" and second.on("status")[-1].retain  # SIGTERM
@@ -956,8 +956,8 @@ def test_reconnect_backoff_grows_caps_and_resets_after_connecting():
 
         def plan(identifier: str, n: int) -> FakeClient | None:
             if n <= 5:
-                return None  # broker caído: conexión rechazada
-            return FakeClient(drop_messages=True) if n == 6 else final  # conecta y se corta enseguida; luego bien
+                return None  # broker down: connection rejected
+            return FakeClient(drop_messages=True) if n == 6 else final  # connects and drops right away; then fine
 
         async def sleep(seconds: float) -> None:
             if seconds > 1.0:
@@ -1008,7 +1008,7 @@ def test_settings_come_from_spine_sim_env(monkeypatch):
         GatewaySettings()
 
 
-# --- credenciales y TLS del broker (#96) ------------------------------------------------------------------------------
+# --- broker credentials and TLS (#96) ------------------------------------------------------------------------------
 
 
 def test_mqtt_credentials_and_tls_are_off_by_default():
@@ -1028,7 +1028,7 @@ def test_mqtt_credentials_come_from_spine_sim_env_and_the_password_is_never_show
 
 
 async def _first_attempts(s: GatewaySettings) -> list[dict]:
-    """Abre las conexiones de `_serve` (una por dispositivo) contra clientes falsos y devuelve sus kwargs."""
+    """Opens the `_serve` connections (one per device) against fake clients and returns their kwargs."""
     connections = Connections(lambda identifier, n: FakeClient())
     task = asyncio.create_task(_serve(MissionGenerator(make_config()), s, client_factory=connections, clock=lambda: datetime.now(UTC)))
     await asyncio.wait_for(_until(lambda: len(connections.attempts) >= 2), timeout=10)
@@ -1056,7 +1056,7 @@ def test_without_credentials_or_tls_the_connection_is_anonymous_and_plain():
     assert all((a["username"], a["password"], a["tls_params"]) == (None, None, None) for a in attempts)
 
 
-# --- textos y límites de los rechazos ------------------------------------------------------------------
+# --- texts and limits of the rejections ------------------------------------------------------------------
 
 
 def test_rejections_say_what_is_wrong():
@@ -1086,7 +1086,7 @@ def test_the_payload_limit_is_inclusive_and_the_rejection_names_the_size():
         h = Harness()
         limit = 16 * 1024
         base = json.dumps(start(1)).encode()
-        at_limit = base + b" " * (limit - len(base))  # JSON valido con exactamente `limit` bytes
+        at_limit = base + b" " * (limit - len(base))  # valid JSON with exactly `limit` bytes
         assert len(at_limit) == limit
         await h.send(at_limit)
         assert [a["status"] for a in h.client.acks(start(1)["command_id"])] == ["accepted"]
@@ -1101,7 +1101,7 @@ def test_the_payload_limit_is_inclusive_and_the_rejection_names_the_size():
 
 
 class BrokenLiveSessions(MissionGenerator):
-    """Colaborador inyectado que falla donde el gateway le pide una sesión en vivo."""
+    """Injected collaborator that fails where the gateway asks it for a live session."""
 
     def live_session(self, **kwargs: Any):
         raise RuntimeError("boom")
@@ -1116,7 +1116,7 @@ def test_an_unexpected_error_is_acked_as_failed_and_the_gateway_goes_on():
         assert [a["status"] for a in acks] == ["accepted", "failed"]
         assert acks[1]["error"] == {"code": "internal", "message": "internal gateway error"}
         assert h.gateway._units[0].session is None
-        await h.send(stop(2))  # sigue atendiendo comandos
+        await h.send(stop(2))  # keeps serving commands
         assert h.client.acks(stop(2)["command_id"])[0]["error"]["code"] == "no_session"
         assert_all_valid(h.client)
 
@@ -1147,7 +1147,7 @@ def test_the_handled_commands_memory_keeps_the_most_recent_ones():
         h = Harness()
         for n in range(1, 300):
             await h.send(stop(n))
-        handled = h.gateway._units[0].handled  # cota interna (no esta en ningun contrato): la memoria es acotada y expulsa lo mas antiguo
+        handled = h.gateway._units[0].handled  # internal bound (not in any contract): the memory is bounded and evicts the oldest
         assert len(handled) == 256
         assert stop(299)["command_id"] in handled and stop(1)["command_id"] not in handled and stop(44)["command_id"] in handled
 
@@ -1161,7 +1161,7 @@ def test_a_session_with_max_duration_streams_until_then():
         await h.run(8)
         session = chunks(h.client, SESSION)
         ends = [datetime.fromisoformat(c["received_at"]) for c in session]
-        assert max(ends) >= T0 + timedelta(seconds=2)  # no se corta nada mas empezar
+        assert max(ends) >= T0 + timedelta(seconds=2)  # nothing is cut right after starting
         assert len({c["seq"] for c in session if c["stream_id"] == "imu_t9"}) >= 5
 
     go(scenario())

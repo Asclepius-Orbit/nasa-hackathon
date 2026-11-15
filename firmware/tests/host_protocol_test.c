@@ -1,7 +1,7 @@
 /*
- * Test de paridad en host de protocol.h: codifica los vectores dorados con los mismos
- * valores que el protocolo cerrado y los compara BYTE A BYTE con tests/golden_lines.txt.
- * Sale con codigo != 0 si algo difiere.
+ * Host parity test of protocol.h: encodes the golden vectors with the same
+ * values as the closed protocol and compares them BYTE BY BYTE with tests/golden_lines.txt.
+ * Exits with code != 0 if anything differs.
  *
  *   gcc -std=c11 -Wall -Wextra -Werror -pedantic -I spine_wearable \
  *       tests/host_protocol_test.c -o host_protocol_test
@@ -46,7 +46,7 @@ static void expect_str(const char *what, const char *got, const char *want)
     }
 }
 
-/* Lee la linea n-esima del fichero dorado (con su '\n'); 0 si no existe. */
+/* Reads the n-th line of the golden file (with its '\n'); 0 if it does not exist. */
 static int read_golden(FILE *f, char *out, size_t cap)
 {
     if (fgets(out, (int)cap, f) == NULL) {
@@ -70,16 +70,16 @@ int main(int argc, char **argv)
     size_t i;
 
     if (f == NULL) {
-        printf("FAIL no se puede abrir %s\n", golden_path);
+        printf("FAIL cannot open %s\n", golden_path);
         return 2;
     }
 
-    /* CRC-8/MAXIM: valor de comprobacion del catalogo. */
+    /* CRC-8/MAXIM: check value from the catalogue. */
     {
         const char *check = "123456789";
         uint8_t crc = sp_crc8((const uint8_t *)check, strlen(check));
         if (crc != 0xA1) {
-            printf("FAIL CRC8(\"123456789\") = 0x%02X, se esperaba 0xA1\n", crc);
+            printf("FAIL CRC8(\"123456789\") = 0x%02X, expected 0xA1\n", crc);
             failures++;
         } else {
             printf("ok   CRC8(\"123456789\") == 0xA1\n");
@@ -136,14 +136,14 @@ int main(int argc, char **argv)
         expect_str("D,S", cap.buf, want);
     }
 
-    /* El fichero dorado no debe tener mas lineas que vectores. */
+    /* The golden file must not have more lines than vectors. */
     if (read_golden(f, want, sizeof want)) {
-        printf("FAIL golden_lines.txt tiene lineas de mas: %s", want);
+        printf("FAIL golden_lines.txt has extra lines: %s", want);
         failures++;
     }
     fclose(f);
 
-    /* Base64: vectores de la RFC 4648 (cubren los tres tipos de padding). */
+    /* Base64: RFC 4648 vectors (they cover the three padding types). */
     {
         static const char *const plain[] = {"", "f", "fo", "foo", "foob", "fooba", "foobar"};
         static const char *const b64[] = {"", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy"};
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Enteros: extremos y ausencia de ceros a la izquierda. */
+    /* Integers: extremes and absence of leading zeros. */
     {
         static const uint32_t vals[] = {0u, 9u, 10u, 65535u, 4294967295u};
         static const char *const txt[] = {"0", "9", "10", "65535", "4294967295"};

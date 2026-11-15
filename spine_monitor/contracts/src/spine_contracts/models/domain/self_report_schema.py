@@ -132,7 +132,7 @@ class RedFlagReport(ReportBase):
     )
     other_symptoms: list[OtherSymptom] | None = Field(
         None,
-        description='Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model (Aguado): they are reported, not triaged here.',
+        description='Urgent symptoms outside the red-flag catalogue (the Urgent dialog of the UI). Whether they escalate like a red flag is pending the clinical model: they are reported, not triaged here.',
     )
     onset: AwareDatetime | None = Field(
         None,

@@ -1,5 +1,5 @@
-"""Riesgo con sentido y rangos del catálogo. Nada de ids ni umbrales clínicos: salen de un catálogo de
-ejemplo (fixture) o del catálogo real, que el motor solo lee."""
+"""Risk with direction and ranges from the catalogue. No clinical ids or thresholds: they come from an example
+catalogue (fixture) or from the real catalogue, which the engine only reads."""
 
 import math
 from collections.abc import Mapping
@@ -22,7 +22,7 @@ PREFIX = "stretch.full_spine."
 
 
 class DictCatalog:
-    """CatalogView de ejemplo, respaldado por diccionarios. Lanza KeyError con ids desconocidos, como el real."""
+    """Example CatalogView, backed by dictionaries. Raises KeyError with unknown ids, like the real one."""
 
     def __init__(self, directions: Mapping[str, str], ranges: Mapping[str, dict[str, Any] | None]) -> None:
         self._directions = directions
@@ -71,7 +71,7 @@ def prefixed_model() -> DeviationRiskModel:
 
 
 def raw(deviation: Deviation, catalog: Any = None) -> float:
-    """Suma cruda de una única desviación: score = 1 - exp(-raw / 2)."""
+    """Raw sum of a single deviation: score = 1 - exp(-raw / 2)."""
     result = make(CATALOG if catalog is None else catalog).score([deviation], 1.0)
     return -2.0 * math.log1p(-result.score) if result.score < 1.0 else math.inf
 

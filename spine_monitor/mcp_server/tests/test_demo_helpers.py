@@ -1,4 +1,4 @@
-"""Funciones auxiliares del dataset de demo, con las expectativas calculadas a mano."""
+"""Helper functions of the demo dataset, with hand-computed expectations."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -17,7 +17,7 @@ def _at(day: int, hour: int, minute: int = 0, month: int = 11) -> datetime:
     [(0.0, "green"), (0.39, "green"), (0.399999, "green"), (0.4, "amber"), (0.41, "amber"), (0.799999, "amber"), (0.8, "red"), (0.81, "red"), (1.0, "red")],
 )
 def test_level_thresholds_are_0_4_and_0_8_with_the_upper_bound_exclusive(score: float, level: str):
-    assert demo._level(score) == level  # pyright: ignore[reportPrivateUsage] -- se prueba el helper privado del módulo
+    assert demo._level(score) == level  # pyright: ignore[reportPrivateUsage] -- the private helper of the module is tested
 
 
 @pytest.mark.parametrize(
@@ -87,7 +87,7 @@ def test_risk_per_day(t: int, risk: float):
     assert demo._risk(t) == risk  # pyright: ignore[reportPrivateUsage] -- helper privado
 
 
-# media de ventana [t-6, t] sobre _PAIN = [2,2,2,2,2,2,3,3,3,4,4,5,5,5]
+# window mean [t-6, t] over _PAIN = [2,2,2,2,2,2,3,3,3,4,4,5,5,5]
 @pytest.mark.parametrize(
     ("t", "mean"),
     [(0, 2.0), (3, 2.0), (5, 2.0), (6, 2.1), (7, 2.3), (8, 2.4), (9, 2.7), (10, 3.0), (11, 3.4), (12, 3.9), (13, 4.1)],

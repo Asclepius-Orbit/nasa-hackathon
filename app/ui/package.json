@@ -25,6 +25,7 @@
     "test:cov": "vitest run --coverage",
     "e2e": "pnpm build:e2e && playwright test --project=app",
     "e2e:real": "node scripts/e2e-real.mjs",
+    "e2e:real:device": "node scripts/e2e-real.mjs --device",
     "audit": "pnpm audit --audit-level high",
     "check": "pnpm lint && pnpm typecheck && pnpm check:types && pnpm test:cov && pnpm run audit && pnpm check:bundle",
     "e2e:packaged": "pnpm build && electron-builder --win --dir && playwright test --project=packaged",

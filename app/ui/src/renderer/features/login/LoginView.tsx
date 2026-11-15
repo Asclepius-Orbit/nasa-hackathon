@@ -5,7 +5,6 @@ import type { CrewMember } from '../../../shared/api';
 import { useApi } from '../../api/ApiContext';
 import { useAuth } from '../../auth/AuthProvider';
 import { useNow } from '../../clock/Clock';
-import { MockSkipLogin } from '../../components/layout/MockSkipLogin';
 import { Button } from '../../components/ui/Button';
 import { cx } from '../../components/ui/cx';
 import { Keypad } from '../../components/ui/Keypad';
@@ -16,6 +15,7 @@ import { useSettings } from '../../settings/SettingsProvider';
 import { groundLinkValue } from '../../strings/common';
 import { cleanName, createFailureMessage, initials, login, pinFailureMessage } from '../../strings/login';
 import { useUrgent } from '../urgent/UrgentContext';
+import logo from '../../assets/logo-transparent.png';
 import styles from './Login.module.css';
 import { NewMemberForm } from './NewMemberForm';
 import { PinDots } from './PinDots';
@@ -37,6 +37,7 @@ function SidePanel(): React.JSX.Element {
   const { formatTime } = useSettings();
   return (
     <div className={styles.side}>
+      <img src={logo} alt="Asclepius Orbit logo" className={styles.logo} width={72} height={72} />
       <span className={styles.mark}>{login.mark}</span>
       <h1 id="login-title">{login.title}</h1>
       <p>{login.intro}</p>
@@ -283,7 +284,6 @@ export function LoginView(): React.JSX.Element {
         >
           {login.urgent}
         </Button>
-        <MockSkipLogin />
       </div>
     </section>
   );

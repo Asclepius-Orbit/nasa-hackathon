@@ -1,4 +1,4 @@
-"""Comandos inválidos, reentregas y errores inesperados: el gateway real responde lo que puede y nunca se cae."""
+"""Invalid commands, redeliveries and unexpected errors: the real gateway answers what it can and never crashes."""
 
 import asyncio
 import json
@@ -56,7 +56,7 @@ def test_unreadable_commands_are_ignored_and_invalid_ones_rejected(harness) -> N
             for n in (1, 2, 3):
                 (ack,) = h.client.acks(cid(n))
                 assert ack["status"] == "rejected" and ack["error"]["code"] == "invalid_command" and ack["astronaut_id"] == AST
-            await h.send(start(4))  # y sigue funcionando
+            await h.send(start(4))  # and keeps working
             assert statuses_of(h, 4) == ["accepted"]
 
     go(scenario())
@@ -94,7 +94,7 @@ def test_redelivered_commands_get_the_same_acks_without_running_again(harness) -
             await h.send(stop(2))
             await h.send(stop(2))
             assert statuses_of(h, 2) == ["accepted", "completed"] * 2
-            # El completed del start, anotado en su entrada, también se reenvía.
+            # The start's completed, recorded in its entry, is also resent.
             await h.send(start(1))
             assert statuses_of(h, 1) == ["accepted", "accepted", "completed", "accepted", "completed"]
 
@@ -106,20 +106,20 @@ def test_the_handled_commands_memory_is_bounded_and_keeps_the_most_recent(harnes
         async with harness() as h:
             await h.boot()
             for n in range(1, 260):
-                await h.send(stop(n))  # no_session: cada uno anota su ack (a las 09:00:00)
+                await h.send(stop(n))  # no_session: each one records its ack (at 09:00:00)
             await h.time.advance(1.0)
 
             def stamps(n: int) -> list[str]:
-                # Un ack reenviado es idéntico al original (09:00:00); uno nuevo lleva la hora de su ejecución.
+                # A resent ack is identical to the original (09:00:00); a new one carries its execution time.
                 return [a["timestamp"][-3:-1] for a in h.client.acks(cid(n))]
 
-            await h.send(stop(5))  # se reenvía (sigue en la memoria: 4..259) y pasa a ser el más reciente
-            await h.send(stop(260))  # expulsa al 4
-            await h.send(stop(3))  # olvidado: se ejecuta otra vez y expulsa al 6
-            await h.send(stop(5))  # sigue en la memoria
+            await h.send(stop(5))  # resent (still in memory: 4..259) and becomes the most recent
+            await h.send(stop(260))  # evicts 4
+            await h.send(stop(3))  # forgotten: runs again and evicts 6
+            await h.send(stop(5))  # still in memory
             await h.send(stop(4))
             await h.send(stop(6))
-            await h.send(stop(9))  # 4 y 6 han expulsado al 7 y al 8; el 9 sigue
+            await h.send(stop(9))  # 4 and 6 have evicted 7 and 8; 9 remains
             assert {n: stamps(n) for n in (3, 4, 5, 6, 9)} == {
                 3: ["00", "01"], 4: ["00", "01"], 5: ["00", "00", "00"], 6: ["00", "01"], 9: ["00", "00"],
             }  # fmt: skip
@@ -134,8 +134,8 @@ def test_the_handled_commands_memory_holds_exactly_256(harness) -> None:
             for n in range(1, 258):
                 await h.send(stop(n))
             await h.time.advance(1.0)
-            await h.send(stop(2))  # memoria: 2..257, sigue
-            await h.send(stop(1))  # el 257.º más antiguo: olvidado
+            await h.send(stop(2))  # memory: 2..257, continues
+            await h.send(stop(1))  # the 257th oldest: forgotten
             assert [a["timestamp"] for a in h.client.acks(cid(2))] == ["2026-11-02T09:00:00Z"] * 2
             assert [a["timestamp"] for a in h.client.acks(cid(1))] == ["2026-11-02T09:00:00Z", "2026-11-02T09:00:01Z"]
 
@@ -157,7 +157,7 @@ def test_an_unexpected_error_is_acked_failed_internal_and_nothing_starts(harness
             ]  # fmt: skip
             await h.run_device(1.0)
             assert all(c["session_id"] != SESSION for c in h.client.payloads("stream"))
-            await h.send(stop(2))  # sigue atendiendo comandos
+            await h.send(stop(2))  # keeps serving commands
             assert h.client.acks(cid(2))[0]["error"]["code"] == "no_session"
 
     go(scenario())
@@ -171,7 +171,7 @@ def test_a_command_whose_acks_never_left_runs_again_when_redelivered(harness) ->
             await h.send(start(1))
             assert h.client.acks(cid(1)) == []
             h.client.fault = None
-            await h.send(start(1))  # el cliente reintenta con el mismo command_id
+            await h.send(start(1))  # the client retries with the same command_id
             assert statuses_of(h, 1) == ["accepted"]
             await h.run_device(0.1)
             assert any(c["session_id"] == SESSION for c in h.client.payloads("stream"))
@@ -207,11 +207,11 @@ def test_an_error_inside_a_timer_task_does_not_stop_the_gateway(harness) -> None
             calibrate = command("calibrate", 1, session_id=SESSION, calibration_type="stretch", stream_ids=["stretch_spine"], duration_s=1)
             await h.send(calibrate)
             h.client.fault = lambda topic: RuntimeError("boom") if topic.endswith("/ack") else None
-            await h.run_device(6.5, kinds=(FrameKind.IMU,))  # vence el plazo y su ack failed revienta
+            await h.run_device(6.5, kinds=(FrameKind.IMU,))  # the deadline expires and its failed ack blows up
             h.client.fault = None
             await h.send(start(2))
             assert statuses_of(h, 2) == ["accepted"]
-            await h.send(calibrate | {"command_id": cid(3)})  # la calibración anterior ya no ocupa el dispositivo
+            await h.send(calibrate | {"command_id": cid(3)})  # the previous calibration no longer occupies the device
             assert statuses_of(h, 3) == ["accepted"]
 
     go(scenario())
@@ -234,7 +234,7 @@ def test_an_accepted_ack_that_cannot_leave_changes_nothing(harness) -> None:
         import aiomqtt
 
         async def lost_ack(payload: dict[str, Any]) -> None:
-            """El broker se cae justo al publicar el ``accepted``: la conexión se rehace con un cliente nuevo."""
+            """The broker goes down right when publishing ``accepted``: the connection is rebuilt with a new client."""
             gone = h.client
             gone.fault = lambda topic: aiomqtt.MqttError("Disconnected") if topic.endswith("/ack") else None
             gone.inbox.queue.put_nowait(_message(topics.cmd(AST, DEV), payload))
@@ -248,11 +248,11 @@ def test_an_accepted_ack_that_cannot_leave_changes_nothing(harness) -> None:
             await lost_ack(start(1))
             await lost_ack(calibrate)
             await h.send(start(2) | {"command_id": cid(2)})
-            assert statuses_of(h, 2) == ["accepted"]  # el start perdido no dejó sesión
+            assert statuses_of(h, 2) == ["accepted"]  # the lost start left no session
             await lost_ack(stop(4))
             await h.run_device(0.2)
-            assert h.client.payloads("stream")[-1]["session_id"] == SESSION  # el stop perdido no la paró
-            # Las reentregas se ejecutan de verdad (ningún ack llegó a salir).
+            assert h.client.payloads("stream")[-1]["session_id"] == SESSION  # the lost stop did not stop it
+            # Redeliveries really execute (no ack ever went out).
             await h.send(calibrate)
             await h.send(stop(4))
             await h.send(start(5) | {"session_id": other})

@@ -30,7 +30,13 @@ const api: AsclepiusApi = Object.freeze({
   } satisfies AsclepiusApi['settings']),
   // Every view call rejects with an Error whose message is exactly a ViewsErrorCode (see shared/views-errors).
   views: Object.freeze({
-    strip: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsStrip)),
+    strip: () =>
+      viewsCall(async () => {
+        const view: unknown = await ipcRenderer.invoke(IPC_CHANNELS.viewsStrip);
+        // The main process answers null, not an error, while nobody is unlocked.
+        if (view === null) throw new Error('locked');
+        return view as Awaited<ReturnType<AsclepiusApi['views']['strip']>>;
+      }),
     today: () => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsToday)),
     // Always exactly one argument: the main process rejects a missing or extra one.
     history: (range = {}) => viewsCall(() => ipcRenderer.invoke(IPC_CHANNELS.viewsHistory, range)),

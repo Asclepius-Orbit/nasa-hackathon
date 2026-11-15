@@ -83,7 +83,7 @@ def test_index_latents_clipped(cfg):
     for s in traj:
         for v in (s.muscle_deconditioning, s.rom_motor_control, s.pain_stiffness):
             assert 0.0 <= v <= 1.0
-    # La elongación no se recorta.
+    # The elongation is not clipped.
     assert any(abs(s.spine_elongation_mm) > 1.0 for s in traj)
 
 
@@ -111,7 +111,7 @@ def test_activity_skips(cfg):
 
 
 def single_item_plan(cfg, *, planned_min, sd_min=0.0, adherence=1.0):
-    """Config con un único ejercicio y una única contramedida sin saltos en toda fase, y su miembro."""
+    """Config with a single exercise and a single countermeasure without jumps in any phase, and its member."""
     inflight = MissionPhase.INFLIGHT
     update = {"planned_min": planned_min, "sd_min": sd_min, "skip_probability": 0.0}
     exercise = {p: [cfg.daily_context.exercise[inflight][0].model_copy(update=update)] for p in cfg.daily_context.exercise}

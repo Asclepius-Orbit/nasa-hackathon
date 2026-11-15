@@ -389,7 +389,7 @@
       "rest_length_mm": 650,
       "recovery_wait_s": 120,
       "temperature_c": 22.5,
-      "notes": "PENDIENTE medición Aguado: cord ~650 mm (C3-C4 to L5-S1); curve values are placeholders until measured with an ohmmeter.",
+      "notes": "PENDING measurement: cord ~650 mm (C3-C4 to L5-S1); curve values are placeholders until measured with an ohmmeter.",
       "curve": {
         "model": "piecewise_linear",
         "points": [

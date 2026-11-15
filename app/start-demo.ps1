@@ -1,12 +1,14 @@
 # Starts the demo stack (sim + llm) and the desktop UI with the tokens fixed in app/.env.
 # Usage (from anywhere): powershell -File app/start-demo.ps1 [-NoUi] [-SkipModelPull]
 #   -SkipModelPull: do not check or download the Ollama model before starting (offline, model already cached).
+#   -NoSeed: do not populate AST-01/AST-02 with ~60 days of fictitious history (the seed runs by itself on every start and
+#     only fills astronauts that have no data yet).
 # app/.env and app/mosquitto/auth/{passwd,acl} are generated on first run (or when incomplete) with app/mosquitto/setup.sh,
 #   run through Git Bash on Windows; this needs docker running.
 # SPINE_APP_TELEMETRY_SOURCE (env or app/.env) picks the single telemetry producer: simulator (default) | device.
 #   simulator -> profile sim; device -> profile hardware (gateway + USB, Linux), or with SPINE_GATEWAY_DEMO=1
 #   profile gateway-demo (serial emulator, no board). SPINE_GATEWAY_DEMO=1 with simulator is rejected.
-param([switch]$NoUi, [switch]$SkipModelPull)
+param([switch]$NoUi, [switch]$SkipModelPull, [switch]$NoSeed)
 
 $ErrorActionPreference = 'Stop'
 $app = $PSScriptRoot
@@ -195,6 +197,17 @@ if (-not $SkipModelPull) {
     else { docker @compose --profile llm-prepare run --rm ollama-pull }
     if ($LASTEXITCODE -ne 0) {
         Write-Warning 'The local model could not be prepared; the chat will not work until it is downloaded (see the agent README).'
+    }
+}
+
+# Demo data: complete profiles and ~60 days of history for AST-01 and AST-02, built with the real engine. Idempotent (an
+# astronaut that already has data is skipped), so it runs on every start. It runs before the backend so nothing else writes
+# the database meanwhile. A failure only warns: the app starts, just without the populated history.
+if (-not $NoSeed) {
+    Write-Host 'Seeding the demo data (skipped for astronauts that already have data)...'
+    docker @compose --profile seed run --rm --build seed
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning 'The demo data could not be seeded; the app starts with empty profiles. Rerun this script or see the seed service in app/docker-compose.yml.'
     }
 }
 

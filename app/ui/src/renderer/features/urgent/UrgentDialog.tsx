@@ -90,7 +90,8 @@ function Panel(): React.JSX.Element {
   const { status, crewId } = useAuth();
   const { offline } = useOffline();
   const catalog = useLoad(selectCatalog).data;
-  const strip = useLoad(selectStrip).data;
+  const stripLoad = useLoad(selectStrip);
+  const strip = stripLoad.data;
   const [selected, setSelected] = useState<Code[]>([...preselected]);
   const data = useData();
   const [sent, setSent] = useState(false);
@@ -141,6 +142,8 @@ function Panel(): React.JSX.Element {
 
   const options = catalog ? [...catalog.flags, ...catalog.escapes].map((o) => ({ value: o.code, label: o.label })) : [];
   // An unknown ground link counts as no link: the report is queued, never promised as sent.
+  // Behind the login or lock screen the strip is unavailable by design: the link is then unknown, not down.
+  const linkUnknown = !offline && strip === null && nobodyUnlocked;
   const noLink = offline || strip === null || strip.groundLink === null || strip.groundLink.state === 'down';
   const backInMin = strip?.groundLink?.state === 'down' ? strip.groundLink.backInMin : null;
 
@@ -176,6 +179,8 @@ function Panel(): React.JSX.Element {
                 <b>{copy.queuedTitle}</b>
                 {copy.queuedBody}
               </>
+            ) : linkUnknown ? (
+              <>{copy.linkUnknownBody}</>
             ) : noLink ? (
               <>
                 <b>{copy.noLinkTitle}</b>

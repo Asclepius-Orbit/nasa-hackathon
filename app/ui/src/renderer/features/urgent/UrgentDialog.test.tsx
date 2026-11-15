@@ -97,6 +97,26 @@ it('never promises delivery, even with the link up: it says Queued and no Sent',
   expect(within(dialog).queryByRole('button', { name: 'Sent' })).not.toBeInTheDocument();
 });
 
+it.each([
+  ['signed out', null],
+  ['locked', { crewId: 'AST-01', locked: true }],
+])('does not claim the link is down %s, where the strip cannot be read, and still says Queued after sending', async (_name, session) => {
+  const api = new FakeAsclepiusApi();
+  api.session = session;
+  api.viewErrors.strip = 'locked';
+  renderInWorld(<Opener />, { api, withRouter: false, signedIn: false, data: new RealDataSource(api.views, api.reps, api) });
+  await waitFor(() => {
+    expect(api.calls).toContain('auth.current');
+  });
+  const dialog = await openDialog();
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Marc Dubois' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Leg weakness' }));
+  expect(within(dialog).queryByText(/No link to the ground\./)).not.toBeInTheDocument();
+  expect(within(dialog).queryByText(/Link to the ground is up\./)).not.toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send' }));
+  expect(await within(dialog).findByText('Queued.')).toBeInTheDocument();
+});
+
 it('hides the "For:" picker while signed in', async () => {
   renderInWorld(<Opener />, { withRouter: false });
   const dialog = await openDialog();

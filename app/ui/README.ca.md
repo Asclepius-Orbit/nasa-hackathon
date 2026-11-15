@@ -54,6 +54,8 @@ llançament posterior a avui (així avui és preflight), desa l'informe diari i 
 l'arnès simulat respon i emet durant uns 2 minuts. Per aturar-ho tot:
 `docker compose -f app/docker-compose.yml --profile sim down`.
 
+La compilació `e2e-real` es connecta al backend real; l’execució habitual `e2e:real` utilitza telemetria simulada, no mesures d’una placa física. `e2e:real:device` utilitza el gateway i l’emulador d’Arduino.
+
 `pnpm e2e:real` ho fa tot sense supervisió i ho comprova (només en local, no a CI): executa `setup.sh`, aixeca l'stack
 en el seu propi projecte de Compose (`asclepius-e2e`, que es descarta amb `down -v` en acabar), espera el backend i
 l'arnès simulat, compila amb `--mode e2e-real` (font de dades real, tripulació de demo), executa `e2e/real.spec.ts` i
@@ -126,5 +128,5 @@ Els textos viuen a `src/renderer/strings/` (en anglès, un fitxer per pantalla) 
 - Cadena de subministrament: versions exactes, lockfile, scripts de build permesos només per a `electron` i una
   antiguitat mínima de publicació d'un dia (`pnpm-workspace.yaml`).
 
-Límits coneguts, per a feina posterior: PIN de 4 dígits; instal·lador per usuari i sense signar; l'exe empaquetat accepta
+L'autenticació utilitza PIN de 4 dígits; instal·lador per usuari i sense signar; l'exe empaquetat accepta
 `--remote-debugging-port`.

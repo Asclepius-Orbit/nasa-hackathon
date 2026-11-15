@@ -54,6 +54,8 @@ fecha de lanzamiento posterior a hoy (así hoy es preflight), guarda el informe 
 "Spine length check": el arnés simulado responde y emite durante unos 2 minutos. Para parar todo:
 `docker compose -f app/docker-compose.yml --profile sim down`.
 
+La compilación `e2e-real` se conecta al backend real; la ejecución habitual `e2e:real` utiliza telemetría simulada, no mediciones de una placa física. `e2e:real:device` utiliza el gateway y el emulador de Arduino.
+
 `pnpm e2e:real` hace todo esto sin supervisión y lo comprueba (solo en local, no en CI): ejecuta `setup.sh`, levanta
 el stack en su propio proyecto de Compose (`asclepius-e2e`, que se descarta con `down -v` al acabar), espera al
 backend y al arnés simulado, compila con `--mode e2e-real` (fuente de datos real, tripulación de demo), ejecuta
@@ -127,5 +129,5 @@ Los textos viven en `src/renderer/strings/` (en inglés, un fichero por pantalla
 - Cadena de suministro: versiones exactas, lockfile, scripts de build permitidos solo para `electron` y una
   antigüedad mínima de publicación de un día (`pnpm-workspace.yaml`).
 
-Límites conocidos, para trabajo posterior: PIN de 4 dígitos; instalador por usuario y sin firmar; el exe empaquetado acepta
+La autenticación utiliza PIN de 4 dígitos; instalador por usuario y sin firmar; el exe empaquetado acepta
 `--remote-debugging-port`.

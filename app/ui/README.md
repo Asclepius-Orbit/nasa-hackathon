@@ -53,6 +53,8 @@ save the profile with a launch date after today (so today is preflight), save th
 "Spine length check" session: the simulated harness answers and streams for about 2 minutes. Stop everything with
 `docker compose -f app/docker-compose.yml --profile sim down`.
 
+The `e2e-real` build connects to the real backend; the standard `e2e:real` run supplies simulated telemetry, not physical-board measurements. `e2e:real:device` uses the gateway and Arduino emulator.
+
 `pnpm e2e:real` does all of this unattended and checks it (local only, not CI): it runs `setup.sh`, starts the stack
 in its own Compose project (`asclepius-e2e`, thrown away with `down -v` afterwards), waits for the backend and the
 simulated harness, builds with `--mode e2e-real` (real data source, demo crew), runs `e2e/real.spec.ts` and always takes
@@ -79,14 +81,14 @@ with `--no-sandbox` (the container is the boundary) and `--password-store=basic`
 
 ### Simulator or device
 
-The demo above is the `simulator` source (default). `SPINE_APP_TELEMETRY_SOURCE=device` swaps the producer for the real gateway: with a board on Linux (profile `hardware`), or with `SPINE_GATEWAY_DEMO=1` against the Arduino emulator (profile `gateway-demo`, works on Windows). `app/start-demo.ps1` picks the single producer from those two variables and rejects `SPINE_GATEWAY_DEMO=1` with `simulator`. Unattended UI checks, from `app/ui`:
+The demo above is the `simulator` source (default). `SPINE_APP_TELEMETRY_SOURCE=device` swaps the producer for the real gateway: with a board accessible to Docker (profile `hardware`), or with `SPINE_GATEWAY_DEMO=1` against the Arduino emulator (profile `gateway-demo`, no USB device required). `app/start-demo.ps1` picks the single producer from those two variables and rejects `SPINE_GATEWAY_DEMO=1` with `simulator`. Unattended UI checks, from `app/ui`:
 
 ```bash
 pnpm run e2e:real          # simulator, harness sim-01
 pnpm run e2e:real:device   # gateway + emulator (profile gateway-demo), harness gw-demo
 ```
 
-Both need Docker, `sh`, and ports 1883, 8000 and 8001 free, so stop the dev stack first. Device mode through the emulator covers pairing, session start and stop only; `calibrate` and artefacts are simulator-only there, and a physical Arduino is still unverified (pending).
+Both need Docker, `sh`, and ports 1883, 8000 and 8001 free, so stop the dev stack first. Device mode through the emulator covers pairing, session start and stop only; `calibrate` and artefacts are simulator-only there.
 
 ## Scripts
 
@@ -153,5 +155,5 @@ Copy lives in `src/renderer/strings/` (English, one file per screen) so other la
 - Supply chain: exact versions, a lockfile, build scripts allowed only for `electron`, and a one-day minimum
   release age (`pnpm-workspace.yaml`).
 
-Known limits, kept for later work: 4-digit PINs;
+Authentication uses 4-digit PINs;
 per-user, unsigned installer; the packaged exe accepts `--remote-debugging-port`.

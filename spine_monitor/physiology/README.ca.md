@@ -73,7 +73,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`spine_physiology.sinks.pacing.paced` pot dosificar un flux a temps real o a `speed` x temps real. Un sol dia de la missió d'exemple són uns 22 600 missatges, gairebé tots chunks (vegeu Límits coneguts); per a un fragment més barat useu `gen.session_messages(ref)` (més avall).
+`spine_physiology.sinks.pacing.paced` pot dosificar un flux a temps real o a `speed` x temps real. Un sol dia de la missió d'exemple són uns 22 600 missatges, gairebé tots chunks (vegeu Dades i configuració de la simulació); per a un fragment més barat useu `gen.session_messages(ref)` (més avall).
 
 ## Reproductibilitat
 
@@ -191,7 +191,7 @@ uv run pytest physiology
 
 Els tests que necessiten un broker real porten el marcador `mosquitto` i es salten si res escolta a `127.0.0.1:1883`; el gate (`SPINE_REQUIRE_BROKER=1`) falla en lloc seu. Corren contra el broker de compose, amb usuaris i ACL (`sh app/mosquitto/setup.sh` i després `docker compose -f app/docker-compose.yml up -d mosquitto`), i llegeixen les credencials de `SPINE_TEST_MQTT_USERNAME` (per defecte `spine-itest`), `SPINE_TEST_MQTT_PASSWORD` i `SPINE_TEST_MQTT_DEVICE_PASSWORD` (el servei `quality` les passa des d'`app/.env`; a mà: `SPINE_MQTT_ITEST_PASSWORD` i `SPINE_MQTT_ITEST_DEVICE_PASSWORD` d'aquest fitxer). A més del gateway de punta a punta, comproven que es rebutgen els clients anònims i les contrasenyes errònies i que un dispositiu no pot publicar als topics d'un altre ni llegir-ne les ordres. La resta de tests del gateway fan servir un client MQTT fals i temps virtual.
 
-## Límits coneguts
+## Dades i configuració de la simulació
 
 - Volum del fons: amb `schedule.background.chunk_ms` a 1000 ms, cada hora de fons són uns 3 600 chunks per stream (10 vegades menys que amb chunks de 100 ms); continua creixent amb la finestra. La configuració d'exemple limita el fons a una hora al dia.
 - El qüestionari ODI setmanal és informatiu: el simulador no el genera i mai puntua risc; només es genera l'autoinforme diari.

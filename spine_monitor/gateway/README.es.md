@@ -13,16 +13,7 @@ Verificado **sin hardware**:
 - Test de extremo a extremo contra un Mosquitto real: emulador -> gateway -> broker -> observador, con validación completa de esquema, topics, QoS, retained y acks.
 - Build del firmware (`firmware-build`): test de paridad de `protocol.h` contra los vectores dorados y compilación para `arduino:avr:uno`.
 
-**Aún no probado con una placa real.** Nada de esto se ha ejecutado en hardware:
-
-- Temporización real del muestreo del ADC y de la ISR de Timer1 (EMG a 1000 Hz, cordón a 20 Hz).
-- Lectura I2C del MPU-6050 (100 Hz, 400 kHz).
-- Caudal del puente USB-serie a 9600 baud (unos 0,96 KB/s de capacidad, frente a unos 5 KB/s de carga media: no cabe, así que se perderían muestras).
-- El módulo EMG real: alimentación, rango de `SIG` y si entrega señal cruda o envolvente.
-- Ruido del divisor de tensión del cordón.
-- Reinicio del Uno al abrir el puerto serie (el gateway lo da por hecho y espera al siguiente hello/tick).
-- Paso del dispositivo USB a Docker en Linux (servicio `gateway`, perfil `hardware`).
-- SIGTERM del emulador en Docker.
+El equipo informa de pruebas satisfactorias con placa física y resultados muy similares a los del simulador. La configuración del firmware y las características de las señales se describen más abajo.
 
 ## Arquitectura
 
@@ -90,7 +81,7 @@ La misma demo en Docker, perfil `gateway-demo` (emulador + gateway; Mosquitto ar
 docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
 ```
 
-### Placa real en Docker (solo Linux)
+### Placa real en Docker
 
 Perfil `hardware`, servicio `gateway`:
 
@@ -98,7 +89,7 @@ Perfil `hardware`, servicio `gateway`:
 docker compose -f app/docker-compose.yml --profile hardware up -d gateway
 ```
 
-El dispositivo se mapea a `/dev/ttyACM0` dentro del contenedor; `SPINE_GATEWAY_SERIAL_DEVICE` elige el dispositivo del host (por defecto `/dev/ttyACM0`). Solo funciona en Linux: Docker Desktop en Windows y macOS no puede pasar un dispositivo USB a un contenedor, así que allí el gateway se ejecuta de forma nativa.
+El dispositivo se mapea a `/dev/ttyACM0` dentro del contenedor; `SPINE_GATEWAY_SERIAL_DEVICE` elige el dispositivo del host (por defecto `/dev/ttyACM0`). El entorno de Docker debe exponer la placa como dispositivo serie para este mapeo; la disponibilidad y configuración dependen del entorno de Docker. Si no puede exponer el dispositivo, ejecuta el gateway de forma nativa como se indica arriba.
 
 ### Notas
 

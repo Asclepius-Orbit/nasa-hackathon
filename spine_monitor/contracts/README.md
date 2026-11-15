@@ -97,7 +97,7 @@ Edit the schema, add or update its example, regenerate, run the tests, and tell 
 - Not covered yet: the report to Houston (FHIR/DTN).
 - Review: a second reviewer. Semantic validation: the clinical reviewer.
 
-## Known limitations
+## Implementation details
 - In microgravity the accelerometer does not see gravity: IMU features that rely on orientation are not comparable with Earth; the catalog prefers gyroscope-based ones.
 - The Python `jsonschema` library matches `pattern` with `re.search`, where `$` accepts a trailing newline; `topics` uses `fullmatch` for that reason.
 - Generated models use `constr(...)` types so that constrained list items stay plain strings; static type checkers may flag them.

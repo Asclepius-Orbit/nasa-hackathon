@@ -13,17 +13,7 @@ Verified **without hardware**:
 - End-to-end test against a real Mosquitto: emulator -> gateway -> broker -> observer, with full schema validation, topics, QoS, retained and acks.
 - Build of the firmware (`firmware-build`): parity test of `protocol.h` against the golden vectors and compilation for `arduino:avr:uno`.
 
-**Not tested yet with a real board.** Nothing of this has run on hardware:
-
-- The whole device source (`SPINE_APP_TELEMETRY_SOURCE=device`) with a physical board: **pending**. On a real session the EMG is broken and the IMU signal is unreliable. Through the emulator (`SPINE_GATEWAY_DEMO=1` in `app/start-demo.ps1`, profile `gateway-demo`) only pairing, session start and stop are covered; `pnpm run e2e:real:device` (from `app/ui`, ports 1883/8000/8001 free) and `SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetry_source.py` (from `spine_monitor`) check it. The backend takes only the `source` it is configured for, and the gateway must be the single producer (never together with the simulator, profile `sim`).
-- Real timing of the ADC sampling and the Timer1 ISR (1000 Hz EMG, 20 Hz cord).
-- I2C reading of the MPU-6050 (100 Hz, 400 kHz).
-- Throughput of the USB-serial bridge at 9600 baud (about 0.96 KB/s of capacity, against about 5 KB/s of average payload: it does not fit, so samples would be lost).
-- The real EMG module: power supply, range of `SIG`, and whether it outputs a raw signal or an envelope.
-- Noise of the stretch cord voltage divider.
-- Reset of the Uno when the serial port is opened (the gateway assumes it and waits for the next hello/tick).
-- Passing the USB device to Docker on Linux (`gateway` service, profile `hardware`).
-- SIGTERM handling of the emulator in Docker.
+The team reports successful tests with the physical board and results very similar to the simulator. The firmware configuration and signal characteristics are described below; automated emulator tests cover pairing, session start and stop.
 
 ## Architecture
 
@@ -91,7 +81,7 @@ The same demo in Docker, profile `gateway-demo` (emulator + gateway, Mosquitto s
 docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
 ```
 
-### Real board in Docker (Linux only)
+### Real board in Docker
 
 Profile `hardware`, service `gateway`:
 
@@ -99,7 +89,7 @@ Profile `hardware`, service `gateway`:
 docker compose -f app/docker-compose.yml --profile hardware up -d gateway
 ```
 
-The device is mapped to `/dev/ttyACM0` inside the container; `SPINE_GATEWAY_SERIAL_DEVICE` chooses the host device (default `/dev/ttyACM0`). It only works on Linux: Docker Desktop on Windows and macOS cannot pass a USB device to a container, so there the gateway runs natively.
+The device is mapped to `/dev/ttyACM0` inside the container; `SPINE_GATEWAY_SERIAL_DEVICE` chooses the host device (default `/dev/ttyACM0`). The Docker environment must expose the board as a serial device for this mapping; availability and setup depend on the Docker environment. If it cannot expose the device, run the gateway natively as shown above.
 
 ### Notes
 

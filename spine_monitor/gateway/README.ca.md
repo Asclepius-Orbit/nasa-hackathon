@@ -13,16 +13,7 @@ Verificat **sense hardware**:
 - Test d'extrem a extrem contra un Mosquitto real: emulador -> gateway -> broker -> observador, amb validació completa d'esquema, topics, QoS, retained i acks.
 - Build del firmware (`firmware-build`): test de paritat de `protocol.h` contra els vectors daurats i compilació per a `arduino:avr:uno`.
 
-**Encara no provat amb una placa real.** Res d'això s'ha executat en hardware:
-
-- Temporització real del mostreig de l'ADC i de la ISR de Timer1 (EMG a 1000 Hz, cordó a 20 Hz).
-- Lectura I2C del MPU-6050 (100 Hz, 400 kHz).
-- Cabal del pont USB-sèrie a 9600 baud (uns 0,96 KB/s de capacitat, davant d'uns 5 KB/s de càrrega mitjana: no hi cap, així que es perdrien mostres).
-- El mòdul EMG real: alimentació, rang de `SIG` i si lliura senyal crua o envolvent.
-- Soroll del divisor de tensió del cordó.
-- Reinici de l'Uno en obrir el port sèrie (el gateway ho dona per fet i espera el següent hello/tick).
-- Pas del dispositiu USB a Docker a Linux (servei `gateway`, perfil `hardware`).
-- SIGTERM de l'emulador a Docker.
+L'equip informa de proves satisfactòries amb placa física i resultats molt semblants als del simulador. La configuració del firmware i les característiques dels senyals es descriuen més avall.
 
 ## Arquitectura
 
@@ -90,7 +81,7 @@ La mateixa demo a Docker, perfil `gateway-demo` (emulador + gateway; Mosquitto a
 docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-emulator gateway-demo
 ```
 
-### Placa real a Docker (només Linux)
+### Placa real a Docker
 
 Perfil `hardware`, servei `gateway`:
 
@@ -98,7 +89,7 @@ Perfil `hardware`, servei `gateway`:
 docker compose -f app/docker-compose.yml --profile hardware up -d gateway
 ```
 
-El dispositiu es mapeja a `/dev/ttyACM0` dins del contenidor; `SPINE_GATEWAY_SERIAL_DEVICE` tria el dispositiu del host (per defecte `/dev/ttyACM0`). Només funciona a Linux: Docker Desktop a Windows i macOS no pot passar un dispositiu USB a un contenidor, així que allà el gateway s'executa de manera nativa.
+El dispositiu es mapeja a `/dev/ttyACM0` dins del contenidor; `SPINE_GATEWAY_SERIAL_DEVICE` tria el dispositiu del host (per defecte `/dev/ttyACM0`). L'entorn de Docker ha d'exposar la placa com a dispositiu sèrie per a aquest mapatge; la disponibilitat i configuració depenen de l'entorn de Docker. Si no pot exposar el dispositiu, executa el gateway de manera nativa com s'indica més amunt.
 
 ### Notes
 

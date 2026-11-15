@@ -231,8 +231,7 @@ measurement; hyp. = hypothesis with no verified backing.
   percentage drop of the median frequency are missing; SENIAM could not be
   opened.
 - MPU-6050: table values marked (*) because of scrambled extraction; DLPF 44 Hz
-  (bandwidth and delay) unverified in the register map; the real board was not
-  tested.
+  (bandwidth and delay) unverified in the register map.
 - Uno ADC: reference, maximum rate and accuracy have no source read (404).
 - No figure in this document validates that the simulator reproduces the real
   hardware; it serves to expose parameters with their provenance.

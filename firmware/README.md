@@ -7,6 +7,8 @@ emits the v1 chunk protocol over USB serial (9600 baud, 8N1). It does not wait f
 It is read by the real gateway (`spine_monitor/gateway`, see [its README](../spine_monitor/gateway/README.md)),
 which publishes it on the MQTT v1 bus.
 
+The configured 9600-baud serial link cannot carry the firmware's nominal aggregate data rate: batches can be dropped under sustained load. The independent [measurement prototype sketch](../docs/submission/README.md#independent-measurement-sketch) uses different analog pins and a different serial format.
+
 ```
 firmware/
   spine_wearable/spine_wearable.ino   sketch (Timer1 sampling + interrupt-driven ADC)

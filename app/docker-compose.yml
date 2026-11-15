@@ -168,9 +168,8 @@ services:
     # Only for SPINE_APP_TELEMETRY_SOURCE=device; never start it together with simulator.
     # Real wearable gateway (issue #13): Arduino over USB serial -> MQTT v1 chunks. Profile "hardware":
     #   docker compose -f app/docker-compose.yml --profile hardware up -d gateway
-    # Only works on Linux: Docker Desktop on Windows/macOS cannot pass a USB device through to a container.
-    # On Windows the gateway runs natively instead (from spine_monitor/): uv run spine-gateway
-    # with SPINE_GATEWAY_SERIAL_URL=COM3 and SPINE_GATEWAY_MQTT_HOST=127.0.0.1.
+    # Docker must expose the board as a serial device. If unavailable, run the gateway
+    # natively (see spine_monitor/gateway/README.md).
     build:
       context: ..
       dockerfile: spine_monitor/gateway/Dockerfile

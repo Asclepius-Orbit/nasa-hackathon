@@ -197,3 +197,7 @@ Los tests que necesitan un broker real llevan el marcador `mosquitto` y se salta
 - El cuestionario ODI semanal es informativo: el simulador no lo genera y nunca puntúa riesgo; solo se genera el autoinforme diario.
 - Sesiones, autoinformes, contexto diario, perfiles y verdad de terreno no tienen topic MQTT: solo existen en JSONL (los objetos de dominio nunca van al bus). Las calibraciones sí van al bus.
 - Todos los números de la configuración de ejemplo son placeholders, no referencias clínicas.
+
+## Supuestos del modelo de ejercicio
+
+La misión de ejemplo empieza el ejercicio en reposo y usa el mismo calendario de repeticiones con semilla para el movimiento, el EMG, el cordón y los eventos de sesión. Cada repetición tiene una tracción y un retorno suaves, separados de la siguiente por una pausa. La fatiga crece con el esfuerzo relativo y el tiempo, y decae exponencialmente durante las pausas. Los campos YAML `effort_load`, `fatigue_resistance`, `recovery_per_s` e `individual_variability` controlan este modelo. La reducción de la capacidad de movimiento, las repeticiones más lentas y el aumento compensatorio de la activación del EMG son supuestos de modelado, no fuerza medida ni relaciones clínicas validadas.

@@ -198,7 +198,8 @@ Tests that need a real broker are marked `mosquitto` and are skipped when nothin
 - Sessions, self-reports, daily context, profiles and ground truth have no MQTT topic: they only exist in JSONL (domain objects never go to the bus). Calibrations do go to the bus.
 - The simulator is one of two telemetry sources (`SPINE_APP_TELEMETRY_SOURCE=simulator`, default, profile `sim`; the other is `device`, see the gateway README). Never run it together with the gateway: only `app/start-demo.ps1` enforces it. The backend drops anything whose `source` is not the configured one. Realism of the simulated signal is tracked separately (#131).
 - Every number in the example config is a placeholder, not a clinical reference.
-# Exercise model assumptions
+
+## Exercise model assumptions
 
 The example mission starts exercise at rest and uses the same seeded repetition
 schedule for movement, EMG, cord and session events. Each repetition has a

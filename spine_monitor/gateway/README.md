@@ -18,7 +18,7 @@ Verified **without hardware**:
 - The whole device source (`SPINE_APP_TELEMETRY_SOURCE=device`) with a physical board: **pending**. On a real session the EMG is broken and the IMU signal is unreliable. Through the emulator (`SPINE_GATEWAY_DEMO=1` in `app/start-demo.ps1`, profile `gateway-demo`) only pairing, session start and stop are covered; `pnpm run e2e:real:device` (from `app/ui`, ports 1883/8000/8001 free) and `SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetry_source.py` (from `spine_monitor`) check it. The backend takes only the `source` it is configured for, and the gateway must be the single producer (never together with the simulator, profile `sim`).
 - Real timing of the ADC sampling and the Timer1 ISR (1000 Hz EMG, 20 Hz cord).
 - I2C reading of the MPU-6050 (100 Hz, 400 kHz).
-- Throughput of the USB-serial bridge at 250000 baud (about 5 KB/s of average payload).
+- Throughput of the USB-serial bridge at 9600 baud (about 0.96 KB/s of capacity, against about 5 KB/s of average payload: it does not fit, so samples would be lost).
 - The real EMG module: power supply, range of `SIG`, and whether it outputs a raw signal or an envelope.
 - Noise of the stretch cord voltage divider.
 - Reset of the Uno when the serial port is opened (the gateway assumes it and waits for the next hello/tick).
@@ -47,7 +47,7 @@ Package `spine_gateway` (`src/spine_gateway/`):
 Data flow:
 
 ```
-Arduino (firmware/spine_wearable) --USB serial, 250000 baud--> lines H / T / D (+ CRC-8)
+Arduino (firmware/spine_wearable) --USB serial, 9600 baud--> lines H / T / D (+ CRC-8)
   -> SerialLineSource -> Gateway (parse_line, ChunkAssembler, CalibrationRecorder)
   -> MQTT v1 (aiomqtt, QoS 1) -> Mosquitto
 ```
@@ -113,7 +113,7 @@ All variables have the prefix `SPINE_GATEWAY_` and are optional; `.env.example` 
 | Variable | Default | What it does |
 |---|---|---|
 | `SPINE_GATEWAY_SERIAL_URL` | `COM3` | Serial port as pyserial understands it: `COM3`, `/dev/ttyACM0` or `socket://host:port`. |
-| `SPINE_GATEWAY_SERIAL_BAUD` | `250000` | Baud rate (the firmware is fixed at 250000). |
+| `SPINE_GATEWAY_SERIAL_BAUD` | `9600` | Baud rate (the firmware is fixed at 9600). |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_INITIAL_S` | `1.0` | First wait (s) before reopening the port if it fails to open or is unplugged. |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_FACTOR` | `2.0` | Multiplier of the wait after each failed attempt (>= 1). |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_MAX_S` | `10.0` | Cap (s) of the serial reconnection wait (>= initial). |
@@ -288,7 +288,7 @@ EMG electrodes (three, connected to the EMG module, not to the Arduino): two dif
 ### Step by step
 
 1. Upload the sketch with the Arduino IDE: open `firmware/spine_wearable/spine_wearable.ino`, board Arduino Uno or Nano (on Nano clones choose the processor "ATmega328P (Old Bootloader)"), choose the port and upload.
-2. Open the Serial Monitor at **250000 baud**. You should see `H,...` once, `T,...` every second, `D,E`/`D,I`/`D,S` every 100 ms, and `#imu ok` (or `#imu absent` if the MPU-6050 does not answer).
+2. Open the Serial Monitor at **9600 baud**. You should see `H,...` once, `T,...` every second, `D,E`/`D,I`/`D,S` every 100 ms, and `#imu ok` (or `#imu absent` if the MPU-6050 does not answer).
 3. **Close the Serial Monitor**: the port is exclusive, and the gateway cannot open it while the IDE holds it.
 4. Start the broker: `docker compose -f app/docker-compose.yml up -d mosquitto`.
 5. Start the native gateway (see above) with the right port.

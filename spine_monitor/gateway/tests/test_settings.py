@@ -20,7 +20,7 @@ def _isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def test_defaults() -> None:
     s = GatewaySettings()
-    assert (s.serial_url, s.serial_baud) == ("COM3", 250000)
+    assert (s.serial_url, s.serial_baud) == ("COM3", 9600)
     assert (s.astronaut_id, s.device_id) == ("AST-01", "wb-01")
     assert (s.mqtt_host, s.mqtt_port, s.mqtt_client_id) == ("127.0.0.1", 1883, "spine-gateway")
     assert (s.mqtt_reconnect_initial_s, s.mqtt_reconnect_factor, s.mqtt_reconnect_max_s) == (1.0, 2.0, 30.0)

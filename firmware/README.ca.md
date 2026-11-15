@@ -3,7 +3,7 @@
 # Firmware del wearable
 
 Sketch Arduino Uno / Nano (ATmega328P, 16 MHz, 2 KB de RAM) que mostreja tres sensors i emet
-SEMPRE per USB sèrie (250000 baud, 8N1) el protocol de chunks v1. No espera ordres del host.
+SEMPRE per USB sèrie (9600 baud, 8N1) el protocol de chunks v1. No espera ordres del host.
 Qui el llegeix és el gateway real (`spine_monitor/gateway`, vegeu [el seu README](../spine_monitor/gateway/README.ca.md)),
 que el publica al bus MQTT v1.
 
@@ -119,7 +119,7 @@ construeix des d'un clon net.
 2. Eines > Placa: **Arduino Uno** o **Arduino Nano** (en un Nano, el processador segons el seu
    bootloader: ATmega328P o ATmega328P (Old Bootloader)).
 3. Triar el port i prémer Puja.
-4. Monitor sèrie a **250000 baud** per veure les línies. Tancar-lo abans d'arrencar el gateway: el port és exclusiu.
+4. Monitor sèrie a **9600 baud** per veure les línies. Tancar-lo abans d'arrencar el gateway: el port és exclusiu.
 
 El cablejat, la prova amb la placa real i els avisos de seguretat pas a pas són al
 [README del gateway](../spine_monitor/gateway/README.ca.md).

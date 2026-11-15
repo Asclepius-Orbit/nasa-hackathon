@@ -40,7 +40,7 @@ class GatewaySettings(BaseSettings):
 
     # Puerto serie tal como lo entiende pyserial `serial_for_url`: COM3, /dev/ttyACM0 o socket://host:puerto.
     serial_url: str = Field(default="COM3", min_length=1)
-    serial_baud: int = Field(default=250000, gt=0)
+    serial_baud: int = Field(default=9600, gt=0)
     # Reconexión del puerto serie con backoff exponencial si no abre o se desenchufa: espera inicial (s), factor y tope (s).
     serial_reconnect_initial_s: float = Field(default=1.0, gt=0)
     serial_reconnect_factor: float = Field(default=2.0, ge=1)

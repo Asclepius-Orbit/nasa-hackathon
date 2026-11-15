@@ -1,7 +1,7 @@
 /*
  * spine_wearable - Firmware del wearable (Arduino Uno / Nano, ATmega328P, 16 MHz, 2 KB RAM).
  *
- * Muestrea 3 sensores y emite SIEMPRE por USB serie (250000 baud, 8N1) el protocolo de
+ * Muestrea 3 sensores y emite SIEMPRE por USB serie (9600 baud, 8N1) el protocolo de
  * chunks v1 (ver protocol.h y firmware/README.md). No espera ordenes del host.
  *
  *   EMG    A0  analogico (envolvente del Muscle Sensor V3)   1000 Hz  lote cada 100 ms: 100 x u16
@@ -15,8 +15,8 @@
  *     Cada ms hay 1 conversion (EMG); cada 50 ms hay 4 (EMG + descarte + cordon + descarte):
  *     208 us en el peor caso, un 21 % de un ms. Nadie espera a la conversion: la ISR del
  *     timer la dispara y la ISR del ADC la recoge (ADIE), asi que analogRead() NO bloquea
- *     el resto de interrupciones (el TX serie usa UDRE: a 250000 baud un byte dura 40 us,
- *     un analogRead de 52..104 us dentro de una ISR dejaria huecos en la linea).
+ *     el resto de interrupciones (el TX serie usa UDRE: a 9600 baud un byte dura ~1.04 ms,
+ *     mucho mas que un analogRead de 52..104 us).
  *   - Coste de CPU de las ISR: Timer1 ~5 us + ADC ~4 us por conversion  =>  ~1-3 % de CPU.
  *   - TX serie (UDRE) ~4 us por byte x ~5 KB/s  =>  ~2 %.
  *   - Lectura I2C del MPU (14 bytes a 400 kHz): ~0.4 ms cada 10 ms (~4 %), en loop().
@@ -25,10 +25,11 @@
  * RAM (arduino-cli lo informa al compilar): lotes 400 + 240 + 8 = 648 B; el resto es el
  * core (Serial 2 x 64 B, Wire ~100 B) y las variables de estado.
  *
- * TX bloqueante: Serial.write bloquea si el buffer TX (64 B) se llena. A 250000 baud salen
- * ~25 KB/s y el caudal medio de este protocolo es ~5 KB/s (E ~2.7 KB/s, I ~1.9 KB/s), asi que
- * un lote entero (~300 B) tarda ~12 ms en salir y no hay problema. Si el host no lee, el
- * Arduino NO se bloquea: su UART transmite igual a 250000 baud hacia el chip USB-serie
+ * TX bloqueante: Serial.write bloquea si el buffer TX (64 B) se llena. A 9600 baud salen
+ * ~0.96 KB/s, MENOS que el caudal medio de este protocolo (~5 KB/s: E ~2.7 KB/s, I ~1.9 KB/s):
+ * un lote entero (~300 B) tarda ~312 ms en salir, mas que su periodo de 100 ms, asi que el TX
+ * se saturaria y se perderian muestras. Si el host no lee, el
+ * Arduino NO se bloquea: su UART transmite igual a 9600 baud hacia el chip USB-serie
  * (ATmega16U2 / CH340), que descarta lo que el host no recoge. (A confirmar en la placa
  * concreta: es comportamiento del puente, no de este firmware.)
  * Mientras espera hueco en el buffer TX, el sink atiende las lecturas del MPU (ver abajo),
@@ -47,7 +48,7 @@
 // ---------------------------------------------------------------------------------------
 // Configuracion
 // ---------------------------------------------------------------------------------------
-static const uint32_t SERIAL_BAUD = 250000UL;
+static const uint32_t SERIAL_BAUD = 9600UL;
 
 static const uint8_t PIN_NOISE = A3;  // flotante: solo semilla del boot_id
 

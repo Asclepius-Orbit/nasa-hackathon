@@ -35,7 +35,7 @@ fabricante.
 | Divisor del cordón | 5 V, 10 kΩ, punto medio en A1, cordón a GND | config. firmware/gateway | `firmware/README.md`; `settings.py` (`stretch_series_resistor_ohm=10000`) |
 | Tipo de señal EMG | `envelope` por defecto, "asumida, no confirmada con el módulo" | suposición sin medir | `firmware/README.md`; `settings.py` (`emg_signal_kind`, `emg_gain=1.0`) |
 | Cordón: colocación | C3 a S1, ~650 mm en reposo, pendiente de medir | suposición sin medir | `firmware/README.md` |
-| Serie | 250000 baudios, 8N1 | config. firmware | `firmware/README.md` |
+| Serie | 9600 baudios, 8N1 | config. firmware | `firmware/README.md` |
 
 ### Medidas de banco del cordón
 

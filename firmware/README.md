@@ -3,7 +3,7 @@
 # Wearable firmware
 
 Arduino Uno / Nano sketch (ATmega328P, 16 MHz, 2 KB of RAM) that samples three sensors and ALWAYS
-emits the v1 chunk protocol over USB serial (250000 baud, 8N1). It does not wait for commands from the host.
+emits the v1 chunk protocol over USB serial (9600 baud, 8N1). It does not wait for commands from the host.
 It is read by the real gateway (`spine_monitor/gateway`, see [its README](../spine_monitor/gateway/README.md)),
 which publishes it on the MQTT v1 bus.
 
@@ -119,7 +119,7 @@ build from a clean clone.
 2. Tools > Board: **Arduino Uno** or **Arduino Nano** (on a Nano, the processor according to its
    bootloader: ATmega328P or ATmega328P (Old Bootloader)).
 3. Choose the port and click Upload.
-4. Serial Monitor at **250000 baud** to see the lines. Close it before starting the gateway: the port is exclusive.
+4. Serial Monitor at **9600 baud** to see the lines. Close it before starting the gateway: the port is exclusive.
 
 Wiring, testing with the real board and the step-by-step safety notes are in the
 [gateway README](../spine_monitor/gateway/README.md).

@@ -17,7 +17,7 @@ Verificat **sense hardware**:
 
 - Temporització real del mostreig de l'ADC i de la ISR de Timer1 (EMG a 1000 Hz, cordó a 20 Hz).
 - Lectura I2C del MPU-6050 (100 Hz, 400 kHz).
-- Cabal del pont USB-sèrie a 250000 baud (uns 5 KB/s de càrrega mitjana).
+- Cabal del pont USB-sèrie a 9600 baud (uns 0,96 KB/s de capacitat, davant d'uns 5 KB/s de càrrega mitjana: no hi cap, així que es perdrien mostres).
 - El mòdul EMG real: alimentació, rang de `SIG` i si lliura senyal crua o envolvent.
 - Soroll del divisor de tensió del cordó.
 - Reinici de l'Uno en obrir el port sèrie (el gateway ho dona per fet i espera el següent hello/tick).
@@ -46,7 +46,7 @@ Paquet `spine_gateway` (`src/spine_gateway/`):
 Flux de dades:
 
 ```
-Arduino (firmware/spine_wearable) --USB sèrie, 250000 baud--> línies H / T / D (+ CRC-8)
+Arduino (firmware/spine_wearable) --USB sèrie, 9600 baud--> línies H / T / D (+ CRC-8)
   -> SerialLineSource -> Gateway (parse_line, ChunkAssembler, CalibrationRecorder)
   -> MQTT v1 (aiomqtt, QoS 1) -> Mosquitto
 ```
@@ -112,7 +112,7 @@ Totes les variables porten el prefix `SPINE_GATEWAY_` i són opcionals; `.env.ex
 | Variable | Per defecte | Què fa |
 |---|---|---|
 | `SPINE_GATEWAY_SERIAL_URL` | `COM3` | Port sèrie tal com l'entén pyserial: `COM3`, `/dev/ttyACM0` o `socket://host:port`. |
-| `SPINE_GATEWAY_SERIAL_BAUD` | `250000` | Velocitat en bauds (el firmware està fixat a 250000). |
+| `SPINE_GATEWAY_SERIAL_BAUD` | `9600` | Velocitat en bauds (el firmware està fixat a 9600). |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_INITIAL_S` | `1.0` | Primera espera (s) abans de reobrir el port si no obre o es desendolla. |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_FACTOR` | `2.0` | Multiplicador de l'espera després de cada intent fallit (>= 1). |
 | `SPINE_GATEWAY_SERIAL_RECONNECT_MAX_S` | `10.0` | Límit (s) de l'espera de reconnexió sèrie (>= la inicial). |
@@ -287,7 +287,7 @@ Elèctrodes de l'EMG (tres, connectats al mòdul EMG, no a l'Arduino): dos difer
 ### Pas a pas
 
 1. Puja el sketch amb l'Arduino IDE: obre `firmware/spine_wearable/spine_wearable.ino`, placa Arduino Uno o Nano (en clons Nano tria el processador "ATmega328P (Old Bootloader)"), tria el port i puja.
-2. Obre el Monitor Sèrie a **250000 baud**. Has de veure un `H,...` una vegada, `T,...` cada segon, `D,E`/`D,I`/`D,S` cada 100 ms i `#imu ok` (o `#imu absent` si el MPU-6050 no respon).
+2. Obre el Monitor Sèrie a **9600 baud**. Has de veure un `H,...` una vegada, `T,...` cada segon, `D,E`/`D,I`/`D,S` cada 100 ms i `#imu ok` (o `#imu absent` si el MPU-6050 no respon).
 3. **Tanca el Monitor Sèrie**: el port és exclusiu i el gateway no pot obrir-lo mentre el tingui l'IDE.
 4. Aixeca el broker: `docker compose -f app/docker-compose.yml up -d mosquitto`.
 5. Executa el gateway natiu (vegeu a dalt) amb el port correcte.

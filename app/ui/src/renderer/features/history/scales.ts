@@ -11,7 +11,9 @@ const PAIN_BASELINE = 110;
 const PAIN_UNIT = 10;
 const PAIN_TOP = 10;
 const BAR_WIDTH = 20;
-const TICK_CLEARANCE = 110;
+const CHAR_WIDTH = 8;
+const LABEL_PAD = 12;
+const MIN_Y_LABEL_GAP = 18;
 const LENGTH_TOP_TICK_MM = 3;
 
 /** Mission day as text; a day without a launch date is named by its calendar date. */
@@ -38,7 +40,7 @@ export interface LengthChart {
   segments: { points: Point[] }[];
   gaps: Gap[];
   band: { y: number; height: number } | null;
-  yTicks: { mm: number; y: number }[];
+  yTicks: { mm: number; y: number; labelY: number }[];
   xTicks: XTick[];
   baselineY: number;
 }
@@ -84,17 +86,50 @@ function gapsOf(days: readonly DayRecord[], missing: (d: DayRecord) => boolean):
 
 const dayTick = (d: DayRecord | undefined): string => (d === undefined ? 'Day 0' : d.day === null ? d.date : `Day ${String(d.day)}`);
 
+/** Horizontal extent of a text label drawn at `x` with the given anchor, estimated from its length. */
+function extent(label: string, x: number, anchor: 'start' | 'middle' | 'end'): [number, number] {
+  const width = label.length * CHAR_WIDTH + LABEL_PAD;
+  if (anchor === 'start') return [x, x + width];
+  if (anchor === 'end') return [x - width, x];
+  return [x - width / 2, x + width / 2];
+}
+
+const overlaps = (a: [number, number], b: [number, number]): boolean => a[0] < b[1] && b[0] < a[1];
+
 function xTicksOf(days: readonly DayRecord[], gaps: readonly Gap[]): XTick[] {
   if (days.length === 0) return [];
   const last = days.length - 1;
   const picks = [...new Set([0, Math.floor(last / 2), last])];
+  const gapExtents = gaps.map((g) => extent(g.label, g.labelX, 'middle'));
   return picks
     .map((i): XTick => ({
       label: dayTick(days[i]),
       x: i === 0 ? PLOT_LEFT : i === last ? PLOT_LEFT + PLOT_WIDTH : centreX(i, days.length),
       anchor: i === 0 ? 'start' : i === last ? 'end' : 'middle',
     }))
-    .filter((t) => t.anchor === 'middle' ? gaps.every((g) => Math.abs(g.labelX - t.x) >= TICK_CLEARANCE) : true);
+    .filter((t) => !gapExtents.some((e) => overlaps(extent(t.label, t.x, t.anchor), e)));
+}
+
+/** Label heights for ticks given top to bottom, pushed apart so neighbours never overlap. */
+function spreadLabels(ys: readonly number[]): number[] {
+  const out = [...ys];
+  for (let i = 1; i < out.length; i++) {
+    const prev = out[i - 1] ?? 0;
+    const cur = out[i] ?? 0;
+    if (cur - prev < MIN_Y_LABEL_GAP) {
+      const push = (MIN_Y_LABEL_GAP - (cur - prev)) / 2;
+      out[i - 1] = prev - push;
+      out[i] = cur + push;
+    }
+  }
+  return out;
+}
+
+function lengthTicks(range: { lo: number; hi: number } | null): LengthChart['yTicks'] {
+  const mms = range === null ? [LENGTH_TOP_TICK_MM, 0] : [LENGTH_TOP_TICK_MM, range.hi, range.lo];
+  const sorted = mms.map((mm) => ({ mm, y: lengthY(mm) })).sort((a, b) => a.y - b.y);
+  const labelYs = spreadLabels(sorted.map((t) => t.y));
+  return sorted.map((t, i) => ({ ...t, labelY: labelYs[i] ?? t.y }));
 }
 
 /** Lumbar length: one line segment per run of measured days; days with `null` are gaps, never joined or zeroed. */
@@ -117,7 +152,7 @@ export function buildLengthChart(days: readonly DayRecord[], range: { lo: number
     segments,
     gaps,
     band: range === null ? null : { y: lengthY(range.hi), height: lengthY(range.lo) - lengthY(range.hi) },
-    yTicks: (range === null ? [LENGTH_TOP_TICK_MM, 0] : [LENGTH_TOP_TICK_MM, range.hi, range.lo]).map((mm) => ({ mm, y: lengthY(mm) })),
+    yTicks: lengthTicks(range),
     xTicks: xTicksOf(days, gaps),
     baselineY: LENGTH_BOTTOM,
   };

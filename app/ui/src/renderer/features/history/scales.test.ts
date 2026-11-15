@@ -46,6 +46,19 @@ describe('buildLengthChart', () => {
     expect(chart.yTicks.map((t) => t.mm)).toEqual([3, 1, -1]);
   });
 
+  it('keeps y tick labels apart when the range edges are close together', () => {
+    const chart = buildLengthChart([day(1, 0, 0)], { lo: 0.1, hi: 0.4 });
+    const ys = chart.yTicks.map((t) => t.labelY);
+    for (let i = 1; i < ys.length; i++) expect((ys[i] ?? 0) - (ys[i - 1] ?? 0)).toBeGreaterThanOrEqual(18);
+  });
+
+  it('drops an x tick that would overlap a gap label, at the axis ends too', () => {
+    const many = Array.from({ length: 30 }, (_, i) => day(i + 1, i >= 27 ? null : 0, 0));
+    const chart = buildLengthChart(many, range);
+    expect(chart.gaps[0]?.label).toBe('28 to 30');
+    expect(chart.xTicks.map((t) => t.label)).not.toContain('Day 30');
+  });
+
   it('clamps values far outside the plot', () => {
     const chart = buildLengthChart([day(1, 99, 0)], range);
     expect(chart.segments[0]?.points[0]?.y).toBeGreaterThanOrEqual(10);

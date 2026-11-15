@@ -30,6 +30,8 @@ spine-agent (CLI, streaming chat)
 
 Needs Docker. Ollama runs in Docker under the `llm` compose profile, and the models are **cached in the `ollama-models` volume**: they are downloaded once, and later starts need no network.
 
+On Windows, `app/start-demo.ps1` tries an isolated NVIDIA GPU container, then compares warm CPU and GPU inference for the configured model with a 16k context. It chooses GPU only when the test confirms GPU memory use and its estimated prompt plus 32-token generation time is lower. This short sample cannot guarantee the fastest device for every request. Missing NVIDIA Docker support, an unavailable model, timeout or failed measurement falls back to CPU. A running Ollama container is preserved; stop the demo and start it again to remeasure. Plain Docker Compose starts use CPU unless the NVIDIA overlay is explicitly supplied. NVIDIA requires compatible drivers and GPU support in Docker; AMD and Apple GPU passthrough are not covered by this launcher. Benchmarking can take several minutes.
+
 ```bash
 # From the repository root. Once: the broker credentials (compose needs them).
 sh app/mosquitto/setup.sh

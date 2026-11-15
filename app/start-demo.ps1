@@ -59,18 +59,66 @@ if (-not (Select-String -Path "$app/.env" -Pattern '^SPINE_APP_BASELINE_REQUIRED
 $env:ASCLEPIUS_BACKEND_TOKEN = Get-EnvValue 'SPINE_APP_UI_TOKEN'
 $env:ASCLEPIUS_AGENT_TOKEN = Get-EnvValue 'SPINE_AGENT_HTTP_TOKEN'
 
+# Never change the device allocation of an existing server while it may be serving a chat.
+$existingOllama = docker @compose ps -q ollama
+$preserveOllama = $LASTEXITCODE -eq 0 -and [bool]$existingOllama
+$gpuSelected = $false
+if ($preserveOllama) {
+    Write-Host 'Ollama is already running; preserving it. Stop the demo before selecting hardware again.'
+} else {
+    # A one-off GPU-enabled server uses an ephemeral loopback port and the same model cache.
+    # It is removed after measuring, without touching any existing Ollama process.
+    $gpuCompose = @('compose', '-f', "$app/docker-compose.yml", '-f', "$app/docker-compose.nvidia.yml", '--profile', 'llm')
+    $probe = $null
+    try {
+        $probe = docker @gpuCompose run -d --rm --no-deps -p '127.0.0.1::11434' ollama 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $probe) { throw 'GPU container unavailable' }
+        $port = docker port $probe '11434/tcp'
+        if ($LASTEXITCODE -ne 0 -or $port -notmatch ':(\d+)$') { throw 'GPU probe port unavailable' }
+        $base = "http://127.0.0.1:$($Matches[1])"
+        $model = Get-Setting 'SPINE_AGENT_MODEL' 'qwen3.5:4b'
+        $ready = $false
+        for ($i = 0; $i -lt 30; $i++) {
+            try { $null = Invoke-RestMethod -Uri "$base/api/tags" -TimeoutSec 2; $ready = $true; break } catch { Start-Sleep -Seconds 1 }
+        }
+        if (-not $ready) { throw 'GPU probe did not start' }
+        if (-not $SkipModelPull) {
+            $null = docker exec $probe ollama show $model 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                $null = docker exec $probe ollama pull $model
+                if ($LASTEXITCODE -ne 0) { throw 'Model unavailable' }
+            }
+        }
+        $choice = & "$app/select-ollama-hardware.ps1" -Model $model -BaseUrl $base
+        $gpuSelected = $choice -eq 'GPU'
+        Write-Host "Ollama benchmark selected $(if ($gpuSelected) { 'GPU' } else { 'CPU' })."
+    } catch {
+        Write-Warning 'GPU detection or benchmark failed; using CPU.'
+    } finally {
+        if ($probe) { $null = docker stop $probe }
+    }
+    if ($gpuSelected) { $compose = $gpuCompose + @('--profile', $producer) }
+}
+
 # The models live in the ollama-models volume. ollama-pull downloads only the ones missing from it (nothing, and no
 # network, when they are cached), so this is a no-op after the first run. A failed pull (offline, first run) only warns:
 # the stack still starts and the chat answers with the deterministic fallback until the model is there.
 if (-not $SkipModelPull) {
     Write-Host 'Checking the local model (the first run downloads about 3.3 GB)...'
-    docker @compose --profile llm-prepare run --rm ollama-pull
+    if ($preserveOllama) { docker @compose --profile llm-prepare run --rm --no-deps ollama-pull }
+    else { docker @compose --profile llm-prepare run --rm ollama-pull }
     if ($LASTEXITCODE -ne 0) {
         Write-Warning 'The local model could not be prepared; the chat will not work until it is downloaded (see the agent README).'
     }
 }
 
-docker @compose up -d --build
+if ($preserveOllama) { docker @compose up -d --build --no-recreate }
+else { docker @compose up -d --build }
+if ($LASTEXITCODE -ne 0 -and $gpuSelected) {
+    Write-Warning 'GPU startup failed; retrying with CPU.'
+    $compose = @('compose', '-f', "$app/docker-compose.yml", '--profile', $producer, '--profile', 'llm')
+    docker @compose up -d --build
+}
 if ($LASTEXITCODE -ne 0) { throw 'docker compose up failed' }
 
 docker @compose ps

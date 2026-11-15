@@ -30,6 +30,8 @@ spine-agent (CLI, chat en streaming)
 
 Necesita Docker. Ollama corre en Docker bajo el perfil `llm` de compose y los modelos **se guardan en caché en el volumen `ollama-models`**: se descargan una sola vez y los arranques siguientes no necesitan red.
 
+En Windows, `app/start-demo.ps1` prueba un contenedor aislado con GPU NVIDIA y compara inferencias CPU y GPU en caliente para el modelo configurado con contexto de 16k. Elige GPU solo si confirma uso de memoria GPU y el tiempo estimado del prompt más 32 tokens es menor. Esta muestra corta no garantiza el dispositivo más rápido para cada consulta. Si falta soporte NVIDIA en Docker, el modelo no está disponible, se agota el tiempo o falla la medición, usa CPU. Si Ollama ya está activo se conserva; detén la demo y vuelve a arrancarla para medir de nuevo. Compose directo usa CPU salvo que se añada explícitamente el overlay NVIDIA. NVIDIA requiere controladores compatibles y soporte GPU en Docker; este lanzador no cubre el acceso a GPU AMD ni Apple. La medición puede tardar varios minutos.
+
 ```bash
 # Desde la raíz del repositorio. Una vez: las credenciales del broker (compose las necesita).
 sh app/mosquitto/setup.sh

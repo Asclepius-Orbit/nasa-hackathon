@@ -19,6 +19,21 @@ function Get-Setting([string]$name, [string]$default) {
     if ($v) { return $v.Trim() } else { return $default }
 }
 
+function Test-NvidiaGpu {
+    try {
+        return [bool]@(Get-CimInstance Win32_VideoController -ErrorAction Stop |
+            Where-Object { $_.PNPDeviceID -match '(?i)VEN_10DE' }).Count
+    } catch { return $false }
+}
+
+function Show-NvidiaSetupGuide {
+    Write-Host 'To check NVIDIA GPU access on Windows:'
+    Write-Host '  1. Install an up-to-date NVIDIA Windows driver with WSL 2 support: https://www.nvidia.com/Download/index.aspx'
+    Write-Host '  2. Run wsl --update in an administrator PowerShell and restart Windows if requested.'
+    Write-Host '  3. In Docker Desktop Settings > General enable "Use the WSL 2 based engine", then apply and restart Docker Desktop.'
+    Write-Host '  4. Follow https://docs.docker.com/desktop/features/gpu to verify GPU access, then run this script again.'
+}
+
 $source = Get-Setting 'SPINE_APP_TELEMETRY_SOURCE' 'simulator'
 if ($source -notin 'simulator', 'device') {
     Write-Error "SPINE_APP_TELEMETRY_SOURCE='$source' is invalid; allowed values: simulator, device"
@@ -71,8 +86,23 @@ if ($preserveOllama) {
     $gpuCompose = @('compose', '-f', "$app/docker-compose.yml", '-f', "$app/docker-compose.nvidia.yml", '--profile', 'llm')
     $probe = $null
     try {
-        $probe = docker @gpuCompose run -d --rm --no-deps -p '127.0.0.1::11434' ollama 2>$null
-        if ($LASTEXITCODE -ne 0 -or -not $probe) { throw 'GPU container unavailable' }
+        # Capture native stderr without letting PowerShell 5.1 turn it into a terminating error.
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $probeOutput = @(docker @gpuCompose run -d --rm --no-deps -p '127.0.0.1::11434' ollama 2>&1)
+            $probeExit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $previousPreference }
+        if ($probeExit -ne 0 -or -not $probeOutput) {
+            $detail = ($probeOutput | ForEach-Object { "$_" }) -join ' '
+            if ($detail) { Write-Warning "GPU container could not start: $detail" }
+            if ((Test-NvidiaGpu) -and $detail -match '(?i)(could not select device driver.*gpu|unknown.*nvidia.*runtime|nvidia-container-cli|nvml error|driver error)') {
+                Write-Warning 'NVIDIA GPU detected, but Docker could not enable it. CPU will be used for this run.'
+                Show-NvidiaSetupGuide
+            }
+            throw 'GPU container unavailable'
+        }
+        $probe = $probeOutput[-1]
         $port = docker port $probe '11434/tcp'
         if ($LASTEXITCODE -ne 0 -or $port -notmatch ':(\d+)$') { throw 'GPU probe port unavailable' }
         $base = "http://127.0.0.1:$($Matches[1])"
@@ -91,7 +121,14 @@ if ($preserveOllama) {
         }
         $choice = & "$app/select-ollama-hardware.ps1" -Model $model -BaseUrl $base
         $gpuSelected = $choice -eq 'GPU'
-        Write-Host "Ollama benchmark selected $(if ($gpuSelected) { 'GPU' } else { 'CPU' })."
+        if ($choice -eq 'GPU_UNAVAILABLE') {
+            Write-Warning 'Ollama did not use GPU memory; possible causes include unsupported GPU, insufficient VRAM or Docker GPU setup. Using CPU.'
+            if (Test-NvidiaGpu) { Show-NvidiaSetupGuide }
+        } elseif ($choice -eq 'BENCHMARK_FAILED') {
+            Write-Warning 'Ollama benchmark failed; using CPU.'
+        } else {
+            Write-Host "Ollama benchmark selected $(if ($gpuSelected) { 'GPU' } else { 'CPU' })."
+        }
     } catch {
         Write-Warning 'GPU detection or benchmark failed; using CPU.'
     } finally {

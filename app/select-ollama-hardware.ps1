@@ -24,10 +24,11 @@ try {
         if ($mode -eq 'GPU') {
             $running = Invoke-RestMethod -Uri "$BaseUrl/api/ps" -TimeoutSec 10
             $loaded = @($running.models | Where-Object { $_.name -eq $Model })
-            if ($loaded.Count -ne 1 -or $loaded[0].size_vram -le 0) { throw 'GPU not used' }
+            if ($loaded.Count -ne 1 -or $null -eq $loaded[0].size_vram) { throw 'Cannot determine GPU use' }
+            if ($loaded[0].size_vram -le 0) { 'GPU_UNAVAILABLE'; return }
         }
     }
     if ($measurements.GPU -lt $measurements.CPU) { 'GPU' } else { 'CPU' }
 } catch {
-    'CPU'
+    'BENCHMARK_FAILED'
 }

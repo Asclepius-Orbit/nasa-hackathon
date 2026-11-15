@@ -12,7 +12,47 @@ PWSH = shutil.which("pwsh") or shutil.which("powershell")
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("cpu,gpu,vram,expected", [(100, 30, 100, "GPU"), (30, 100, 100, "CPU"), (100, 30, 0, "CPU"), (30, 30, 100, "CPU")])
+@pytest.mark.parametrize("gpu,error,expected_guidance", [
+    (True, "could not select device driver with capabilities: [[gpu]]", True),
+    (False, "could not select device driver with capabilities: [[gpu]]", False),
+    (True, "failed to pull image: network unavailable", False),
+])
+def test_gpu_setup_guidance_only_for_nvidia_runtime_failure(tmp_path, gpu, error, expected_guidance):
+    if not PWSH:
+        pytest.skip("PowerShell is unavailable")
+    app = tmp_path / "app"
+    app.mkdir()
+    shutil.copy(APP / "start-demo.ps1", app)
+    (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    harness = tmp_path / "run.ps1"
+    harness.write_text(
+        "function Get-CimInstance { if ($env:TEST_GPU -eq '1') { @{ PNPDeviceID='PCI\\VEN_10DE&DEV_1234' } } }\n"
+        "function docker {\n"
+        " Add-Content $env:TEST_LOG ($args -join ' ')\n"
+        " $global:LASTEXITCODE = 0\n"
+        " if (($args -contains 'run') -and ($args -contains '-d')) {\n"
+        "   $global:LASTEXITCODE = 1; Write-Output $env:TEST_ERROR\n"
+        " }\n"
+        "}\n"
+        "function curl.exe {}\n"
+        "& $env:TEST_SCRIPT -NoUi -SkipModelPull\n"
+    )
+    env = os.environ.copy()
+    env.update(TEST_SCRIPT=str(app / "start-demo.ps1"), TEST_LOG=str(tmp_path / "calls"),
+               TEST_GPU=str(int(gpu)), TEST_ERROR=error, SPINE_APP_TELEMETRY_SOURCE="simulator",
+               SPINE_GATEWAY_DEMO="0")
+    result = subprocess.run([PWSH, "-NoProfile", "-File", str(harness)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "using CPU" in result.stdout
+    assert ("https://docs.docker.com/desktop/features/gpu" in result.stdout) is expected_guidance
+    if expected_guidance:
+        assert "wsl --update" in result.stdout
+        assert "WSL 2" in result.stdout
+    assert any("up -d --build" in line for line in (tmp_path / "calls").read_text().splitlines())
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("cpu,gpu,vram,expected", [(100, 30, 100, "GPU"), (30, 100, 100, "CPU"), (100, 30, 0, "GPU_UNAVAILABLE"), (30, 30, 100, "CPU")])
 def test_hardware_selection_uses_measured_latency_and_requires_gpu_memory(tmp_path, cpu, gpu, vram, expected):
     if not PWSH:
         pytest.skip("PowerShell is unavailable")
@@ -45,7 +85,45 @@ def test_hardware_selection_falls_back_if_ollama_fails(tmp_path):
     env["TEST_SCRIPT"] = str(APP / "select-ollama-hardware.ps1")
     result = subprocess.run([PWSH, "-NoProfile", "-File", str(harness)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "CPU"
+    assert result.stdout.strip() == "BENCHMARK_FAILED"
+
+
+@pytest.mark.unit
+def test_startup_explains_gpu_not_used_by_ollama(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell is unavailable")
+    app = tmp_path / "app"
+    app.mkdir()
+    for name in ("start-demo.ps1", "select-ollama-hardware.ps1"):
+        shutil.copy(APP / name, app)
+    (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    harness = tmp_path / "run.ps1"
+    harness.write_text(
+        "function Get-CimInstance { @{ PNPDeviceID='PCI\\VEN_10DE&DEV_1234' } }\n"
+        "function docker {\n"
+        " Add-Content $env:TEST_LOG ($args -join ' '); $global:LASTEXITCODE=0\n"
+        " if ($args -contains 'run') { 'probe-id' }\n"
+        " if ($args[0] -eq 'port') { '127.0.0.1:12345' }\n"
+        "}\n"
+        "function Invoke-RestMethod {\n"
+        " param($Uri, $Method, $ContentType, $Body, $TimeoutSec)\n"
+        " if ($Uri -like '*/api/tags') { return @{} }\n"
+        " if ($Uri -like '*/api/ps') { return @{ models=@(@{ name='qwen3.5:4b'; size_vram=0 }) } }\n"
+        " return @{ prompt_eval_duration=100; eval_duration=100; eval_count=16 }\n"
+        "}\n"
+        "function curl.exe {}\n"
+        "& $env:TEST_SCRIPT -NoUi -SkipModelPull\n"
+    )
+    env = os.environ.copy()
+    env.update(TEST_SCRIPT=str(app / "start-demo.ps1"), TEST_LOG=str(tmp_path / "calls"),
+               SPINE_APP_TELEMETRY_SOURCE="simulator", SPINE_GATEWAY_DEMO="0")
+    result = subprocess.run([PWSH, "-NoProfile", "-File", str(harness)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "did not use GPU memory" in result.stdout
+    assert "VRAM" in result.stdout
+    assert "https://docs.docker.com/desktop/features/gpu" in result.stdout
+    calls = (tmp_path / "calls").read_text().splitlines()
+    assert any("up -d --build" in call and "nvidia" not in call for call in calls)
 
 
 @pytest.mark.unit

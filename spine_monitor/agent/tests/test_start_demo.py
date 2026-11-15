@@ -11,6 +11,13 @@ APP = Path(__file__).resolve().parents[3] / "app"
 PWSH = shutil.which("pwsh") or shutil.which("powershell")
 
 
+def _write_broker_auth(app):
+    auth = app / "mosquitto" / "auth"
+    auth.mkdir(parents=True, exist_ok=True)
+    (auth / "passwd").write_text("x")
+    (auth / "acl").write_text("x")
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("gpu,error,expected_guidance", [
     (True, "could not select device driver with capabilities: [[gpu]]", True),
@@ -24,6 +31,7 @@ def test_gpu_setup_guidance_only_for_nvidia_runtime_failure(tmp_path, gpu, error
     app.mkdir()
     shutil.copy(APP / "start-demo.ps1", app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function Get-CimInstance { if ($env:TEST_GPU -eq '1') { @{ PNPDeviceID='PCI\\VEN_10DE&DEV_1234' } } }\n"
@@ -97,6 +105,7 @@ def test_startup_explains_gpu_not_used_by_ollama(tmp_path):
     for name in ("start-demo.ps1", "select-ollama-hardware.ps1"):
         shutil.copy(APP / name, app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function Get-CimInstance { @{ PNPDeviceID='PCI\\VEN_10DE&DEV_1234' } }\n"
@@ -134,6 +143,7 @@ def test_running_ollama_is_not_restarted_for_hardware_detection(tmp_path):
     app.mkdir()
     shutil.copy(APP / "start-demo.ps1", app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function docker {\n"
@@ -191,6 +201,7 @@ def test_startup_benchmarks_isolated_server_and_recovers_from_gpu_failure(tmp_pa
     for name in ("start-demo.ps1", "select-ollama-hardware.ps1"):
         shutil.copy(APP / name, app)
     (app / ".env").write_text("SPINE_MQTT_SIM_PASSWORD=x\nSPINE_APP_UI_TOKEN=x\nSPINE_AGENT_HTTP_TOKEN=x\n")
+    _write_broker_auth(app)
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function docker {\n"

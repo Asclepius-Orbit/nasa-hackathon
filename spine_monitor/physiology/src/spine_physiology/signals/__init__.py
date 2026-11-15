@@ -41,6 +41,9 @@ def _set_period_s(protocol: ExerciseProtocol) -> float:
     return protocol.reps_per_set * (protocol.rep_duration_s + protocol.rest_between_reps_s)
 
 
+_MIN_REP_DURATION_S = 0.05  # keeps every rep strictly positive; a no-op for realistic variability
+
+
 def rep_schedule(protocol: ExerciseProtocol, *, rng: np.random.Generator | None = None) -> tuple[Rep, ...]:
     """Repeticiones del protocolo: lead_in, y por serie `reps_per_set` × (rep + descanso entre reps);
     entre series, `rest_between_sets_s`. `Rep.index` cuenta a lo largo de la sesión."""
@@ -52,7 +55,7 @@ def rep_schedule(protocol: ExerciseProtocol, *, rng: np.random.Generator | None 
         for _ in range(protocol.reps_per_set):
             variation = float(rng.uniform(-protocol.individual_variability, protocol.individual_variability))
             capacity = max(1.0 - 0.4 * fatigue, 0.4)
-            duration = protocol.rep_duration_s * (1.0 + 0.5 * fatigue + variation)
+            duration = max(protocol.rep_duration_s * (1.0 + 0.5 * fatigue + variation), _MIN_REP_DURATION_S)
             end_fatigue = min(1.0, fatigue + protocol.effort_load * duration / protocol.fatigue_resistance)
             reps.append(
                 Rep(

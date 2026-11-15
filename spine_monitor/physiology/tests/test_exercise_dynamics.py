@@ -50,3 +50,16 @@ def test_motion_and_activation_share_phases_and_rest():
     assert angle[mid(first)] > angle[mid(last)]
     assert activation[mid(last)] > activation[mid(first)]
     assert fatigue[int(reps[15].start_s * rate)] < fatigue[int(reps[14].end_s * rate) - 1]
+
+
+class _LowerBoundRng:
+    def uniform(self, low, high):
+        return low
+
+
+def test_rep_duration_stays_positive_when_variability_hits_its_lower_bound():
+    config = load_config(Path(__file__).parents[1] / "configs/example-mission.yaml")
+    protocol = config.protocols["lat_pulldown_standing_v1"].model_copy(update={"individual_variability": 1.0})
+    reps = rep_schedule(protocol, rng=_LowerBoundRng())
+    assert all(r.end_s - r.start_s > 0 for r in reps)
+    exercise_fatigue_profile(reps, n_samples=int(reps[-1].end_s * 50) + 1, rate_hz=50, recovery_per_s=protocol.recovery_per_s)

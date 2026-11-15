@@ -12,3 +12,16 @@ export const DEMO_CREW: DemoCrew = {
     { id: 'AST-02', name: 'Marc Dubois', harnessId: 'sim-02' },
   ],
 };
+
+/** Env var the real-mode e2e runner sets with the harness id the producer publishes as (sim-01, or gw-demo in device mode). */
+export const E2E_REAL_HARNESS_ENV = 'E2E_REAL_HARNESS';
+
+/**
+ * Demo crew of the `e2e-real` build: the first member is paired to the producer's harness (the app has no pairing screen).
+ * Falls back to the simulator's `sim-01` when the variable is unset or blank.
+ */
+export function e2eRealCrew(env: Readonly<Record<string, string | undefined>>): DemoCrew {
+  const harnessId = env[E2E_REAL_HARNESS_ENV]?.trim() || 'sim-01';
+  const [first, ...rest] = DEMO_CREW.members;
+  return { ...DEMO_CREW, members: first === undefined ? rest : [{ ...first, harnessId }, ...rest] };
+}

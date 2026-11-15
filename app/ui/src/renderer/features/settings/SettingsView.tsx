@@ -7,7 +7,6 @@ import pick from '../../components/ui/Pick.module.css';
 import { cx } from '../../components/ui/cx';
 import { useSettings } from '../../settings/SettingsProvider';
 import { settingsText } from '../../strings/settings';
-import { HarnessSection } from './HarnessSection';
 import styles from './Settings.module.css';
 
 interface Choice<Value> {
@@ -132,7 +131,6 @@ export function SettingsView(): React.JSX.Element {
           {t.openProfile}
         </Button>
       </section>
-      <HarnessSection />
     </section>
   );
 }

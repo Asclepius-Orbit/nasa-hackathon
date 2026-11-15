@@ -16,6 +16,7 @@ import { useSettings } from '../../settings/SettingsProvider';
 import { groundLinkValue } from '../../strings/common';
 import { cleanName, createFailureMessage, initials, login, pinFailureMessage } from '../../strings/login';
 import { useUrgent } from '../urgent/UrgentContext';
+import logo from '../../assets/logo-transparent.png';
 import styles from './Login.module.css';
 import { NewMemberForm } from './NewMemberForm';
 import { PinDots } from './PinDots';
@@ -37,6 +38,7 @@ function SidePanel(): React.JSX.Element {
   const { formatTime } = useSettings();
   return (
     <div className={styles.side}>
+      <img src={logo} alt="Asclepius Orbit logo" className={styles.logo} width={72} height={72} />
       <span className={styles.mark}>{login.mark}</span>
       <h1 id="login-title">{login.title}</h1>
       <p>{login.intro}</p>

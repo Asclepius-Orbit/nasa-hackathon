@@ -13,6 +13,13 @@ from spine_contracts import topics, validation
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
+
+@pytest.fixture
+def harness_settings() -> dict[str, Any]:
+    """These tests feed the real simulator chunks, so the installation takes simulator data."""
+    return {"telemetry_source": "simulator"}
+
+
 STATE_SCHEMA = "app/ui-rep-state"
 LAT = "lat_pulldown_standing_v1"
 SPINE_CHECK = "spine_length_rest_v1"
@@ -204,7 +211,7 @@ async def test_a_failing_tracker_never_breaks_ingestion_nor_loses_the_chunk(harn
     ingest = Ingest(harness.store, harness.runtime.control, live=Broken())
     ingest.handle(topics.stream(chunk["astronaut_id"], chunk["device_id"], "imu_t9"), json.dumps(chunk).encode())
 
-    assert ingest.counts == {"accepted": 1, "duplicate": 0, "rejected": 0, "dropped": 0}
+    assert ingest.counts == {"accepted": 1, "duplicate": 0, "rejected": 0, "dropped": 0, "wrong_source": 0}
     assert harness.store.rejected_count() == 0
     assert len(harness.store.session_chunks(chunk["astronaut_id"], session_id)) == 1
     assert "live repetition" in caplog.text

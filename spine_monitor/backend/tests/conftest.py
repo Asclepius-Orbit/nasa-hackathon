@@ -280,7 +280,7 @@ async def harness(tmp_path: Path, anyio_backend: str, harness_settings: dict[str
         baseline_builder=default_baseline_builder(),
         feature_extractor=extractor,
     )
-    defaults = {"reassess_debounce_s": 0.0, "ui_token": UI_TOKEN}
+    defaults = {"reassess_debounce_s": 0.0, "ui_token": UI_TOKEN, "telemetry_source": "device"}  # the contract examples are device data
     settings = AppSettings(_env_file=None, db_path=tmp_path / "app.db", ack_timeout_s=0.2, **{**defaults, **harness_settings})
     app = create_app(settings, mqtt_client_factory=mqtt.factory, engine_transport=httpx.ASGITransport(app=engine_app), clock=clock)
     runtime = app.state.runtime

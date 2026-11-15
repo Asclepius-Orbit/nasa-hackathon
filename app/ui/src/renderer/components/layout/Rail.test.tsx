@@ -1,21 +1,17 @@
 import { screen } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 
 import { MockDataSource } from '../../data/mock/MockDataSource';
 import type { StripData } from '../../data/types';
 import { renderInWorld } from '../../test/providers';
 import { Rail } from './Rail';
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
-
-it('is a named navigation with the seven tabs in order', () => {
+it('is a named navigation with the six tabs in order', () => {
   renderInWorld(<Rail />);
   const nav = screen.getByRole('navigation', { name: 'Sections' });
   expect(nav).toBeInTheDocument();
-  const names = screen.getAllByRole('link').slice(0, 7).map((a) => a.textContent.replace(/\s*1$/, ''));
-  expect(names).toEqual(['Today', 'Report', 'Session', 'History', 'Ask', 'Houston', 'Settings']);
+  const names = screen.getAllByRole('link').slice(0, 6).map((a) => a.textContent.replace(/\s*1$/, ''));
+  expect(names).toEqual(['Today', 'Report', 'Session', 'History', 'Ask', 'Settings']);
 });
 
 it('points each tab at its route and marks the current one', () => {
@@ -39,14 +35,4 @@ it('hides the badge when nothing is due', async () => {
   renderInWorld(<Rail />, { data: new NoneDue() });
   await screen.findByRole('link', { name: 'Report' });
   expect(screen.queryByLabelText(/due/)).not.toBeInTheDocument();
-});
-
-it('includes the Mock screens menu in development only', () => {
-  vi.stubEnv('DEV', true);
-  const { unmount } = renderInWorld(<Rail />);
-  expect(screen.getByText('Mock screens')).toBeInTheDocument();
-  unmount();
-  vi.stubEnv('DEV', false);
-  renderInWorld(<Rail />);
-  expect(screen.queryByText('Mock screens')).not.toBeInTheDocument();
 });

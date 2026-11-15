@@ -83,6 +83,7 @@ test('bridge exposes exactly the crew, auth, settings, views, profile, daily con
     profile: ['get:function', 'update:function'],
     dailyContext: ['today:function', 'updateToday:function'],
     devices: ['list:function'],
+    houstonReport: ['generate:function'],
     sessions: ['calibrateMvc:function', 'markArtifact:function', 'reprocess:function', 'start:function', 'stop:function'],
     reports: ['addExercise:function', 'due:function', 'saveDaily:function', 'saveOswestry:function'],
     urgent: ['send:function'],

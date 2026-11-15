@@ -6,7 +6,6 @@ import { BaselineView } from './features/baseline/BaselineView';
 import { ChatView } from './features/chat/ChatView';
 import { FirstDayView } from './features/firstday/FirstDayView';
 import { HistoryView } from './features/history/HistoryView';
-import { HoustonView } from './features/houston/HoustonView';
 import { LockView } from './features/lock/LockView';
 import { LoginView } from './features/login/LoginView';
 import { OswestryView } from './features/oswestry/OswestryView';
@@ -39,7 +38,6 @@ export const routes: RouteObject[] = [
           { path: '/first-day', element: <FirstDayView /> },
           { path: '/baseline', element: <BaselineView /> },
           { path: '/oswestry', element: <OswestryView /> },
-          { path: '/houston', element: <HoustonView /> },
           { path: '*', element: <Navigate to="/today" replace /> },
         ],
       },

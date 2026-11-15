@@ -51,6 +51,45 @@ docker compose -f app/docker-compose.yml --profile gateway-demo up -d arduino-em
 
 El context de build és l'arrel del repo: si Docker no pot llegir-lo per carpetes il·legibles (restes de directoris temporals a Windows), elimina-les o construeix des d'un clon net. Encara no s'ha provat amb una placa real. Vegeu [`spine_monitor/gateway/README.ca.md`](spine_monitor/gateway/README.ca.md) (execució, configuració, cablejat i prova amb la placa) i [`firmware/README.ca.md`](firmware/README.ca.md) (sketch i protocol sèrie).
 
+## Font de telemetria: simulador o dispositiu
+
+`SPINE_APP_TELEMETRY_SOURCE` (a `app/.env` o a l'entorn) tria l'únic productor de telemetria de tota l'app: `simulator` (per defecte) o `device`. El backend només accepta aquesta `source`; qualsevol altre valor impedeix l'arrencada amb `SPINE_APP_TELEMETRY_SOURCE must be one of: simulator, device (got 'x')`. `SPINE_GATEWAY_DEMO=1` (per defecte `0`) fa que `device` usi l'emulador sèrie en lloc d'una placa; exigeix `device` i `start-demo.ps1` el rebutja amb `simulator`.
+
+| Font | Productor (perfil de compose) | On |
+|---|---|---|
+| `simulator` | simulador de fisiologia (`sim`) | qualsevol SO |
+| `device` | gateway real + Arduino per USB (`hardware`) | Linux |
+| `device` + `SPINE_GATEWAY_DEMO=1` | gateway + emulador d'Arduino (`gateway-demo`), sense placa | qualsevol SO, també Windows |
+
+Regla: un sol productor alhora, mai simulador i gateway junts. Només `app/start-demo.ps1` ho imposa; compondre els perfils a mà encara permet barrejar-los.
+
+Per reproduir-ho (des de l'arrel del repo, amb Docker):
+
+```bash
+sh app/mosquitto/setup.sh                                  # un cop: credencials a app/.env
+powershell -File app/start-demo.ps1                        # simulador (per defecte)
+SPINE_APP_TELEMETRY_SOURCE=device SPINE_GATEWAY_DEMO=1 powershell -File app/start-demo.ps1   # dispositiu amb emulador
+```
+
+A PowerShell defineix les variables amb `$env:NOM='valor'` o escriu-les a `app/.env`; `-NoUi` omet l'app d'escriptori.
+
+El backend descarta (avís al log, comptador `wrong_source`) tot missatge de stream, status o calibratge amb una `source` diferent de la configurada, `replay` inclòs. `ack` i `clock` no porten `source`, així que no es filtren. En mode dispositiu el Last Will offline del gateway sempre guanya a l'estat del dispositiu.
+
+Per verificar-ho (atura abans l'stack de desenvolupament: tots dos necessiten lliures els ports 1883, 8000 i 8001):
+
+```bash
+cd spine_monitor && SPINE_REQUIRE_BROKER=1 uv run pytest tests/test_e2e_telemetry_source.py   # Mosquitto real, tots dos modes
+cd app/ui && pnpm run e2e:real          # UI contra el simulador
+cd app/ui && pnpm run e2e:real:device   # UI contra gateway + emulador
+```
+
+Límits coneguts:
+
+- La verificació amb un Arduino físic està **pendent**: no s'ha provat amb placa. En una sessió real l'EMG està trencat i el senyal de l'IMU no és fiable.
+- El mode dispositiu amb emulador només cobreix l'aparellament i l'inici i l'aturada de sessió.
+- El protocol de lat pulldown declara `emg_lat_left` i `emg_lat_right`, però el gateway té un únic stream d'EMG, així que es rebutja. `calibrate` i la injecció d'artefactes només funcionen amb el simulador als e2e. Una issue de seguiment ho recollirà.
+- El realisme del senyal simulat es segueix per separat (#131).
+
 ## Skills de Claude Code per a pull requests
 
 Dues skills del projecte a `.claude/skills/` porten la revisió de PRs amb subagents:
@@ -78,6 +117,10 @@ Skills de projecte per al domini: `physiology-engine`, `contract-first`, `agent-
 El tooling de Node usa només pnpm (`pnpm install`, `pnpm run`, `pnpm dlx`); mai npm ni npx. El lockfile és `app/ui/pnpm-lock.yaml`.
 
 Dependències noves: `pint` (unitats, a `physiology`), `pydantic-evals` (dev, per als evals de l'agent), i `vitest` i `uplot` (dev, a `app/ui`).
+
+## Logo
+
+El logo d'Asclepius Orbit (`app/ui/build/icon.png` i `app/ui/src/renderer/assets/logo.png`) ha estat generat amb IA per OpenAI.
 
 ## Llicència
 

@@ -145,7 +145,12 @@ run_package() {
         set -f # $NAMES holds mutant-name globs for mutmut, not for the shell
         # Keep the detailed log for failure diagnosis while exposing live progress in CI.
         : > mutants-run.log
-        tail -n 0 -f mutants-run.log &
+        # mutmut writes animated frames with carriage returns; sample the latest frame
+        # instead of streaming every frame and overwhelming CI logs.
+        while sleep 30; do
+            printf 'mutation progress (%s): ' "$pkg"
+            tail -c 1024 mutants-run.log | tr '\r' '\n' | tail -n 1
+        done &
         log_pid=$!
         # shellcheck disable=SC2086 # one name per word
         status=0

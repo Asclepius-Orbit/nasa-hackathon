@@ -104,6 +104,8 @@ SPINE_AGENT_EVALS_LIVE=1 uv run --no-sync python -m evals.run_live \
     --models qwen3.5:4b gemma4:e4b qwen3.5:9b --repeat 1 --dump failures.jsonl
 ```
 
+Per executar-ho contra l'app i el motor reals en lloc de les dades de demo, afegeix `--dataset http` i exporta `SPINE_APP_URL` i `SPINE_ENGINE_URL` (es reenvien al subprocés MCP). Per defecte és `--dataset demo`; les expectatives dels casos són específiques de la demo, així que els errors amb `http` requereixen revisió. Una execució contra el motor real continua pendent.
+
 ## Nota del model
 
 Mesurat el 2026-11-06 amb Ollama 0.40.14 **a Docker, només CPU** (Intel Core Ultra 7 155H, 32 GB de RAM, VM de Docker amb 16 GB; sense GPU dedicada), **una repetició** per model.

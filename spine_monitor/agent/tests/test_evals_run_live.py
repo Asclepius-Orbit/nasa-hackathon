@@ -25,6 +25,7 @@ from evals.run_live import (
     format_selection,
     format_summary,
     is_enabled,
+    mcp_args_for,
     median,
     models_from_env_example,
     parse_args,
@@ -386,3 +387,16 @@ def test_the_agent_is_built_with_the_null_log_file():
     settings = AgentSettings()
     assert build_quiet_agent(settings, "the-model", build=fake_build) == "agent"
     assert calls == [{"settings": settings, "model": "the-model", "log_file": Path(os.devnull)}]
+
+
+@pytest.mark.parametrize("dataset", ["demo", "http"])
+def test_dataset_flag_is_threaded_to_the_mcp_args(dataset: str):
+    args = parse_args(["--dataset", dataset], ["m:1"], "http://x/v1")
+    assert args.dataset == dataset
+    assert mcp_args_for(args.dataset) == ["-m", "spine_mcp_server", "--dataset", dataset]
+
+
+def test_dataset_flag_defaults_to_demo_and_rejects_other_values():
+    assert parse_args([], ["m:1"], "http://x/v1").dataset == "demo"
+    with pytest.raises(SystemExit):
+        parse_args(["--dataset", "examples"], ["m:1"], "http://x/v1")

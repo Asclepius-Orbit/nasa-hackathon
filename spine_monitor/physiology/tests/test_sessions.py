@@ -244,6 +244,24 @@ def _clean(raw):
         fault["probability"] = 0.0
 
 
+def test_emg_fatigue_parameters_affect_exercise_synthesis():
+    def configured(per_rep, gain):
+        def edit(raw):
+            raw["signals"]["emg"]["fatigue_per_rep"] = per_rep
+            raw["signals"]["emg"]["deconditioning_fatigue_gain"] = gain
+        return make_config(edit)
+
+    def fatigue(per_rep, gain):
+        _, synthesis = _synth(configured(per_rep, gain), "lat_pulldown", day=4)
+        return synthesis.stream("emg_lat_left").truth["fatigue"]
+
+    baseline = fatigue(0.0, 0.0)
+    increased = fatigue(0.02, 0.0)
+    deconditioned = fatigue(0.02, 3.0)
+    assert np.max(increased - baseline) > 0
+    assert np.max(deconditioned - increased) > 0
+
+
 def test_synthesis_shapes_channels_and_calibration(config):
     plan, synthesis = _synth(config, "lat_pulldown")
     n_chunks = sess.n_chunks(plan)

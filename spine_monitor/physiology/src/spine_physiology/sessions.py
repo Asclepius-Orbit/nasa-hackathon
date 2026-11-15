@@ -682,7 +682,8 @@ def synthesize(
             peaks = [peak * (1.0 + 0.4 * r.fatigue) for r in reps]
             pct = emg_signal.activation_profile(reps, peak_pct_mvc=peaks, rest_pct_mvc=params.rest_pct_mvc, n_samples=n, rate_hz=rate)
             fatigue = emg_signal.exercise_fatigue_profile(
-                reps, n_samples=n, rate_hz=rate, recovery_per_s=spec.protocol.recovery_per_s if spec.protocol else 0.0
+                reps, n_samples=n, rate_hz=rate, recovery_per_s=spec.protocol.recovery_per_s if spec.protocol else 0.0,
+                fatigue_per_rep=emg_signal.effective_fatigue_per_rep(state.muscle_deconditioning, params),
             )
             raw = {"emg": emg_signal.synth_emg(rng, params, mvc_rms_mv=mvc, pct_mvc=pct, fatigue=fatigue, rate_hz=rate)}
             truth = {"pct_mvc": pct, "fatigue": fatigue, "mvc_rms_mv": mvc}

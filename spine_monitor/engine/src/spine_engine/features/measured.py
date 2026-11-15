@@ -5,6 +5,7 @@ from its absolute reference. Ambiguous streams and missing references are skippe
 """
 from collections.abc import Sequence
 from datetime import timedelta
+from math import ceil, floor
 
 import numpy as np
 from spine_contracts import EmgMvcCalibration, ImuCalibration, StreamKind, StretchCalibration
@@ -14,11 +15,46 @@ from spine_contracts.models.domain.feature_set_schema import Reason, Window
 from spine_engine.features.context import ExtractionContext
 from spine_engine.features.emg import _emg_streams, _mvc, _pieces, _rms
 from spine_engine.features.emg import _read as read_emg
+from spine_engine.features.ordering import order_chunks
+from spine_engine.features.quality import assess_quality
 from spine_engine.features.registry import ComputedFeature, FamilyResult, SkippedFeature
 from spine_engine.features.signals import segment_samples
 from spine_engine.features.stretch import _calibration, _span
 from spine_engine.features.stretch import _read as read_stretch
 from spine_engine.measurements import EMG, IMU, STRETCH
+
+
+def _window_segments(context, stream_id, start, end):
+    chunks = []
+    for segment in context.segments(stream_id):
+        for chunk in segment.chunks:
+            times = [context.clock.to_utc(chunk.boot_id, round(chunk.t0_device_ms + i * 1000 / chunk.sample_rate_hz)) for i in range(chunk.n_samples)]
+            indices = [i for i, instant in enumerate(times) if instant is not None and start <= instant < end]
+            if not indices:
+                continue
+            lo, hi = indices[0], indices[-1] + 1
+            columns = {}
+            for name in type(chunk.data).model_fields:
+                column = getattr(chunk.data, name)
+                if isinstance(column, list):
+                    columns[name] = column[lo:hi]
+                elif hasattr(column, "root") and isinstance(column.root, list):
+                    columns[name] = column.model_copy(update={"root": column.root[lo:hi]})
+            chunks.append(chunk.model_copy(update={"n_samples": hi - lo, "data": chunk.data.model_copy(update=columns)}))
+    return order_chunks(chunks).segments
+
+
+def _continuous(times, start, end, rate, slope):
+    if not times:
+        return False
+    step = slope / rate
+    tolerance = slope * 0.0011 + 0.000001
+    min_step = floor(1000 / rate) * slope / 1000
+    max_step = ceil(1000 / rate) * slope / 1000
+    return (0 <= (times[0] - start).total_seconds() < step + tolerance
+            and 0 < (end - times[-1]).total_seconds() <= step + tolerance
+            and all(min_step - 0.000002 <= (b - a).total_seconds() <= max_step + 0.000002
+                    for a, b in zip(times, times[1:], strict=False)))
 
 
 class MeasuredFamily:
@@ -54,18 +90,25 @@ class MeasuredFamily:
                     skipped.append(SkippedFeature(key, Reason.NO_CALIBRATION))
                     continue
             segments = context.segments(stream.stream_id)
-            quality = context.assess([stream.stream_id])
-            if len(segments) != 1 or quality.coverage < 1 or quality.flags:
+            imu_cal = context.calibration(stream.stream_id).calibration if key == IMU else None
+            quality_start = imu_cal.created_at if isinstance(imu_cal, ImuCalibration) else window.start
+            relevant = _window_segments(context, stream.stream_id, quality_start if key == IMU else window.start, window.end)
+            quality = assess_quality(
+                relevant, calibration_expired=context.calibration(stream.stream_id).status.value == "expired",
+                clock_uncertain=context._clock_uncertain(relevant),
+            )
+            if len(relevant) != 1 or quality.coverage < 1 or quality.flags:
                 skipped.append(SkippedFeature(key, Reason.LOW_QUALITY))
                 continue
-            expected = round(5 * stream.sample_rate_hz)
+            segment = next(s for s in segments if s.boot_id == relevant[0].boot_id)
             channel = {STRETCH: "adc_counts", IMU: "gyro_x", EMG: "emg"}[key]
-            timed = segment_samples(context.clock, segments[0], (channel,), (window.start, window.end))
-            cadence_ok = len(timed.times) == expected and all(
-                abs((instant - window.start).total_seconds() - index / stream.sample_rate_hz) <= 1e-6
-                for index, instant in enumerate(timed.times)
-            )
-            if not cadence_ok or any(c.sample_rate_hz != stream.sample_rate_hz for c in segments[0].chunks):
+            timed = segment_samples(context.clock, segment, (channel,), (window.start, window.end))
+            fit = context.clock.fit(segment.boot_id)
+            expected = len(timed.times)
+            nominal_count = 5 * stream.sample_rate_hz / fit.slope if fit is not None else 0
+            cadence_ok = (fit is not None and floor(nominal_count) <= expected <= ceil(nominal_count)
+                          and _continuous(timed.times, window.start, window.end, stream.sample_rate_hz, fit.slope))
+            if not cadence_ok or any(c.sample_rate_hz != stream.sample_rate_hz for c in relevant[0].chunks):
                 skipped.append(SkippedFeature(key, Reason.LOW_QUALITY))
                 continue
             if key == STRETCH:
@@ -91,14 +134,11 @@ class MeasuredFamily:
             else:
                 resolution = context.calibration(stream.stream_id)
                 calibration = resolution.calibration
-                samples = segment_samples(context.clock, segments[0], ("gyro_x",))
+                samples = segment_samples(context.clock, segment, ("gyro_x",))
                 reference = calibration.created_at if isinstance(calibration, ImuCalibration) else window.end
                 reference_times = [t for t in samples.times if reference <= t < window.end]
                 duration = (window.end - reference).total_seconds()
-                continuous = duration >= 5 and len(reference_times) == round(duration * stream.sample_rate_hz) and all(
-                    abs((t - reference).total_seconds() - i / stream.sample_rate_hz) <= 1e-6
-                    for i, t in enumerate(reference_times)
-                )
+                continuous = duration >= 5 and fit is not None and _continuous(reference_times, reference, window.end, stream.sample_rate_hz, fit.slope)
                 if (resolution.reason is None and isinstance(calibration, ImuCalibration)
                     and calibration.reference_orientation_x_deg is not None and continuous
                     and calibration.spine_level == stream.placement.spine_level and calibration.mounting.sensor_x is BodyAxis.LEFT

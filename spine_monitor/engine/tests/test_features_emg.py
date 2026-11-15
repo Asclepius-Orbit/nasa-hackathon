@@ -663,3 +663,16 @@ def test_reference_emg_requires_a_full_marked_effort_window():
     assert computed(measured)[EMG].value == pytest.approx(1023 * 0.75)
     resting = MeasuredFamily().extract(make_context(samples, [cal], events=[]))
     assert EMG in skipped(resting)
+
+
+def test_reference_emg_ignores_packet_loss_before_window():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import EMG
+
+    cal = calibration(LEFT, "left", 2.0)
+    events = [ev("reference_effort_start", 500, 1), ev("reference_effort_end", 1000, 1)]
+    ctx = make_context({LEFT: [1.5] * 1000}, [cal], events=events)
+    request = ctx.request.model_copy(deep=True)
+    request.chunks.pop(1)
+    request.chunks[0].dropped_samples = 3
+    assert computed(MeasuredFamily().extract(build_context(request)))[EMG].value == pytest.approx(1023 * 0.75)

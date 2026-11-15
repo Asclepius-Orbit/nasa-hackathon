@@ -734,6 +734,18 @@ def test_measured_stretch_rejects_missing_time_despite_full_sample_count():
     assert STRETCH not in values(result)
 
 
+def test_measured_stretch_ignores_old_saturation_and_packet_gap():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import STRETCH
+
+    marked = calibration()
+    marked["reference_posture"] = "straight_back"
+    ctx = make_context([1040.0] * 100, [marked], counts=[0] * 10 + [500] * 90, circuit={"adc_bits": 10})
+    request = ctx.request.model_copy(deep=True)
+    request.chunks.pop(1)
+    assert values(MeasuredFamily().extract(build_context(request)))[STRETCH] == pytest.approx(4)
+
+
 def test_measured_feature_keeps_its_five_second_window_in_session_aggregate():
     from spine_contracts import Completeness, Level
     from spine_engine.features.composite import CompositeFeatureExtractor

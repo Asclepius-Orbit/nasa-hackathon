@@ -603,3 +603,41 @@ def test_measured_imu_requires_absolute_reference_and_fixed_mount():
     cal = ctx.calibrations["imu_t9"].calibration
     cal.reference_orientation_x_deg = None
     assert IMU in skipped(MeasuredFamily().extract(ctx))
+
+
+def test_measured_imu_accepts_quantized_60hz_and_unaligned_reference():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import IMU
+
+    def edit(raw):
+        raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] == "imu"]
+        raw["session"]["streams"] = [s for s in raw["session"]["streams"] if s["stream_kind"] == "imu"]
+        raw["session"]["streams"][0]["placement"]["spine_level"] = "l1"
+        raw["session"]["streams"][0]["sample_rate_hz"] = 60
+        cal = imu_calibration(raw)
+        cal.update(spine_level="l1", created_at=at(0.005).isoformat(), reference_orientation_x_deg=30,
+                   mounting={"sensor_x": "left", "sensor_y": "anterior", "sensor_z": "cranial"})
+
+    ctx = make_context(chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 360)}, rate=60, chunk=60), edit=edit)
+    assert values(MeasuredFamily().extract(ctx))[IMU] == pytest.approx(30 + 359 / 60)
+
+
+def test_measured_imu_rejects_single_missing_sample_at_1000hz_before_window():
+    from spine_engine.features.measured import MeasuredFamily
+    from spine_engine.measurements import IMU
+
+    def edit(raw):
+        raw["chunks"] = [c for c in raw["chunks"] if c["stream_kind"] == "imu"]
+        raw["session"]["streams"] = [s for s in raw["session"]["streams"] if s["stream_kind"] == "imu"]
+        raw["session"]["streams"][0]["placement"]["spine_level"] = "l1"
+        raw["session"]["streams"][0]["sample_rate_hz"] = 1000
+        cal = imu_calibration(raw)
+        cal.update(spine_level="l1", created_at=T0.isoformat(), reference_orientation_x_deg=30,
+                   mounting={"sensor_x": "left", "sensor_y": "anterior", "sensor_z": "cranial"})
+
+    chunks = chunks_for({"gyro_x": with_bias("gyro_x", [1.0] * 6000)}, rate=1000, chunk=100)
+    chunks[5]["n_samples"] -= 1
+    for channel in chunks[5]["data"].values():
+        channel.pop()
+    result = MeasuredFamily().extract(make_context(chunks, edit=edit))
+    assert IMU in skipped(result)

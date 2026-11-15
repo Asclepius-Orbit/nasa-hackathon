@@ -1,6 +1,8 @@
 # Starts the demo stack (sim + llm) and the desktop UI with the tokens fixed in app/.env.
 # Usage (from anywhere): powershell -File app/start-demo.ps1 [-NoUi] [-SkipModelPull]
 #   -SkipModelPull: do not check or download the Ollama model before starting (offline, model already cached).
+# app/.env and app/mosquitto/auth/{passwd,acl} are generated on first run (or when incomplete) with app/mosquitto/setup.sh,
+#   run through Git Bash on Windows; this needs docker running.
 # SPINE_APP_TELEMETRY_SOURCE (env or app/.env) picks the single telemetry producer: simulator (default) | device.
 #   simulator -> profile sim; device -> profile hardware (gateway + USB, Linux), or with SPINE_GATEWAY_DEMO=1
 #   profile gateway-demo (serial emulator, no board). SPINE_GATEWAY_DEMO=1 with simulator is rejected.
@@ -39,8 +41,55 @@ function Get-EnvValue([string]$name) {
     return ($line -replace "^$name=", '').Trim('"')
 }
 
-if (-not (Test-Path "$app/.env") -or -not (Select-String -Path "$app/.env" -Pattern '^SPINE_MQTT_SIM_PASSWORD=.+' -Quiet)) {
-    bash "$app/mosquitto/setup.sh"
+function Test-NonEmptyFile([string]$path) {
+    return (Test-Path -LiteralPath $path -PathType Leaf) -and ((Get-Item -LiteralPath $path).Length -gt 0)
+}
+
+# True when app/.env, the broker password file or the ACL is missing or incomplete (setup.sh keeps existing passwords).
+function Test-MqttSetupNeeded {
+    $envFile = Join-Path $app '.env'
+    if (-not (Test-NonEmptyFile $envFile)) { return $true }
+    if (-not (Select-String -LiteralPath $envFile -Pattern '^SPINE_MQTT_SIM_PASSWORD=.+' -Quiet)) { return $true }
+    foreach ($name in 'passwd', 'acl') {
+        if (-not (Test-NonEmptyFile (Join-Path $app "mosquitto/auth/$name"))) { return $true }
+    }
+    return $false
+}
+
+# Git Bash on Windows (bash on PATH may be the WSL launcher in System32); bash elsewhere.
+function Get-SetupBash {
+    if ($env:OS -ne 'Windows_NT') {
+        $cmd = Get-Command bash -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+        throw 'bash is required to run app/mosquitto/setup.sh but was not found on PATH.'
+    }
+    $candidates = @()
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($git) {
+        $execPath = (& $git.Source --exec-path 2>$null | Select-Object -First 1)
+        if ($execPath) {
+            # <git root>/(mingw64|ucrt64)/libexec/git-core -> <git root>/bin/bash.exe
+            $gitRoot = Split-Path (Split-Path (Split-Path $execPath -Parent) -Parent) -Parent
+            $candidates += Join-Path $gitRoot 'bin\bash.exe'
+        }
+    }
+    foreach ($base in $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:LOCALAPPDATA\Programs") {
+        if ($base) { $candidates += Join-Path $base 'Git\bin\bash.exe' }
+    }
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c -PathType Leaf) { return $c }
+    }
+    throw 'Git Bash was not found (bash.exe on PATH may be WSL, which cannot run app/mosquitto/setup.sh). Install Git for Windows (https://git-scm.com/download/win) and rerun.'
+}
+
+if (Test-MqttSetupNeeded) {
+    $bash = Get-SetupBash
+    Write-Host 'Generating the MQTT credentials (app/.env, app/mosquitto/auth)...'
+    & $bash (Join-Path $app 'mosquitto/setup.sh')
+    if ($LASTEXITCODE -ne 0) {
+        throw "app/mosquitto/setup.sh failed (exit code $LASTEXITCODE); fix the error above and rerun. Docker must be running."
+    }
+    if (Test-MqttSetupNeeded) { throw 'app/mosquitto/setup.sh finished but app/.env or app/mosquitto/auth is still incomplete.' }
 }
 
 # First run on a machine: random tokens, kept in app/.env (git-ignored, never shared).

@@ -23,6 +23,9 @@ def test_startup_continues_after_model_preparation(tmp_path, skip, pull_exit):
         "SPINE_MQTT_SIM_PASSWORD=test\nSPINE_APP_UI_TOKEN=test\n"
         "SPINE_AGENT_HTTP_TOKEN=test\nSPINE_APP_BASELINE_REQUIRED=1\n"
     )
+    (app / "mosquitto" / "auth").mkdir(parents=True)
+    (app / "mosquitto" / "auth" / "passwd").write_text("x")
+    (app / "mosquitto" / "auth" / "acl").write_text("x")
     harness = tmp_path / "run.ps1"
     harness.write_text(
         "function docker {\n"
